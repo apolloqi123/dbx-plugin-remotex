@@ -1,0 +1,5 @@
+rust-local 1.97.1
+rustfmt-local 1.97.1
+clippy-local 1.97.1
+node 26.12.1
+go 1.27
