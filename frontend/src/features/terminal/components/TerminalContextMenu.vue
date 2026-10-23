@@ -85,6 +85,12 @@ watch(
     if (!open) view.value = "main";
   },
 );
+
+/** 两页视图切换必须阻止 reka 的默认关闭；测试 stub 不传事件时也能安全调用。 */
+function switchView(next: "main" | "engines", event?: Event) {
+  event?.preventDefault();
+  view.value = next;
+}
 </script>
 
 <template>
@@ -93,9 +99,9 @@ watch(
     <ContextMenuItem :disabled="!canPaste" @select="emit('paste')"><ClipboardPaste />{{ t("terminalPaste") }}</ContextMenuItem>
     <template v-if="engines.length">
       <ContextMenuSeparator />
-      <ContextMenuItem v-if="view === 'main'" :disabled="!hasSelection" @select="view = 'engines'"><Search />{{ t("ctxSearch.menuLabel") }}</ContextMenuItem>
+      <ContextMenuItem v-if="view === 'main'" :disabled="!hasSelection" @select="(event) => switchView('engines', event)"><Search />{{ t("ctxSearch.menuLabel") }}</ContextMenuItem>
       <template v-else>
-        <ContextMenuItem @select="view = 'main'"><ArrowLeft />{{ t("ctxSearch.back") }}</ContextMenuItem>
+        <ContextMenuItem @select="(event) => switchView('main', event)"><ArrowLeft />{{ t("ctxSearch.back") }}</ContextMenuItem>
         <ContextMenuItem v-for="engine in engines" :key="engine.name" @select="emit('search', engine)"><Globe />{{ engine.name }}</ContextMenuItem>
       </template>
     </template>

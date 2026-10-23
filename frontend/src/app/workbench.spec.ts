@@ -1024,21 +1024,21 @@ it("hosts metrics and docker in the right panel and exposes terminal split contr
   expect(appTemplate).toContain('rightPanelView === \'metrics\'');
   expect(appTemplate).toContain("<ServerMetricsPanel");
   expect(appTemplate).toContain("<DockerPanel");
-  expect(appTemplate).toContain("<SplitTerminalPane");
   expect(appTemplate).toContain("openTerminalSplit('row')");
   expect(appTemplate).toContain("openTerminalSplit('column')");
-  expect(appTemplate).toContain('class="terminal-tabbar"');
-  expect(appTemplate).toContain('class="terminal-tab-add"');
-  expect(appTemplate).toContain('@click="createTerminalTab"');
-  expect(appTemplate).toContain('@click="activateTerminalTab(tab.id)"');
-  expect(appTemplate).toContain('@click.stop="closeTerminalTab(tab.id)"');
-  // 分屏区域与批量条平级：批量条在下屏终端之后，分屏页也有新建标签入口。
-  expect(appTemplate).toContain('class="terminal-split-area"');
-  expect(appTemplate.indexOf('class="terminal-split-area"')).toBeLessThan(appTemplate.indexOf('class="batch-bar"'));
-  expect(appTemplate).toContain('@new-tab="createTerminalTab"');
-  expect(appTemplate).toContain(':can-create-tab="canAddTerminalTab && canOpenAuxTerminal"');
-  expect(appTemplate).toContain('close-kind="split"');
-  expect(appTemplate).toContain('close-kind="tab"');
+  // 每个窗格自带标签栏（标签 + 最后的 +）；主终端与分屏页都是布局树叶子。
+  expect(appTemplate).toContain("<TerminalLayoutTree");
+  expect(appTemplate).toContain(':node="terminalLayout"');
+  expect(appTemplate).toContain('@opened="onShellTabOpened"');
+  expect(appTemplate).toContain('@activate-tab="activatePaneTab"');
+  expect(appTemplate).toContain('@close-tab="closePaneTab"');
+  expect(appTemplate).toContain('@new-tab="createPaneTab"');
+  expect(appTemplate).toContain('@close-pane="closePane"');
+  expect(appTemplate).toContain('@split="splitTerminalPane"');
+  expect(appTemplate).toContain(':can-create-tab="canOpenShellTab"');
+  expect(appTemplate).not.toContain('class="terminal-tabbar"');
+  expect(appTemplate).not.toContain('class="terminal-tab-add"');
+  expect(appTemplate).not.toContain("split-terminal-add");
   // 批量条移出终端 pane 后，落盘事件由工作区统一接管，不能露给浏览器默认行为。
   expect(appTemplate).toContain('@drop.prevent="onTerminalDrop($event)"');
   expect(appTemplate).not.toContain("batch-bar-open");

@@ -4,7 +4,7 @@
 // lifecycle, frame ordering and input queue are the production implementations.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 
 const xtermMock = vi.hoisted(() => {
   class FakeTerminal {
@@ -14,7 +14,10 @@ const xtermMock = vi.hoisted(() => {
     options: Record<string, unknown>;
     unicode = { activeVersion: "6" };
     dataHandler: ((data: string) => void) | undefined;
+    selectionHandler: (() => void) | undefined;
+    keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
     written: Uint8Array[] = [];
+    selection = "";
     disposed = false;
     focused = false;
     opened = false;
@@ -29,18 +32,16 @@ const xtermMock = vi.hoisted(() => {
     open() {
       this.opened = true;
     }
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      this.keyHandler = handler;
+    }
     onData(handler: (data: string) => void) {
       this.dataHandler = handler;
       return { dispose: () => { this.dataHandler = undefined; } };
     }
-    onSelectionChange(_handler: () => void) {
-      return { dispose: () => undefined };
-    }
-    hasSelection() {
-      return false;
-    }
-    getSelection() {
-      return "";
+    onSelectionChange(handler: () => void) {
+      this.selectionHandler = handler;
+      return { dispose: () => { this.selectionHandler = undefined; } };
     }
     selectAll() {}
     clear() {}
@@ -53,6 +54,12 @@ const xtermMock = vi.hoisted(() => {
     focus() {
       this.focused = true;
     }
+    getSelection() {
+      return this.selection;
+    }
+    hasSelection() {
+      return this.selection.length > 0;
+    }
     reset() {}
     dispose() {
       this.disposed = true;
@@ -63,6 +70,15 @@ const xtermMock = vi.hoisted(() => {
 
 vi.mock("@xterm/xterm", () => ({ Terminal: xtermMock.FakeTerminal }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} dispose() {} } }));
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: class {
+    onDidChangeResults() {}
+    findNext() {}
+    findPrevious() {}
+    clearDecorations() {}
+    dispose() {}
+  },
+}));
 vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class { dispose() {} } }));
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class { dispose() {} } }));
 
@@ -173,6 +189,16 @@ async function mountPane(
   await flushPromises();
   await flushPromises();
   return { wrapper, harness, terminal: xtermMock.FakeTerminal.instances.at(-1)! };
+}
+
+async function openContextMenu(wrapper: VueWrapper): Promise<HTMLElement[]> {
+  wrapper.get(".split-terminal-pane").element.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+  );
+  await nextTick();
+  await nextTick();
+  await flushPromises();
+  return Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'));
 }
 
 beforeEach(() => {
@@ -410,12 +436,90 @@ describe("SplitTerminalPane", () => {
     wrapper.unmount();
   });
 
-  it("emits new-tab from the pane header plus button", async () => {
+  it("mirrors the main terminal menu options, including disabled rz/trz entries", async () => {
+    const engines = [{ name: "Google", urlTemplate: "https://www.google.com/search?q=%s" }];
+    const { wrapper } = await mountPane(
+      {},
+      { connected: true, canWrite: true, canSplit: true, canCreateTab: true, closeKind: "tab", engines },
+    );
+
+    const items = await openContextMenu(wrapper);
+    const text = items.map((item) => item.textContent ?? "").join("\n");
+    for (const key of [
+      "terminalCopy",
+      "terminalPaste",
+      "ctxSearch.menuLabel",
+      "terminalSelectAll",
+      "terminalSearch.open",
+      "terminalClear",
+      "sudoRefresh.title",
+      "terminalTab.new",
+      "terminalSplit.leftRight",
+      "terminalSplit.topBottom",
+      "zmodemUpload",
+      "trzszUpload",
+      "terminalTab.close",
+    ]) {
+      expect(text).toContain(key);
+    }
+    const upload = items.find((item) => item.textContent?.includes("zmodemUpload"));
+    expect(upload?.getAttribute("aria-disabled") ?? upload?.getAttribute("data-disabled")).toBeTruthy();
+
+    wrapper.unmount();
+  });
+
+  it("sends sudo -v to its own split session from the menu", async () => {
+    const { wrapper, harness, terminal } = await mountPane({}, { connected: true });
+    const items = await openContextMenu(wrapper);
+    const entry = items.find((item) => item.textContent?.includes("sudoRefresh.title"));
+
+    entry!.click();
+    await flushPromises();
+
+    const sent = harness.sendBinaryCalls.map((call) => new TextDecoder().decode(call.data.slice(8)));
+    expect(sent).toContain("sudo -v\r");
+    expect(terminal.focused).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("opens a pane-local terminal search panel from the menu", async () => {
+    const { wrapper } = await mountPane();
+    const items = await openContextMenu(wrapper);
+
+    items.find((item) => item.textContent?.includes("terminalSearch.open"))!.click();
+    await nextTick();
+    await flushPromises();
+
+    expect(wrapper.find(".terminal-search-panel").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("emits search-online with the pane selection", async () => {
+    const engines = [{ name: "Google", urlTemplate: "https://www.google.com/search?q=%s" }];
+    const { wrapper, terminal } = await mountPane({}, { engines });
+    terminal.selection = "needle";
+    terminal.selectionHandler?.();
+    await nextTick();
+    const items = await openContextMenu(wrapper);
+
+    items.find((item) => item.textContent?.includes("ctxSearch.menuLabel"))!.click();
+    await nextTick();
+    await flushPromises();
+    const engine = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((el) =>
+      el.textContent?.includes("Google"),
+    );
+    engine!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("search-online")?.[0]).toEqual([engines[0], "needle"]);
+    wrapper.unmount();
+  });
+
+  it("does not render a new-tab button in the split header", async () => {
     const { wrapper } = await mountPane({}, { canCreateTab: true });
 
-    await wrapper.get(".split-terminal-add").trigger("click");
-
-    expect(wrapper.emitted("new-tab")).toHaveLength(1);
+    expect(wrapper.find(".split-terminal-add").exists()).toBe(false);
+    expect(wrapper.find(".split-terminal-close").exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -436,12 +540,6 @@ describe("SplitTerminalPane", () => {
     wrapper.unmount();
   });
 
-  it("hides the header new-tab entry when the tab limit is reached", async () => {
-    const { wrapper } = await mountPane({}, { canCreateTab: false });
-
-    expect(wrapper.find(".split-terminal-add").exists()).toBe(false);
-    wrapper.unmount();
-  });
 
   it("exposes focus() and focuses the terminal on body click", async () => {
     const { wrapper, terminal } = await mountPane();

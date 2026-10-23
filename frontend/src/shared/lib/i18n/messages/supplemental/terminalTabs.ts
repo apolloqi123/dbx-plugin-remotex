@@ -7,6 +7,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "Close terminal tab",
     "terminalTab.tabs": "Terminal tabs",
     "terminalTab.limit": "Terminal tab limit reached ({count})",
+    "terminalTab.transferMainOnly": "rz/trz uploads run in the main terminal only",
   },
   "zh-CN": {
     "terminalTab.main": "终端",
@@ -15,6 +16,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "关闭终端标签页",
     "terminalTab.tabs": "终端标签页",
     "terminalTab.limit": "终端标签页已达上限（{count}）",
+    "terminalTab.transferMainOnly": "rz/trz 上传仅支持主终端",
   },
   "zh-TW": {
     "terminalTab.main": "終端機",
@@ -23,6 +25,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "關閉終端機頁籤",
     "terminalTab.tabs": "終端機頁籤",
     "terminalTab.limit": "終端機頁籤已達上限（{count}）",
+    "terminalTab.transferMainOnly": "rz/trz 上傳僅支援主終端機",
   },
   es: {
     "terminalTab.main": "Terminal",
@@ -31,6 +34,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "Cerrar pestaña de terminal",
     "terminalTab.tabs": "Pestañas de terminal",
     "terminalTab.limit": "Se alcanzó el límite de pestañas ({count})",
+    "terminalTab.transferMainOnly": "Las cargas rz/trz solo están disponibles en el terminal principal",
   },
   it: {
     "terminalTab.main": "Terminale",
@@ -39,6 +43,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "Chiudi scheda terminale",
     "terminalTab.tabs": "Schede terminale",
     "terminalTab.limit": "Limite di schede terminale raggiunto ({count})",
+    "terminalTab.transferMainOnly": "I caricamenti rz/trz sono disponibili solo nel terminale principale",
   },
   ja: {
     "terminalTab.main": "ターミナル",
@@ -47,6 +52,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "ターミナルタブを閉じる",
     "terminalTab.tabs": "ターミナルタブ",
     "terminalTab.limit": "ターミナルタブの上限に達しました（{count}）",
+    "terminalTab.transferMainOnly": "rz/trz アップロードはメインターミナルのみ対応しています",
   },
   "pt-BR": {
     "terminalTab.main": "Terminal",
@@ -55,6 +61,7 @@ const terminalTabs: Record<string, Record<string, string>> = {
     "terminalTab.close": "Fechar aba de terminal",
     "terminalTab.tabs": "Abas de terminal",
     "terminalTab.limit": "Limite de abas de terminal atingido ({count})",
+    "terminalTab.transferMainOnly": "Envios rz/trz estão disponíveis apenas no terminal principal",
   },
 };
 

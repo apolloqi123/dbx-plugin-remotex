@@ -10,14 +10,23 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { ArrowLeftRight, ArrowUpDown, Eraser, Loader2, Plus, Terminal as TerminalIcon, TextSelect, X } from "@lucide/vue";
+import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, Loader2, Plus, Search, ShieldCheck, Terminal as TerminalIcon, TextSelect, X } from "@lucide/vue";
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../../../shared/lib/clipboardBridge";
+import { pluginStore } from "../../../shared/lib/pluginStore";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../../shared/ui/context-menu/index";
-import TerminalContextMenu from "./TerminalContextMenu.vue";
+import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
+import TerminalSearchPanel from "./TerminalSearchPanel.vue";
 import { useSplitTerminal } from "../composables/useSplitTerminal";
 import { SPLIT_DEFAULT_COLS, SPLIT_DEFAULT_ROWS } from "../lib/terminalSplit";
+import {
+  TERMINAL_SEARCH_OPTIONS_KEY,
+  sanitizeSearchOptions,
+  terminalSearchSeedFromSelection,
+  type TerminalSearchOptions,
+} from "../lib/terminalInteraction";
 
 interface Props {
   connectionId: string;
@@ -39,6 +48,12 @@ interface Props {
   canSplit?: boolean;
   /** 关闭动作对象：分屏页关闭分屏，页签关闭页签。 */
   closeKind?: "split" | "tab";
+  /** 在线搜索引擎表（与主终端共用设置）。 */
+  engines?: CtxSearchEngine[];
+  /** 会话可写/连接态/传输占用：用于对齐主终端菜单的禁用态。 */
+  connected?: boolean;
+  canWrite?: boolean;
+  transferBusy?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -47,6 +62,10 @@ const props = withDefaults(defineProps<Props>(), {
   canCreateTab: false,
   canSplit: false,
   closeKind: "split",
+  engines: () => [],
+  connected: false,
+  canWrite: false,
+  transferBusy: false,
 });
 
 const emit = defineEmits<{
@@ -55,6 +74,7 @@ const emit = defineEmits<{
   error: [message: string];
   "new-tab": [];
   split: [orientation: "row" | "column"];
+  "search-online": [engine: CtxSearchEngine, text: string];
 }>();
 
 const t = (key: string, values: Record<string, string | number> = {}) => props.t(key, values);
@@ -65,7 +85,16 @@ const terminalHost = ref<HTMLElement | null>(null);
 const menuOpen = ref(false);
 const hasSelection = ref(false);
 
+// 分屏自己的搜索面板：与主终端同一组件/持久化开关，addon 绑定本窗格 xterm。
+const searchOpen = ref(false);
+const searchSeedQuery = ref("");
+const searchSeedOptions = ref<TerminalSearchOptions>(sanitizeSearchOptions(null));
+const searchMatchState = ref<"idle" | "match" | "no-match">("idle");
+const searchResultIndex = ref(0);
+const searchResultCount = ref(0);
+
 let terminal: XTerm | undefined;
+let searchAddon: SearchAddon | undefined;
 let selectionDisposable: { dispose(): void } | undefined;
 let fitAddon: FitAddon | undefined;
 let unicode11: Unicode11Addon | undefined;
@@ -127,6 +156,23 @@ function createTerminal() {
   terminal.unicode.activeVersion = "11";
   webLinks = new WebLinksAddon(openTerminalLink);
   terminal.loadAddon(webLinks);
+  searchAddon = new SearchAddon();
+  terminal.loadAddon(searchAddon);
+  searchAddon.onDidChangeResults(({ resultCount, resultIndex }) => {
+    if (!searchOpen.value) return;
+    searchResultCount.value = resultCount;
+    searchResultIndex.value = resultCount > 0 && resultIndex >= 0 ? resultIndex + 1 : 0;
+    searchMatchState.value = resultCount > 0 ? "match" : "no-match";
+  });
+  terminal.attachCustomKeyEventHandler((event) => {
+    if (event.type !== "keydown" || event.altKey || event.shiftKey) return true;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      openSplitSearch();
+      return false;
+    }
+    return true;
+  });
   dataDisposable = terminal.onData((data) => sendInput(data));
   selectionDisposable = terminal.onSelectionChange(() => {
     hasSelection.value = terminal?.hasSelection() ?? false;
@@ -212,6 +258,66 @@ function selectAllTerminal() {
 
 function clearTerminal() {
   terminal?.clear();
+  terminal?.focus();
+}
+
+function openSplitSearch() {
+  if (!terminal) return;
+  menuOpen.value = false;
+  searchSeedQuery.value = terminalSearchSeedFromSelection(terminal.getSelection() || "");
+  searchSeedOptions.value = sanitizeSearchOptions(pluginStore.getItem(TERMINAL_SEARCH_OPTIONS_KEY));
+  searchOpen.value = true;
+}
+
+function closeSplitSearch() {
+  searchOpen.value = false;
+  resetSplitSearchResults();
+  searchAddon?.clearDecorations();
+  terminal?.focus();
+}
+
+function clearSplitSearch() {
+  resetSplitSearchResults();
+  searchAddon?.clearDecorations();
+}
+
+function resetSplitSearchResults() {
+  searchMatchState.value = "idle";
+  searchResultIndex.value = 0;
+  searchResultCount.value = 0;
+}
+
+function runSplitSearch(
+  query: string,
+  options: { caseSensitive: boolean; regex: boolean; wholeWord: boolean },
+  direction: "next" | "prev",
+) {
+  if (!searchAddon || !query) return;
+  const searchOptions: ISearchOptions = {
+    caseSensitive: options.caseSensitive,
+    regex: options.regex,
+    wholeWord: options.wholeWord,
+    decorations: {
+      matchBackground: "#64748b55",
+      matchOverviewRuler: "#64748b",
+      activeMatchBackground: "#3b82f655",
+      activeMatchColorOverviewRuler: "#3b82f6",
+    },
+  };
+  if (direction === "prev") searchAddon.findPrevious(query, searchOptions);
+  else searchAddon.findNext(query, searchOptions);
+}
+
+function sendSudoRefresh() {
+  if (!props.connected || props.transferBusy) return;
+  menuOpen.value = false;
+  sendInput("sudo -v\r");
+  terminal?.focus();
+}
+
+function searchSelectionOnline(engine: CtxSearchEngine) {
+  menuOpen.value = false;
+  emit("search-online", engine, terminal?.getSelection() || "");
   terminal?.focus();
 }
 
@@ -305,6 +411,8 @@ onBeforeUnmount(() => {
   selectionDisposable?.dispose();
   selectionDisposable = undefined;
   closeSplitSession();
+  searchAddon?.dispose();
+  searchAddon = undefined;
   fitAddon?.dispose();
   fitAddon = undefined;
   unicode11?.dispose();
@@ -344,16 +452,6 @@ defineExpose({
         {{ errorMessage }}
       </span>
       <button
-        v-if="canCreateTab"
-        type="button"
-        class="split-terminal-add"
-        :title="t('terminalTab.new')"
-        :aria-label="t('terminalTab.new')"
-        @click="onNewTab"
-      >
-        <Plus aria-hidden="true" />
-      </button>
-      <button
         type="button"
         class="split-terminal-close"
         :title="closeLabel"
@@ -365,6 +463,19 @@ defineExpose({
     </header>
     <div class="split-terminal-body" @click="focusTerminal">
       <div ref="terminalHost" class="split-terminal-host terminal-host" />
+      <TerminalSearchPanel
+        v-if="searchOpen"
+        :locale="locale"
+        :initial-query="searchSeedQuery"
+        :initial-options="searchSeedOptions"
+        :match-state="searchMatchState"
+        :result-index="searchResultIndex"
+        :result-count="searchResultCount"
+        @find-next="(query, options) => runSplitSearch(query, options, 'next')"
+        @find-previous="(query, options) => runSplitSearch(query, options, 'prev')"
+        @clear="clearSplitSearch"
+        @close="closeSplitSearch"
+      />
       <div v-if="status === 'error'" class="split-terminal-error" role="alert">{{ errorMessage }}</div>
     </div>
   </section>
@@ -372,22 +483,28 @@ defineExpose({
     <TerminalContextMenu
       :open="menuOpen"
       :has-selection="hasSelection"
-      :can-paste="true"
-      :engines="[]"
+      :can-paste="connected && !transferBusy"
+      :engines="engines"
       :t="t"
       :close-label="closeLabel"
       @copy="copySelection"
       @paste="pasteClipboard"
+      @search="searchSelectionOnline"
       @close="onCloseClick"
     >
       <ContextMenuItem @select="selectAllTerminal"><TextSelect />{{ t("terminalSelectAll") }}</ContextMenuItem>
+      <ContextMenuItem @select="openSplitSearch"><Search />{{ t("terminalSearch.open") }}</ContextMenuItem>
       <ContextMenuItem @select="clearTerminal"><Eraser />{{ t("terminalClear") }}</ContextMenuItem>
+      <ContextMenuItem :disabled="!connected || transferBusy" @select="sendSudoRefresh"><ShieldCheck />{{ t("sudoRefresh.title") }}</ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem :disabled="!canCreateTab" @select="onNewTab"><Plus />{{ t("terminalTab.new") }}</ContextMenuItem>
       <template v-if="canSplit">
         <ContextMenuItem @select="onSplit('row')"><ArrowLeftRight />{{ t("terminalSplit.leftRight") }}</ContextMenuItem>
         <ContextMenuItem @select="onSplit('column')"><ArrowUpDown />{{ t("terminalSplit.topBottom") }}</ContextMenuItem>
       </template>
+      <ContextMenuSeparator />
+      <ContextMenuItem disabled :title="t('terminalTab.transferMainOnly')"><FileUp />{{ t("zmodemUpload") }}</ContextMenuItem>
+      <ContextMenuItem disabled :title="t('terminalTab.transferMainOnly')"><FileUp />{{ t("trzszUpload") }}</ContextMenuItem>
     </TerminalContextMenu>
   </ContextMenu>
 </template>
@@ -474,7 +591,6 @@ defineExpose({
   flex: 0 0 auto;
 }
 
-.split-terminal-add,
 .split-terminal-close {
   display: inline-grid;
   width: 18px;
@@ -489,13 +605,11 @@ defineExpose({
   cursor: pointer;
 }
 
-.split-terminal-add:hover,
 .split-terminal-close:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.split-terminal-add svg,
 .split-terminal-close svg {
   width: 12px;
   height: 12px;

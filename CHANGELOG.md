@@ -13,6 +13,34 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.9] — 2026-10-23
+
+- **每个终端窗格独立标签栏**。主窗格与每个分屏窗格都有自己的标签页集合和标签栏，「+」固定在该窗格最后一个标签右侧；在分屏里新建的标签只属于该分屏，不再跳到主窗格。标签编号全局递增（终端 / 终端 1 / 终端 2…），每个标签拥有独立 PTY。
+  **Per-pane tab bars.** The main pane and every split pane now own their tab set and tab strip, with “+” immediately after the last tab; a tab created in a split stays in that split instead of moving to the main pane. Labels share a global counter (Terminal / Terminal 1 / Terminal 2…) and each tab owns its PTY.
+- **标签关闭规则**。关闭当前标签会切到右邻/左邻；分屏窗格的最后一个标签关闭时整块分屏折叠回兄弟窗格；主终端标签不可关闭。分屏窗格标签栏右侧保留关闭窗格按钮。
+  **Tab closing rules.** Closing the active tab selects its right/left neighbour; closing the last tab of a split collapses that split back to its sibling; the main terminal tab cannot be closed. Split tab strips keep a pane-close button on the right.
+
+## [0.7.9-beta.8] — 2026-10-23
+
+- **分屏内继续分屏（递归布局）**。每个窗格都可以再左右/上下分屏：A/B 上下分屏后从 B 选择左右分屏，会得到「A 在上，B 左下、C 右下」，而不是把整个工作区改成左右布局；关闭任一窗格会折叠回兄弟窗格。主终端与各分屏窗格的右键分屏项都只作用于当前窗格。
+  **Nested splitting.** Every pane can split again: with A above B, splitting B horizontally yields A on top and B/C side by side below instead of reorienting the whole workspace; closing a pane collapses back to its sibling. Split actions in the main and split menus now apply to the pane that owns the menu.
+- **分屏头部移除 “+”**。新建终端页签统一由顶部标签栏的 “+” 入口完成；分屏窗格不再显示重复且行为不一致的 “+”，但仍保留关闭按钮和右键「新建终端标签页」。页签只替换主窗格，所有分屏窗格保持可见。
+  **Split header “+” removed.** New terminal tabs are created from the top tab bar only; split panes no longer show the duplicate “+” with inconsistent behavior, while keeping their close button and the context-menu New terminal tab action. Tabs replace only the main pane and every split pane stays visible.
+
+## [0.7.9-beta.7] — 2026-10-23
+
+- **分屏/页签右键菜单与主终端对齐**。分屏终端和额外终端页签的右键菜单补齐在线搜索、终端搜索、sudo 刷新、左右/上下分屏与关闭分屏；分屏内新增独立搜索面板与 `Ctrl/Cmd+F`。rz/trz 上传协议绑定主 PTY，在分屏/页签中以禁用态展示并提示「仅主终端支持」。在线搜索的引擎子列表不再因选中而立即关闭。
+  **Split/tab context menus now match the main terminal.** Split terminals and extra tabs gain Search online, Terminal search, sudo refresh, split orientation and close-split actions, and each split pane has its own search panel with `Ctrl/Cmd+F`. rz/trz uploads stay bound to the main PTY and appear disabled with a "main terminal only" hint; the search-engine submenu no longer closes on selection.
+- **页签只替换主窗格，分屏保持可见**。上下/左右分屏后新建或切换终端页签只更新主窗格，下侧/右侧分屏终端不再被整页覆盖；批量发送条仍固定在分屏下方。
+  **Tabs replace only the main pane.** After a vertical or horizontal split, creating or switching terminal tabs updates only the main pane; the split terminal stays visible instead of being covered, and the batch command bar remains below the split.
+
+## [0.7.9-beta.6] — 2026-10-23
+
+- **终端页签/分屏右键菜单与批量条布局**。新建终端页签与分屏页的右键菜单补齐「新建终端标签页」、左右/上下分屏与上下文关闭项（关闭终端标签页 / 关闭分屏终端）；上下分屏时批量发送条固定在下屏终端之下，分屏页头也提供新建标签入口，窄屏下分屏不再被压成 1px。
+  **Terminal tab and split context menus plus batch-bar layout.** Context menus on extra terminal tabs and the split pane now expose New terminal tab, split orientation and context-specific close actions; with a top/bottom split the batch command bar sits below the lower terminal, the split header has a new-tab entry, and narrow-screen splits no longer collapse to 1px.
+- **拖拽目标切换修复**。文件夹 A 悬停展开后继续拖到文件夹 B，B 会正常高亮并在 2 秒后展开，松开后上传到 B；冻结的 CSS `:hover` 不再覆盖指针/拖拽事件命中的新目标。
+  **Drop-target switching fix.** After folder A auto-expands, dragging on to folder B now highlights B, expands it after 2s and uploads into B on release; a frozen CSS `:hover` can no longer override the pointer/drag-event target.
+
 ## [0.7.9-beta.5] — 2026-10-23
 
 - **内嵌终端页签右键菜单**。额外终端页签现在拥有自己的 Copy / Paste / 全选 / 清屏 / 关闭菜单，关闭该项会真正移除当前页签；不再弹出浏览器原生菜单。

@@ -354,16 +354,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
    把手不渲染，终端回到整栈高度。终端 pane 的浮层/拖放/右键结构保持原样。 */
 .terminal-stack { display: flex; min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; flex-direction: column; overflow: hidden; }
 .terminal-stack > .terminal-workspace { flex: 1 1 auto; width: 100%; min-height: 0; }
-/* 终端工作区：上半部分是主终端 + 可选分屏终端，底部可选批量命令条。
-   批量条放在工作区（而非主终端内部），上下分屏时才能落在下屏终端下方。 */
+/* 终端工作区：递归布局树 + 底部批量条。每个叶子是一个带独立标签栏的窗格；
+   split 节点按 row/column 平分，叶子内标签通过绝对定位表面切换。 */
 .terminal-workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-.terminal-split-area { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; }
-.terminal-split-area > .terminal-pane { flex: 1 1 0; width: auto; height: 100%; min-width: 0; min-height: 0; }
-.terminal-split-area.split-row { flex-direction: row; }
-.terminal-split-area.split-column { flex-direction: column; }
-.terminal-split-area.is-split > .split-terminal-pane { flex: 1 1 0; min-width: 0; min-height: 0; }
-.terminal-split-area.split-row > .split-terminal-pane { border-left: 1px solid var(--border); }
-.terminal-split-area.split-column > .split-terminal-pane { border-top: 1px solid var(--border); }
+.terminal-layout-split { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
+.terminal-layout-split.split-row { flex-direction: row; }
+.terminal-layout-split.split-column { flex-direction: column; }
+.terminal-layout-split > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+.terminal-layout-split.split-row > * + * { border-left: 1px solid var(--border); }
+.terminal-layout-split.split-column > * + * { border-top: 1px solid var(--border); }
+.terminal-layout-pane { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; flex-direction: column; background: var(--background); }
+.terminal-pane-stack { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.terminal-pane-surface { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; }
+.terminal-pane-surface > .terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.terminal-pane-surface > .split-terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; }
 /* 编辑器宿主高度走内联 flex-basis（25-75% 由 App 夹取）；不参与伸缩，
    min-height 保证页签条与正文在极端拖拽下仍可操作。 */
 .terminal-stack > .editor-pane { flex-grow: 0; flex-shrink: 0; min-height: 120px; overflow: hidden; }
@@ -453,8 +457,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .terminal-tab-add:disabled { cursor: default; opacity: 0.38; }
 .terminal-tab-add svg { width: 14px; height: 14px; }
 /* 额外页签常驻挂载，v-show 只切显示；每个页签保留自己的 xterm 与会话。 */
-.terminal-stack > .terminal-tab-surface { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; }
-.terminal-tab-surface > .split-terminal-pane { flex: 1 1 auto; }
+/* 额外页签作为主窗格的替身：与主终端共享第一个窗格的尺寸规则；分屏窗格
+   始终保留，因此切换/新建页签只影响主窗格，不会覆盖下侧/右侧分屏。 */
+.terminal-tab-aux-pane > .split-terminal-pane { flex: 1 1 auto; min-height: 0; }
 /* 内边距必须挂在 .xterm（terminal.element）而非宿主 div 上：FitAddon 只读
    element 自身的 padding 做行数扣减，挂在宿主上会多算一行、底行溢出可视区
    （命令条打开时正好被压在条下）。底部 8px 是常驻呼吸间距。 */
@@ -849,7 +854,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .panes--vertical .terminal-stack { width: 100%; height: var(--pane-split, 52%); flex-basis: auto !important; flex-shrink: 0; }
 /* 栈内终端填满编辑器/把手之外的高度（内联 flex-basis 由栈消费）。 */
 .panes--vertical .terminal-stack > .terminal-workspace { height: 100%; flex: 1 1 auto; }
-.panes--vertical .terminal-split-area:not(.is-split) > .terminal-pane { height: 100%; flex: 1 1 auto; }
+.panes--vertical .terminal-pane-surface > .terminal-pane { height: 100%; flex: 1 1 auto; }
 /* SFTP 面板 flex:1 撑满终端（--pane-split）与 1px 把手之外的余量，
    min-height:0 防内容把面板撑出容器。 */
 .panes--vertical .sftp-pane { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
@@ -867,7 +872,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   .panes:not(.panes--horizontal), .panes--reversed:not(.panes--horizontal) { flex-direction: column; }
   .panes:not(.panes--horizontal) .terminal-stack { width: 100%; height: var(--pane-split, 52%); flex-basis: auto !important; flex-shrink: 0; }
   .panes:not(.panes--horizontal) .terminal-stack > .terminal-workspace { height: 100%; flex: 1 1 auto; }
-  .panes:not(.panes--horizontal) .terminal-split-area:not(.is-split) > .terminal-pane { height: 100%; flex: 1 1 auto; }
+  .panes:not(.panes--horizontal) .terminal-pane-surface > .terminal-pane { height: 100%; flex: 1 1 auto; }
   .panes:not(.panes--horizontal) .sftp-pane { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
   .panes:not(.panes--horizontal) .divider { width: 100%; height: 1px; flex-basis: 1px; cursor: row-resize; }
   /* 纵向布局把手命中区向下/上扩展。 */

@@ -282,8 +282,21 @@ import { useCommandHistory } from "../features/terminal/composables/useCommandHi
 import { useSftpRename } from "../features/sftp/composables/useSftpRename";
 import { useEditorTabs } from "../features/sftp/composables/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
-import SplitTerminalPane from "../features/terminal/components/SplitTerminalPane.vue";
-import { useTerminalTabs, type TerminalTab } from "../features/terminal/composables/useTerminalTabs";
+import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";import {
+  activateTerminalTab,
+  addTerminalTab,
+  closeTerminalLayoutPane,
+  collectPaneTabIds,
+  createTerminalLayout,
+  findTerminalPane,
+  hasTerminalSplit,
+  removeSplitAroundPane,
+  removeTerminalTab,
+  splitTerminalLayout,
+  terminalTabs,
+  type TerminalLayoutOrientation,
+  type TerminalLayoutNode,
+} from "../features/terminal/lib/terminalLayout";
 import { useSftpCreateDirectory } from "../features/sftp/composables/useSftpCreateDirectory";
 import { useConnectionInfo } from "../features/connections/composables/useConnectionInfo";
 import { useSftpArchive } from "../features/sftp/composables/useSftpArchive";
@@ -1730,13 +1743,13 @@ const isRdpConnection = computed(() => connectionProtocol.value === "rdp" || isR
 const canWrite = computed(() => !connection.value.readOnly && !connectionReadOnly.value);
 const selectedEntry = computed(() => entries.value.find((entry) => entry.uri === selectedPath.value));
 const connected = computed(() => terminalState.value === "connected" && !!session.value);
-// 终端分屏：在同一个工作台内并排/上下再开一个独立 PTY，复用已认证 transport。
-// row = 左右，column = 上下；null = 未分屏。宿主 openWorkbench 只支持 tab 落点，
-// 所以分屏由插件内的 SplitTerminalPane 自行开 session。
-type TerminalSplitOrientation = "row" | "column";
-const terminalSplitOrientation = ref<TerminalSplitOrientation | null>(null);
-const splitTerminalSessionId = ref("");
+// 终端分屏：布局树里每个叶子都能继续左右/上下分屏（A/B 上下分屏后从 B
+// 再左右分屏得到 column[A, row[B, C]]）。分屏窗格各自复用已认证 transport
+// 开独立 PTY；宿主 openWorkbench 只支持 tab 落点，所以布局完全在插件内。
+const terminalLayout = ref<TerminalLayoutNode>(createTerminalLayout());
+const shellTabSessions = new Map<string, string>();
 const canSplitTerminal = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
+const terminalHasSplit = computed(() => hasTerminalSplit(terminalLayout.value));
 const splitTerminalFont = computed(() =>
   resolveTerminalFont(terminalFontOverride.value, {
     fontFamily: hostTerminalFontFamily(appearance.value),
@@ -1744,66 +1757,73 @@ const splitTerminalFont = computed(() =>
   }),
 );
 
-function openTerminalSplit(orientation: TerminalSplitOrientation) {
+/** 主终端菜单：把主终端窗格再分一层。 */
+function openTerminalSplit(orientation: TerminalLayoutOrientation) {
+  splitTerminalPane("main", orientation);
+}
+
+function splitTerminalPane(paneId: string, orientation: TerminalLayoutOrientation) {
   if (!canSplitTerminal.value) return;
-  // 已分屏时再次选择只切换排布方向，不重建第二个 PTY。
-  terminalSplitOrientation.value = orientation;
+  const newPaneId = randomUUID();
+  const newTabId = randomUUID();
+  terminalLayout.value = splitTerminalLayout(terminalLayout.value, paneId, orientation, newPaneId, newTabId);
+  void nextTick(scheduleFit);
 }
+
+/** 主终端菜单的「关闭分屏」：移除主终端旁边的分屏，主终端本身保留。 */
 function closeTerminalSplit() {
-  terminalSplitOrientation.value = null;
-  splitTerminalSessionId.value = "";
-}
-function onSplitSessionOpened(sessionId: string) {
-  splitTerminalSessionId.value = sessionId;
+  terminalLayout.value = removeSplitAroundPane(terminalLayout.value, "main");
+  pruneShellTabSessions();
+  void nextTick(scheduleFit);
 }
 
-// 工作台内终端页签：主 PTY + 额外 PTY，切页签不切宿主连接 tab。
-const {
-  tabs: terminalTabs,
-  activeId: activeTerminalTabId,
-  auxTabs: auxTerminalTabs,
-  canAdd: canAddTerminalTab,
-  create: createTerminalTabState,
-  activate: activateTerminalTabState,
-  close: closeTerminalTabState,
-  reset: resetTerminalTabs,
-  tabLabelKey,
-} = useTerminalTabs();
-const auxTerminalSessionIds = new Map<string, string>();
-const canOpenAuxTerminal = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
+function closePane(paneId: string) {
+  for (const tabId of collectPaneTabIds(terminalLayout.value, paneId)) shellTabSessions.delete(tabId);
+  terminalLayout.value = closeTerminalLayoutPane(terminalLayout.value, paneId) ?? createTerminalLayout();
+  void nextTick(scheduleFit);
+}
 
-function terminalTabLabel(tab: TerminalTab) {
-  return t(tabLabelKey(tab), { index: tab.index });
-}
-function createTerminalTab() {
-  if (!canOpenAuxTerminal.value || !canAddTerminalTab.value) return;
-  if (!createTerminalTabState()) return;
+function createPaneTab(paneId: string) {
+  if (!canOpenShellTab.value) return;
+  if (!findTerminalPane(terminalLayout.value, paneId)) return;
+  const tabId = randomUUID();
+  terminalLayout.value = addTerminalTab(terminalLayout.value, paneId, tabId);
   void nextTick(scheduleFit);
 }
-function activateTerminalTab(id: string) {
-  activateTerminalTabState(id);
+
+function activatePaneTab(paneId: string, tabId: string) {
+  terminalLayout.value = activateTerminalTab(terminalLayout.value, paneId, tabId);
   void nextTick(scheduleFit);
 }
-function closeTerminalTab(id: string) {
-  if (!closeTerminalTabState(id)) return;
-  auxTerminalSessionIds.delete(id);
+
+function closePaneTab(paneId: string, tabId: string) {
+  shellTabSessions.delete(tabId);
+  terminalLayout.value = removeTerminalTab(terminalLayout.value, paneId, tabId);
   void nextTick(scheduleFit);
 }
-function onAuxTabOpened(tabId: string, sessionId: string) {
-  auxTerminalSessionIds.set(tabId, sessionId);
+
+function onShellTabOpened(tabId: string, sessionId: string) {
+  shellTabSessions.set(tabId, sessionId);
 }
-function closeAllAuxTerminalTabs() {
-  auxTerminalSessionIds.clear();
-  resetTerminalTabs();
+
+/** 布局变化后回收已不在树上的标签会话登记（PTY 由组件卸载负责关闭）。 */
+function pruneShellTabSessions() {
+  const live = new Set(terminalTabs(terminalLayout.value).map((tab) => tab.id));
+  for (const tabId of shellTabSessions.keys()) {
+    if (!live.has(tabId)) shellTabSessions.delete(tabId);
+  }
+}
+
+function resetTerminalLayout() {
+  shellTabSessions.clear();
+  terminalLayout.value = createTerminalLayout();
   void nextTick(scheduleFit);
 }
-// 本地/RDP 不支持共享 SSH transport 的额外 PTY：切换前收掉内嵌页签。
-watch([localUiMode, isRdpConnection], ([local, rdp]) => {
-  if (local || rdp) closeAllAuxTerminalTabs();
-});
-// 主会话断开/切换本地/RDP 时销毁分屏，避免留下不可见的 PTY。
+
+const canOpenShellTab = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
+// 主会话断开/切换本地/RDP 时销毁所有分屏与额外标签，避免留下不可见的 PTY。
 watch(canSplitTerminal, (allowed) => {
-  if (!allowed) closeTerminalSplit();
+  if (!allowed) resetTerminalLayout();
 });
 // 指标视图依赖 SSH 会话；断开后收起右栏，避免保留一份不再刷新的快照。
 watch(connected, (isConnected) => {
@@ -4686,8 +4706,7 @@ if (window.dbxPlugin.workbench?.onClose) {
       ["local/session/close", localSession.value?.sessionId],
       ["ssh/session/close", session.value?.sessionId],
       // 分屏/内嵌页签 PTY 使用独立 workbenchId 后缀，workbench/close 不会扫到它们。
-      ["ssh/session/close", splitTerminalSessionId.value],
-      ...[...auxTerminalSessionIds.values()].map((sessionId) => ["ssh/session/close", sessionId] as const),
+      ...[...shellTabSessions.values()].map((sessionId) => ["ssh/session/close", sessionId] as const),
       ["telnet/close", telnetSession.value?.sessionId],
       ["serial/close", serialSession.value?.sessionId],
       ["vnc/close", vncSession.value?.sessionId],
@@ -7473,14 +7492,19 @@ function updateCtxSearchEngines(text: string) {
 }
 function searchSelectionOnline(engine: CtxSearchEngine) {
   terminalMenuOpen.value = false;
-  const query = terminal?.getSelection() || "";
+  searchTextOnline(engine, terminal?.getSelection() || "");
+  terminal?.focus();
+}
+
+/** 分屏/页签终端没有独立的引擎设置页，复用主终端的搜索引擎表与复制提示。 */
+function searchTextOnline(engine: CtxSearchEngine, text: string) {
+  const query = text.trim();
   if (!query) return;
   const url = buildSearchUrl(engine, query);
   if (!url) return;
   // TODO(host): 宿主尚未提供 openExternal；待宿主开放后改为直接唤起系统浏览器。
   // 当前兜底：把搜索链接复制进剪贴板并提示（失败走 sftp 错误条）。
   copyTextToClipboard(url, "ctxSearch.linkCopied");
-  terminal?.focus();
 }
 
 // —— 背景图（IMPL_PLAN Task P2-9，对标 NyaTerm；MVP 简化）——
@@ -9586,53 +9610,38 @@ watch(historyScope, () => {
         @pointerdown="startEditorDividerDrag"
         @keydown="onEditorDividerKeydown"
       />
-      <!-- 工作台内终端页签：主 PTY + 额外 PTY 都在当前连接会话 tab 内。 -->
-      <div v-if="!localUiMode && !isRdpConnection" class="terminal-tabbar" role="tablist" :aria-label="t('terminalTab.tabs')">
-        <div v-for="tab in terminalTabs" :key="tab.id" class="terminal-tab" :class="{ 'is-active': tab.id === activeTerminalTabId }">
-          <button
-            type="button"
-            class="terminal-tab-main"
-            role="tab"
-            :aria-selected="tab.id === activeTerminalTabId"
-            @click="activateTerminalTab(tab.id)"
-          >
-            <TerminalIcon aria-hidden="true" />
-            <span>{{ terminalTabLabel(tab) }}</span>
-          </button>
-          <button
-            v-if="tab.kind === 'aux'"
-            type="button"
-            class="terminal-tab-close"
-            :title="t('terminalTab.close')"
-            :aria-label="t('terminalTab.close')"
-            @click.stop="closeTerminalTab(tab.id)"
-          ><X aria-hidden="true" /></button>
-        </div>
-        <button
-          type="button"
-          class="terminal-tab-add"
-          :title="canAddTerminalTab ? t('terminalTab.new') : t('terminalTab.limit', { count: terminalTabs.length })"
-          :aria-label="t('terminalTab.new')"
-          :disabled="!canOpenAuxTerminal || !canAddTerminalTab"
-          @click="createTerminalTab"
-        ><Plus aria-hidden="true" /></button>
-      </div>
       <div
-        v-show="activeTerminalTabId === 'main'"
         class="terminal-workspace"
         @dragenter.prevent="onTerminalDragEnter"
         @dragover.prevent
         @dragleave="onTerminalDragLeave"
         @drop.prevent="onTerminalDrop($event)"
       >
-      <div
-        class="terminal-split-area"
-        :class="{
-          'is-split': terminalSplitOrientation,
-          'split-row': terminalSplitOrientation === 'row',
-          'split-column': terminalSplitOrientation === 'column',
-        }"
+      <TerminalLayoutTree
+        :node="terminalLayout"
+        :connection-id="connectionId || ''"
+        :workbench-id="workbenchId"
+        :main-session-id="session?.sessionId || ''"
+        :theme="splitTerminalTheme"
+        :font-family="splitTerminalFont.fontFamily"
+        :font-size="splitTerminalFont.fontSize"
+        :t="t"
+        :locale="locale"
+        :can-split="canSplitTerminal"
+        :can-create-tab="canOpenShellTab"
+        :engines="ctxSearchEngines"
+        :connected="connected"
+        :can-write="canWrite"
+        :transfer-busy="terminalTransferBusy"
+        @opened="onShellTabOpened"
+        @activate-tab="activatePaneTab"
+        @close-tab="closePaneTab"
+        @new-tab="createPaneTab"
+        @close-pane="closePane"
+        @split="splitTerminalPane"
+        @search-online="searchTextOnline"
       >
+        <template #main>
       <ContextMenu :open="terminalMenuOpen" @update:open="(open) => { if (!open) terminalMenuOpen = false; }">
         <ContextMenuTrigger as-child>
       <section class="terminal-pane" :class="{ 'drag-active': terminalDragActive, 'marker-visible': commandMarker.installed, 'gutter-visible': gutterPaneVisible, 'wallpaper-active': wallpaperActive, ...transferBusyPaneClass(terminalTransferBusy) }" :style="gutterPaneStyle" @contextmenu="showTerminalMenu">
@@ -10069,32 +10078,14 @@ watch(historyScope, () => {
           <ContextMenuSeparator />
           <ContextMenuItem :disabled="!canSplitTerminal" @select="openTerminalSplit('row')"><ArrowLeftRight />{{ t("terminalSplit.leftRight") }}</ContextMenuItem>
           <ContextMenuItem :disabled="!canSplitTerminal" @select="openTerminalSplit('column')"><ArrowUpDown />{{ t("terminalSplit.topBottom") }}</ContextMenuItem>
-          <ContextMenuItem v-if="terminalSplitOrientation" @select="closeTerminalSplit"><X />{{ t("terminalSplit.close") }}</ContextMenuItem>
+          <ContextMenuItem v-if="terminalHasSplit" @select="closeTerminalSplit"><X />{{ t("terminalSplit.close") }}</ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem :disabled="!connected || terminalTransferBusy || !canWrite" @select="chooseZmodem"><FileUp />{{ t("zmodemUpload") }}</ContextMenuItem>
           <ContextMenuItem :disabled="!connected || terminalTransferBusy || !canWrite" @select="chooseTrzszUpload"><FileUp />{{ t("trzszUpload") }}</ContextMenuItem>
         </TerminalContextMenu>
       </ContextMenu>
-      <SplitTerminalPane
-        v-if="terminalSplitOrientation"
-        :connection-id="connectionId || ''"
-        :workbench-id="workbenchId"
-        :main-session-id="session?.sessionId || ''"
-        :theme="splitTerminalTheme"
-        :font-family="splitTerminalFont.fontFamily"
-        :font-size="splitTerminalFont.fontSize"
-        :t="t"
-        :locale="locale"
-        :active="activeTerminalTabId === 'main'"
-        :can-create-tab="canAddTerminalTab && canOpenAuxTerminal"
-        :can-split="canSplitTerminal"
-        close-kind="split"
-        @opened="onSplitSessionOpened"
-        @closed="closeTerminalSplit"
-        @new-tab="createTerminalTab"
-        @split="openTerminalSplit"
-      />
-      </div>
+        </template>
+      </TerminalLayoutTree>
         <!-- 批量发送结果浮条：显示在命令条上方，可手动关闭。 -->
         <div v-if="connected && batchBarOpen && !isRdpConnection && (batchSummary || batchError)" class="batch-bar-status" role="status">
           <template v-if="batchSummary">
@@ -10228,31 +10219,6 @@ watch(historyScope, () => {
             <Send v-else />
           </button>
         </section>
-      </div>
-      <!-- 额外终端页签：每个页签常驻自己的 PTY，切换只切显示，不重建会话。 -->
-      <div
-        v-for="tab in auxTerminalTabs"
-        v-show="activeTerminalTabId === tab.id"
-        :key="tab.id"
-        class="terminal-tab-surface terminal-tab-aux-surface"
-      >
-        <SplitTerminalPane
-          :connection-id="connectionId || ''"
-          :workbench-id="workbenchId"
-          :main-session-id="session?.sessionId || ''"
-          :theme="splitTerminalTheme"
-          :font-family="splitTerminalFont.fontFamily"
-          :font-size="splitTerminalFont.fontSize"
-          :t="t"
-          :locale="locale"
-          :show-header="false"
-          :active="activeTerminalTabId === tab.id"
-          :can-create-tab="canAddTerminalTab && canOpenAuxTerminal"
-          close-kind="tab"
-          @opened="(sessionId) => onAuxTabOpened(tab.id, sessionId)"
-          @closed="closeTerminalTab(tab.id)"
-          @new-tab="createTerminalTab"
-        />
       </div>
       </section>
 
