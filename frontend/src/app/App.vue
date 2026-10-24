@@ -64,7 +64,6 @@ import {
   Save,
   Scissors,
   Search,
-  Send,
   Settings,
   ShieldCheck,
   Siren,
@@ -171,7 +170,6 @@ import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type Tr
 } from "../features/transfers/lib/transferQueue";
 import { filterQuickCommands, groupQuickCommands, quickCommandGroupCount, type QuickCommandGroupView, QUICK_COMMANDS_LIMIT } from "../features/quick-commands/lib/quickCommands";
 import { registerWatch } from "../features/sftp/lib/watchEdits";
-import { batchTargetLabel } from "../features/terminal/lib/batchSend";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
 import { WORKBENCH_ID } from "../shared/lib/pluginIds";
@@ -191,7 +189,6 @@ import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
 import { AGENT_MODES } from "../features/agent/lib/agentTerminal";
-import { purposeKeyLabel, sanitizeTriagePayload, severityClass } from "../features/security/lib/alertTriage";
 import {
   highlightFillStyle,
   highlightTextStyle,
@@ -399,6 +396,12 @@ import ServerMetricsPanel, { type ServerMetricsView, type MetricsProcessSortKey 
 import FolderPickerDialog from "../features/sftp/components/FolderPickerDialog.vue";
 import DockerPanel from "../features/docker/components/DockerPanel.vue";
 import DockerWhaleLogo from "../features/docker/components/DockerWhaleLogo.vue";
+import DockMetricsStrip from "./components/DockMetricsStrip.vue";
+import ConnectionInfoPopover from "./components/ConnectionInfoPopover.vue";
+import BatchBar from "./components/BatchBar.vue";
+import TransferPopover from "./components/TransferPopover.vue";
+import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
+import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
 import { Switch } from "../shared/ui/switch/index";
 import type { EditorConfig } from "../features/sftp/lib/editorRules";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select/index";
@@ -431,7 +434,6 @@ import RdpConnectDialog, { type RdpConnectOptions } from "../features/remote-des
 import RdpSurface from "../features/remote-desktop/components/RdpSurface.vue";
 import {
   initialRdpSessionState,
-  rdpCertStatusKey,
   rdpErrorKindKey,
   type RdpSessionStateView,
 } from "../features/remote-desktop/lib/rdpFrame";
@@ -4951,7 +4953,6 @@ const {
   confirmTransferHistoryClear,
   resumableTasks,
   resumableLoading,
-  resumeInput,
   resumeTargetTaskId,
   refreshResumableUploads,
   beginResumeUpload,
@@ -5635,7 +5636,7 @@ const {
 });
 
 watch(terminalCwd, (cwd) => {
-  if (!cwd) return;
+  if (!followDirectory.value || !cwd || !connected.value) return;
   void followSftpPath(cwd);
 });
 
@@ -7776,27 +7777,21 @@ watch(historyScope, () => {
           <span v-if="connection.readOnly || connectionReadOnly" class="read-only-badge">{{ t("readOnly") }}</span>
           <span class="session-pill" :class="`session-${sessionStatus}`"><span class="session-dot" aria-hidden="true" />{{ sessionPillText }}<span v-if="sessionStatus === 'reconnecting' && reconnectCountdown" class="session-pill-countdown mono">{{ t("sessionStatus.reconnectCountdown", { seconds: reconnectCountdown.seconds, attempt: reconnectCountdown.attempt }) }}</span></span>
         </div>
-        <Popover :open="connectionInfoOpen" @update:open="(open) => { if (!open) connectionInfoOpen = false; }">
-          <PopoverAnchor as-child>
-            <button type="button" class="icon-button icon-neutral" :title="t('connectionInfo')" :aria-label="t('connectionInfo')" :aria-expanded="connectionInfoOpen" @pointerdown.stop @click.stop="toggleConnectionInfo"><Info /></button>
-          </PopoverAnchor>
-          <PopoverContent class="popover connection-info-popover" align="start" :side-offset="5">
-          <h3>{{ t("connectionInfo") }}</h3>
-          <dl class="connection-info-grid">
-            <dt>{{ t("connectionInfoHost") }}</dt><dd class="mono"><span v-if="metricsDistroBadge" class="distro-badge" :style="{ backgroundColor: metricsDistroBadge.color }" :title="metricsDistroBadge.name">{{ metricsDistroBadge.label }}</span> {{ connection.host || connection.name || "–" }}</dd>
-            <dt>{{ t("connectionInfoPort") }}</dt><dd class="mono">{{ connection.port || 22 }}</dd>
-            <dt>{{ t("connectionInfoUser") }}</dt><dd class="mono">{{ connection.username || "–" }}</dd>
-            <dt>{{ t("connectionInfoAuth") }}</dt><dd>{{ connectionAuthMethodLabel }}</dd>
-            <template v-if="connection.readOnly || connectionReadOnly"><dt>{{ t("readOnly") }}</dt><dd>{{ t("yes") }}</dd></template>
-            <dt>{{ t("connectionInfoLatency") }}</dt>
-            <dd>
-              <span class="mono">{{ connectionLatencyBusy ? t("connectionInfoMeasuring") : formatLatency(connectionLatency) }}</span>
-              <span v-if="connectionLatencyFailed && !connectionLatencyBusy" class="task-error">{{ t("connectionInfoFailed") }}</span>
-              <button class="link-button" :disabled="connectionLatencyBusy || !connected" @click="measureLatency">{{ t("connectionInfoMeasure") }}</button>
-            </dd>
-          </dl>
-          </PopoverContent>
-        </Popover>
+        <ConnectionInfoPopover
+          :connection-info-open="connectionInfoOpen"
+          :connection="connection"
+          :metrics-distro-badge="metricsDistroBadge"
+          :connection-auth-method-label="connectionAuthMethodLabel"
+          :connection-read-only="connectionReadOnly"
+          :connection-latency="connectionLatency"
+          :connection-latency-busy="connectionLatencyBusy"
+          :connection-latency-failed="connectionLatencyFailed"
+          :connected="connected"
+          :t="t"
+          @update:connectionInfoOpen="(value) => { if (!value) connectionInfoOpen = false; }"
+          @toggle="toggleConnectionInfo"
+          @measure="measureLatency"
+        />
       </div>
       <div v-if="!panelSurface" class="toolbar-actions">
         <!-- —— SSH 工具组·视图段（分栏/字号）：连接协议门控（!isRdpConnection）
@@ -8137,15 +8132,16 @@ watch(historyScope, () => {
       <!-- dock 面板左组：系统信息带（CPU/内存/网速，5s 轮询），flex:1 把
            右侧按钮组推到右缘；数据未就绪/不支持时整条隐藏不占位。 -->
       <div v-if="panelSurface" class="panel-toolbar-left">
-        <div v-if="panelMetricsVisible" class="panel-metrics" :title="t('metrics')">
-          <span>CPU <b>{{ panelCpuPercent ?? "–" }}%</b></span>
-          <span>MEM <b>{{ panelMemPercent ?? "–" }}%</b></span>
-          <span v-if="panelNetRates">↓ <b>{{ formatRate(panelNetRates.rx) }}</b> ↑ <b>{{ formatRate(panelNetRates.tx) }}</b></span>
-        </div>
-        <div v-else-if="panelMetricsFailed" class="panel-metrics panel-metrics-degraded" :title="panelMetricsErrorTitle">
-          <span>CPU <b>–%</b></span>
-          <span>MEM <b>–%</b></span>
-        </div>
+        <DockMetricsStrip
+          :panel-metrics-visible="panelMetricsVisible"
+          :panel-metrics-failed="panelMetricsFailed"
+          :panel-cpu-percent="panelCpuPercent"
+          :panel-mem-percent="panelMemPercent"
+          :panel-net-rates="panelNetRates"
+          :panel-metrics-error-title="panelMetricsErrorTitle"
+          :format-rate="formatRate"
+          :t="t"
+        />
       </div>
       <!-- Dock 面板表面（底部栏）的精简工具区：宿主 dock chrome 已带标题与
            关闭/收起/最大化，这里只留终端快捷操作——字号、录屏、传输、配色快切、
@@ -8191,89 +8187,40 @@ watch(historyScope, () => {
            工具条高度变化）；tab 工具条与 dock panel-actions 里的按钮都只是
            toggleTransferPanel 的普通开关——panel 没有这组 tab 工具条实例，
            共享锚点让同一个弹层在两个表面都能弹出（内容单拷贝零复制）。 -->
-      <Popover :open="transferPanelOpen" @update:open="(open) => { if (!open && !transferHistoryMenu) transferPanelOpen = false; }">
-        <PopoverAnchor as-child>
-          <span class="transfer-popover-anchor" aria-hidden="true" />
-        </PopoverAnchor>
-        <PopoverContent class="popover transfer-popover" align="end" :side-offset="5">
-            <h3>{{ t("transfers") }}</h3>
-            <div v-if="!transferList.length && !folderUploadProgress" class="empty compact">{{ t("noTransfers") }}</div>
-            <!-- 文件夹批量上传（issue #78）：聚合进度卡——目录 X/Y · 文件 N/M · 字节。
-                 逐文件的任务卡仍会正常出现在下方（uploadSource 注册 transferTasks）。 -->
-            <article v-if="folderUploadProgress" class="transfer-card">
-              <div class="transfer-title"><FolderUp /><span>{{ t("folderUpload.title") }}</span><strong>{{ folderUploadPercent(folderUploadProgress) }}%</strong></div>
-              <progress :value="folderUploadPercent(folderUploadProgress)" max="100" />
-              <div class="transfer-meta"><span>{{ t("folderUpload.progress", { dirs: folderUploadProgress.directoriesDone, dirsTotal: folderUploadProgress.directoriesTotal, files: folderUploadProgress.filesDone, filesTotal: folderUploadProgress.filesTotal }) }}</span><span>{{ formatBytes(folderUploadProgress.bytesDone) }} / {{ formatBytes(folderUploadProgress.totalBytes) }}</span></div>
-              <p v-if="folderUploadProgress.currentFile" class="transfer-path mono" :title="folderUploadProgress.currentFile">{{ folderUploadProgress.currentFile }}</p>
-            </article>
-            <!-- 普通多文件上传批次聚合（issue #165）：文件 N/M + 总字节；批次
-                 卡整批常驻，填补逐文件卡交接间隙的"传完就没"空窗；批次编排
-                 结束后由 lib/fileBatch 延迟收尾清卡（不清会在 30s 终态清收后
-                 回跳 0/N·0%）。失败后缀只在有失败时出现（失败计入不吞总数）。 -->
-            <article v-if="fileBatchProgress" class="transfer-card">
-              <div class="transfer-title"><FileUp /><span>{{ t("uploadBatch.title") }}</span><strong>{{ batchUploadPercent(fileBatchProgress) }}%</strong></div>
-              <progress :value="batchUploadPercent(fileBatchProgress)" max="100" />
-              <div class="transfer-meta"><span>{{ t("uploadBatch.progress", { files: fileBatchProgress.filesDone, filesTotal: fileBatchProgress.filesTotal }) }}<template v-if="fileBatchProgress.filesFailed"> · {{ t("uploadBatch.failed", { count: fileBatchProgress.filesFailed }) }}</template></span><span>{{ formatBytes(fileBatchProgress.bytesDone) }} / {{ formatBytes(fileBatchProgress.totalBytes) }}</span></div>
-              <p v-if="fileBatchProgress.currentFile" class="transfer-path mono" :title="fileBatchProgress.currentFile">{{ fileBatchProgress.currentFile }}</p>
-            </article>
-            <article v-for="task in transferList" :key="task.taskId" class="transfer-card">
-              <div class="transfer-title"><FileUp v-if="task.direction === 'upload'" /><Download v-else /><span>{{ task.fileName || task.taskId }}</span><span v-if="task.compression === 'gzip'" class="transfer-badge" :title="t('transferCompress.badgeHint')">{{ t("transferCompress.badge") }}</span><strong v-if="task.phase !== 'staging'">{{ transferPercent(task) }}%</strong></div>
-              <progress :value="transferBarValue(task)" max="100" />
-              <div class="transfer-meta"><span>{{ t(`transferStatus.${task.status}`) }}</span><span :title="transferBytesTitle(task)">{{ formatBytes(transferShownBytes(task)) }} / {{ formatBytes(task.size) }}</span><span v-if="transferSpeeds[task.taskId]">{{ formatBytes(transferSpeeds[task.taskId]) }}/s</span></div>
-              <!-- 目录下载：在传文件相对路径，让长传输有可感知的推进。 -->
-              <p v-if="task.currentFile" class="transfer-path mono" :title="task.currentFile">{{ task.currentFile }}</p>
-              <p v-if="task.localPath" class="transfer-path mono" :title="task.localPath">{{ task.localPath }}</p>
-              <!-- 目录下载部分失败的汇总由完成 toast 承担：failedCount 与终态
-                   同拍赋值，终态卡随即转入历史区，活跃卡上的失败行永远渲染
-                   不到（UI 回归确认），故不再放置死分支。 -->
-              <div v-if="transferPausable(task.status) || task.status === 'queued' || task.status === 'running' || task.localPath" class="transfer-actions">
-                <button v-if="transferPausable(task.status)" class="icon-button" :title="t(pausedTaskIds.has(task.taskId) ? 'transferResume' : 'transferPause')" :aria-label="t(pausedTaskIds.has(task.taskId) ? 'transferResume' : 'transferPause')" @click="toggleTransferPause(task)"><Play v-if="pausedTaskIds.has(task.taskId)" /><Pause v-else /></button>
-                <button v-if="task.status === 'queued' || task.status === 'running'" class="icon-button" :title="t('cancel')" :aria-label="t('cancel')" @click="cancelTransfer(task)"><X /></button>
-                <button v-if="task.localPath" class="icon-button" :title="t('revealInFolder')" :aria-label="t('revealInFolder')" @click="revealTransferTarget(task.localPath)"><FolderOpen /></button>
-                <button v-if="task.localPath" class="icon-button" :title="t('openDownloadedFile')" :aria-label="t('openDownloadedFile')" @click="openTransferTarget(task.localPath)"><FileText /></button>
-              </div>
-              <p v-if="task.error" class="task-error">{{ task.error }}</p>
-            </article>
-            <!-- 保留上传断点续传入口；文件选择器本身始终隐藏，仅由 Resume 按钮唤起。 -->
-            <template v-if="resumableTasks.length">
-              <h3 class="transfer-history-title">{{ t("resumableTitle") }}</h3>
-              <article v-for="task in resumableTasks" :key="task.taskId" class="transfer-card">
-                <div class="transfer-title"><FileUp /><span :title="task.remotePath">{{ task.fileName }}</span></div>
-                <div class="transfer-meta"><span>{{ formatBytes(task.resumableBytes) }} / {{ formatBytes(task.size) }}</span></div>
-                <div class="transfer-actions"><button class="icon-button" :title="t('resumableResume')" :aria-label="t('resumableResume')" @click="beginResumeUpload(task)"><Play /></button></div>
-              </article>
-            </template>
-            <input ref="resumeInput" type="file" class="hidden" @change="onResumeFilePicked" />
-            <!-- 传输历史与活跃任务并列展示：历史是落盘快照，不应被当前传输状态遮住。 -->
-            <div class="transfer-history-head">
-              <h3 class="transfer-history-title">{{ t("transfersHistory.title") }}</h3>
-              <span class="transfer-history-actions">
-                <button type="button" class="icon-button" :title="t('refresh')" :aria-label="t('refresh')" :disabled="transferHistoryLoading || resumableLoading" @click.stop="refreshTransferPanel"><RefreshCw :class="{ spinning: transferHistoryLoading || resumableLoading }" /></button>
-                <button type="button" class="icon-button" :title="t('transfersHistory.clear')" :aria-label="t('transfersHistory.clear')" :disabled="!transferHistory.length" @click.stop="transferHistoryClearOpen = true"><Trash2 /></button>
-              </span>
-            </div>
-            <div v-if="transferHistoryFailed" class="empty compact">
-              <span>{{ t("transfersHistory.loadFailed") }}</span>
-              <button type="button" class="link-button" @click.stop="refreshTransferPanel">{{ t("refresh") }}</button>
-            </div>
-            <div v-else-if="transferHistoryLoading && !transferHistory.length" class="empty compact"><Loader2 class="spinning" />{{ t("loading") }}</div>
-            <div v-else-if="!transferHistory.length" class="empty compact">{{ t("transfersHistory.empty") }}</div>
-            <ContextMenu v-for="entry in transferHistory" :key="entry.taskId" :open="transferHistoryMenu?.taskId === entry.taskId" @update:open="(open) => { if (!open && transferHistoryMenu?.taskId === entry.taskId) transferHistoryMenu = undefined; }">
-              <ContextMenuTrigger as-child>
-                <article class="transfer-card transfer-history-card" @contextmenu="showTransferHistoryMenu($event, entry)">
-                  <div class="transfer-title"><FileUp v-if="entry.direction === 'upload'" /><Download v-else /><span :title="entry.fileName">{{ entry.fileName || entry.taskId }}</span></div>
-                  <div class="transfer-meta"><span>{{ t(`transferStatus.${entry.status}`) }}</span><span>{{ formatBytes(entry.size) }}</span></div>
-                  <p v-if="entry.localPath" class="transfer-path mono" :title="entry.localPath">{{ entry.localPath }}</p>
-                  <p v-if="entry.error" class="task-error">{{ entry.error }}</p>
-                </article>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem @select="entry.localPath && revealTransferTarget(entry.localPath)"><FolderOpen />{{ t("revealInFolder") }}</ContextMenuItem>
-                <ContextMenuItem @select="entry.localPath && openTransferTarget(entry.localPath)"><FileText />{{ t("openDownloadedFile") }}</ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-            </PopoverContent>
-      </Popover>
+      <TransferPopover
+        :transfer-panel-open="transferPanelOpen"
+        :transfer-list="transferList"
+        :transfer-history="transferHistory"
+        :resumable-tasks="resumableTasks"
+        :folder-upload-progress="folderUploadProgress"
+        :file-batch-progress="fileBatchProgress"
+        :paused-task-ids="pausedTaskIds"
+        :transfer-speeds="transferSpeeds"
+        :transfer-history-menu="transferHistoryMenu"
+        :transfer-history-loading="transferHistoryLoading"
+        :transfer-history-failed="transferHistoryFailed"
+        :resumable-loading="resumableLoading"
+        :folder-upload-percent="folderUploadPercent"
+        :batch-upload-percent="batchUploadPercent"
+        :format-bytes="formatBytes"
+        :transfer-percent="transferPercent"
+        :transfer-bar-value="transferBarValue"
+        :transfer-shown-bytes="transferShownBytes"
+        :transfer-bytes-title="transferBytesTitle"
+        :transfer-pausable="transferPausable"
+        :t="t"
+        @update:transferPanelOpen="(value) => { if (!value && !transferHistoryMenu) transferPanelOpen = false; }"
+        @close-history-menu="transferHistoryMenu = undefined"
+        @show-history-menu="showTransferHistoryMenu"
+        @toggle-pause="toggleTransferPause"
+        @cancel="cancelTransfer"
+        @reveal="revealTransferTarget"
+        @open-file="openTransferTarget"
+        @refresh="refreshTransferPanel"
+        @open-clear="transferHistoryClearOpen = true"
+        @begin-resume="beginResumeUpload"
+        @resume-picked="onResumeFilePicked"
+      />
     </header>
 
     <div v-if="tooltip" ref="tooltipBubble" class="app-tooltip" :class="{ 'app-tooltip-above': tooltip.above }" :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px`, '--arrow-offset': `${tooltip.arrowOffset}px` }" role="tooltip">{{ tooltip.text }}</div>
@@ -8820,122 +8767,43 @@ watch(historyScope, () => {
         </div>
         <!-- 批量发送命令条（Electerm quick-command bar）：贴终端底部，回车即发送；
              目标选择/快速命令切换/保存为快速命令均在条上完成。 -->
-        <section v-if="connected && batchBarOpen && !isRdpConnection" class="batch-bar" @contextmenu.stop @mousedown.stop @click.stop>
-          <div>
-            <!-- 底部条上的 popover 向上展开（reka side="top"，旧绝对定位会被裁切）。 -->
-            <Popover :open="batchTargetsOpen" @update:open="(open) => { if (!open) batchTargetsOpen = false; }">
-              <PopoverAnchor as-child>
-                <button class="batch-bar-targets" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" @pointerdown.stop @click.stop="toggleBatchTargetsPopover"><ListChecks /><span>{{ t("batchSendTargets", { count: batchSelected.length, total: batchTargets.length }) }}</span></button>
-              </PopoverAnchor>
-              <PopoverContent class="popover batch-targets-popover" side="top" align="start" :side-offset="6">
-              <p class="muted batch-send-hint">{{ t("batchSendHint") }}</p>
-              <div class="command-history-header">
-                <span>{{ t("batchSendTargets", { count: batchSelected.length, total: batchTargets.length }) }}</span>
-                <span class="batch-target-actions">
-                  <button class="link-button" @click="pickBatchTargets('connected')">{{ t("batchSendConnected") }}</button>
-                  <button class="link-button" @click="pickBatchTargets('all')">{{ t("batchSendAll") }}</button>
-                  <button class="link-button" :disabled="batchLoading" @click="refreshBatchTargets">{{ t("refresh") }}</button>
-                </span>
-              </div>
-              <div v-if="batchLoading && !batchTargets.length" class="empty compact"><Loader2 class="spinning" /><span>{{ t("batchSendLoading") }}</span></div>
-              <div v-else-if="!batchTargets.length" class="empty compact">{{ t("batchSendNoSessions") }}</div>
-              <div v-else class="batch-target-list">
-                <label v-for="target in batchTargets" :key="target.sessionId" class="batch-target-row" :class="{ offline: target.connected === false }">
-                  <input type="checkbox" :checked="batchSelected.includes(target.sessionId)" @change="toggleBatchTargetId(target.sessionId)" />
-                  <span class="mono">{{ batchTargetLabel(target) }}</span>
-                  <span v-if="target.sessionId === session?.sessionId" class="batch-badge">{{ t("batchSendCurrent") }}</span>
-                  <span v-if="target.connected === false" class="batch-badge batch-badge-warn">{{ t("batchSendDisconnected") }}</span>
-                  <span v-if="target.readOnly" class="read-only-badge">{{ t("readOnly") }}</span>
-                </label>
-              </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <!-- 快速命令弹层：与右上角面板同形态（搜索 + 可折叠分组 + 命令卡片，
-               复用面板样式类与折叠态），点击卡片即回填批量输入框（发送仍由
-               回车/发送按钮触发）。无真实分组时保持平铺，避免单条未分组的噪声组头。 -->
-          <Popover v-if="!batchSaveMode && quickCommands.length" :open="batchQuickOpen" @update:open="(open) => { if (!open) batchQuickOpen = false; }">
-            <PopoverAnchor as-child>
-              <button class="batch-bar-quick batch-bar-targets" :title="t('batchSendQuickPick')" :aria-label="t('batchSendQuickPick')" @pointerdown.stop @click.stop="toggleBatchQuickPopover">
-                <Braces />
-                <span>{{ batchQuickPickName || t("batchSendQuickPick") }}</span>
-              </button>
-            </PopoverAnchor>
-            <PopoverContent class="popover batch-quick-popover" side="top" align="start" :side-offset="6">
-              <div class="quick-search">
-                <Search />
-                <input v-model="batchQuickSearch" :placeholder="t('quickCommandsSearch')" spellcheck="false" />
-              </div>
-              <div v-if="!filteredBatchQuickCommands.length" class="empty compact">{{ t("quickCommandsNoMatch") }}</div>
-              <template v-else-if="quickHasRealGroups">
-                <section v-for="group in groupedBatchQuickCommands" :key="group.id || '__ungrouped__'" class="quick-group">
-                  <button class="quick-group-head" :aria-expanded="!quickCollapsedGroups.includes(group.id)" @click="toggleQuickGroupCollapse(group.id)">
-                    <ChevronDown v-if="!quickCollapsedGroups.includes(group.id)" class="quick-group-chevron" />
-                    <ChevronRight v-else class="quick-group-chevron" />
-                    <span class="quick-group-name">{{ quickGroupName(group) }}</span>
-                    <span class="quick-group-count">{{ group.commands.length }}</span>
-                  </button>
-                  <template v-if="!quickCollapsedGroups.includes(group.id)">
-                    <button v-for="item in group.commands" :key="item.id" class="quick-command-row quick-card" :title="item.command" :aria-label="item.command" @click="pickBatchQuick(item)">
-                      <Braces class="quick-card-icon" />
-                      <span class="quick-card-text">
-                        <strong>{{ item.name }}</strong>
-                        <span class="mono">{{ item.command }}</span>
-                      </span>
-                    </button>
-                  </template>
-                </section>
-              </template>
-              <button v-for="item in filteredBatchQuickCommands" v-else :key="item.id" class="quick-command-row quick-card" :title="item.command" :aria-label="item.command" @click="pickBatchQuick(item)">
-                <Braces class="quick-card-icon" />
-                <span class="quick-card-text">
-                  <strong>{{ item.name }}</strong>
-                  <span class="mono">{{ item.command }}</span>
-                </span>
-              </button>
-              <footer class="quick-command-footer quick-command-footer--readonly">
-                <span class="quick-command-limit">{{ quickCommandGroupSummary }}</span>
-              </footer>
-            </PopoverContent>
-          </Popover>
-          <input
-            v-if="batchSaveMode"
-            v-model="batchSaveName"
-            class="batch-bar-input"
-            :placeholder="t('quickCommandsName')"
-            :maxlength="60"
-            autofocus
-            :disabled="batchSaving"
-            @keydown.enter="confirmBatchBarSave"
-          />
-          <input
-            v-else
-            v-model="batchDraft"
-            class="batch-bar-input mono"
-            spellcheck="false"
-            :placeholder="t('batchSendPlaceholder')"
-            :disabled="batchSending"
-            @input="broadcastBatchBarState()"
-            @keydown.up.prevent="browseBatchHistoryUp"
-            @keydown.down.prevent="browseBatchHistoryDown"
-            @keydown.enter="sendBatchCommand"
-          />
-          <template v-if="batchSaveMode">
-            <button class="icon-button icon-emerald" :title="t('save')" :aria-label="t('save')" :disabled="batchSaving" @click="confirmBatchBarSave"><Save /></button>
-            <button class="icon-button" :title="t('cancel')" :aria-label="t('cancel')" :disabled="batchSaving" @click="cancelBatchBarSave"><X /></button>
-          </template>
-          <button
-            v-else
-            class="icon-button"
-            :title="quickCommands.length >= QUICK_COMMANDS_LIMIT ? t('quickCommandsLimit', { count: quickCommands.length, limit: QUICK_COMMANDS_LIMIT }) : t('batchBarSave')" :aria-label="quickCommands.length >= QUICK_COMMANDS_LIMIT ? t('quickCommandsLimit', { count: quickCommands.length, limit: QUICK_COMMANDS_LIMIT }) : t('batchBarSave')"
-            :disabled="!batchDraft.trim() || quickCommands.length >= QUICK_COMMANDS_LIMIT"
-            @click="openBatchBarSave"
-          ><Save /></button>
-          <button class="icon-button icon-emerald batch-bar-send" :title="t('batchSendSend')" :aria-label="t('batchSendSend')" :disabled="batchSending || !batchDraft.trim() || !batchSelected.length" @click="sendBatchCommand">
-            <Loader2 v-if="batchSending" class="spinning" />
-            <Send v-else />
-          </button>
-        </section>
+        <BatchBar
+          v-if="connected && batchBarOpen && !isRdpConnection"
+          v-model:batchTargetsOpen="batchTargetsOpen"
+          v-model:batchQuickOpen="batchQuickOpen"
+          v-model:batchQuickSearch="batchQuickSearch"
+          v-model:batchSaveName="batchSaveName"
+          v-model:batchDraft="batchDraft"
+          :batch-loading="batchLoading"
+          :batch-sending="batchSending"
+          :batch-targets="batchTargets"
+          :batch-selected="batchSelected"
+          :filtered-batch-quick-commands="filteredBatchQuickCommands"
+          :grouped-batch-quick-commands="groupedBatchQuickCommands"
+          :batch-quick-pick-name="batchQuickPickName"
+          :batch-save-mode="batchSaveMode"
+          :batch-saving="batchSaving"
+          :quick-commands="quickCommands"
+          :quick-has-real-groups="quickHasRealGroups"
+          :quick-collapsed-groups="quickCollapsedGroups"
+          :quick-command-group-summary="quickCommandGroupSummary"
+          :quick-group-name="quickGroupName"
+          :session-id="session?.sessionId || ''"
+          :t="t"
+          @toggle-targets="toggleBatchTargetsPopover"
+          @pick-targets="pickBatchTargets"
+          @refresh-targets="refreshBatchTargets"
+          @toggle-target="toggleBatchTargetId"
+          @toggle-quick="toggleBatchQuickPopover"
+          @pick-quick="pickBatchQuick"
+          @toggle-group="toggleQuickGroupCollapse"
+          @broadcast="broadcastBatchBarState"
+          @browse-history="(direction) => direction === 'up' ? browseBatchHistoryUp() : browseBatchHistoryDown()"
+          @send="sendBatchCommand"
+          @open-save="openBatchBarSave"
+          @confirm-save="confirmBatchBarSave"
+          @cancel-save="cancelBatchBarSave"
+        />
       </div>
       </section>
 
@@ -9317,228 +9185,86 @@ watch(historyScope, () => {
       @error="showError($event, 'terminal')"
     />
 
-    <Dialog :open="operationDialog === 'mkdir'" @update:open="(open) => { if (!open) operationDialog = null; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("newFolder") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="operationDialog = null"><X /></button></header>
-        <input v-model="operationDraft" autofocus @keydown.enter="createDirectory" />
-        <footer><button @click="operationDialog = null">{{ t("cancel") }}</button><button class="primary-button" :disabled="!operationDraft.trim()" @click="createDirectory">{{ t("confirm") }}</button></footer>      </DialogContent>
-    </Dialog>
+    <WorkbenchSftpDialogs
+      v-model:operationDialog="operationDialog"
+      v-model:operationDraft="operationDraft"
+      v-model:symlinkDialog="symlinkDialog"
+      v-model:symlinkDraft="symlinkDraft"
+      v-model:symlinkTargetDraft="symlinkTargetDraft"
+      :symlink-submitting="symlinkSubmitting"
+      :watch-modified-queue="watchModifiedQueue"
+      :watch-modified-prompt="watchModifiedPrompt"
+      :external-edit-busy="externalEditBusy"
+      v-model:customEditorOpen="customEditorOpen"
+      v-model:customEditorName="customEditorName"
+      v-model:customEditorCommand="customEditorCommand"
+      v-model:customEditorRemember="customEditorRemember"
+      :custom-editor-pattern="customEditorPattern"
+      v-model:commandOpen="commandOpen"
+      v-model:commandDraft="commandDraft"
+      :command-running="commandRunning"
+      :command-history="commandHistory"
+      v-model:commandUseSudo="commandUseSudo"
+      :command-result="commandResult"
+      :command-output-text="commandOutputText"
+      :command-error="commandError"
+      v-model:chmodTarget="chmodTarget"
+      v-model:chmodDraft="chmodDraft"
+      :chmod-submitting="chmodSubmitting"
+      v-model:deleteTarget="deleteTarget"
+      :delete-submitting="deleteSubmitting"
+      v-model:batchDeleteOpen="batchDeleteOpen"
+      :selected-entries="selectedEntries"
+      :batch-progress="batchProgress"
+      :batch-delete-submitting="batchDeleteSubmitting"
+      v-model:downloadPrompt="downloadPrompt"
+      :local-can-save="localCanSave"
+      :download-conflict-prompt="downloadConflictPrompt"
+      :upload-duplicate-prompt="uploadDuplicatePrompt"
+      v-model:uploadDuplicateApplyAll="uploadDuplicateApplyAll"
+      v-model:newFileDialog="newFileDialog"
+      v-model:newFileDraft="newFileDraft"
+      :new-file-submitting="newFileSubmitting"
+      :attrs-target="attrsTarget"
+      :attrs-loading="attrsLoading"
+      :attrs-info="attrsInfo"
+      v-model:attrsMode="attrsMode"
+      :attrs-submitting="attrsSubmitting"
+      :attrs-owner-display="attrsOwnerDisplay"
+      :can-write="canWrite"
+      :perm-roles="PERM_ROLES"
+      :perm-columns="PERM_COLUMNS"
+      :perm-bit="permBit"
+      :batch-progress-percent="batchProgressPercent"
+      :format-modified="formatModified"
+      :t="t"
+      @create-directory="createDirectory"
+      @commit-symlink="commitSymlink"
+      @dismiss-watch-modified="dismissWatchModified"
+      @upload-watched-always="uploadWatchedFileAlways"
+      @upload-watched-single="uploadWatchedFileOnce"
+      @commit-custom-editor="commitCustomEditor"
+      @command-input-keydown="handleCommandInputKeydown"
+      @clear-command-history="clearCommandHistory"
+      @rerun-history-command="rerunHistoryCommand"
+      @cancel-command="cancelCommand"
+      @run-command="runCommand"
+      @confirm-chmod="confirmChmod"
+      @confirm-delete="confirmDelete"
+      @confirm-batch-delete="confirmBatchDelete"
+      @resolve-download-prompt="resolveDownloadPrompt"
+      @resolve-download-conflict="resolveDownloadConflict"
+      @resolve-upload-duplicate="resolveUploadDuplicate"
+      @open-folder-picker="folderPickerTarget = 'prompt'"
+      @create-new-file="createNewFile"
+      @close-attributes="closeAttributes"
+      @toggle-chmod-perm="toggleChmodPerm"
+      @toggle-attrs-perm="toggleAttrsPerm"
+      @save-attributes-permissions="saveAttributesPermissions"
+    />
 
-    <!-- 符号链接新建/改指向（P2-6）：target 允许相对路径（symlink 语义），
-         编辑模式预填当前指向；改指向后端 readlink 比对做 no-op 兜底。 -->
-    <Dialog :open="symlinkDialog !== null" @update:open="(open) => { if (!open) symlinkDialog = null; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="symlinkDialog">
-        <header><DialogTitle>{{ symlinkDialog.mode === "edit" ? t("symlink.editTitle", { name: symlinkDialog.name }) : t("symlink.createTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="symlinkDialog = null"><X /></button></header>
-        <p v-if="symlinkDialog.mode === 'edit'" class="muted mono">{{ symlinkDialog.linkPath }}</p>
-        <input v-if="symlinkDialog.mode === 'create'" v-model="symlinkDraft" autofocus :placeholder="t('symlink.namePlaceholder')" @keydown.enter="commitSymlink" />
-        <input v-if="symlinkDialog.mode === 'create'" v-model="symlinkTargetDraft" class="mono" spellcheck="false" :placeholder="t('symlink.targetPlaceholder')" @keydown.enter="commitSymlink" />
-        <input v-else v-model="symlinkDraft" class="mono" spellcheck="false" autofocus :placeholder="t('symlink.targetPlaceholder')" @keydown.enter="commitSymlink" />
-        <p class="muted">{{ t("symlink.hint") }}</p>
-        <footer><button @click="symlinkDialog = null">{{ t("cancel") }}</button><button class="primary-button" :disabled="(symlinkDialog.mode === 'create' ? !symlinkDraft.trim() || !symlinkTargetDraft.trim() : !symlinkDraft.trim()) || symlinkSubmitting" @click="commitSymlink"><Loader2 v-if="symlinkSubmitting" class="spinning" />{{ t("confirm") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
-    <!-- 外部编辑器保存回传确认（P2-5；M15 起逐文件排队）：队列头逐个弹，
-    决议（上传一次 / 总是上传（记住 watchId）/ 取消）才出队，多文件互不顶替。 -->
-    <Dialog :open="watchModifiedQueue.length > 0" @update:open="(open) => { if (!open) dismissWatchModified(); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("sftpEdit.modifiedTitle") }}</DialogTitle><Loader2 v-if="externalEditBusy" class="spinning" /><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="dismissWatchModified"><X /></button></header>
-        <p class="sftp-dialog-hint">{{ t("sftpEdit.modifiedMessage", { name: watchModifiedPrompt?.name || "" }) }}</p>
-        <footer>
-          <button @click="dismissWatchModified">{{ t("cancel") }}</button>
-          <button @click="uploadWatchedFileAlways">{{ t("sftpEdit.alwaysUpload") }}</button>
-          <button class="primary-button" @click="uploadWatchedFileOnce">{{ t("sftpEdit.uploadOnce") }}</button>
-        </footer>
-      </DialogContent>
-    </Dialog>
 
-    <!-- 自定义编辑器命令（编辑器映射增强）：name/command 记入 pluginStore
-         单键配置，「记住为默认」写 {pattern → customId} 关联；确定即用该命令
-         打开本次文件。命令串由 sidecar 分词成 argv 直接 spawn（不过 shell）。 -->
-    <Dialog :open="customEditorOpen" @update:open="(open) => { if (!open) customEditorOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("sftpEdit.customCommandTitle") }}</DialogTitle><button :title="t('close')" class="icon-button" @click="customEditorOpen = false"><X /></button></header>
-        <input v-model="customEditorName" :placeholder="t('sftpEdit.customEditorNamePlaceholder')" />
-        <input v-model="customEditorCommand" class="mono" spellcheck="false" autofocus :placeholder="t('sftpEdit.customEditorCommandPlaceholder')" />
-        <p class="muted">{{ t("sftpEdit.customEditorCommandHint") }}</p>
-        <label class="settings-switch-row">
-          <Switch v-model="customEditorRemember" size="sm" />
-          <span>{{ t("sftpEdit.rememberAssociation", { pattern: customEditorPattern }) }}</span>
-        </label>
-        <footer><button @click="customEditorOpen = false">{{ t("cancel") }}</button><button class="primary-button" :disabled="!customEditorCommand.trim()" @click="commitCustomEditor">{{ t("sftpEdit.customCommandRun") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="commandOpen" @update:open="(open) => { if (!open) commandOpen = false; }">
-      <DialogContent class="modal command-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("commandTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="commandOpen = false"><X /></button></header>
-        <textarea
-          v-model="commandDraft"
-          class="mono"
-          rows="5"
-          spellcheck="false"
-          autofocus
-          :placeholder="t('commandPlaceholder')"
-          :disabled="commandRunning"
-          @keydown="handleCommandInputKeydown"
-        />
-        <div v-if="commandHistory.length" class="command-history">
-          <div class="command-history-header">
-            <span>{{ t("commandHistoryTitle") }}</span>
-            <button class="link-button" @click="clearCommandHistory">{{ t("commandHistoryClear") }}</button>
-          </div>
-          <div class="command-history-list">
-            <button
-              v-for="item in commandHistory"
-              :key="item"
-              class="command-history-item mono"
-              :title="t('commandHistoryResend')" :aria-label="t('commandHistoryResend')"
-              @click="rerunHistoryCommand(item)"
-            >{{ item }}</button>
-          </div>
-        </div>
-        <label class="quick-sudo-control" :title="t('quickSudoHint')">
-          <Switch v-model="commandUseSudo" size="sm" :disabled="commandRunning" />
-          <span>{{ t("quickSudo") }}</span>
-        </label>
-        <div v-if="commandRunning" class="command-output"><Loader2 class="spinning" /><span>{{ t("commandRunning") }}</span></div>
-        <pre v-else-if="commandResult" class="command-output mono">{{ commandOutputText || t("commandNoOutput") }}<span class="command-exit">exit {{ commandResult.exitCode }}</span></pre>
-        <p v-if="commandError" class="task-error">{{ commandError }}</p>
-        <footer>
-          <button @click="commandOpen = false">{{ t("close") }}</button>
-          <button v-if="commandRunning" @click="cancelCommand"><X />{{ t("commandCancel") }}</button>
-          <button class="primary-button" :disabled="!commandDraft.trim() || commandRunning" @click="runCommand">
-            <Loader2 v-if="commandRunning" class="spinning" />
-            <SquareTerminal v-else />
-            {{ t("commandRun") }}
-          </button>
-        </footer>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="!!chmodTarget" @update:open="(open) => { if (!open) chmodTarget = undefined; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="chmodTarget">
-        <header><DialogTitle>{{ t("permissionsEdit") }} · {{ chmodTarget.name }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="chmodTarget = undefined"><X /></button></header>
-        <div class="perm-matrix" role="group" :aria-label="t('permissionsEdit')">
-          <span></span>
-          <span v-for="column in PERM_COLUMNS" :key="column.bit" class="perm-matrix-head">{{ t(column.key) }}</span>
-          <template v-for="role in PERM_ROLES" :key="role.who">
-            <span class="perm-matrix-role">{{ t(role.key) }}</span>
-            <label v-for="column in PERM_COLUMNS" :key="column.bit" class="perm-matrix-cell">
-              <input type="checkbox" :checked="permBit(chmodDraft, role.who, column.bit)" @change="toggleChmodPerm(role.who, column.bit, $event)" />
-            </label>
-          </template>
-        </div>
-        <input v-model="chmodDraft" class="mono" spellcheck="false" :placeholder="t('permissionsPlaceholder')" @keydown.enter="confirmChmod" />
-        <p class="muted">{{ t("permissionsHint") }}</p>
-        <footer><button @click="chmodTarget = undefined">{{ t("cancel") }}</button><button class="primary-button" :disabled="!chmodDraft.trim() || chmodSubmitting" @click="confirmChmod">{{ t("confirm") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="!!deleteTarget" @update:open="(open) => { if (!open) deleteTarget = undefined; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="deleteTarget">
-        <header><DialogTitle>{{ t("deleteTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="deleteTarget = undefined"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ deleteTarget.name }}</strong><p class="muted">{{ t("deleteMessage") }}</p></div></div>
-        <footer><button @click="deleteTarget = undefined">{{ t("cancel") }}</button><button class="danger-button" :disabled="deleteSubmitting" @click="confirmDelete"><Trash2 />{{ t("delete") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="batchDeleteOpen" @update:open="(open) => { if (!open) batchDeleteOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("sftpBatch.deleteTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="batchDeleteOpen = false"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ t("sftpBatch.selected", { count: selectedEntries.length }) }}</strong><p class="muted">{{ t("sftpBatch.deleteMessage") }}</p></div></div>
-        <div v-if="batchProgress" class="batch-progress-row"><progress class="batch-progress-bar" :value="batchProgressPercent(batchProgress)" max="100" /><span class="batch-progress mono">{{ t("sftpBatch.progress", { done: batchProgress.done, total: batchProgress.total }) }}</span></div>
-        <footer><button @click="batchDeleteOpen = false" :disabled="batchDeleteSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="batchDeleteSubmitting" @click="confirmBatchDelete"><Loader2 v-if="batchDeleteSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 录制删除确认：应用内弹窗替代 window.confirm（宿主沙箱 iframe 无 allow-modals，confirm 恒 false） -->
-    <!-- 下载/导出前的保存目录选择（设置里开启「每次询问」时出现） -->
-    <Dialog :open="!!downloadPrompt" @update:open="(open) => { if (!open) resolveDownloadPrompt(undefined); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="downloadPrompt">
-        <header><DialogTitle>{{ t("downloadSettings.askTitle") }}</DialogTitle><button class="icon-button" :title="t('close')" :aria-label="t('close')" @click="resolveDownloadPrompt(undefined)"><X /></button></header>
-        <p class="muted mono">{{ downloadPrompt.fileName }}</p>
-        <label class="settings-field">
-          <span>{{ t("downloadSettings.directory") }}</span>
-          <span class="settings-dir-row">
-            <input v-model="downloadPrompt.dir" class="mono" spellcheck="false" autofocus @keydown.enter="resolveDownloadPrompt({ dir: downloadPrompt.dir, setDefault: downloadPrompt.setDefault })" />
-            <button v-if="localCanSave" type="button" class="browse-button" :title="t('downloadSettings.browse')" :aria-label="t('downloadSettings.browse')" @click="folderPickerTarget = 'prompt'"><FolderOpen /></button>
-          </span>
-        </label>
-        <label class="settings-field settings-switch-row">
-          <input v-model="downloadPrompt.setDefault" type="checkbox" />
-          <span>{{ t("downloadSettings.setDefaultThisTime") }}</span>
-        </label>
-        <p class="muted settings-note">{{ t("downloadSettings.askHint") }}</p>
-        <footer>
-          <button @click="resolveDownloadPrompt(undefined)">{{ t("cancel") }}</button>
-          <button class="primary-button" @click="resolveDownloadPrompt({ dir: downloadPrompt.dir, setDefault: downloadPrompt.setDefault })">{{ t("save") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 「询问我」冲突策略：目标目录已有同名文件时的选择 -->
-    <Dialog :open="!!downloadConflictPrompt" @update:open="(open) => { if (!open) resolveDownloadConflict(undefined); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="downloadConflictPrompt">
-        <header><DialogTitle>{{ t("downloadConflict.title") }}</DialogTitle><button class="icon-button" :title="t('close')" :aria-label="t('close')" @click="resolveDownloadConflict(undefined)"><X /></button></header>
-        <p>{{ t("downloadConflict.message", { name: downloadConflictPrompt.fileName }) }}</p>
-        <p class="muted mono">{{ downloadConflictPrompt.path }}</p>
-        <footer>
-          <button @click="resolveDownloadConflict(undefined)">{{ t("cancel") }}</button>
-          <button class="danger-button" @click="resolveDownloadConflict('overwrite')">{{ t("downloadSettings.conflict.overwrite") }}</button>
-          <button class="primary-button" @click="resolveDownloadConflict('rename')">{{ t("downloadSettings.conflict.rename") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 命令会话（WT-4，WezTerm spawn 对标）：输入命令后在已认证 transport 的新 channel 上执行 -->
-    <Dialog :open="spawnSessionDialogOpen" @update:open="(open) => { if (!open) spawnSessionDialogOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("spawnSessionDialog.title") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="spawnSessionDialogOpen = false"><X /></button></header>
-        <p class="muted">{{ t("spawnSessionDialog.hint") }}</p>
-        <input
-          v-model="spawnSessionCommand"
-          autofocus
-          spellcheck="false"
-          autocomplete="off"
-          :placeholder="t('spawnSessionDialog.placeholder')"
-          @keydown.enter="confirmCommandSessionTab"
-        />
-        <footer>
-          <button @click="spawnSessionDialogOpen = false">{{ t("cancel") }}</button>
-          <button class="primary-button" :disabled="!spawnSessionCommand.trim()" @click="confirmCommandSessionTab">{{ t("confirm") }}</button>
-        </footer>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 上传重复目标「询问我」（P1-5）：重命名 / 覆盖 / 取消，支持应用到本批次 -->
-    <Dialog :open="!!uploadDuplicatePrompt" @update:open="(open) => { if (!open) resolveUploadDuplicate(undefined); }">      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="uploadDuplicatePrompt">
-        <header><DialogTitle>{{ t("transferCfg.duplicateTitle") }}</DialogTitle><button class="icon-button" :title="t('close')" :aria-label="t('close')" @click="resolveUploadDuplicate(undefined)"><X /></button></header>
-        <p>{{ t("transferCfg.duplicateMessage", { name: uploadDuplicatePrompt.fileName }) }}</p>
-        <p class="muted mono">{{ uploadDuplicatePrompt.path }}</p>
-        <label class="settings-field settings-switch-row">
-          <input v-model="uploadDuplicateApplyAll" type="checkbox" />
-          <span>{{ t("transferCfg.applyAll") }}</span>
-        </label>
-        <footer>
-          <button @click="resolveUploadDuplicate(undefined)">{{ t("cancel") }}</button>
-          <button class="danger-button" @click="resolveUploadDuplicate('overwrite')">{{ t("transferCfg.policy.overwrite") }}</button>
-          <button class="primary-button" @click="resolveUploadDuplicate('rename')">{{ t("transferCfg.policy.rename") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
     <Dialog :open="!!recordingDeleteTarget" @update:open="(open) => { if (!open) recordingDeleteTarget = null; }">
       <DialogContent class="modal small-modal" @escape-key-down.prevent>
@@ -9568,51 +9294,7 @@ watch(historyScope, () => {
       </DialogContent>
     </Dialog>
 
-    <Dialog :open="newFileDialog" @update:open="(open) => { if (!open) newFileDialog = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("sftpNewFile.title") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="newFileDialog = false"><X /></button></header>
-        <input v-model="newFileDraft" autofocus spellcheck="false" :placeholder="t('sftpNewFile.placeholder')" @keydown.enter="createNewFile" />
-        <footer><button @click="newFileDialog = false">{{ t("cancel") }}</button><button class="primary-button" :disabled="!newFileDraft.trim() || newFileSubmitting" @click="createNewFile"><Loader2 v-if="newFileSubmitting" class="spinning" />{{ t("confirm") }}</button></footer>
-      </DialogContent>
-    </Dialog>
 
-    <Dialog :open="!!attrsTarget" @update:open="(open) => { if (!open) closeAttributes(); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="attrsTarget">
-        <header><DialogTitle>{{ t("sftpAttrs.title") }} · {{ attrsTarget.name }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="closeAttributes"><X /></button></header>
-        <div v-if="attrsLoading" class="empty compact"><Loader2 class="spinning" />{{ t("loading") }}</div>
-        <template v-else-if="attrsInfo">
-          <dl class="attrs-grid">
-            <dt>{{ t("sftpAttrs.path") }}</dt><dd class="mono">{{ attrsInfo.path }}</dd>
-            <dt>{{ t("sftpAttrs.type") }}</dt><dd>{{ t(`sftpAttrs.kind.${attrsInfo.kind}`) }}</dd>
-            <dt>{{ t("size") }}</dt><dd class="numeric">{{ attrsInfo.kind === "directory" ? "–" : formatBytes(attrsInfo.size || 0) }}</dd>
-            <dt>{{ t("sftpAttrs.permissions") }}</dt><dd class="mono">{{ attrsInfo.mode || "–" }}</dd>
-            <dt>{{ t("sftpAttrs.owner") }}</dt><dd>{{ attrsOwnerDisplay }}</dd>
-            <dt>{{ t("sftpAttrs.modified") }}</dt><dd>{{ formatModified(attrsInfo.modifiedAt) || "–" }}</dd>
-          </dl>
-          <div class="perm-matrix" role="group" :aria-label="t('sftpAttrs.permissions')">
-            <span></span>
-            <span v-for="column in PERM_COLUMNS" :key="column.bit" class="perm-matrix-head">{{ t(column.key) }}</span>
-            <template v-for="role in PERM_ROLES" :key="role.who">
-              <span class="perm-matrix-role">{{ t(role.key) }}</span>
-              <label v-for="column in PERM_COLUMNS" :key="column.bit" class="perm-matrix-cell">
-                <input type="checkbox" :disabled="!canWrite" :checked="permBit(attrsMode, role.who, column.bit)" @change="toggleAttrsPerm(role.who, column.bit, $event)" />
-              </label>
-            </template>
-          </div>
-          <label class="attrs-permissions-edit">
-            <span>{{ t("sftpAttrs.permissions") }}</span>
-            <input v-model="attrsMode" class="mono" spellcheck="false" :placeholder="t('permissionsPlaceholder')" :disabled="!canWrite" @keydown.enter="saveAttributesPermissions" />
-          </label>
-          <p class="muted">{{ t("permissionsHint") }}</p>
-        </template>
-        <footer>
-          <button @click="closeAttributes">{{ t("close") }}</button>
-          <button class="primary-button" :disabled="!canWrite || !attrsMode.trim() || attrsSubmitting" @click="saveAttributesPermissions"><Loader2 v-if="attrsSubmitting" class="spinning" />{{ t("sftpAttrs.save") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
     <!-- 设置弹窗 + quick sudo 配置档管理弹窗：独立组件（设置域 UI/状态集中处；Esc 链与终端偏好仍留在 App）。 -->
     <SettingsDialog
@@ -9751,146 +9433,11 @@ watch(historyScope, () => {
         <footer><button @click="auditClearOpen = false" :disabled="auditClearSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="auditClearSubmitting" @click="confirmAuditClear"><Loader2 v-if="auditClearSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
       </DialogContent>
     </Dialog>
-    <!-- 安全弹窗：不允许 Esc / 点击遮罩关闭，必须显式信任或拒绝（不在 Esc 链中） -->
-    <Dialog :open="!!hostKeyPrompt">
-      <DialogContent class="modal host-key-modal" @escape-key-down.prevent @pointer-down-outside.prevent>
-        <template v-if="hostKeyPrompt">
-        <header><DialogTitle>{{ t("hostKeyDialog.title") }}</DialogTitle></header>
-        <p>{{ t("hostKeyDialog.desc") }}</p>
-        <dl><dt>{{ t("hostKeyDialog.server") }}</dt><dd>{{ hostKeyPrompt.host }}:{{ hostKeyPrompt.port }}</dd><dt>{{ t("hostKeyDialog.keyType") }}</dt><dd>{{ hostKeyPrompt.keyType }}</dd><dt>{{ t("hostKeyDialog.fingerprint") }}</dt><dd class="fingerprint">{{ hostKeyPrompt.fingerprint }}</dd></dl>
-        <label class="remember"><input v-model="rememberHostKey" type="checkbox" /> {{ t("hostKeyDialog.remember") }}</label>
-        <footer><button @click="resolveHostKey(false)">{{ t("hostKeyDialog.reject") }}</button><button class="primary-button" @click="resolveHostKey(true)">{{ t("hostKeyDialog.trust") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
-    <!-- RDP 证书确认（rdp-certificate challenge）：安全弹窗，不允许 Esc / 点击
-         遮罩关闭；SHA256 指纹 + knownHostStatus 徽标 + 120s 倒计时 + remember，
-         超时 fail-closed（应答与 sidecar 超时同样按拒绝处理）。 -->
-    <Dialog :open="!!rdpCertPrompt">
-      <DialogContent class="modal host-key-modal" @escape-key-down.prevent @pointer-down-outside.prevent>
-        <template v-if="rdpCertPrompt">
-        <header><DialogTitle>{{ t("rdp.cert.title") }}</DialogTitle></header>
-        <p>{{ t("rdp.cert.desc") }}</p>
-        <dl>
-          <dt>{{ t("rdp.cert.server") }}</dt><dd>{{ rdpCertPrompt.host }}:{{ rdpCertPrompt.port }}</dd>
-          <dt>{{ t("rdp.cert.fingerprint") }}</dt><dd class="fingerprint">{{ rdpCertPrompt.fingerprint }}</dd>
-        </dl>
-        <p class="muted rdp-cert-status">{{ t(`rdp.cert.status.${rdpCertStatusKey(rdpCertPrompt.knownHostStatus)}`) }}</p>
-        <label class="remember"><input v-model="rdpCertRemember" type="checkbox" /> {{ t("rdp.cert.remember") }}</label>
-        <p class="muted rdp-cert-expires">{{ t("rdp.cert.expires", { seconds: rdpCertRemaining }) }}</p>
-        <footer><button @click="resolveRdpCertificate(false)">{{ t("rdp.cert.reject") }}</button><button class="primary-button" @click="resolveRdpCertificate(true)">{{ t("rdp.cert.accept") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
-    <!-- 安全弹窗：不允许 Esc / 点击遮罩关闭，必须显式批准或拒绝（不在 Esc 链中） -->
-    <Dialog :open="!!agentPromptHead">
-      <DialogContent class="modal" @escape-key-down.prevent @pointer-down-outside.prevent>
-        <template v-if="agentPromptHead">
-        <header><DialogTitle>{{ agentPromptHead.source === "mcp" ? t("agentPrompt.mcpSource", { tool: agentPromptHead.tool }) : t("agentPromptTitle") }}</DialogTitle></header>
-        <div class="agent-prompt-meta">
-          <span>{{ t("agentPromptSource") }} <code class="mono">{{ agentPromptHead.tool }}</code></span>
-          <span class="agent-risk-badge" :class="agentPromptHead.risk === 'elevated' ? 'elevated' : 'low'">{{ agentPromptHead.risk === "elevated" ? t("agentPromptRiskElevated") : t("agentPromptRiskLow") }}</span>
-        </div>
-        <label class="agent-prompt-command">
-          <span>{{ t("agentPromptCommandLabel") }}</span>
-          <textarea v-model="agentPromptCommand" class="mono" rows="3" spellcheck="false" />
-        </label>
-        <!-- 记住不限风险档：strict 模式下低危命令同样每次弹审、同样需要免审
-             记忆（IMPL_PLAN 预期 strict/auto 下 approve+remember 二次零弹窗）；
-             破坏性命令由后端 D2 兜底忽略 remember。 -->
-        <label class="agent-prompt-remember">
-          <input v-model="agentPromptRemember" type="checkbox" />
-          <span>{{ t("approval.remember") }}</span>
-        </label>
-        <p class="muted agent-prompt-countdown">{{ t("agentPromptTimeoutHint", { seconds: Math.ceil(agentPromptRemaining) }) }}</p>
-        <footer><button @click="resolveAgentPrompt('deny')">{{ t("agentPromptDeny") }}</button><button class="primary-button" @click="resolveAgentPrompt('approve')">{{ t("agentPromptApprove") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
-    <!-- 告警排查：异构告警 → 结构化 + 分类 + 只读诊断命令清单 -->
-    <Dialog :open="alertTriageOpen" @update:open="(open) => { if (!open) alertTriageOpen = false; }">
-      <DialogContent class="modal alert-triage-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>{{ t("alertTriage.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="alertTriageOpen = false"><X /></button>
-        </header>
-        <p class="muted alert-triage-hint">{{ t("alertTriage.hint") }}</p>
-        <textarea v-model="alertTriagePayload" class="mono alert-triage-payload" rows="6" :placeholder="t('alertTriage.placeholder')" :disabled="alertTriageBusy" spellcheck="false" autofocus />
-        <p v-if="alertTriageError" class="task-error" role="alert">{{ alertTriageError }}</p>
-        <footer class="alert-triage-actions">
-          <button class="primary-button" :disabled="alertTriageBusy || !sanitizeTriagePayload(alertTriagePayload)" @click="runAlertTriage">{{ t("alertTriage.analyze") }}</button>
-        </footer>
-        <div v-if="alertTriageBusy" class="empty compact" role="status"><Loader2 class="spinning" />{{ t("loading") }}</div>
-        <div v-else-if="!alertTriageResult && !alertTriageError" class="empty compact">{{ t("alertTriage.emptyResult") }}</div>
-        <div v-else-if="alertTriageResult" class="alert-triage-result">
-          <div class="alert-triage-summary">
-            <span class="alert-severity-badge" :class="severityClass(alertTriageResult.normalized.severity)">{{ t(`alertTriage.severity.${severityClass(alertTriageResult.normalized.severity)}`) }}</span>
-            <span class="alert-category">{{ t(`alertTriage.category.${alertTriageResult.category}`) }}</span>
-            <strong v-if="alertTriageResult.normalized.title" class="alert-title">{{ alertTriageResult.normalized.title }}</strong>
-          </div>
-          <p v-if="alertTriageResult.normalized.message" class="muted alert-message mono">{{ alertTriageResult.normalized.message }}</p>
-          <p v-if="!alertTriageResult.suggestions.length" class="muted">{{ t("alertTriage.emptyResult") }}</p>
-          <ul v-else class="alert-suggestion-list">
-            <li v-for="suggestion in alertTriageResult.suggestions" :key="suggestion.command" class="alert-suggestion-row">
-              <code class="mono alert-suggestion-command">{{ suggestion.command }}</code>
-              <span class="alert-purpose muted">{{ purposeKeyLabel(suggestion.purposeKey, t) }}</span>
-              <button :disabled="!session" :title="!session ? t('alertTriage.noSession') : ''" :aria-label="!session ? t('alertTriage.noSession') : ''" @click="sendSuggestionToTerminal(suggestion.command)">{{ t("alertTriage.sendToTerminal") }}</button>
-            </li>
-          </ul>
-          <footer v-if="alertTriageResult.suggestions.length" class="alert-triage-actions">
-            <button @click="copySuggestions">{{ t("alertTriage.copyAll") }}</button>
-          </footer>
-        </div>
-      </DialogContent>
-    </Dialog>
 
-    <Dialog :open="!!pasteConfirm" @update:open="(open) => { if (!open) resolvePasteConfirm(false); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="pasteConfirm">
-        <header>
-          <DialogTitle>{{ pasteConfirm.danger ? t("terminalDanger.title") : t("terminalPasteConfirm.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="resolvePasteConfirm(false)"><X /></button>
-        </header>
-        <div v-if="pasteConfirm.danger" class="destructive-copy warning">
-          <span class="destructive-icon"><TriangleAlert /></span>
-          <div>
-            <strong>{{ t("terminalDanger.detected") }}</strong>
-            <p class="task-error mono">{{ pasteConfirm.hits.map((hit) => hit.label).join(" · ") }}</p>
-            <p class="muted">{{ t("terminalDanger.desc") }}</p>
-          </div>
-        </div>
-        <p v-else class="muted">{{ t("terminalPasteConfirm.desc") }}</p>
-        <p class="muted">{{ t("terminalPasteConfirm.summary", { lines: pasteConfirm.lines, chars: pasteConfirm.chars }) }}<template v-if="pasteConfirm.lines > 1"> · {{ t("terminalPasteConfirm.multiline") }}</template></p>
-        <pre class="command-output mono">{{ pasteConfirm.preview }}</pre>
-        <footer>
-          <button @click="resolvePasteConfirm(false)">{{ t("cancel") }}</button>
-          <button :class="pasteConfirm.danger ? 'danger-button' : 'primary-button'" @click="resolvePasteConfirm(true)">{{ t("terminalPasteConfirm.confirm") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
-    <!-- SSH-H1：通用应用内确认弹窗（宿主沙箱 iframe 无 allow-modals，window.confirm
-         恒 false）——预览关闭/大文件预览/重命名覆盖/粘贴覆盖/网页大文件下载/进程强杀
-         此前在真机上全部静默失效，现统一走本弹窗（Promise 原语同 pasteConfirm）。 -->
-    <Dialog :open="!!pendingConfirmDialog" @update:open="(open) => { if (!open) resolvePendingConfirmDialog(false); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="pendingConfirmDialog">
-        <header>
-          <DialogTitle>{{ t("confirm") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="resolvePendingConfirmDialog(false)"><X /></button>
-        </header>
-        <p class="muted confirm-message">{{ pendingConfirmDialog.message }}</p>
-        <footer>
-          <button @click="resolvePendingConfirmDialog(false)">{{ t("cancel") }}</button>
-          <button :class="pendingConfirmDialog.danger ? 'danger-button' : 'primary-button'" @click="resolvePendingConfirmDialog(true)">{{ t("confirm") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
     <Dialog :open="!!dropUploadPrompt" @update:open="(open) => { if (!open) resolveDropUpload('cancel'); }">
       <DialogContent class="modal small-modal" @escape-key-down.prevent>
@@ -9928,6 +9475,40 @@ watch(historyScope, () => {
       </DialogContent>
     </Dialog>
 
+    <WorkbenchSessionDialogs
+      v-model:spawnSessionDialogOpen="spawnSessionDialogOpen"
+      v-model:spawnSessionCommand="spawnSessionCommand"
+      :host-key-prompt="hostKeyPrompt"
+      v-model:rememberHostKey="rememberHostKey"
+      :rdp-cert-prompt="rdpCertPrompt"
+      v-model:rdpCertRemember="rdpCertRemember"
+      :rdp-cert-remaining="rdpCertRemaining"
+      :agent-prompt-head="agentPromptHead"
+      v-model:agentPromptCommand="agentPromptCommand"
+      v-model:agentPromptRemember="agentPromptRemember"
+      :agent-prompt-remaining="agentPromptRemaining"
+      v-model:alertTriageOpen="alertTriageOpen"
+      v-model:alert-triage-payload="alertTriagePayload"
+      :alert-triage-busy="alertTriageBusy"
+      :alert-triage-error="alertTriageError"
+      :alert-triage-result="alertTriageResult"
+      :has-session="!!session"
+      :paste-confirm="pasteConfirm"
+      :pending-confirm-dialog="pendingConfirmDialog"
+      v-model:localOpenConfirmOpen="localOpenConfirmOpen"
+      :t="t"
+      @confirm-command-session-tab="confirmCommandSessionTab"
+      @resolve-host-key="resolveHostKey"
+      @resolve-rdp-certificate="resolveRdpCertificate"
+      @resolve-agent-prompt="resolveAgentPrompt"
+      @run-alert-triage="runAlertTriage"
+      @send-suggestion="sendSuggestionToTerminal"
+      @copy-suggestions="copySuggestions"
+      @resolve-paste-confirm="resolvePasteConfirm"
+      @resolve-pending-confirm="resolvePendingConfirmDialog"
+      @confirm-local-terminal="confirmLocalTerminal"
+    />
+
     <!-- 目录选择器：DOM 末尾渲染，保证叠在设置弹窗/下载询问弹窗之上。
          不传 initialPath：默认从「此电脑」盘符页开始（macOS/Linux 无盘符概念，
          回退到默认下载目录），与 kimi-code-desktop 的选择器行为对齐。 -->
@@ -9954,20 +9535,6 @@ watch(historyScope, () => {
          入口下线后，表单兜底从连接路由失败路径直接弹 ConnectDialog，不再有
          "占用终态先确认替换" 的流程。 -->
 
-    <!-- 本地终端确认：SSH 会话仍连着时先关闭再进入本地模式 -->
-    <Dialog :open="localOpenConfirmOpen" @update:open="(open) => { if (!open) localOpenConfirmOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>{{ t("localTerminal.openConfirmTitle") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="localOpenConfirmOpen = false"><X /></button>
-        </header>
-        <p class="muted">{{ t("localTerminal.openConfirm") }}</p>
-        <footer>
-          <button @click="localOpenConfirmOpen = false">{{ t("cancel") }}</button>
-          <button class="primary-button" @click="confirmLocalTerminal">{{ t("localTerminal.open") }}</button>
-        </footer>
-      </DialogContent>
-    </Dialog>
 
     <input ref="uploadInput" class="hidden" type="file" multiple @change="onUploadInput" />
     <!-- webkitdirectory 会自动携带多选语义；目录选择以相对路径（webkitRelativePath）回传。 -->

@@ -8,7 +8,10 @@
 - P0 完成：基线提交 `9db22a9`；后端 1286、前端 209 文件 / 2279 测试通过，typecheck 干净。
 - P1 完成：12 个后端大模块目录化 + 6 处内联测试迁移；后端 1286 测试全绿。
 - P2 完成：SettingsDialog 2,680→924、SftpTreePane 1,129→424、DockerPanel 1,075→550、OtpPanel 822→360、useUploadChain 890→405、useRecording 750→410、SplitTerminalPane 800→648；全局 CSS 拆为 19 个有序文件；i18n 按 locale 拆分。前端 typecheck + 2279 测试全绿。
-- P3 进行中：已抽出 `useNotices`、`useTerminalTooltip`、`useTerminalSearch`；其余逻辑由单写者 agent 继续。
+- P3 完成（安全边界）：App.vue 11,356→9,981（script 9,136→7,761）；新增 `useNotices`、`useTerminalTooltip`、`useTerminalSearch`、`useDockMetrics`、`usePromptHints`、`useWallpaper`、`useEditorSplitPane`、`useEditorOpenWith`、`useSftpBookmarks`、`useSftpRowSelection`、`useSftpAttributes`、`useSftpTreeWorkspace`、`useWorkbenchPanels`、`useOnlineSearch`、`useWorkbenchPrefs`。剩余为终端状态机/连接/弹窗仲裁等高风险核心，暂不再硬拆。
+- 独立 review 结论：后端与前端均无 P0/P1 行为漂移；已修复 4 个 P2：上传批次决策槽改为实例级、历史条数草稿交回对话框持有、compress 引号测试恢复真实断言、去掉冗余 shell 引号副本与无意义 glob。
+- 阶段提交：`10d0748 refactor: split oversized backend modules and frontend files`（后端 1286、前端 2279 通过）。
+- P4 完成：App.vue 9,981→9,550；抽出 `DockMetricsStrip`、`ConnectionInfoPopover`、`TransferPopover`、`BatchBar`、`WorkbenchSftpDialogs`、`WorkbenchSessionDialogs` 六个模板组件（1,107 行），对应 scoped CSS 随 DOM 迁移。浏览器冒烟修复两处抽取遗漏：`FolderOpen` 图标导入、`upload-watched-once` 事件名与 Vue `.once` 归一化冲突（改为 `upload-watched-single`）。右侧 SFTP 面板与终端状态机保留在 App，避免高耦合区风险。
 
 ## 目标
 

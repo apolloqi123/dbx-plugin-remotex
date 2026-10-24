@@ -1,7 +1,4 @@
 /* App.vue scoped styles (split out of the SFC for maintainability). */
-/* 通用确认弹窗消息保留换行（AI 直连生成结果的「命令行 + Why 行」结构化排版
- * 依赖分行；其余单行消息不受影响）。 */
-.confirm-message { white-space: pre-line; }
 /* SFTP 面板扩展（工作包 B）：搜索/类型过滤、批量条、路径历史、属性弹窗。 */
 .sftp-filter-bar { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding: 5px 7px; }
 .sftp-search-input { display: flex; flex: 1; min-width: 0; height: 26px; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 7px; background: var(--background); }
@@ -31,8 +28,6 @@
 .sftp-soft-error-action:hover:not(:disabled) { background: var(--accent); }
 .sftp-batch-bar .batch-progress { flex: 0 0 auto; overflow: visible; font-variant-numeric: tabular-nums; }
 .batch-progress-bar { flex: 0 1 140px; height: 6px; min-width: 80px; accent-color: var(--primary); }
-.batch-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.batch-progress-row .batch-progress-bar { flex: 1; }
 /* 弹层根规则移到 style.css 全局：portal 后内容根不带本组件 scopeId。 */
 .path-history-title { margin: 4px; color: var(--muted-foreground); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 .path-history-popover .path-item { display: block; width: 100%; height: 26px; overflow: hidden; border: 0; border-radius: 4px; padding: 0 7px; background: transparent; color: var(--foreground); font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -48,32 +43,9 @@
 .bookmark-save-path { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .bookmark-label-input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; background: var(--background); color: var(--foreground); font-size: 11px; }
 .bookmark-save-actions { display: flex; justify-content: flex-end; gap: 4px; }
-/* 传输历史区标题：与任务卡片间的分隔线 */
-.transfer-history-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; border-top: 1px solid var(--border); margin-top: 10px; }
-.transfer-history-title { margin: 0; padding-top: 8px; }
-.transfer-history-actions { display: flex; gap: 2px; padding-top: 6px; }
-.attrs-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 12px; }
-.attrs-grid dt { max-width: 16ch; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
-.attrs-grid dd { margin: 0; overflow-wrap: anywhere; }
-.attrs-permissions-edit { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.attrs-permissions-edit span { flex: 0 0 auto; color: var(--muted-foreground); }
-.attrs-permissions-edit input { flex: 1; }
-/* 权限矩阵：所有者/属组/其他人 × 读/写/执行勾选，与八进制输入双向联动 */
-.perm-matrix { display: grid; grid-template-columns: minmax(56px, auto) repeat(3, 1fr); gap: 4px 6px; align-items: center; margin: 2px 0 8px; font-size: 12px; }
-.perm-matrix-head { color: var(--muted-foreground); font-size: 11px; text-align: center; }
-.perm-matrix-role { color: var(--muted-foreground); white-space: nowrap; }
-.perm-matrix-cell { display: flex; justify-content: center; }
-.perm-matrix-cell input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
 
 /* 工具栏 A+/A- 字号步进按钮（复用 Ctrl+滚轮的 clampFontSize 语义） */
 .font-step-label { font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: 0; }
-
-/* 命令历史下拉（命令弹窗内）：↑↓ 浏览 + 点击一键重发 */
-.command-history { display: flex; flex-direction: column; gap: 4px; }
-.command-history-header { display: flex; align-items: center; justify-content: space-between; color: var(--muted-foreground); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.command-history-list { display: flex; max-height: 168px; flex-direction: column; gap: 1px; overflow: auto; }
-.command-history-item { display: block; width: 100%; overflow: hidden; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; background: transparent; color: var(--foreground); font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.command-history-item:hover { background: var(--accent); border-color: var(--border); }
 
 /* 快速命令栏（工具栏下拉）：M32-A3 后只剩"列表 + 搜索 + 执行"；
    新建/编辑/导入样式随管理视图迁入 QuickCommandsSection。 */
@@ -165,14 +137,6 @@
 .quick-command-limit { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
 .quick-command-manage-hint { min-width: 0; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 连接信息面板（工具栏下拉，只读；根规则见 style.css 全局） */
-.connection-info-popover h3 { margin: 4px 0 8px; font-size: 12px; }
-.connection-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 12px; }
-.connection-info-grid dt { max-width: 16ch; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
-.connection-info-grid dd { display: flex; min-width: 0; align-items: center; gap: 8px; margin: 0; overflow-wrap: anywhere; }
-.connection-info-grid .task-error { font-size: 10px; }
-.connection-info-grid .link-button { flex: 0 0 auto; align-self: center; font-size: 10px; }
-
 /* 终端 MCP 模式快速开关（工具栏弹出层，与设置弹窗共用三档文案；根规则见 style.css 全局） */
 .agent-mode-popover h3 { margin: 4px 0 8px; font-size: 12px; }
 .agent-mode-option { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; cursor: pointer; }
@@ -185,15 +149,6 @@
 .agent-run-command { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
 .agent-interrupt { flex: 0 0 auto; height: 24px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--destructive); font-size: 11px; cursor: pointer; }
 .agent-interrupt:hover { background: var(--accent); }
-.agent-prompt-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; }
-.agent-risk-badge { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
-.agent-risk-badge.low { border: 1px solid var(--border); background: var(--accent); color: var(--muted-foreground); }
-.agent-risk-badge.elevated { border: 1px solid color-mix(in srgb, var(--destructive) 55%, transparent); background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive); }
-.agent-prompt-command { display: flex; flex-direction: column; gap: 5px; padding: 4px 0 8px; font-size: 12px; }
-.agent-prompt-command span { color: var(--muted-foreground); }
-.agent-prompt-command textarea { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; background: var(--background); color: var(--foreground); font-family: var(--terminal-font-family); font-size: 12px; }
-.agent-prompt-command textarea:focus { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); outline: none; }
-.agent-prompt-countdown { padding-bottom: 10px; }
 /* —— 断点续传 / 进程管理 / 会话录制（F1-F3）—— */
 .is-recording { color: var(--destructive); }
 /* 录制中：悬浮控制条（红色呼吸点 + 时长 mono 等宽不跳动 + 停止按钮）。
@@ -521,7 +476,3 @@ body.resizing-col { cursor: col-resize !important; user-select: none; }
 .terminal-ai-fix-close:hover {
   color: var(--popover-foreground);
 }
-/* RDP 证书确认弹窗：状态徽标 + 倒计时行（弹窗骨架复用 host-key-modal 的
-   .remember/.fingerprint 全局类）。 */
-.rdp-cert-status { margin: 0 0 8px; font-size: 11px; }
-.rdp-cert-expires { margin: 0 0 8px; font-size: 11px; }

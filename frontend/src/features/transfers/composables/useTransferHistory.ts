@@ -51,7 +51,6 @@ export function useTransferHistory(options: {
 
   const resumableTasks = ref<ResumableUploadTask[]>([]);
   const resumableLoading = ref(false);
-  const resumeInput = ref<HTMLInputElement | null>(null);
   const resumeTargetTaskId = ref("");
 
   async function refreshResumableUploads() {
@@ -68,7 +67,6 @@ export function useTransferHistory(options: {
 
   function beginResumeUpload(task: ResumableUploadTask) {
     resumeTargetTaskId.value = task.taskId;
-    resumeInput.value?.click();
   }
 
   async function onResumeFilePicked(event: Event) {
@@ -102,7 +100,6 @@ export function useTransferHistory(options: {
     confirmTransferHistoryClear,
     resumableTasks,
     resumableLoading,
-    resumeInput,
     resumeTargetTaskId,
     refreshResumableUploads,
     beginResumeUpload,

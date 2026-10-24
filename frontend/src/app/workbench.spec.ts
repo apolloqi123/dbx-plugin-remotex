@@ -820,6 +820,17 @@ const composablesScript = Object.values(
   import.meta.glob("../**/composables/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
 ).join("\n");
 
+// 模板域同口径：App.vue 的弹层持续抽到 ./components/*.vue（单写者模板拆分）。
+// 抽取组件内的 Popover/Dialog 根以与 App 状态同名的 prop 绑定（:open="xxxOpen"），
+// 因此把组件模板并入同一扫描源，守卫的"每个弹层都必须接入收口机制"不因迁移失守。
+const appComponentTemplates = Object.values(
+  import.meta.glob("./components/*.vue", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
+).map((source) => {
+  const styleIndex = source.indexOf("<style");
+  return source.slice(source.indexOf("<template>"), source.lastIndexOf("</template>", styleIndex < 0 ? source.length : styleIndex));
+}).join("\n");
+const appTemplateSurface = `${appTemplate}\n${appComponentTemplates}`;
+
 /** 模板中 class 含 marker 且由 v-if 守卫的元素 → 守卫表达式的状态 ref 基名。
  *  reka Popover 面板（Phase 5）无 v-if：内容 portal、由包裹的 <Popover :open="ref">
  *  受控，向回找最近的 Popover 根提取守卫 ref。Phase 6 的 Dialog 同理：弹窗壳是
@@ -828,9 +839,9 @@ const composablesScript = Object.values(
 function templateGuardRefs(classMarker: string): string[] {
   const refs = new Set<string>();
   const marker = new RegExp(`class="[^"]*${classMarker}`, "g");
-  for (let hit = marker.exec(appTemplate); hit; hit = marker.exec(appTemplate)) {
-    const tagStart = appTemplate.lastIndexOf("<", hit.index);
-    const guard = appTemplate.slice(tagStart, hit.index).match(/v-if="([A-Za-z_$][\w$]*)/);
+  for (let hit = marker.exec(appTemplateSurface); hit; hit = marker.exec(appTemplateSurface)) {
+    const tagStart = appTemplateSurface.lastIndexOf("<", hit.index);
+    const guard = appTemplateSurface.slice(tagStart, hit.index).match(/v-if="([A-Za-z_$][\w$]*)/);
     if (guard) {
       refs.add(guard[1]);
       continue;
@@ -843,7 +854,7 @@ function templateGuardRefs(classMarker: string): string[] {
     let bestRef = "";
     for (const rootTag of ["Popover", "Dialog"]) {
       const openTagRe = new RegExp(`<${rootTag}\\b[^>]*>`, "g");
-      for (let hit = openTagRe.exec(appTemplate); hit && hit.index < tagStart; hit = openTagRe.exec(appTemplate)) {
+      for (let hit = openTagRe.exec(appTemplateSurface); hit && hit.index < tagStart; hit = openTagRe.exec(appTemplateSurface)) {
         const ref = hit[0].match(/:open="!*([A-Za-z_$][\w$]*)/);
         if (ref && hit.index > bestStart) {
           bestStart = hit.index;
@@ -919,7 +930,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
     // 锚点按钮对 reka DismissableLayer 属于"外部"：pointerdown 未被阻止时会先
     // 关闭弹层，随后 click 再把它打开，表现为"第二次点击收不回去"。focus-outside
     // 已由 shared/ui/popover/PopoverContent.vue 统一 prevent，无需在按钮处理。
-    const anchors = [...appTemplate.matchAll(/<PopoverAnchor as-child>([\s\S]*?)<\/PopoverAnchor>/g)]
+    const anchors = [...appTemplateSurface.matchAll(/<PopoverAnchor as-child>([\s\S]*?)<\/PopoverAnchor>/g)]
       .map((hit) => hit[1])
       .filter((block) => /<button[\s\S]*@click/.test(block));
     expect(anchors.length, "锚点按钮提取为空（regex 失效）").toBeGreaterThan(10);
@@ -928,7 +939,12 @@ describe("App.vue popover/modal wiring structural guard", () => {
     }
     // 工具条里的传输按钮不在 PopoverAnchor 内（弹层用隐形锚点），同样阻止
     // pointerdown；因此只要求总数不少于锚点按钮数。
-    expect(appTemplate.match(/@pointerdown\.stop/g)?.length ?? 0, "存在未阻止 pointerdown 的锚点按钮").toBeGreaterThanOrEqual(anchors.length);
+    expect(appTemplateSurface.match(/@pointerdown\.stop/g)?.length ?? 0, "存在未阻止 pointerdown 的锚点按钮").toBeGreaterThanOrEqual(anchors.length);
+  });
+
+  it("binds the alert triage payload two-way", () => {
+    // 告警排查 textarea 的输入必须回写 App；只传单向 prop 时「分析」按钮永久禁用。
+    expect(appTemplateSurface).toContain('v-model:alert-triage-payload="alertTriagePayload"');
   });
 });
 
