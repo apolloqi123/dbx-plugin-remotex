@@ -11,7 +11,8 @@
 - P3 完成（安全边界）：App.vue 11,356→9,981（script 9,136→7,761）；新增 `useNotices`、`useTerminalTooltip`、`useTerminalSearch`、`useDockMetrics`、`usePromptHints`、`useWallpaper`、`useEditorSplitPane`、`useEditorOpenWith`、`useSftpBookmarks`、`useSftpRowSelection`、`useSftpAttributes`、`useSftpTreeWorkspace`、`useWorkbenchPanels`、`useOnlineSearch`、`useWorkbenchPrefs`。剩余为终端状态机/连接/弹窗仲裁等高风险核心，暂不再硬拆。
 - 独立 review 结论：后端与前端均无 P0/P1 行为漂移；已修复 4 个 P2：上传批次决策槽改为实例级、历史条数草稿交回对话框持有、compress 引号测试恢复真实断言、去掉冗余 shell 引号副本与无意义 glob。
 - 阶段提交：`10d0748 refactor: split oversized backend modules and frontend files`（后端 1286、前端 2279 通过）。
-- P4 完成：App.vue 9,981→9,550；抽出 `DockMetricsStrip`、`ConnectionInfoPopover`、`TransferPopover`、`BatchBar`、`WorkbenchSftpDialogs`、`WorkbenchSessionDialogs` 六个模板组件（1,107 行），对应 scoped CSS 随 DOM 迁移。浏览器冒烟修复两处抽取遗漏：`FolderOpen` 图标导入、`upload-watched-once` 事件名与 Vue `.once` 归一化冲突（改为 `upload-watched-single`）。右侧 SFTP 面板与终端状态机保留在 App，避免高耦合区风险。
+- P4 完成：App.vue 9,981→9,550；抽出 `DockMetricsStrip`、`ConnectionInfoPopover`、`TransferPopover`、`BatchBar`、`WorkbenchSftpDialogs`、`WorkbenchSessionDialogs` 六个模板组件（1,107 行），对应 scoped CSS 随 DOM 迁移。浏览器冒烟修复三处抽取问题：`FolderOpen` 图标导入、`upload-watched-once` 事件名与 Vue `.once` 归一化冲突（改为 `upload-watched-single`）、告警排查 textarea 丢失两向绑定（补回归守卫）；另清理死 `resumeInput` ref 与无用 prop。右侧 SFTP 面板与终端状态机保留在 App，避免高耦合区风险。
+- P5 完成：`scripts/test.sh --skip-host` 全部通过（后端 1286、前端 2280、dead-code 零警告、MCP stdio smoke、本地终端 smoke）。产物：`dist/io.dbx.sshx-0.7.9-beta.20-darwin-arm64.dbxp`，14,843,679 bytes，SHA-256 `63badcfd5f2c79bfd8f5ce9b1c37673dba7d1a074c5ba1e1da8e79df223c1a90`。
 
 ## 目标
 
