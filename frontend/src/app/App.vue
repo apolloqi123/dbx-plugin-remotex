@@ -8,20 +8,15 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import {
-  Archive,
   ArrowLeft,
-  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Disc,
-  Eye,
-  EyeOff,
   Film,
   Pause,
   Play,
   ArrowLeftRight,
-  ArrowUp,
   ArrowUpDown,
   Bot,
   Braces,
@@ -31,38 +26,26 @@ import {
   Proportions,
   SlidersHorizontal,
   Copy,
-  Download,
   Eraser,
   ExternalLink,
   File as FileIcon,
-  FileInput,
-  FilePlus,
   FileText,
   FileUp,
-  KeyRound,
   Plus,
-  Folder,
   FolderOpen,
-  FolderPlus,
-  FolderUp,
   Gauge,
   ImagePlay,
   History,
-  Home,
   Info,
-  Link2,
   ListChecks,
   Loader2,
-  Lock,
   Network,
-  PackageOpen,
   Palette,
   PanelRightClose,
   Pencil,
   PlugZap,
   RefreshCw,
   Save,
-  Scissors,
   Search,
   Settings,
   ShieldCheck,
@@ -70,10 +53,7 @@ import {
   Square,
   SquarePlus,
   ListPlus,
-  LocateFixed,
-  LocateOff,
   SquareTerminal,
-  Star,
   Terminal as TerminalIcon,
   TextSelect,
   Trash2,
@@ -88,7 +68,7 @@ import {
 import { Osc7DirectoryParser } from "../features/terminal/lib/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/terminalPromptNewline";
 import { handleOsc52ClipboardWrite } from "../features/terminal/lib/terminalOsc";
-import { confirmDialog, useConfirmDialogHost } from "../shared/lib/confirmDialog";
+import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
 import { subscribeHostEnvironment } from "../../../shared/frontend/hostThemeRuntime";
 import {
   cwdFromUserVar,
@@ -150,16 +130,8 @@ import { settingsPreferences } from "../features/settings/lib/settingsPreference
 import { cursorAbsoluteRow } from "../features/terminal/lib/terminalAnchor";
 import { evaluateGhost } from "../features/terminal/lib/terminalGhostSuggest";
 import { ARBITER_PRIORITIES, resolveKeyOwners, type ArbiterClaim, type ClaimKey, type KeyOwners, type OverlayId } from "../shared/lib/overlayArbiter";
-// AI 助手（Warp AI 对齐批，IMPL_PLAN_WARP_AI_TERMINAL）：宿主 AI 通道封装 +
-// `#` 命令搜索状态机 + 失败修复（输出采集/脱敏）+ 请求构造。插件零密钥，
-// provider/模型全在宿主 Settings → AI；能力缺失全链路降级。
-import { aiBridgeAvailable, aiCompletionAvailable, aiRecommendationsAvailable, clearAiRecommendations, generateAiText, listAiModels, openAiConversation, pickDefaultAiModel, setAiRecommendations } from "../features/agent/lib/aiBridge";
-import { TailCapture } from "../features/agent/lib/aiCapture";
-import { parseAiResultText } from "../features/agent/lib/aiResultParse";
-import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest } from "../features/agent/lib/aiRequests";
-import { loadAiSettings, saveAiSettings, sanitizeAiSettings, type AiSettings } from "../features/agent/lib/aiSettings";
-import { isExpectedNonZeroExit, shouldOfferAiFix } from "../features/agent/lib/aiFix";
-import { prepareAiOutputSnapshot, stripAnsiEscapes } from "../shared/lib/outputRedaction";
+// AI 助手（Warp AI 对齐批）：宿主 AI 通道封装与失败修复已收口
+// composables/useAiAssistant；`#` 命令搜索状态机在 useTerminalAiSearch。
 // 结构化补全（FIG wave-1 最终架构）：唯一结构化补全来源 = fig 引擎
 // （vendored amazon-q parser + 全量语料，经冻结接缝 FigCompletionSource 注入
 // CompletionController）；legacy 补全目录已退役，无命中即
@@ -224,12 +196,14 @@ import { usePluginEvents } from "./composables/usePluginEvents";
 import { useDockMetrics } from "./composables/useDockMetrics";
 import { useEditorOpenWith } from "./composables/useEditorOpenWith";
 import { useEditorSplitPane } from "./composables/useEditorSplitPane";
+import { useAiAssistant } from "./composables/useAiAssistant";
 import { useNotices } from "./composables/useNotices";
 import { useOnlineSearch } from "./composables/useOnlineSearch";
 import { usePromptHints } from "./composables/usePromptHints";
 import { useSftpAttributes } from "./composables/useSftpAttributes";
 import { useSftpBookmarks } from "./composables/useSftpBookmarks";
 import { useSftpRowSelection } from "./composables/useSftpRowSelection";
+import { useSerialUpload } from "./composables/useSerialUpload";
 import { useSftpTreeWorkspace } from "./composables/useSftpTreeWorkspace";
 import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "./composables/sftpRemotePaths";
 import { useWallpaper } from "./composables/useWallpaper";
@@ -249,7 +223,6 @@ import { useSftpDelete } from "../features/sftp/composables/useSftpDelete";
 import { useSftpListLayout } from "../features/sftp/composables/useSftpListLayout";
 import { useSftpSelectionClipboard } from "../features/sftp/composables/useSftpSelectionClipboard";
 import { useSftpNavigation } from "../features/sftp/composables/useSftpNavigation";
-import SftpTreePane from "../features/sftp/components/SftpTreePane.vue";
 import OtpPanel from "../features/security/components/OtpPanel.vue";
 import ImportWizard from "../features/connections/components/ImportWizard.vue";
 import { useTerminalAppearance } from "../features/terminal/composables/useTerminalAppearance";
@@ -402,10 +375,11 @@ import BatchBar from "./components/BatchBar.vue";
 import TransferPopover from "./components/TransferPopover.vue";
 import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
 import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
+import SftpWorkspacePanel from "./components/SftpWorkspacePanel.vue";
 import { Switch } from "../shared/ui/switch/index";
 import type { EditorConfig } from "../features/sftp/lib/editorRules";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select/index";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from "../shared/ui/context-menu/index";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../shared/ui/context-menu/index";
 import { Popover, PopoverAnchor, PopoverContent } from "../shared/ui/popover/index";
 import { Dialog, DialogContent, DialogTitle } from "../shared/ui/dialog/index";
 import SettingsDialog from "../features/settings/components/SettingsDialog.vue";
@@ -413,16 +387,10 @@ import TerminalContextMenu from "../features/terminal/components/TerminalContext
 import PortForwardDialog from "../features/forwarding/components/PortForwardDialog.vue";
 import TelnetConnectDialog, { type TelnetConnectOptions } from "../features/telnet/components/TelnetConnectDialog.vue";
 import SerialConnectDialog, { type SerialConnectOptions } from "../features/serial/components/SerialConnectDialog.vue";
-// 串口文件上传（NyaTerm 对齐 P0-3）：弹窗 + overlay 状态机在 lib/serialUpload。
+// 串口文件上传（NyaTerm 对齐 P0-3）：弹窗 + overlay 状态机在 lib/serialUpload，
+// 状态/送数/取消在 composables/useSerialUpload；模板复位仍需初始态构造器。
 import SerialUploadDialog from "../features/serial/components/SerialUploadDialog.vue";
-import {
-  initialSerialUploadState,
-  serialUploadActive,
-  serialUploadPercent,
-  streamSerialUploadFile,
-  type SerialUploadProtocol,
-  type SerialUploadUiState,
-} from "../features/serial/lib/serialUpload";
+import { initialSerialUploadState } from "../features/serial/lib/serialUpload";
 // VNC 会话（nyaterm-parity P2 2d）：连接表单 + 画布表面，帧通道在
 // handleBinary 的 vnc/frame/{id} 分支接入。
 import VncConnectDialog, { type VncConnectOptions } from "../features/remote-desktop/components/VncConnectDialog.vue";
@@ -681,11 +649,45 @@ const {
 // 存储迁移批 3：传输/下载/建议偏好消毒器已下沉 lib/preferencesMirror
 // （镜像 schema 同处、可单测），App 统一从那里导入。
 // —— AI 助手（Warp AI 对齐批，IMPL_PLAN_WARP_AI_TERMINAL）——
-// 设置权威值 pluginStore（单键 JSON），内存态供门控与设置页回显；bridge 能力
-// 位挂载后再探一次（桥 bootstrap 与 UI 挂载同批完成），运行时调用点各做新鲜
-// 探测（aiBridgeOk），不受挂载时序影响。
-const aiSettingsState = ref<AiSettings>(loadAiSettings());
-const aiBridgeReady = ref(false);
+// 设置权威值/修复条/执行期输出采集/推荐位收口在 composables/useAiAssistant；
+// 终端与后声明偏好经 getter 惰性读取。`#` 命令搜索状态机留在 App（模板直接
+// 消费其解构态）。
+const {
+  aiSettingsState,
+  aiBridgeReady,
+  aiFixBar,
+  aiBridgeOk,
+  updateAiSettings,
+  resetAiFixConsent,
+  aiContextExtras,
+  aiFixFromBar,
+  aiAssistFromTerminal,
+  aiFixBarStyle,
+  maybeOfferAiFix,
+  captureOutputChunk,
+  beginAiCommand,
+  resetAiFixForSession,
+  clearFixRecommendation,
+} = useAiAssistant({
+  t: (key, values) => t(key, values),
+  showNotice,
+  getLocale: () => locale.value,
+  getConnectionId: () => connectionId.value,
+  getTerminalCwd: () => terminalCwd.value,
+  isLocalMode: () => isLocalMode.value,
+  getLocalShellPref: () => localShellPref.value,
+  getLocalShells: () => localShells.value,
+  isApplePlatform: () => applePlatform,
+  sniffShell: () => sniffTerminalShell(),
+  terminal: () => terminal,
+  commandMarker: () => commandMarker,
+  suggestionViewportHeight: () => suggestionViewport.value.height,
+  readSuggestionAnchor: () => readTerminalSuggestionAnchor(),
+  replaceLine: (command) => {
+    replaceTerminalLineWith(command, false);
+    terminal?.focus();
+  },
+});
 // `#` 命令搜索状态机/等待冻结/锚点/直连生成与分屏窗格共用同一 composable。
 const aiSearch = useTerminalAiSearch({
   terminal: () => terminal,
@@ -719,43 +721,6 @@ const {
   barEl: aiSearchBarEl,
   barStyle: aiSearchBarStyle,
 } = aiSearch;
-// 修复条状态：command/exitCode/output 已是脱敏后快照（触发时一次成型），
-// anchorY 为触发光标行顶（相对 terminal-host），bottom 样式按它落位。
-const aiFixBar = ref<{ command: string; exitCode: number; output: string; anchorY: number } | null>(null);
-// 执行期输出采集（仅 fix 开启时有意义；采集与解码器随会话复位）。
-const aiOutputCapture = new TailCapture();
-let aiOutputDecoder = new TextDecoder("utf-8", { fatal: false });
-function aiBridgeOk(): boolean {
-  return aiBridgeAvailable(window.dbxPlugin);
-}
-function updateAiSettings(patch: Partial<AiSettings>) {
-  aiSettingsState.value = sanitizeAiSettings({ ...aiSettingsState.value, ...patch });
-  saveAiSettings(aiSettingsState.value);
-}
-function resetAiFixConsent() {
-  updateAiSettings({ fixConsent: false });
-  showNotice(t("aiSettings.resetConsentDone"));
-}
-/** AI 上下文公共位（多语言 / 多系统 / 多 shell，Warp AI 对齐批）：locale 让
- *  LLM 以终端用户语言回答；shell 语义是命令生成的关键——本地终端取 shell
- *  偏好（basename）与平台口径，SSH 只在提示符采样判出 PowerShell/cmd 时带
- *  （复用补全的采样，不为 AI 另写探测；远端 OS 刻意不发探测命令，AI 从输出
- *  推断——诚实省略优于猜测）。 */
-function aiContextExtras() {
-  const extras: Record<string, unknown> = { locale: locale.value };
-  if (connectionId.value) extras.connectionId = connectionId.value;
-  if (terminalCwd.value) extras.cwd = terminalCwd.value;
-  if (isLocalMode.value) {
-    const shellProgram = localShellPref.value || localShells.value.find((entry) => entry.isDefault)?.program;
-    if (shellProgram) extras.shell = shellProgram.split(/[\\/]/).pop();
-    const platform = typeof navigator !== "undefined" ? navigator.platform.toLowerCase() : "";
-    extras.os = applePlatform ? "macos" : platform.includes("win") ? "windows" : "linux";
-  } else {
-    const sniffed = sniffTerminalShell();
-    if (sniffed) extras.shell = sniffed;
-  }
-  return extras;
-}
 
 // Apple 平台判定（Cmd 为主修饰键）：既有的全选语义与新增的快捷键默认键位都要用，
 // 因此在此单点声明，供后面的偏好初始值与终端选项复用。
@@ -769,6 +734,14 @@ const terminalHost = ref<HTMLElement>();
 const sftpPane = ref<HTMLElement>();
 // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
 const sftpTreePane = ref<{ scrollPathToTop(path: string): Promise<boolean> } | null>(null);
+/** SftpWorkspacePanel 把内部树实例回填到上面的 ref，保持目录跟随即有语义。 */
+function bindSftpWorkspaceTreePane(api: { scrollPathToTop(path: string): Promise<boolean> } | null) {
+  sftpTreePane.value = api;
+}
+/** 路径输入框随工具栏移入子组件：回填 composable 的 ref，进入编辑态仍能聚焦。 */
+function bindSftpPathBarInput(el: HTMLInputElement | null) {
+  pathBarInputEl.value = el;
+}
 const paneContainer = ref<HTMLElement>();
 const zmodemInput = ref<HTMLInputElement>();
 const hostContext = ref<Record<string, unknown>>({});
@@ -1473,17 +1446,22 @@ const isSerialMode = computed(() => serialSession.value !== null);
 const serialTarget = computed(() => (serialSession.value ? `${serialSession.value.port}@${serialSession.value.baudRate}` : ""));
 // 串口文件上传 overlay 状态：进度由 sidecar 的 serial/upload/progress 事件
 // 驱动；running 期间吞掉键入（协议控制字符窗口）且禁止并发第二次 upload。
-const serialUpload = ref<SerialUploadUiState>(initialSerialUploadState());
-const serialUploadDialogOpen = ref(false);
-let serialUploadAbortRequested = false;
-const serialUploadBusy = computed(() => serialUploadActive(serialUpload.value));
-const serialUploadOverlayVisible = computed(() => serialUpload.value.phase !== "idle");
-const serialUploadPercentValue = computed(() => serialUploadPercent(serialUpload.value));
-const serialUploadStatusLabel = computed(() => {
-  const upload = serialUpload.value;
-  if (upload.phase === "complete") return t("serial.upload.complete", { name: upload.fileName });
-  if (upload.phase === "failed") return t("serial.upload.failed", { reason: upload.reason });
-  return t("serial.upload.running", { name: upload.fileName, percent: serialUploadPercentValue.value });
+// 状态机/送数/取消收口在 composables/useSerialUpload（会话关闭经
+// cancelForSessionClose 静默复位）。
+const {
+  serialUpload,
+  serialUploadDialogOpen,
+  serialUploadBusy,
+  serialUploadOverlayVisible,
+  serialUploadPercentValue,
+  serialUploadStatusLabel,
+  startSerialUpload,
+  cancelSerialUpload,
+  cancelForSessionClose: cancelSerialUploadForSessionClose,
+} = useSerialUpload({
+  t: (key, values) => t(key, values),
+  showError,
+  getSessionId: () => serialSession.value?.sessionId,
 });
 // RDP 会话（nyaterm-parity P3-4）：与 SSH/本地/Telnet/串口/VNC 同款互斥展示，
 // 并入 localUiMode。画面走 RdpSurface 画布（帧从 rdp/frame/{id} 解码），状态
@@ -2911,130 +2889,11 @@ function overlayOwnsKey(owners: KeyOwners, event: KeyboardEvent, overlay: Overla
   return dimension !== null && owners[dimension] === overlay;
 }
 
-// ---------------------------------------------------------------------------
-// AI 助手（Warp AI 对齐批，IMPL_PLAN_WARP_AI_TERMINAL）：# 命令搜索 / 失败
-// 修复 / 唤起助手。三条体验都只「发送快照到宿主 AI 面板」——AI 生成内容一律
-// 不回写 PTY、不代执行（执行权在人，红线见方案 §0）；插件零密钥，能力缺失
-// 全链路可见降级（aiBridgeOk 各调用点新鲜探测）。
-// ---------------------------------------------------------------------------
-
-// —— 推荐位（P2，host.ai.setRecommendations）：修复条在场时向宿主 AI 面板
-// 推一张「修复上次失败命令」卡（≤5 张、随工作台存续）；清空点与新命令开始/
-// 条消失/会话复位对齐，best-effort 不阻塞主链路。
-let fixRecommendationPushed = false;
-function pushFixRecommendation() {
-  const bar = aiFixBar.value;
-  const api = window.dbxPlugin;
-  if (!bar || fixRecommendationPushed || !aiRecommendationsAvailable(api)) return;
-  fixRecommendationPushed = true;
-  void setAiRecommendations(api, {
-    context: { ...aiContextExtras(), command: bar.command, exitCode: bar.exitCode, kind: "ai-fix" },
-    items: [{ id: "ssh-ai-fix", label: t("aiFix.recommendation"), prompt: `Fix this failed command: ${bar.command} (exit code ${bar.exitCode})`, order: 0 }],
-  }).catch(() => undefined);
-}
-function clearFixRecommendation() {
-  if (!fixRecommendationPushed) return;
-  fixRecommendationPushed = false;
-  void clearAiRecommendations(window.dbxPlugin).catch(() => undefined);
-}
-
-/** 本地白名单分诊（ssh/alert/triage 既有 RPC，best-effort）：category +
- *  白名单建议命令作 prompt 提示位，帮 LLM 收窄误诊面；失败静默跳过。 */
-async function aiFixTriageHint(output: string): Promise<string | undefined> {
-  if (!output.trim()) return undefined;
-  try {
-    const view = await window.dbxPlugin.invoke<{ category?: string; suggestions?: Array<{ command?: string }> }>("ssh/alert/triage", { payload: output });
-    const commands = (view?.suggestions ?? []).map((item) => item?.command).filter((c): c is string => typeof c === "string" && c.length > 0).slice(0, 3);
-    if (!view?.category && !commands.length) return undefined;
-    return [`category=${view?.category ?? "unknown"}`, ...(commands.length ? [`whitelisted suggestions: ${commands.join("; ")}`] : [])].join(", ");
-  } catch {
-    return undefined;
-  }
-}
-
-/** 修复条发起：优先直连生成（aiCompletion 能力位，桌面运行时）——列模型 →
- *  挑默认 → generateText → 弹生成结果确认 → **用户显式确认后回填输入行**
- *  （不回车不执行，红线不变）；直连不可用/失败/取消回退面板会话（ask/agent
- *  由设置 opt-in）。首次发送过快照预览确认（记「不再询问」）。 */
-async function aiFixFromBar() {
-  const bar = aiFixBar.value;
-  if (!bar) return;
-  const api = window.dbxPlugin;
-  if (!aiBridgeOk()) {
-    showNotice(t("aiFix.unavailable"));
-    return;
-  }
-  if (!aiSettingsState.value.fixConsent) {
-    const message = `${t("aiFix.confirmBody", { command: bar.command, code: String(bar.exitCode) })}\n\n${bar.output}`;
-    const accepted = await confirmDialog(message);
-    if (!accepted) return;
-    updateAiSettings({ fixConsent: true });
-  }
-  if (aiCompletionAvailable(api)) {
-    try {
-      const model = pickDefaultAiModel(await listAiModels(api));
-      if (!model) throw new Error("no configured ai model");
-      const triageHint = await aiFixTriageHint(bar.output);
-      const prompt = buildAiFixPrompt({ command: bar.command, exitCode: bar.exitCode, output: bar.output, triageHint });
-      const result = (await generateAiText(api, { configId: model.configId, model: model.model, prompt })).trim();
-      // Warp 同款默认插入（2026-10-02 体验反馈，与 `#` 路径一致）：生成即回填
-      // 光标处，不弹回填确认——回填不等于执行，回车权仍在用户；Why 行走通知。
-      const parsed = parseAiResultText(result);
-      if (!parsed) throw new Error("empty ai response");
-      aiFixBar.value = null;
-      clearFixRecommendation();
-      replaceTerminalLineWith(parsed.command, false);
-      terminal?.focus();
-      showNotice(parsed.why || t("aiFix.filledNotice"));
-      return;
-    } catch {
-      // 直连失败（无模型/宿主确认取消/供应商错误已泛化）→ 回退面板会话。
-    }
-  }
-  const sent = await openAiConversation(api, buildAiFixRequest({ command: bar.command, exitCode: bar.exitCode, output: bar.output, context: aiContextExtras(), agentMode: aiSettingsState.value.agentMode })).catch(() => false);
-  if (sent) {
-    aiFixBar.value = null;
-    clearFixRecommendation();
-  }
-  showNotice(t(sent ? "aiFix.sentNotice" : "aiFix.unavailable"));
-}
-
-/** 无选区时取 buffer 尾部 n 行（可读文本；发送前统一过脱敏管线）。 */
-function readTerminalTailLines(lines: number): string {
-  const term = terminal;
-  if (!term) return "";
-  try {
-    const buffer = term.buffer.active;
-    const start = Math.max(0, buffer.length - lines);
-    const rows: string[] = [];
-    for (let y = start; y < buffer.length; y += 1) rows.push(buffer.getLine(y)?.translateToString(true) ?? "");
-    return rows.join("\n").replace(/\s+$/, "");
-  } catch {
-    return "";
-  }
-}
-
-/** ai-assist 热键：选中文本优先，无选区取屏幕尾部 40 行；快照过脱敏管线后
- *  发起 ask 会话。空上下文也可发（通用协助）。 */
-async function aiAssistFromTerminal() {
-  if (!aiBridgeOk()) {
-    showNotice(t("aiAssist.unavailable"));
-    return;
-  }
-  const selection = terminal?.hasSelection() ? (terminal.getSelection() ?? "") : "";
-  const raw = selection || readTerminalTailLines(40);
-  const sent = await openAiConversation(window.dbxPlugin, buildAiAssistRequest({ query: "", selection: prepareAiOutputSnapshot(raw), context: aiContextExtras(), agentMode: aiSettingsState.value.agentMode })).catch(() => false);
-  showNotice(t(sent ? "aiAssist.sentNotice" : "aiAssist.unavailable"));
-}
-
-/** 修复条样式：底边贴触发光标行顶（宿主净高/锚点不可测时回退 40px，clamp ≥2px）。 */
-const aiFixBarStyle = computed(() => {
-  const bar = aiFixBar.value;
-  if (!bar) return undefined;
-  const hostHeight = suggestionViewport.value.height || 0;
-  const bottom = hostHeight > 0 && bar.anchorY >= 0 ? Math.max(2, hostHeight - bar.anchorY + 2) : 40;
-  return { bottom: `${bottom}px` };
-});
+// AI 助手（Warp AI 对齐批）：设置/修复条/输出采集/推荐位在
+// composables/useAiAssistant；`#` 命令搜索状态机在 useTerminalAiSearch
+// （上面的 aiSearch）。三条体验都只「发送快照到宿主 AI 面板」——AI 生成内容
+// 一律不回写 PTY、不代执行（执行权在人）；插件零密钥，能力缺失全链路可见
+// 降级（aiBridgeOk 各调用点新鲜探测）。
 
 // —— 行改写追踪（issue #192 失真回退采集）：键入模型在 Tab 补全 / ↑ 召回 /
 // 光标移动等 shell 改写行的事件后与真实行失真（事件本身不进模型），主路径
@@ -3381,10 +3240,7 @@ function resetCommandMarker() {
   // 缓冲（解码器重建，避免跨会话的多字节残态）。
   aiSearch.reset();
   resetPromptHintsQuiet();
-  aiFixBar.value = null;
-  clearFixRecommendation();
-  aiOutputCapture.reset();
-  aiOutputDecoder = new TextDecoder("utf-8", { fatal: false });
+  resetAiFixForSession();
 }
 
 function applyCommandMarker(updates: Osc633StreamUpdates) {
@@ -3415,9 +3271,7 @@ function applyCommandMarker(updates: Osc633StreamUpdates) {
     // AI 修复（Warp AI 对齐批）：E 帧 = 新命令边界——快进快出命令的
     // commandActive 合并终值是 false（E/C/D 同 chunk），清零不能挂在它上。
     // 采集缓冲清零 + 旧修复条让位 + 推荐卡撤下。
-    aiOutputCapture.reset();
-    aiFixBar.value = null;
-    clearFixRecommendation();
+    beginAiCommand();
   }
   if (updates.commandActive === true) {
     commandMarker.exitCode = null;
@@ -3451,32 +3305,6 @@ function applyCommandMarker(updates: Osc633StreamUpdates) {
   }
 }
 
-/** AI 修复条触发（Warp Fix-with-AI 同位，在 writeTerminalOutput 的采集之后
- *  调用——快进快出命令 E/C/D 同 chunk，快照必须含同 chunk 正文）：非零退出 +
- *  门干净 + 非预期非零命令（test/grep 豁免，lib/aiFix）→ 以当前快照出条；
- *  anchorY 取当前光标行顶。 */
-function maybeOfferAiFix(updates: Osc633StreamUpdates) {
-  const exitCode = updates.lastExitCode;
-  const command = commandMarker.command;
-  if (typeof exitCode !== "number" || exitCode === 0 || !command) return;
-  if (
-    !shouldOfferAiFix(
-      { bridgeAvailable: aiBridgeOk(), fixEnabled: aiSettingsState.value.fix, alternateActive: terminal?.buffer.active.type === "alternate" },
-      exitCode,
-      command,
-    )
-  ) {
-    return;
-  }
-  aiFixBar.value = {
-    command,
-    exitCode,
-    output: prepareAiOutputSnapshot(aiOutputCapture.raw()),
-    anchorY: readTerminalSuggestionAnchor()?.y ?? -1,
-  };
-  pushFixRecommendation();
-}
-
 function writeTerminalOutput(data: Uint8Array) {
   const now = Date.now();
   for (const path of directoryParser.push(data)) {
@@ -3495,7 +3323,7 @@ function writeTerminalOutput(data: Uint8Array) {
   applyCommandMarker(aiChunkUpdates);
   // AI 修复输出采集（Warp AI 对齐批）：解析（E 帧清零缓冲）之后的同 chunk
   // 正文照采——执行期 chunk 靠 active 判定，快进快出命令靠 D 帧 chunk 判定。
-  if (aiChunkWasActive || commandMarker.active || aiChunkUpdates.lastExitCode != null) aiOutputCapture.append(stripAnsiEscapes(aiOutputDecoder.decode(data, { stream: true })));
+  captureOutputChunk(data, aiChunkWasActive || commandMarker.active || aiChunkUpdates.lastExitCode != null);
   maybeOfferAiFix(aiChunkUpdates);
   // 提示符换行修复（t8y2/dbx#10750）：OSC 7 帧前按需补 CRLF。备用屏
   // （vim/top 绝对定位重绘）与 zmodem/trzsz 传输期间只跟踪不插入——二进制
@@ -4517,58 +4345,10 @@ async function closeSerialSession() {
   serialBinaryInput.value = true;
   serialInputQueue.reset();
   // 上传挂在会话上：随会话关闭一并终止（sidecar cancel 幂等）。
-  if (serialUpload.value.phase !== "idle") {
-    serialUploadAbortRequested = true;
-    if (sessionId) void window.dbxPlugin.invoke("serial/upload/cancel", { sessionId }).catch(() => undefined);
-    serialUpload.value = initialSerialUploadState();
-  }
+  cancelSerialUploadForSessionClose(sessionId);
   if (!sessionId) return;
   await window.dbxPlugin.invoke("serial/close", { sessionId }).catch(() => undefined);
   terminal?.focus();
-}
-
-// —— 串口文件上传（NyaTerm 对齐 P0-3）——————————————————————————
-// 起点：SerialUploadDialog 选好文件/协议；文件字节经 File API 分块
-// （≤64KiB）送入 sidecar，协议时序完全由 sidecar 引擎驱动。
-async function startSerialUpload(request: { file: File; protocol: SerialUploadProtocol }) {
-  const sessionId = serialSession.value?.sessionId;
-  if (!sessionId || serialUploadBusy.value) return;
-  serialUploadAbortRequested = false;
-  serialUpload.value = {
-    phase: "running",
-    fileName: request.file.name,
-    protocol: request.protocol,
-    sent: 0,
-    total: request.file.size,
-    reason: "",
-  };
-  try {
-    await streamSerialUploadFile(request.file, {
-      sessionId,
-      protocol: request.protocol,
-      fileName: request.file.name,
-      bridge: window.dbxPlugin,
-      readChunk: async (start, end) => new Uint8Array(await request.file.slice(start, end).arrayBuffer()),
-      shouldAbort: () => serialUploadAbortRequested,
-    });
-  } catch (cause) {
-    if ((cause as Error)?.message === "tooLarge") {
-      showError(t("serial.upload.tooLarge"), "terminal");
-    } else {
-      showError(cause, "terminal");
-    }
-    serialUpload.value = { ...initialSerialUploadState(), phase: "failed", reason: String((cause as Error)?.message ?? cause) };
-  }
-}
-
-// overlay 上的取消：中断本地送数并让 sidecar 发协议取消序列（X/Y: CAN×8，
-// Z: ZDLE×5+BS×5），引擎落 Failed 事件后由 progress 归并到 overlay。
-function cancelSerialUpload() {
-  if (!serialUploadBusy.value) return;
-  const sessionId = serialSession.value?.sessionId;
-  serialUploadAbortRequested = true;
-  if (sessionId) void window.dbxPlugin.invoke("serial/upload/cancel", { sessionId }).catch(() => undefined);
-  serialUpload.value = { ...serialUpload.value, phase: "failed", reason: "cancelled" };
 }
 
 // HOST_PLUGIN_UI_SPEC §8.3/§7.4 workbench/close 两段式关闭：宿主拆除 panel/tab webview
@@ -8822,268 +8602,113 @@ watch(historyScope, () => {
       />
 
       <section v-if="sftpPaneOpen && !isRdpConnection && (rightPanelView === 'docker' || !localUiMode)" ref="sftpPane" class="sftp-pane right-panel" tabindex="-1" :class="{ 'drag-active': dragActive && sftpViewActive }" @pointerdown="focusSftpPaneOnPointerDown" @paste.capture="sftpViewActive && onSftpClipboardPaste($event)" @dragenter.prevent="sftpViewActive && onSftpDragEnter($event)" @dragover.prevent @dragleave="sftpViewActive && onSftpDragLeave($event)" @drop.prevent="sftpViewActive && onDrop($event)">
-        <template v-if="rightPanelView === 'sftp'">
-        <div class="path-toolbar">
-          <button class="icon-button" :title="t('parentFolder')" :aria-label="t('parentFolder')" :disabled="currentPath === '/'" @click="goParent"><ArrowUp /></button>
-          <button class="icon-button icon-amber" :title="t('home')" :aria-label="t('home')" :disabled="!connected" @click="loadHome"><Home /></button>
-          <button class="icon-button icon-cyan" :title="t('refresh')" :aria-label="t('refresh')" :disabled="!connected || loadingFiles" @click="loadDirectory()"><RefreshCw :class="{ spinning: loadingFiles }" /></button>
-          <!-- 跟随终端目录：开启时高亮图标，关闭时弱化；偏好与主终端 cwd 同步逻辑不变。 -->
-          <button
-            class="icon-button"
-            :class="followDirectory ? 'icon-emerald is-active' : 'icon-neutral'"
-            :title="t('followTerminal')"
-            :aria-label="t('followTerminal')"
-            :aria-pressed="followDirectory"
-            :disabled="!connected || panelSurface"
-            @click="setDirectoryTracking(!followDirectory)"
-          >
-            <LocateFixed v-if="followDirectory" />
-            <LocateOff v-else />
-          </button>
-          <!-- #54 路径栏双态：非编辑态把当前路径渲染成可点击分段（末段为当前位置），
-               点击分段直接回跳、点击分段外区域进入编辑；编辑态是原先的完整输入框，
-               提交后回到分段展示。分段切分走 remotePathInput（有单测）。 -->
-          <div class="path-bar">
-            <input
-              v-show="pathBarEditing"
-              ref="pathBarInputEl"
-              v-model="currentPath"
-              spellcheck="false"
-              @keydown.enter="submitPathInput"
-              @keydown.esc="cancelPathBarEdit"
-              @blur="pathBarEditing = false"
-            />
-            <nav v-show="!pathBarEditing" class="path-crumbs" tabindex="0" @click="beginPathBarEdit" @keydown.enter.self.prevent="beginPathBarEdit">
-              <template v-for="(crumb, index) in pathCrumbs" :key="crumb.path">
-                <!-- 根段本身显示为 "/"，其后不再渲染分隔符，避免「// home」双斜杠 -->
-                <span v-if="index && pathCrumbs[index - 1].name !== '/'" class="path-crumb-sep" aria-hidden="true">/</span>
-                <button v-if="index < pathCrumbs.length - 1" class="path-crumb mono" :title="crumb.path" @click.stop="goToPath(crumb.path)">{{ crumb.name }}</button>
-                <span v-else class="path-crumb current mono" :title="crumb.path" aria-current="location">{{ crumb.name }}</span>
-              </template>
-            </nav>
-          </div>
-          <div>
-            <Popover :open="bookmarkSaveOpen" @update:open="(open) => { if (!open) bookmarkSaveOpen = false; }">
-              <PopoverAnchor as-child>
-                <button class="icon-button icon-amber" :title="t('sftpBookmark.add')" :aria-label="t('sftpBookmark.add')" :disabled="!connected" @pointerdown.stop @click.stop="toggleBookmarkSave"><Star /></button>
-              </PopoverAnchor>
-              <!-- 星标收藏弹层：label 默认取路径末段，可编辑后保存（前端先行校验 + 后端错误回显） -->
-              <PopoverContent class="popover bookmark-save-popover" align="end" :side-offset="5">
-              <strong class="path-history-title">{{ t("sftpBookmark.add") }}</strong>
-              <span class="bookmark-save-path mono" :title="currentPath">{{ currentPath }}</span>
-              <input v-model="bookmarkLabelDraft" class="bookmark-label-input mono" :maxlength="SFTP_BOOKMARK_LABEL_MAX_LENGTH" spellcheck="false" :placeholder="t('sftpBookmark.namePlaceholder')" :disabled="bookmarkSaving" autofocus @keydown.enter="confirmBookmarkSave" />
-              <div class="bookmark-save-actions">
-                <button class="icon-button icon-emerald" :title="t('save')" :aria-label="t('save')" :disabled="bookmarkSaving" @click="confirmBookmarkSave"><Save /></button>
-                <button class="icon-button" :title="t('cancel')" :aria-label="t('cancel')" :disabled="bookmarkSaving" @click="bookmarkSaveOpen = false"><X /></button>
-              </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div>
-            <Popover :open="pathHistoryOpen" @update:open="(open) => { if (!open) pathHistoryOpen = false; }">
-              <PopoverAnchor as-child>
-                <button class="icon-button" :title="t('sftpPathHistory.title')" :aria-label="t('sftpPathHistory.title')" :disabled="!connected" @pointerdown.stop @click.stop="togglePathHistoryMenu"><History /></button>
-              </PopoverAnchor>
-              <PopoverContent class="popover path-history-popover" align="end" :side-offset="5">
-              <strong class="path-history-title">{{ t("sftpPathHistory.title") }}</strong>
-              <button v-for="item in currentPathHistory" :key="item" class="path-item mono" :title="item" :aria-label="item" @click="goToPath(item)">{{ item }}</button>
-              <div v-if="!currentPathHistory.length" class="empty compact">{{ t("sftpPathHistory.empty") }}</div>
-              <!-- 书签区：点击跳转，行尾悬浮删除；全局清单（跨连接共享） -->
-              <strong class="path-history-title">{{ t("sftpBookmark.title") }}</strong>
-              <template v-if="sftpBookmarks.length">
-                <div v-for="bookmark in sftpBookmarks" :key="bookmark.id" class="bookmark-row">
-                  <button class="path-item mono" :title="`${bookmark.label} · ${bookmark.path}`" :aria-label="`${bookmark.label} · ${bookmark.path}`" @click="goToPath(bookmark.path)">{{ bookmark.label }}</button>
-                  <button class="bookmark-delete" :title="t('delete')" :aria-label="t('delete')" @click.stop="removeBookmark(bookmark)"><Trash2 /></button>
-                </div>
-              </template>
-              <div v-else class="empty compact">{{ t("sftpBookmark.empty") }}</div>
-              <strong class="path-history-title">{{ t("sftpQuickPath.title") }}</strong>
-              <button v-for="item in SFTP_QUICK_PATHS" :key="item" class="path-item mono" :title="item" :aria-label="item" @click="goToPath(item)">{{ item }}</button>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <button class="icon-button" :title="t('sftpPaste.action')" :aria-label="t('sftpPaste.action')" :disabled="!connected || !canWrite || !sftpClipboard || pasteBusy" @click="pasteClipboard"><ClipboardPaste /></button>
-          <button class="icon-button icon-violet" :title="t('otpPanel.title')" :aria-label="t('otpPanel.title')" @click="otpPanelOpen = true"><KeyRound /></button>
-          <button class="icon-button icon-blue" :title="t('importWizard.title')" :aria-label="t('importWizard.title')" @click="importPanelOpen = true"><FileInput /></button>
-          <button
-            class="sudo-toggle"
-            :class="{ 'is-on': sudoMode }"
-            type="button"
-            :aria-pressed="sudoMode"
-            :title="!canWrite ? t('readOnly') : t('sudo.modeHint')"
-            :disabled="!connected || !canWrite"
-            @click="toggleSudoMode"
-          >sudo</button>
-        </div>
-        <!-- SFTP 面板主体：单栏文件树（文件夹 + 文件同列），无侧栏。 -->
-        <div class="sftp-body">
-          <div class="sftp-main">
-          <div class="sftp-filter-bar">
-            <label class="sftp-search-input">
-              <Search />
-              <input v-model="sftpSearchDraft" type="search" :placeholder="t('sftpSearch.placeholder')" spellcheck="false" />
-              <button v-if="sftpSearchDraft" class="sftp-search-clear" :title="t('cancel')" :aria-label="t('cancel')" @click.prevent="clearSftpSearch"><X /></button>
-            </label>
-            <Select :model-value="sftpTypeFilter" @update:model-value="(v) => (sftpTypeFilter = v as SftpTypeFilter)">
-              <SelectTrigger size="xs" class="sftp-type-filter" :title="t('sftpFilter.all')">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{{ t("sftpFilter.all") }}</SelectItem>
-                <SelectItem value="directory">{{ t("sftpFilter.folders") }}</SelectItem>
-                <SelectItem value="file">{{ t("sftpFilter.files") }}</SelectItem>
-              </SelectContent>
-            </Select>
-            <button
-              class="icon-button sftp-hidden-toggle"
-              :class="{ 'is-active': sftpShowHidden }"
-              :title="sftpShowHidden ? t('sftpFilter.hideHidden') : t('sftpFilter.showHidden')" :aria-label="sftpShowHidden ? t('sftpFilter.hideHidden') : t('sftpFilter.showHidden')"
-              :aria-pressed="sftpShowHidden"
-              @click="toggleSftpShowHidden"
-            >
-              <Eye v-if="sftpShowHidden" />
-              <EyeOff v-else />
-            </button>
-          </div>
-          <div v-if="selectedEntries.length > 1" class="sftp-batch-bar">
-            <span>{{ t("sftpBatch.selected", { count: selectedEntries.length }) }}</span>
-            <template v-if="batchProgress">
-              <progress class="batch-progress-bar" :value="batchProgressPercent(batchProgress)" max="100" />
-              <span class="batch-progress mono">{{ t("sftpBatch.progress", { done: batchProgress.done, total: batchProgress.total }) }}</span>
-            </template>
-            <button :disabled="!canWrite || archiveBusy || batchDeleteSubmitting" @click="batchArchive"><Archive />{{ t("sftpBatch.archive") }}</button>
-            <button class="danger" :disabled="!canWrite || archiveBusy || batchDeleteSubmitting" @click="batchDeleteOpen = true"><Trash2 />{{ t("sftpBatch.delete") }}</button>
-            <button @click="clearRowSelection"><X />{{ t("sftpBatch.clear") }}</button>
-          </div>
-          <!-- #209 目录跟随/连接后自动首拉失败的安静态：不弹全局错误横幅，
-               在面板内给一条低调的软提示（原始错误进悬停 tooltip）+ 重试按钮。
-               重试按手动导航语义执行（再失败才落全局横幅），成功或任一后续
-               手动导航成功即清除；断开会话时一并清除。 -->
-          <div v-if="sftpSoftError" class="sftp-soft-error" role="status" :title="sftpSoftError.detail">
-            <TriangleAlert class="sftp-soft-error-icon" />
-            <span class="sftp-soft-error-text">{{ sftpSoftError.message }}</span>
-            <button class="sftp-soft-error-action" @click="sftpSoftError.action.run()">{{ sftpSoftError.action.label }}</button>
-          </div>
-          <!-- 行右键（文件操作）与空白处右键（新建/刷新）共用同一 ContextMenu 根：
-               行事件由 SftpTreePane 上抛 showFileMenu 设置负载，空白区由
-               onFileAreaContextMenu 兜底；定位/碰撞/Esc/外点关闭均由 reka 承担。
-               树行 contextmenu 不 preventDefault，好让事件继续到本触发器。 -->
-          <ContextMenu :open="!!fileMenu" @update:open="(open) => { if (!open) fileMenu = undefined; }">
-            <ContextMenuTrigger class="contents">
-              <SftpTreePane
-                ref="sftpTreePane"
-                :rows="sftpTreeRows"
-                :follow-padding="followDirectory"
-                :selected-uris="selectedUriSet"
-                :selected-path="selectedPath"
-                :current-path="currentPath"
-                :renaming-path="renamingPath"
-                :rename-draft="renameDraft"
-                :rename-submitting="renameSubmitting"
-                :t="t"
-                :locale="locale"
-                :load-details="loadSftpDetails"
-                :external-drag-active="dragActive"
-                :empty-text="sftpFiltersActive ? t('sftpSearch.noMatch') : ''"
-                @contextmenu="onFileAreaContextMenu"
-                @toggle="toggleSftpTreeNode"
-                @select="selectTreeEntry"
-                @open="openSftpTreeNode"
-                @drop-on="onSftpTreeDrop"
-                @drop-target-change="sftpDragDropTarget = $event"
-                @context="(node, event) => showFileMenu(event, node.entry)"
-                @rename-commit="commitTreeRename"
-                @rename-cancel="renamingPath = ''"
-                @row-keydown="(node, event) => onFileRowKeydown(event, node.entry)"
-              />
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-                <!-- 多选感知：右键时已多选（selection > 1）→ 菜单整体切换为批量区，单项动作隐藏 -->
-                <template v-if="fileMenu && !fileMenuProtected && fileMenu.selection.length > 1">
-                  <ContextMenuItem @select="batchDownload"><Download />{{ t("download") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!canWrite || archiveBusy || batchDeleteSubmitting" @select="batchArchive()"><Archive />{{ t("sftpBatch.archive") }}</ContextMenuItem>
-                  <ContextMenuItem variant="destructive" :disabled="!canWrite || archiveBusy || batchDeleteSubmitting" @select="batchDeleteOpen = true"><Trash2 />{{ t("sftpBatch.delete") }}</ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem @select="copySelectedPaths"><Copy />{{ t("sftpCopy.copySelected") }}</ContextMenuItem>
-                  <!-- 多选态右键命中的是文件夹时，仍提供该目录下的新建/上传。 -->
-                  <template v-if="fileMenu.entry.kind === 'directory'">
-                    <ContextMenuSeparator />
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('mkdir', fileMenu.entry)"><FolderPlus />{{ t("newFolder") }}</ContextMenuItem>
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('newFile', fileMenu.entry)"><FilePlus />{{ t("sftpNewFile.action") }}</ContextMenuItem>
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('symlink', fileMenu.entry)"><Link2 />{{ t("symlink.createAction") }}</ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('upload', fileMenu.entry)"><FileUp />{{ t("upload") }}</ContextMenuItem>
-                    <ContextMenuItem v-if="folderUploadSupported" :disabled="!connected || !canWrite" @select="folderMenuAction('uploadFolder', fileMenu.entry)"><FolderUp />{{ t("folderUpload.action") }}</ContextMenuItem>
-                  </template>
-                </template>
-                <template v-else-if="fileMenu">
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'directory' || fileMenu.entry.kind === 'file'" @select="openEntry(fileMenu.entry)"><Folder v-if="fileMenu.entry.kind === 'directory'" /><FileText v-else />{{ fileMenu.entry.kind === "directory" ? t("openFolder") : t("preview") }}</ContextMenuItem>
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'file' || fileMenu.entry.kind === 'directory'" @select="downloadEntry(fileMenu.entry, sudoMode && canWrite && fileMenu.entry.kind === 'file')"><Download />{{ t("download") }}</ContextMenuItem>
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'directory'" :disabled="!connected || loadingFiles" @select="refreshSftpFolder(fileMenu.entry)"><RefreshCw />{{ t("refresh") }}</ContextMenuItem>
-                  <!-- 文件夹行右键：新建/上传落在被右键的目录内（不是面板当前目录）。 -->
-                  <template v-if="fileMenu.entry.kind === 'directory'">
-                    <ContextMenuSeparator />
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('mkdir', fileMenu.entry)"><FolderPlus />{{ t("newFolder") }}</ContextMenuItem>
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('newFile', fileMenu.entry)"><FilePlus />{{ t("sftpNewFile.action") }}</ContextMenuItem>
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('symlink', fileMenu.entry)"><Link2 />{{ t("symlink.createAction") }}</ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('upload', fileMenu.entry)"><FileUp />{{ t("upload") }}</ContextMenuItem>
-                    <ContextMenuItem v-if="folderUploadSupported" :disabled="!connected || !canWrite" @select="folderMenuAction('uploadFolder', fileMenu.entry)"><FolderUp />{{ t("folderUpload.action") }}</ContextMenuItem>
-                    <ContextMenuSeparator />
-                  </template>
-                  <!-- 以 root 下载（M14-C DownloadSudo）：root 大文件二进制下载，读只读门禁
-                       与 sudo 族一致（sidecar 对只读连接 fail closed，这里 canWrite 同步禁用）。
-                       sudo 模式下默认「下载」已自动换 sudo 车道（UploadSudo/DownloadSudo
-                       同一判定），该项隐藏避免重复入口。 -->
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'file' && !sudoMode" :disabled="!canWrite" @select="downloadEntry(fileMenu.entry, true)"><Download />{{ t("sudoDownload.action") }}</ContextMenuItem>
-                  <!-- 外部编辑器打开方式（编辑器映射增强）：唯一入口——独立
-                       「在外部编辑器中打开」已并入子菜单（首项系统默认即原
-                       行为），避免双入口语义冲突。web/docker 的 sidecar 不在
-                       本机，监听与回传都不可用，localCanSave 未探测到前保持
-                       禁用；选中即开（一次性，不写关联），关联管理在设置弹窗
-                       「外部编辑器」区。勾选标识当前映射解析命中，右对齐。 -->
-                  <ContextMenuSub v-if="fileMenu.entry.kind === 'file'" @update:open="(open: boolean) => { if (open) void ensureExternalEditors(); }">
-                    <ContextMenuSubTrigger :disabled="!canWrite || !localCanSave" class="gap-2"><ExternalLink />{{ t("sftpEdit.openWith") }}<ChevronRight class="ml-auto opacity-60" /></ContextMenuSubTrigger>
-                    <ContextMenuSubContent class="min-w-52">
-                      <ContextMenuItem :disabled="!canWrite || !localCanSave" @select="openWithSystemEntry(fileMenu.entry)">{{ t("sftpEdit.systemDefault") }}<Check v-if="!mappedEditorIdFor(fileMenu.entry.name)" class="ml-auto" /></ContextMenuItem>
-                      <template v-if="availableExternalEditors.length">
-                        <ContextMenuSeparator />
-                        <ContextMenuItem v-for="editor in availableExternalEditors" :key="`known-${editor.id}`" :disabled="!canWrite || !localCanSave" @select="openWithKnownEntry(fileMenu.entry, editor)">{{ editor.name }}<Check v-if="mappedEditorIdFor(fileMenu.entry.name) === editor.id" class="ml-auto" /></ContextMenuItem>
-                      </template>
-                      <template v-if="editorConfig.customEditors.length">
-                        <ContextMenuSeparator />
-                        <ContextMenuItem v-for="editor in editorConfig.customEditors" :key="`custom-${editor.id}`" :disabled="!canWrite || !localCanSave" @select="openWithCustomEntry(fileMenu.entry, editor)">{{ editor.name }}<Check v-if="mappedEditorIdFor(fileMenu.entry.name) === editor.id" class="ml-auto" /></ContextMenuItem>
-                      </template>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem :disabled="!canWrite || !localCanSave" @select="beginCustomEditorCommand(fileMenu.entry)"><Pencil />{{ t("sftpEdit.customCommand") }}</ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  <!-- 符号链接改指向（P2-6）：读取现有 target 预填后 update。 -->
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'symlink'" :disabled="!canWrite" @select="beginSymlinkEdit(fileMenu.entry)"><Link2 />{{ t("symlink.editAction") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!canWrite || fileMenuProtected" @select="beginRename(fileMenu.entry)"><Pencil />{{ t("rename") }}</ContextMenuItem>
-                  <ContextMenuItem @select="copySelectedEntries('copy')"><Copy />{{ t("sftpCopy.copy") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!canWrite || fileMenuProtected" @select="copySelectedEntries('cut')"><Scissors />{{ t("sftpCopy.cut") }}</ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem @select="copyTextToClipboard(pathFromUri(fileMenu.entry.uri), 'sftpCopy.copiedPath')"><Copy />{{ t("sftpCopy.copyPath") }}</ContextMenuItem>
-                  <ContextMenuItem @select="copyTextToClipboard(fileMenu.entry.name, 'sftpCopy.copiedName')"><FileText />{{ t("sftpCopy.copyName") }}</ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem :disabled="!canWrite || fileMenuProtected" @select="beginChmod(fileMenu.entry)"><Lock />{{ t("permissionsEdit") }}</ContextMenuItem>
-                  <ContextMenuItem @select="openAttributes(fileMenu.entry)"><Info />{{ t("sftpAttrs.action") }}</ContextMenuItem>
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'directory' || (fileMenu.entry.kind === 'file' && !isArchiveName(fileMenu.entry.name))" :disabled="!canWrite || archiveBusy || fileMenuProtected" @select="archiveEntry(fileMenu.entry)"><Archive />{{ t("archive.action") }}</ContextMenuItem>
-                  <ContextMenuItem v-if="fileMenu.entry.kind === 'file' && isArchiveName(fileMenu.entry.name)" :disabled="!canWrite || archiveBusy" @select="extractEntry(fileMenu.entry)"><PackageOpen />{{ t("extract.action") }}</ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem variant="destructive" :disabled="!canWrite || fileMenuProtected" @select="deleteTarget = fileMenu.entry"><Trash2 />{{ t("delete") }}</ContextMenuItem>
-                </template>
-              </ContextMenuContent>
-            </ContextMenu>
-            <footer class="file-footer"><span>{{ sftpFiltersActive ? t("sftpSearch.footerMatch", { matched: sftpTreeEntries.length, total: sftpTreeTotalRows.length }) : t("items", { count: loadedTreeEntries.length }) }}</span><span v-if="diskUsage" :title="`${diskUsage.filesystem} → ${diskUsage.mount}`">{{ formatBytes(diskUsage.availableBytes) }} {{ t("diskFreeOf", { total: formatBytes(diskUsage.totalBytes) }) }}</span><span>{{ currentPath }}</span></footer>
-          </div>
-        </div>
-        <div v-if="dragActive" class="drop-overlay">
-          <FileUp />
-          <strong>{{ t("upload") }}<template v-if="sftpDragDropTarget"> · {{ sftpDragDropTarget }}</template></strong>
-        </div>
-        </template>
+        <SftpWorkspacePanel
+          v-if="rightPanelView === 'sftp'"
+          v-model:currentPath="currentPath"
+          v-model:pathBarEditing="pathBarEditing"
+          v-model:bookmarkSaveOpen="bookmarkSaveOpen"
+          v-model:bookmarkLabelDraft="bookmarkLabelDraft"
+          v-model:pathHistoryOpen="pathHistoryOpen"
+          v-model:sftpSearchDraft="sftpSearchDraft"
+          v-model:sftpTypeFilter="sftpTypeFilter"
+          :t="t"
+          :locale="locale"
+          :connected="connected"
+          :loading-files="loadingFiles"
+          :panel-surface="panelSurface"
+          :follow-directory="followDirectory"
+          :path-crumbs="pathCrumbs"
+          :bookmark-saving="bookmarkSaving"
+          :current-path-history="currentPathHistory"
+          :sftp-bookmarks="sftpBookmarks"
+          :quick-paths="SFTP_QUICK_PATHS"
+          :can-write="canWrite"
+          :sftp-clipboard="sftpClipboard"
+          :paste-busy="pasteBusy"
+          :sudo-mode="sudoMode"
+          :sftp-show-hidden="sftpShowHidden"
+          :sftp-filters-active="sftpFiltersActive"
+          :selected-entries="selectedEntries"
+          :batch-progress="batchProgress"
+          :archive-busy="archiveBusy"
+          :batch-delete-submitting="batchDeleteSubmitting"
+          :sftp-soft-error="sftpSoftError"
+          :file-menu="fileMenu"
+          :file-menu-protected="fileMenuProtected"
+          :sftp-tree-rows="sftpTreeRows"
+          :selected-uri-set="selectedUriSet"
+          :selected-path="selectedPath"
+          :renaming-path="renamingPath"
+          :rename-draft="renameDraft"
+          :rename-submitting="renameSubmitting"
+          :load-sftp-details="loadSftpDetails"
+          :drag-active="dragActive"
+          :sftp-drag-drop-target="sftpDragDropTarget"
+          :sftp-tree-entries="sftpTreeEntries"
+          :sftp-tree-total-rows="sftpTreeTotalRows"
+          :loaded-tree-entries="loadedTreeEntries"
+          :disk-usage="diskUsage"
+          :folder-upload-supported="folderUploadSupported"
+          :local-can-save="localCanSave"
+          :available-external-editors="availableExternalEditors"
+          :editor-config="editorConfig"
+          :is-archive-name="isArchiveName"
+          :mapped-editor-id-for="mappedEditorIdFor"
+          :set-path-bar-input-el="bindSftpPathBarInput"
+          :on-tree-pane="bindSftpWorkspaceTreePane"
+          @update:fileMenu="fileMenu = $event"
+          @update:batchDeleteOpen="batchDeleteOpen = true"
+          @update:deleteTarget="deleteTarget = $event"
+          @update:renamingPath="renamingPath = $event"
+          @update:sftpDragDropTarget="sftpDragDropTarget = $event"
+          @update:otpPanelOpen="otpPanelOpen = true"
+          @update:importPanelOpen="importPanelOpen = true"
+          @go-parent="goParent"
+          @load-home="loadHome"
+          @load-directory="loadDirectory()"
+          @set-directory-tracking="setDirectoryTracking"
+          @submit-path-input="submitPathInput"
+          @cancel-path-bar-edit="cancelPathBarEdit"
+          @begin-path-bar-edit="beginPathBarEdit"
+          @go-to-path="goToPath"
+          @toggle-bookmark-save="toggleBookmarkSave"
+          @confirm-bookmark-save="confirmBookmarkSave"
+          @toggle-path-history-menu="togglePathHistoryMenu"
+          @remove-bookmark="removeBookmark"
+          @paste-clipboard="pasteClipboard"
+          @toggle-sudo-mode="toggleSudoMode"
+          @clear-sftp-search="clearSftpSearch"
+          @toggle-sftp-show-hidden="toggleSftpShowHidden"
+          @batch-archive="batchArchive"
+          @clear-row-selection="clearRowSelection"
+          @batch-download="batchDownload"
+          @copy-selected-paths="copySelectedPaths"
+          @file-area-context-menu="onFileAreaContextMenu"
+          @toggle-sftp-tree-node="toggleSftpTreeNode"
+          @select-tree-entry="selectTreeEntry"
+          @open-sftp-tree-node="openSftpTreeNode"
+          @sftp-tree-drop="onSftpTreeDrop"
+          @show-file-menu="showFileMenu"
+          @commit-tree-rename="commitTreeRename"
+          @file-row-keydown="onFileRowKeydown"
+          @folder-menu-action="folderMenuAction"
+          @open-entry="openEntry"
+          @download-entry="downloadEntry"
+          @refresh-sftp-folder="refreshSftpFolder"
+          @ensure-external-editors="ensureExternalEditors"
+          @open-with-system-entry="openWithSystemEntry"
+          @open-with-known-entry="openWithKnownEntry"
+          @open-with-custom-entry="openWithCustomEntry"
+          @begin-custom-editor-command="beginCustomEditorCommand"
+          @begin-symlink-edit="beginSymlinkEdit"
+          @begin-rename="beginRename"
+          @copy-selected-entries="copySelectedEntries"
+          @copy-text-to-clipboard="copyTextToClipboard"
+          @begin-chmod="beginChmod"
+          @open-attributes="openAttributes"
+          @archive-entry="archiveEntry"
+          @extract-entry="extractEntry"
+        />
         <template v-else-if="rightPanelView === 'metrics'">
           <header class="side-panel-head">
             <h2>

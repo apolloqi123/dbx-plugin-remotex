@@ -1041,55 +1041,57 @@ describe("issue #93 download fallback policy", () => {
 // SFTP 单栏树结构防线：旧的多列文件表/侧栏已下线，面板必须由 SftpTreePane
 // 单列承载（树行有独立虚拟滚动，不再依赖 .file-rows 的 spacer 配对）。
 it("renders the SFTP pane as a single tree column without the old table or sidebar", () => {
-  expect(appTemplate).toContain("<SftpTreePane");
-  expect(appTemplate).toContain(':rows="sftpTreeRows"');
-  expect(appTemplate).toContain('@toggle="toggleSftpTreeNode"');
-  expect(appTemplate).toContain('@drop-on="onSftpTreeDrop"');
-  expect(appTemplate).toContain(':load-details="loadSftpDetails"');
-  expect(appTemplate).toContain('@context="(node, event) => showFileMenu(event, node.entry)"');
-  expect(appTemplate).toContain("refreshSftpFolder(fileMenu.entry)");
-  expect(appTemplate).not.toContain('ref="fileRowsEl"');
-  expect(appTemplate).not.toContain('class="file-table"');
-  expect(appTemplate).not.toContain("<SideNavPanel");
+  expect(appTemplateSurface).toContain("<SftpTreePane");
+  expect(appTemplateSurface).toContain(':rows="sftpTreeRows"');
+  expect(appTemplateSurface).toContain("@toggle=\"(node) => emit('toggle-sftp-tree-node', node)\"");
+  expect(appTemplateSurface).toContain("@drop-on=\"(node, event) => emit('sftp-tree-drop', node, event)\"");
+  expect(appTemplateSurface).toContain(':load-details="loadSftpDetails"');
+  expect(appTemplateSurface).toContain("@context=\"(node, event) => emit('show-file-menu', event, node.entry)\"");
+  expect(appTemplateSurface).toContain("emit('refresh-sftp-folder', fileMenu.entry)");
+  expect(appTemplateSurface).not.toContain('ref="fileRowsEl"');
+  expect(appTemplateSurface).not.toContain('class="file-table"');
+  expect(appTemplateSurface).not.toContain("<SideNavPanel");
 });
 
 // 工具条上的新建/上传四个图标按钮已移除，动作收进文件夹行右键菜单；空白处
 // 右键不再弹自定义菜单。菜单动作带上被右键的目录作为落点。
 it("moves new/upload actions from the SFTP toolbar into the folder row menu", () => {
-  expect(appTemplate).not.toContain('@click.stop="chooseUpload"');
-  expect(appTemplate).not.toContain('@click.stop="chooseFolderUpload"');
-  expect(appTemplate).not.toContain('@click="openNewFileDialog"');
-  expect(appTemplate).not.toContain('operationDialog = \'mkdir\'');
-  expect(appTemplate).not.toContain("blankMenuAction(");
-  expect(appTemplate).not.toContain("blankMenu = true");
-  expect(appTemplate).toContain("folderMenuAction('mkdir', fileMenu.entry)");
-  expect(appTemplate).toContain("folderMenuAction('newFile', fileMenu.entry)");
-  expect(appTemplate).toContain("folderMenuAction('upload', fileMenu.entry)");
-  expect(appTemplate).toContain("folderMenuAction('uploadFolder', fileMenu.entry)");
+  expect(appTemplateSurface).not.toContain('@click.stop="chooseUpload"');
+  expect(appTemplateSurface).not.toContain('@click.stop="chooseFolderUpload"');
+  expect(appTemplateSurface).not.toContain('@click="openNewFileDialog"');
+  expect(appTemplateSurface).not.toContain('operationDialog = \'mkdir\'');
+  expect(appTemplateSurface).not.toContain("blankMenuAction(");
+  expect(appTemplateSurface).not.toContain("blankMenu = true");
+  expect(appTemplateSurface).toContain("emit('folder-menu-action', 'mkdir', fileMenu.entry)");
+  expect(appTemplateSurface).toContain("emit('folder-menu-action', 'newFile', fileMenu.entry)");
+  expect(appTemplateSurface).toContain("emit('folder-menu-action', 'upload', fileMenu.entry)");
+  expect(appTemplateSurface).toContain("emit('folder-menu-action', 'uploadFolder', fileMenu.entry)");
 });
 
 // sudo 是纯文字开关按钮：关闭暗色、开启亮色，不再使用 Switch 控件。
 it("renders sudo as a text toggle button", () => {
-  expect(appTemplate).toContain('class="sudo-toggle"');
-  expect(appTemplate).toContain(':aria-pressed="sudoMode"');
-  expect(appTemplate).toContain('@click="toggleSudoMode"');
-  expect(appTemplate).toContain(">sudo</button>");
-  expect(appTemplate).not.toContain("sudo-label-text");
-  expect(appTemplate).not.toContain("follow-directory-control sudo-label");
+  expect(appTemplateSurface).toContain('class="sudo-toggle"');
+  expect(appTemplateSurface).toContain(':aria-pressed="sudoMode"');
+  expect(appTemplateSurface).toContain('@click="emit(\'toggle-sudo-mode\')"');
+  expect(appTemplateSurface).toContain(">sudo</button>");
+  expect(appTemplateSurface).not.toContain("sudo-label-text");
+  expect(appTemplateSurface).not.toContain("follow-directory-control sudo-label");
 });
 
 // 目录跟随开关收进 SFTP 路径栏：主工具条不再保留文字+Switch 控件；分屏/页签
 // 的 cwd 与窗格激活事件由布局树桥接到 App，跟随目录需要能滚动置顶。
 it("puts the directory-follow toggle in the SFTP path toolbar", () => {
-  expect(appTemplate).toContain('ref="sftpTreePane"');
-  expect(appTemplate).toContain(':follow-padding="followDirectory"');
+  expect(appTemplateSurface).toContain(':ref="setTreePane"');
+  expect(appTemplateSurface).toContain(':on-tree-pane="bindSftpWorkspaceTreePane"');
+  expect(appTemplateSurface).toContain(':set-path-bar-input-el="bindSftpPathBarInput"');
+  expect(appTemplateSurface).toContain(':follow-padding="followDirectory"');
   expect(appTemplate).toContain('@cwd="onShellTabCwd"');
   expect(appTemplate).toContain('@activate-pane="onPaneActivated"');
   // 旧的主工具条文字+Switch 入口已移除（跟随开关现在是独立图标按钮）。
-  expect(appTemplate).not.toContain('@update:model-value="setDirectoryTracking"');
-  expect(appTemplate).toContain("setDirectoryTracking(!followDirectory)");
-  expect(appTemplate).toContain("<LocateFixed v-if=\"followDirectory\" />");
-  expect(appTemplate).toContain("<LocateOff v-else />");
+  expect(appTemplateSurface).not.toContain('@update:model-value="setDirectoryTracking"');
+  expect(appTemplateSurface).toContain("emit('set-directory-tracking', !followDirectory)");
+  expect(appTemplateSurface).toContain("<LocateFixed v-if=\"followDirectory\" />");
+  expect(appTemplateSurface).toContain("<LocateOff v-else />");
   // 跟随在真实 cwd 变化或用户切换到别的窗格/页签时同步；同一窗格内重复
   // 点击终端不触发，避免反复重置滚动位置。
   expect(appVueSource).toContain("watch(terminalCwd");

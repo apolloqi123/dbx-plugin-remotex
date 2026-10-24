@@ -2,84 +2,23 @@
 
 use super::*;
 
+mod payload;
+mod runtime;
+
+pub use payload::ConnectionEndpoint;
+pub(crate) use payload::{
+    cached_metrics_payload, compare_history_rows, download_cancel_error, session_info_payload,
+    sudo_commit_body, sudo_upload_staging_name, upload_cancel_error, upload_progress_payload,
+    SUDO_UPLOAD_COMMIT_SECS, SUDO_UPLOAD_QUICK_SECS,
+};
+pub(crate) use runtime::{SharedTransportLease, TaskTransport};
+#[cfg(test)]
+pub(crate) use runtime::TransportLeaseCounter;
+
 /// Remote (-R) port mapping table for one connection, keyed by
 /// `(listen_host, bound_port)` and consulted by the SSH client handler when
 /// the server hands over a `forwarded-tcpip` channel.
 pub type RemoteForwardTable = Mutex<HashMap<(String, u32), forward::RelayTarget>>;
-
-/// Explicit users of one authenticated SSH transport: every registered
-/// session owns one use, and a copied session reserves one before its first
-/// await. That pending reservation closes the open/close race where the last
-/// old session could otherwise tear down a jump chain while the new PTY was
-/// still being created.
-pub(crate) struct TransportLeaseCounter(AtomicUsize);
-
-/// `#[allow(deprecated)]`: the newest stable renamed `fetch_update` to
-/// `try_update` (cosmetic; semantics unchanged). Calling the new name would
-/// hard-break every older rustc (including the 1.88 floor), so keep the old
-/// name until the toolchain floor moves past the renaming release.
-#[allow(deprecated)]
-impl TransportLeaseCounter {
-    pub(crate) fn new() -> Self {
-        Self(AtomicUsize::new(1))
-    }
-
-    pub(crate) fn retain(&self) {
-        self.0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-                value.checked_add(1)
-            })
-            .expect("SSH transport lease count overflow");
-    }
-
-    /// Returns true when the released use was the final one.
-    pub(crate) fn release(&self) -> bool {
-        self.0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-                value.checked_sub(1)
-            })
-            .expect("SSH transport lease released more than once")
-            == 1
-    }
-
-    #[cfg(test)]
-    pub(crate) fn count(&self) -> usize {
-        self.0.load(Ordering::Acquire)
-    }
-}
-
-pub(crate) struct SharedTransportLease {
-    pub(crate) uses: TransportLeaseCounter,
-    pub(crate) jump_chain: Vec<Arc<Handle<SshClient>>>,
-}
-
-impl SharedTransportLease {
-    pub(crate) fn new(jump_chain: Vec<Arc<Handle<SshClient>>>) -> Self {
-        Self {
-            uses: TransportLeaseCounter::new(),
-            jump_chain,
-        }
-    }
-
-    pub(crate) fn retain(&self) {
-        self.uses.retain();
-    }
-
-    pub(crate) async fn release(&self) {
-        if !self.uses.release() {
-            return;
-        }
-        for jump in &self.jump_chain {
-            let _ = jump
-                .disconnect(
-                    Disconnect::ByApplication,
-                    "DBX SSH session closed",
-                    "English",
-                )
-                .await;
-        }
-    }
-}
 
 /// `workbench_id` is kept with the session so attach can only restore the
 /// session that belongs to the same workbench. A different workbench must open
@@ -151,35 +90,6 @@ pub(crate) struct UploadState {
     /// 最终提交走 exec `sudo mv`（让位→提交→回滚）。false = 普通
     /// SFTP 车道（目标目录内暂存 + 同目录 rename 原子提交）。
     pub(crate) sudo_lane: bool,
-}
-
-/// sudo 上传车道的暂存件名（登录用户 SFTP home 下）。独立前缀
-/// `.dbx-sudo-ul-` 与下载车道的 `.dbx-sudo-dl-` 互不误伤。
-pub(crate) fn sudo_upload_staging_name(task_id: &str) -> String {
-    format!(".dbx-sudo-ul-{task_id}.part")
-}
-
-/// sudo 上传车道的 exec 超时（exec 层钳到 5..300）：chmod 快路径 30s；
-/// 提交 mv 走最大档——跨文件系统时 mv 退化为复制，要给足大文件时间。
-pub(crate) const SUDO_UPLOAD_QUICK_SECS: u64 = 30;
-
-pub(crate) const SUDO_UPLOAD_COMMIT_SECS: u64 = 300;
-
-/// sudo 提交体（纯函数，供单测）：`target→backup` 让位 → 暂存件 `mv` 到
-/// 位 → backup 清理；mv 失败把 backup 滚回 target 后以非零退出。路径一律
-/// [`shell_quote`] 单引号转义；整体再经 exec 层 `sanitize_sudo_command`
-/// 包进 `sh -c '…'`。跨文件系统时 `mv` 退化为复制+删除（非原子，登记边界）。
-pub(crate) fn sudo_commit_body(staging: &str, target: &str, backup: &str) -> String {
-    let (staging, target, backup) = (
-        exec::shell_quote(staging),
-        exec::shell_quote(target),
-        exec::shell_quote(backup),
-    );
-    format!(
-        "if [ -e {target} ]; then mv -f -- {target} {backup}; fi; \
-         if mv -f -- {staging} {target}; then rm -f -- {backup}; exit 0; fi; \
-         if [ -e {backup} ]; then mv -f -- {backup} {target}; fi; exit 1"
-    )
 }
 
 /// Local (client-machine) persistence target for a download started with
@@ -442,58 +352,6 @@ impl UploadPhase {
     }
 }
 
-/// Shared shape of every upload progress event; `fileName` is only present on
-/// task-start events (the workbench keeps the name it already displayed).
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn upload_progress_payload(
-    task_id: &str,
-    session_id: &str,
-    file_name: Option<&str>,
-    transferred: u64,
-    size: u64,
-    phase: UploadPhase,
-    status: &str,
-    compression: CompressionMode,
-) -> Value {
-    let mut payload = json!({
-        "taskId": task_id,
-        "sessionId": session_id,
-        "direction": "upload",
-        "transferred": transferred,
-        "size": size,
-        "phase": phase.as_str(),
-        "status": status,
-        // M33 压缩通道标记与下载事件同语义：gzip=压缩通道，none=普通管线
-        // （含预压回退后的后续事件——前端据 none 清掉徽标）。
-        "compression": compression.as_str(),
-    });
-    if let Some(file_name) = file_name {
-        payload["fileName"] = json!(file_name);
-    }
-    payload
-}
-
-/// Error text for a cancelled upload. The optional reason slug comes from the
-/// workbench so "Upload cancelled by user" reads differently from an
-/// error-triggered cleanup ("Upload cancelled (ack-timeout)").
-pub(crate) fn upload_cancel_error(reason: Option<&str>) -> String {
-    match reason.map(str::trim).filter(|value| !value.is_empty()) {
-        Some("user") => "Upload cancelled by user".to_string(),
-        Some(reason) => format!("Upload cancelled ({reason})"),
-        None => "Upload cancelled".to_string(),
-    }
-}
-
-/// Download counterpart of [`upload_cancel_error`] (prep-only cancellation
-/// events carry no transfer row to borrow a message from).
-pub(crate) fn download_cancel_error(reason: Option<&str>) -> String {
-    match reason.map(str::trim).filter(|value| !value.is_empty()) {
-        Some("user") => "Download cancelled by user".to_string(),
-        Some(reason) => format!("Download cancelled ({reason})"),
-        None => "Download cancelled".to_string(),
-    }
-}
-
 /// Background `sudo -nv` refresh loop keeping a connection's sudo timestamp
 /// alive, ported from tiny-rdm's sudoExecService keepalive.
 pub(crate) struct SudoKeepalive {
@@ -521,142 +379,6 @@ pub(crate) enum KeepaliveRegistration {
 pub(crate) struct CachedMetrics {
     pub(crate) value: Value,
     pub(crate) collected_at: u64,
-}
-
-/// Unix milliseconds for audit-ledger timestamps and approval durations.
-
-/// Builds the response served from the snapshot cache: the stored fields plus
-/// a `cachedAt` marker (Unix seconds) so callers can show the age of the data.
-/// The stored snapshot itself is never mutated.
-pub(crate) fn cached_metrics_payload(snapshot: &Value, collected_at: u64) -> Value {
-    let mut payload = snapshot.clone();
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("cachedAt".to_string(), json!(collected_at));
-    }
-    payload
-}
-
-/// Read-only connection display info resolved from the connections registry
-/// for a session row. Empty host/user means the connection is no longer
-/// registered (sidecar restarted after the workbench attached).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConnectionEndpoint {
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-}
-
-impl ConnectionEndpoint {
-    pub fn fallback() -> Self {
-        Self {
-            host: String::new(),
-            port: 22,
-            username: String::new(),
-        }
-    }
-}
-
-/// One row of `ssh/sessions/list`. Pure so tests can exercise the payload
-/// shape without a live SSH connection.
-// 参数与 JSON 行字段一一对应，是纯载荷整形函数的自然形状。
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn session_info_payload(
-    session_id: &str,
-    connection_id: &str,
-    workbench_id: &str,
-    read_only: bool,
-    connected: bool,
-    sudo_keepalive: bool,
-    terminal_keepalive_secs: u64,
-    created_at_secs: u64,
-    auth_method: &str,
-    endpoint: &ConnectionEndpoint,
-    recording: bool,
-) -> Value {
-    json!({
-        "sessionId": session_id,
-        "connectionId": connection_id,
-        "workbenchId": workbench_id,
-        "readOnly": read_only,
-        "connected": connected,
-        "recording": recording,
-        "sudoKeepalive": sudo_keepalive,
-        "terminalKeepaliveSecs": terminal_keepalive_secs,
-        "createdAt": created_at_secs,
-        "authMethod": auth_method,
-        "host": endpoint.host,
-        "port": endpoint.port,
-        "username": endpoint.username,
-    })
-}
-
-/// Total order for `sftp/transfer/history` rows (issue #18). Newest first by
-/// `startedAt`; rows without one — live snapshots whose start record never
-/// landed on disk — count as the most recent activity and lead the list;
-/// `taskId` breaks every tie so the order no longer depends on the HashMap
-/// iteration order of the in-memory registries. Pure so tests can exercise
-/// it without a runtime.
-pub(crate) fn compare_history_rows(a: &Value, b: &Value) -> std::cmp::Ordering {
-    pub(crate) fn started(task: &Value) -> Option<u64> {
-        task.get("startedAt").and_then(Value::as_u64)
-    }
-    pub(crate) fn task_id(task: &Value) -> &str {
-        task.get("taskId").and_then(Value::as_str).unwrap_or("")
-    }
-    match (started(a), started(b)) {
-        (Some(left), Some(right)) => right.cmp(&left).then_with(|| task_id(a).cmp(task_id(b))),
-        // Rows without a timestamp (live snapshots) lead the list as the
-        // most recent activity; `Less`/`Greater` place a timestamped row
-        // strictly after a timestamp-less one.
-        (Some(_), None) => std::cmp::Ordering::Greater,
-        (None, Some(_)) => std::cmp::Ordering::Less,
-        (None, None) => task_id(a).cmp(task_id(b)),
-    }
-}
-
-/// Execution transport for the scheduler task provider: either the live
-/// session's shared authenticated handle (borrowed lifetime of the session)
-/// or a dedicated headless dial (owned; disconnected on release).
-pub(crate) enum TaskTransport {
-    Session {
-        handle: Arc<Handle<SshClient>>,
-    },
-    Dedicated {
-        handle: Handle<SshClient>,
-        jumps: Vec<Handle<SshClient>>,
-    },
-}
-
-impl TaskTransport {
-    pub(crate) fn handle(&self) -> &Handle<SshClient> {
-        match self {
-            Self::Session { handle } => handle,
-            Self::Dedicated { handle, .. } => handle,
-        }
-    }
-
-    /// Tears down a dedicated dial (jump chain included). Session-borrowed
-    /// transports are left alone — the workbench owns their lifecycle.
-    pub(crate) async fn release(self) {
-        if let Self::Dedicated { handle, jumps } = self {
-            let _ = handle
-                .disconnect(
-                    Disconnect::ByApplication,
-                    "DBX scheduled task finished",
-                    "English",
-                )
-                .await;
-            for jump in jumps {
-                let _ = jump
-                    .disconnect(
-                        Disconnect::ByApplication,
-                        "DBX scheduled task jump closed",
-                        "English",
-                    )
-                    .await;
-            }
-        }
-    }
 }
 
 pub struct SshRuntime {
