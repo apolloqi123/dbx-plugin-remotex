@@ -13,6 +13,13 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.17] — 2026-10-24
+
+- **SFTP 行单击与文件夹右键菜单**。文件与文件夹行单击都会选中并高亮；文件夹单击同时展开/收起（Ctrl/Cmd/Shift 单击只做多选）。工具栏的「上传 / 上传文件夹 / 新建文件夹 / 新建文件」四个图标按钮移除，动作收进文件夹行右键菜单，落点就是被右键的目录；空白处右键不再弹出菜单。
+  **Single-click SFTP rows and a folder-row context menu.** Clicking a file or folder row selects and highlights it, and a folder click also expands/collapses it (Ctrl/Cmd/Shift clicks only multi-select). The four toolbar buttons for upload, folder upload, new folder and new file were removed; the actions now live in the folder row's right-click menu and target that folder. Right-clicking blank space no longer opens a menu.
+- **sudo 文字开关**。SFTP 工具栏的 sudo 不再使用开关控件，直接显示可点击的 “sudo” 文字：开启时亮色加粗，关闭时暗色。
+  **Text sudo toggle.** The SFTP toolbar no longer uses a Switch for sudo; the clickable word "sudo" is the toggle, bright and bold when on and dim when off.
+
 ## [0.7.9-beta.16] — 2026-10-24
 
 - **根目录行显示为 “/”**。SFTP 文件树的根节点不再显示本地化的「根目录 / Root」，与路径栏保持一致，直接显示 `/`（含无障碍标签「展开/收起 /」）。

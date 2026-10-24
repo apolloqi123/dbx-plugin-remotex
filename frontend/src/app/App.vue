@@ -920,8 +920,9 @@ const fileMenu = ref<{ entry: SftpEntry; selection: string[] }>();
 // 右键目标为根 "/" 或当前目录（文件夹）时置位：菜单保留浏览/复制/下载，
 // 但改名/删除/压缩/切剪等破坏性动作禁用，防止把正在浏览的目录移走/删掉。
 const fileMenuProtected = ref(false);
-// 文件列表空白处右键：新建文件夹 / 新建文件 / 刷新（拦截浏览器默认菜单）。
-const blankMenu = ref(false);
+// 文件夹行右键菜单里的新建/上传落点：目录右键命中的路径，操作完成后清空。
+const mkdirTargetDir = ref<string>();
+const newFileTargetDir = ref<string>();
 const commandRunning = ref(false);
 // 命令历史（按连接作用域分桶）：采集/持久化/远端 shell 历史导入收口在
 // composables/useCommandHistory；watch(historyScope) 仍在 setup 尾部（见下）。
@@ -6235,34 +6236,35 @@ watch(terminalCwd, (cwd) => {
   void followSftpPath(cwd);
 });
 
-/** 空白处右键：新建文件夹 / 新建文件 / 上传文件 / 刷新（与行菜单共用同一 ContextMenu 根；
- *  行右键已由 showFileMenu 先行接管，这里按事件目标兜底空白区）。 */
+/** 空白处右键不弹自定义菜单，也不放行浏览器默认菜单。行右键已由
+ *  showFileMenu 接管；这里只清理空白区可能残留的菜单状态。 */
 function onFileAreaContextMenu(event: MouseEvent) {
   if ((event.target as HTMLElement).closest(".sftp-tree-row")) return;
+  event.preventDefault();
   terminalMenuOpen.value = false;
   fileMenu.value = undefined;
-  blankMenu.value = true;
 }
 
-function blankMenuAction(action: "mkdir" | "newFile" | "upload" | "uploadFolder" | "refresh" | "symlink") {
-  const menu = blankMenu.value;
-  blankMenu.value = false;
-  if (!menu) return;
-  if (action === "refresh") {
-    void loadDirectory();
-    return;
-  }
+/** 文件夹行右键的新建/上传：落点就是被右键的目录，而不是面板当前目录。
+ *  菜单已在动作触发前关闭，这里直接进入各对话框/文件选择器。 */
+function folderMenuAction(
+  action: "mkdir" | "newFile" | "upload" | "uploadFolder" | "symlink",
+  entry: SftpEntry,
+) {
+  const targetDir = pathFromUri(entry.uri);
+  fileMenu.value = undefined;
   if (action === "mkdir") {
+    mkdirTargetDir.value = targetDir;
     operationDraft.value = "";
     operationDialog.value = "mkdir";
   } else if (action === "symlink") {
-    beginSymlinkCreate();
+    beginSymlinkCreate(targetDir);
   } else if (action === "upload") {
-    void chooseUpload();
+    void chooseUpload(targetDir);
   } else if (action === "uploadFolder") {
-    chooseFolderUpload();
+    chooseFolderUpload(targetDir);
   } else {
-    openNewFileDialog();
+    openNewFileDialog(targetDir);
   }
 }
 
@@ -7169,7 +7171,12 @@ const {
   operationDialog,
   operationDraft,
   createDirectory,
-} = useSftpCreateDirectory({ showError, session, sudoMode, currentPath, joinRemote, loadDirectory });
+} = useSftpCreateDirectory({
+  showError, session, sudoMode, currentPath,
+  targetDir: mkdirTargetDir,
+  joinRemote, loadDirectory,
+  refreshAfterCreate: refreshSftpAfterUpload,
+});
 
 
 // ---------------------------------------------------------------------------
@@ -7269,8 +7276,9 @@ const {
   onMutated: refreshSftpAfterMutation,
 });
 
-function openNewFileDialog() {
+function openNewFileDialog(targetDir?: string) {
   if (!connected.value || !canWrite.value) return;
+  newFileTargetDir.value = targetDir;
   newFileDraft.value = "";
   newFileDialog.value = true;
 }
@@ -7279,15 +7287,17 @@ async function createNewFile() {
   const sessionId = session.value?.sessionId;
   const name = newFileDraft.value.trim();
   if (!sessionId || !name || newFileSubmitting.value) return;
+  const base = newFileTargetDir.value ?? currentPath.value;
   newFileSubmitting.value = true;
   try {
     await window.dbxPlugin.invoke(sudoMode.value ? "sudo/touch" : "sftp/touch", {
       sessionId,
-      path: joinRemote(currentPath.value, name),
+      path: joinRemote(base, name),
     });
     newFileDialog.value = false;
+    newFileTargetDir.value = undefined;
     showNotice(t("sftpNewFile.done", { name }));
-    await loadDirectory();
+    await refreshSftpAfterUpload(base);
   } catch (cause) {
     showError(cause);
   } finally {
@@ -7384,11 +7394,20 @@ function isLoadedDirectoryUri(uri: string): boolean {
   return loadedDirectoryUris.value.has(uri);
 }
 
-/** 树行选中入口（文件/文件夹统一）：文件夹仅在修饰键点击时到这里，先拦截
- *  根/当前目录，再交给多选逻辑；Ctrl 追加与 Shift 范围结果统一过过滤器，
- *  受保护目录不会进入 selectedUris。 */
+/** 树行选中入口（文件/文件夹统一）：先拦截根/当前目录/祖先目录，再交给
+ *  多选逻辑；Ctrl 追加与 Shift 范围结果统一过过滤器，受保护目录不会进入
+ *  selectedUris。 */
 function selectTreeEntry(entry: SftpEntry, event: MouseEvent | KeyboardEvent) {
-  if (isProtectedDirectory(entry)) return;
+  if (isProtectedDirectory(entry)) {
+    // 根/当前目录/祖先目录不进入批量选区，但单击仍要给出视觉锚点；普通
+    // 单击同时清掉旧批量选区，与「单击即替换选区」的文件行语义一致。
+    selectedPath.value = entry.uri;
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      selectedUris.value = [];
+      lastClickedUri.value = "";
+    }
+    return;
+  }
   selectFile(entry, event as MouseEvent);
   const selectable = filterSelectableSftpUris(
     selectedUris.value,
@@ -7462,7 +7481,10 @@ const {
   commitSymlink,
   linkTargetTitle,
   hydrateLinkTargets,
-} = useSymlink({ t, showError, session, currentPath, pathFromUri, joinRemote, loadDirectory });
+} = useSymlink({
+  t, showError, session, currentPath, pathFromUri, joinRemote, loadDirectory,
+  refreshAfterCreate: refreshSftpAfterUpload,
+});
 
 const localDownloadDir = ref("");
 const localCanSave = ref(false);
@@ -8351,7 +8373,6 @@ function showFileMenu(event: MouseEvent, entry: SftpEntry) {
     selection: selectedEntries.value.map((item) => item.uri),
   };
   terminalMenuOpen.value = false;
-  blankMenu.value = false;
   transferHistoryMenu.value = undefined;
 }
 
@@ -8372,7 +8393,6 @@ function showTransferHistoryMenu(event: MouseEvent, entry: TransferHistoryEntry)
   transferHistoryMenu.value = { taskId: entry.taskId };
   terminalMenuOpen.value = false;
   fileMenu.value = undefined;
-  blankMenu.value = false;
 }
 
 /**
@@ -8411,7 +8431,6 @@ function closeToolbarPopovers() {
 function closeMenus() {
   terminalMenuOpen.value = false;
   fileMenu.value = undefined;
-  blankMenu.value = false;
   transferHistoryMenu.value = undefined;
   closeToolbarPopovers();
 }
@@ -10489,16 +10508,17 @@ watch(historyScope, () => {
             </Popover>
           </div>
           <button class="icon-button" :title="t('sftpPaste.action')" :aria-label="t('sftpPaste.action')" :disabled="!connected || !canWrite || !sftpClipboard || pasteBusy" @click="pasteClipboard"><ClipboardPaste /></button>
-          <button class="icon-button icon-teal" :title="`${t('upload')} · Ctrl/Cmd+V`" :aria-label="`${t('upload')} · Ctrl/Cmd+V`" :disabled="!connected || !canWrite" @click.stop="chooseUpload"><FileUp /></button>
-          <button v-if="folderUploadSupported" class="icon-button icon-teal" :title="t('folderUpload.title')" :aria-label="t('folderUpload.action')" :disabled="!connected || !canWrite" @click.stop="chooseFolderUpload"><FolderUp /></button>
-          <button class="icon-button icon-amber" :title="t('newFolder')" :aria-label="t('newFolder')" :disabled="!connected || !canWrite" @click="operationDraft = ''; operationDialog = 'mkdir'"><FolderPlus /></button>
-          <button class="icon-button icon-amber" :title="t('sftpNewFile.action')" :aria-label="t('sftpNewFile.action')" :disabled="!connected || !canWrite" @click="openNewFileDialog"><FilePlus /></button>
           <button class="icon-button icon-violet" :title="t('otpPanel.title')" :aria-label="t('otpPanel.title')" @click="otpPanelOpen = true"><KeyRound /></button>
           <button class="icon-button icon-blue" :title="t('importWizard.title')" :aria-label="t('importWizard.title')" @click="importPanelOpen = true"><FileInput /></button>
-          <label class="follow-directory-control sudo-label" :title="!canWrite ? t('readOnly') : t('sudo.modeHint')">
-            <Switch size="sm" :model-value="sudoMode" :disabled="!connected || !canWrite" @update:model-value="toggleSudoMode" />
-            <span>{{ t("sudo.mode") }}</span>
-          </label>
+          <button
+            class="sudo-toggle"
+            :class="{ 'is-on': sudoMode }"
+            type="button"
+            :aria-pressed="sudoMode"
+            :title="!canWrite ? t('readOnly') : t('sudo.modeHint')"
+            :disabled="!connected || !canWrite"
+            @click="toggleSudoMode"
+          >sudo</button>
         </div>
         <!-- SFTP 面板主体：单栏文件树（文件夹 + 文件同列），无侧栏。 -->
         <div class="sftp-body">
@@ -10553,7 +10573,7 @@ watch(historyScope, () => {
                行事件由 SftpTreePane 上抛 showFileMenu 设置负载，空白区由
                onFileAreaContextMenu 兜底；定位/碰撞/Esc/外点关闭均由 reka 承担。
                树行 contextmenu 不 preventDefault，好让事件继续到本触发器。 -->
-          <ContextMenu :open="!!(fileMenu || blankMenu)" @update:open="(open) => { if (!open) { fileMenu = undefined; blankMenu = false; } }">
+          <ContextMenu :open="!!fileMenu" @update:open="(open) => { if (!open) fileMenu = undefined; }">
             <ContextMenuTrigger class="contents">
               <SftpTreePane
                 ref="sftpTreePane"
@@ -10590,11 +10610,32 @@ watch(historyScope, () => {
                   <ContextMenuItem variant="destructive" :disabled="!canWrite || archiveBusy || batchDeleteSubmitting" @select="batchDeleteOpen = true"><Trash2 />{{ t("sftpBatch.delete") }}</ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem @select="copySelectedPaths"><Copy />{{ t("sftpCopy.copySelected") }}</ContextMenuItem>
+                  <!-- 多选态右键命中的是文件夹时，仍提供该目录下的新建/上传。 -->
+                  <template v-if="fileMenu.entry.kind === 'directory'">
+                    <ContextMenuSeparator />
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('mkdir', fileMenu.entry)"><FolderPlus />{{ t("newFolder") }}</ContextMenuItem>
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('newFile', fileMenu.entry)"><FilePlus />{{ t("sftpNewFile.action") }}</ContextMenuItem>
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('symlink', fileMenu.entry)"><Link2 />{{ t("symlink.createAction") }}</ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('upload', fileMenu.entry)"><FileUp />{{ t("upload") }}</ContextMenuItem>
+                    <ContextMenuItem v-if="folderUploadSupported" :disabled="!connected || !canWrite" @select="folderMenuAction('uploadFolder', fileMenu.entry)"><FolderUp />{{ t("folderUpload.action") }}</ContextMenuItem>
+                  </template>
                 </template>
                 <template v-else-if="fileMenu">
                   <ContextMenuItem v-if="fileMenu.entry.kind === 'directory' || fileMenu.entry.kind === 'file'" @select="openEntry(fileMenu.entry)"><Folder v-if="fileMenu.entry.kind === 'directory'" /><FileText v-else />{{ fileMenu.entry.kind === "directory" ? t("openFolder") : t("preview") }}</ContextMenuItem>
                   <ContextMenuItem v-if="fileMenu.entry.kind === 'file' || fileMenu.entry.kind === 'directory'" @select="downloadEntry(fileMenu.entry, sudoMode && canWrite && fileMenu.entry.kind === 'file')"><Download />{{ t("download") }}</ContextMenuItem>
                   <ContextMenuItem v-if="fileMenu.entry.kind === 'directory'" :disabled="!connected || loadingFiles" @select="refreshSftpFolder(fileMenu.entry)"><RefreshCw />{{ t("refresh") }}</ContextMenuItem>
+                  <!-- 文件夹行右键：新建/上传落在被右键的目录内（不是面板当前目录）。 -->
+                  <template v-if="fileMenu.entry.kind === 'directory'">
+                    <ContextMenuSeparator />
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('mkdir', fileMenu.entry)"><FolderPlus />{{ t("newFolder") }}</ContextMenuItem>
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('newFile', fileMenu.entry)"><FilePlus />{{ t("sftpNewFile.action") }}</ContextMenuItem>
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('symlink', fileMenu.entry)"><Link2 />{{ t("symlink.createAction") }}</ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem :disabled="!connected || !canWrite" @select="folderMenuAction('upload', fileMenu.entry)"><FileUp />{{ t("upload") }}</ContextMenuItem>
+                    <ContextMenuItem v-if="folderUploadSupported" :disabled="!connected || !canWrite" @select="folderMenuAction('uploadFolder', fileMenu.entry)"><FolderUp />{{ t("folderUpload.action") }}</ContextMenuItem>
+                    <ContextMenuSeparator />
+                  </template>
                   <!-- 以 root 下载（M14-C DownloadSudo）：root 大文件二进制下载，读只读门禁
                        与 sudo 族一致（sidecar 对只读连接 fail closed，这里 canWrite 同步禁用）。
                        sudo 模式下默认「下载」已自动换 sudo 车道（UploadSudo/DownloadSudo
@@ -10637,15 +10678,6 @@ watch(historyScope, () => {
                   <ContextMenuItem v-if="fileMenu.entry.kind === 'file' && isArchiveName(fileMenu.entry.name)" :disabled="!canWrite || archiveBusy" @select="extractEntry(fileMenu.entry)"><PackageOpen />{{ t("extract.action") }}</ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem variant="destructive" :disabled="!canWrite || fileMenuProtected" @select="deleteTarget = fileMenu.entry"><Trash2 />{{ t("delete") }}</ContextMenuItem>
-                </template>
-                <!-- 文件列表空白处右键：新建文件夹 / 新建文件 / 上传文件 / 刷新 -->
-                <template v-else>
-                  <ContextMenuItem :disabled="!canWrite" @select="blankMenuAction('mkdir')"><FolderPlus />{{ t("newFolder") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!canWrite" @select="blankMenuAction('newFile')"><FilePlus />{{ t("sftpNewFile.action") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!canWrite" @select="blankMenuAction('symlink')"><Link2 />{{ t("symlink.createAction") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!connected || !canWrite" @select="blankMenuAction('upload')"><FileUp />{{ t("upload") }}</ContextMenuItem>
-                  <ContextMenuItem v-if="folderUploadSupported" :disabled="!connected || !canWrite" @select="blankMenuAction('uploadFolder')"><FolderUp />{{ t("folderUpload.action") }}</ContextMenuItem>
-                  <ContextMenuItem :disabled="!connected || loadingFiles" @select="blankMenuAction('refresh')"><RefreshCw />{{ t("refresh") }}</ContextMenuItem>
                 </template>
               </ContextMenuContent>
             </ContextMenu>

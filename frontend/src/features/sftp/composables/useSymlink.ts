@@ -12,26 +12,28 @@ export function useSymlink(options: {
   pathFromUri: (uri: string) => string;
   joinRemote: (parent: string, name: string) => string;
   loadDirectory: (path?: string) => Promise<void>;
+  /** 新建后刷新实际落点目录（文件夹行右键入口）；缺省回退 loadDirectory()。 */
+  refreshAfterCreate?: (targetDir?: string) => Promise<void>;
 }) {
-  const { t, showError, session, currentPath, pathFromUri, joinRemote, loadDirectory } = options;
+  const { t, showError, session, currentPath, pathFromUri, joinRemote, loadDirectory, refreshAfterCreate } = options;
 
 // 目录条目的最小结构（App.vue 的 SftpEntry 为局部接口，按消费字段收敛）。
 type SideSftpEntry = { uri: string; name: string; kind: SftpEntryKind; lossy?: boolean };
 
 // —— 符号链接（P2-6）：新建/改指向小对话框 + 列表 tooltip 的 → target 缓存。
 // create 用 draft(链接名)+targetDraft(指向)；edit 复用 draft 承载指向。
-const symlinkDialog = ref<{ mode: "create" | "edit"; linkPath: string; name: string } | null>(null);
+const symlinkDialog = ref<{ mode: "create" | "edit"; linkPath: string; name: string; createDir?: string } | null>(null);
 const symlinkDraft = ref("");
 const symlinkTargetDraft = ref("");
 const symlinkSubmitting = ref(false);
 const linkTargets = ref<Record<string, string>>({});
 
 // —— 符号链接（P2-6）——
-function beginSymlinkCreate() {
+function beginSymlinkCreate(targetDir?: string) {
   if (!session.value) return;
   symlinkDraft.value = "";
   symlinkTargetDraft.value = "";
-  symlinkDialog.value = { mode: "create", linkPath: "", name: "" };
+  symlinkDialog.value = { mode: "create", linkPath: "", name: "", createDir: targetDir };
 }
 
 function beginSymlinkEdit(entry: SideSftpEntry) {
@@ -55,7 +57,7 @@ async function commitSymlink() {
       await window.dbxPlugin.invoke("sftp/symlink-create", {
         sessionId: session.value.sessionId,
         target,
-        linkPath: joinRemote(currentPath.value, name),
+        linkPath: joinRemote(dialog.createDir ?? currentPath.value, name),
       });
     } else {
       await window.dbxPlugin.invoke("sftp/symlink-update", {
@@ -65,8 +67,10 @@ async function commitSymlink() {
       });
       linkTargets.value = { ...linkTargets.value, [`sftp:${dialog.linkPath}`]: target };
     }
+    const createDir = isCreate ? dialog.createDir : undefined;
     symlinkDialog.value = null;
-    await loadDirectory();
+    if (refreshAfterCreate) await refreshAfterCreate(createDir);
+    else await loadDirectory();
   } catch (cause) {
     showError(cause, "sftp");
   } finally {

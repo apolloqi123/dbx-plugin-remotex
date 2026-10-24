@@ -155,15 +155,17 @@ describe("SftpTreePane", () => {
     expect(wrapper.find(".sftp-lossy-icon").exists()).toBe(true);
   });
 
-  it("emits toggle when a folder row is clicked and does not select it", async () => {
+  it("selects a folder row and toggles it on a plain click", async () => {
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);
     await wrapper.find(".sftp-tree-row").trigger("click");
+    const payload = wrapper.emitted("select")?.[0];
+    expect(payload?.[0]).toEqual(folder.entry);
+    expect(payload?.[1]).toBeInstanceOf(MouseEvent);
     expect(wrapper.emitted("toggle")?.[0]).toEqual([folder]);
-    expect(wrapper.emitted("select")).toBeUndefined();
   });
 
-  it("selects a folder instead of toggling it when Ctrl/Cmd/Shift is held", async () => {
+  it("keeps folder selection semantics for Ctrl/Cmd/Shift clicks", async () => {
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);
     const el = wrapper.find(".sftp-tree-row");
@@ -200,7 +202,7 @@ describe("SftpTreePane", () => {
     expect(wrapper.emitted("open")?.[1]).toEqual([file]);
   });
 
-  it("does not toggle a folder twice when the second click of a double click arrives", async () => {
+  it("selects and toggles once on a double click, then opens", async () => {
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);
     const el = wrapper.find(".sftp-tree-row");
@@ -209,7 +211,8 @@ describe("SftpTreePane", () => {
     await el.trigger("click", { detail: 2 });
     await el.trigger("dblclick");
 
-    // 首次 click 只 toggle 一次；detail > 1 的重复 click 被忽略，随后 dblclick 打开。
+    // 首击选中并 toggle；detail > 1 的重复 click 被忽略，随后 dblclick 打开。
+    expect(wrapper.emitted("select")).toHaveLength(1);
     expect(wrapper.emitted("toggle")).toHaveLength(1);
     expect(wrapper.emitted("open")?.[0]).toEqual([folder]);
   });

@@ -379,20 +379,15 @@ function focusParentRow(node: SftpFileTreeNode): boolean {
 }
 
 function onRowClick(node: SftpFileTreeNode, event: MouseEvent) {
-  if (node.kind === "directory") {
-    // 双击的第二次 click（detail > 1）忽略：首击已 toggle 一次，dblclick
-    // 只负责 open，否则文件夹会先展开再收起（两次 toggle）。
-    if (event.detail > 1) return;
-    // 带修饰键单击文件夹 = 多选（Ctrl/Cmd 切换、Shift 范围），不展开；普通
-    // 单击仍只负责展开/收起，不改变当前目录与选中态。
-    if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      emit("select", node.entry, event);
-      return;
-    }
-    emit("toggle", node);
-    return;
-  }
+  // 双击的第二次 click（detail > 1）忽略：首击已选中/展开，dblclick 只
+  // 负责 open，避免同一行连发两次动作。
+  if (event.detail > 1) return;
+  // 文件与文件夹统一单击选中并高亮；文件夹普通单击同时展开/收起（带修饰
+  // 键时只做多选，交给 Ctrl/Cmd 切换与 Shift 范围）。
   emit("select", node.entry, event);
+  if (node.kind === "directory" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    emit("toggle", node);
+  }
 }
 
 function onCaretClick(node: SftpFileTreeNode, event: MouseEvent) {

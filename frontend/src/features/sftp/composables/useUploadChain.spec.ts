@@ -100,6 +100,30 @@ function mountUploadChain(overrides?: {
   return { chain, dragActive, terminalDragActive, showError, showNotice, uploadSource, loadDirectory };
 }
 
+describe("useUploadChain folder-row upload target", () => {
+  it("uploads host-picked files into the target directory passed by the folder menu", async () => {
+    const pick = vi.fn(async () => ({ files: [{ handleId: "h1", name: "a.txt", size: 3 }] }));
+    globalWindow.dbxPlugin = {
+      invoke: vi.fn(async () => ({})),
+      fileTransfer: {
+        pick,
+        read: vi.fn(async () => ({ dataBase64: "YWJj", length: 3 })),
+        cancel: vi.fn(async () => undefined),
+      },
+      decodeBase64: (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0)),
+    };
+
+    const { chain, uploadSource } = mountUploadChain();
+    await chain.chooseUpload("/etc");
+
+    expect(pick).toHaveBeenCalledWith({ multiple: true });
+    expect(uploadSource).toHaveBeenCalledTimes(1);
+    // uploadSource(name, size, readChunk, resume?, targetDir?, ...)
+    const calls = (uploadSource as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(calls[0]?.[4]).toBe("/etc");
+  });
+});
+
 describe("useUploadChain drag highlight lifecycle (issue #197)", () => {
   it("SFTP pane: highlight survives child-to-child moves and resets once the drag leaves through a child without dropping", () => {
     const { chain, dragActive } = mountUploadChain();

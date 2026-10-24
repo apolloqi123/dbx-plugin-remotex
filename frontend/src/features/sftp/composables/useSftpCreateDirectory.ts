@@ -6,10 +6,14 @@ export function useSftpCreateDirectory(options: {
   session: Ref<{ sessionId?: string } | undefined>;
   sudoMode: Ref<boolean>;
   currentPath: Ref<string>;
+  /** 文件夹行右键入口的落点；未设置时使用面板当前目录。成功后清空。 */
+  targetDir?: Ref<string | undefined>;
   joinRemote: (parent: string, name: string) => string;
   loadDirectory: (path?: string) => Promise<void>;
+  /** 目标目录刷新入口（树内目录需重列子项）；缺省回退 loadDirectory()。 */
+  refreshAfterCreate?: (targetDir?: string) => Promise<void>;
 }) {
-  const { showError, session, sudoMode, currentPath, joinRemote, loadDirectory } = options;
+  const { showError, session, sudoMode, currentPath, targetDir, joinRemote, loadDirectory, refreshAfterCreate } = options;
 
 const operationDialog = ref<"mkdir" | null>(null);
 const operationDraft = ref("");
@@ -17,7 +21,8 @@ const operationDraft = ref("");
 async function createDirectory() {
   const name = operationDraft.value.trim();
   if (!session.value || !name) return;
-  const path = joinRemote(currentPath.value, name);
+  const base = targetDir?.value ?? currentPath.value;
+  const path = joinRemote(base, name);
   try {
     if (sudoMode.value) {
       await window.dbxPlugin.invoke("sudo/mkdir", { sessionId: session.value.sessionId, path });
@@ -25,7 +30,9 @@ async function createDirectory() {
       await window.dbxPlugin.invoke("sftp/createDirectory", { sessionId: session.value.sessionId, path });
     }
     operationDialog.value = null;
-    await loadDirectory();
+    if (targetDir) targetDir.value = undefined;
+    if (refreshAfterCreate) await refreshAfterCreate(base);
+    else await loadDirectory();
   } catch (cause) {
     showError(cause);
   }

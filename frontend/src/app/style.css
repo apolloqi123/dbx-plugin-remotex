@@ -71,7 +71,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--primary); o
   background: color-mix(in srgb, var(--background) 92%, transparent);
 }
 
-.identity, .toolbar-actions, .follow-directory-control, .icon-button,
+.identity, .toolbar-actions, .icon-button,
 .file-name, .transfer-title, .transfer-meta,
 .modal header, .modal footer, .file-footer {
   display: flex;
@@ -270,7 +270,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--primary); o
    轨道/边框/选中样式，必须排除——:not() 按参数计特异性（每条 (0,1,0)），
    该选择器实际特异性 (0,3,1)，会把这些控件的背景抹成透明
    （设置侧栏选中项白字无药丸、弹窗内控件隐形而工具栏正常的根因）。 */
-.modal button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]), .path-toolbar button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]) {
+.modal button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]), .path-toolbar button:not(.sudo-toggle):not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]) {
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -298,7 +298,11 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--primary); o
   stroke-width: 1.7;
 }
 .icon-button.compact svg { width: 12px; height: 12px; flex: 0 0 12px; }
-.follow-directory-control { gap: 5px; margin-right: 2px; color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
+/* sudo 文本按钮：文字本身就是开关，关闭暗色、开启亮色描边+前景。 */
+.sudo-toggle { display: inline-flex; align-items: center; justify-content: center; height: 20px; margin-left: 2px; border: 1px solid var(--border); border-radius: 4px; padding: 0 7px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; cursor: pointer; }
+.sudo-toggle:hover:not(:disabled):not(.is-on) { background: var(--accent); }
+.sudo-toggle.is-on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--foreground); font-weight: 600; }
+.sudo-toggle:disabled { cursor: default; }
 .toolbar-separator { width: 1px; height: 16px; flex: 0 0 1px; margin: 0 3px; background: var(--border); }
 .icon-button.is-active { background: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
 .columns-popover input, .remember input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
@@ -629,7 +633,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
    不用 overflow-x 滚动：折行即可容纳全部按钮（弹层已 portal 到 body，
    不再有滚动容器裁切问题，但折行布局本身仍是更稳的窄面板形态）。 */
 .path-toolbar { display: flex; height: auto; min-height: 38px; flex-wrap: wrap; align-items: center; gap: 4px; border-bottom: 1px solid var(--border); padding: 3px 7px; }
-.path-toolbar .sudo-label { margin-left: 2px; }
+.path-toolbar .sudo-toggle { margin-left: 2px; }
 /* 容器查询按面板宽度（而非视口）整理窄面板布局：图标按 DOM 序自然折行，
    路径输入框独占一行沉底，sudo 开关隐去文字只留开关——行列对齐不零散。 */
 .sftp-pane { container-type: inline-size; }
@@ -638,8 +642,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   /* 同名旧规则 .path-toolbar .path-bar（flex:1; min-width:110px）特异性相同且位置
      靠后，这里用 .sftp-pane 前缀压过它，否则路径框不会独占一行。 */
   .sftp-pane .path-toolbar > .path-bar { flex: 1 0 100%; min-width: 0; order: 99; }
-  .path-toolbar .sudo-label > span:last-child { display: none; }
-  .path-toolbar .sudo-label { margin-left: 0; }
+  .path-toolbar .sudo-toggle { margin-left: 0; }
 }
 .path-toolbar input, .modal input, .modal textarea,
 .popover textarea {
@@ -884,7 +887,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   /* SFTP 面板收起时终端占满整个工作台（含窄屏纵向布局）。 */
   .panes:not(.panes--horizontal).panes--solo .terminal-stack,
   .panes--solo .terminal-stack { height: 100%; }
-  .follow-directory-control > span { display: none; }
 }
 
 /* Quick sudo command dialog */

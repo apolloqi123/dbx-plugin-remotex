@@ -1037,6 +1037,31 @@ it("renders the SFTP pane as a single tree column without the old table or sideb
   expect(appTemplate).not.toContain("<SideNavPanel");
 });
 
+// 工具条上的新建/上传四个图标按钮已移除，动作收进文件夹行右键菜单；空白处
+// 右键不再弹自定义菜单。菜单动作带上被右键的目录作为落点。
+it("moves new/upload actions from the SFTP toolbar into the folder row menu", () => {
+  expect(appTemplate).not.toContain('@click.stop="chooseUpload"');
+  expect(appTemplate).not.toContain('@click.stop="chooseFolderUpload"');
+  expect(appTemplate).not.toContain('@click="openNewFileDialog"');
+  expect(appTemplate).not.toContain('operationDialog = \'mkdir\'');
+  expect(appTemplate).not.toContain("blankMenuAction(");
+  expect(appTemplate).not.toContain("blankMenu = true");
+  expect(appTemplate).toContain("folderMenuAction('mkdir', fileMenu.entry)");
+  expect(appTemplate).toContain("folderMenuAction('newFile', fileMenu.entry)");
+  expect(appTemplate).toContain("folderMenuAction('upload', fileMenu.entry)");
+  expect(appTemplate).toContain("folderMenuAction('uploadFolder', fileMenu.entry)");
+});
+
+// sudo 是纯文字开关按钮：关闭暗色、开启亮色，不再使用 Switch 控件。
+it("renders sudo as a text toggle button", () => {
+  expect(appTemplate).toContain('class="sudo-toggle"');
+  expect(appTemplate).toContain(':aria-pressed="sudoMode"');
+  expect(appTemplate).toContain('@click="toggleSudoMode"');
+  expect(appTemplate).toContain(">sudo</button>");
+  expect(appTemplate).not.toContain("sudo-label-text");
+  expect(appTemplate).not.toContain("follow-directory-control sudo-label");
+});
+
 // 目录跟随开关收进 SFTP 路径栏：主工具条不再保留文字+Switch 控件；分屏/页签
 // 的 cwd 与窗格激活事件由布局树桥接到 App，跟随目录需要能滚动置顶。
 it("puts the directory-follow toggle in the SFTP path toolbar", () => {
@@ -1044,7 +1069,7 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(appTemplate).toContain(':follow-padding="followDirectory"');
   expect(appTemplate).toContain('@cwd="onShellTabCwd"');
   expect(appTemplate).toContain('@activate-pane="onPaneActivated"');
-  // 旧的主工具条文字+Switch 入口已移除（class 仍被 sudo 标签复用，不能按类名断言）。
+  // 旧的主工具条文字+Switch 入口已移除（跟随开关现在是独立图标按钮）。
   expect(appTemplate).not.toContain('@update:model-value="setDirectoryTracking"');
   expect(appTemplate).toContain("setDirectoryTracking(!followDirectory)");
   expect(appTemplate).toContain("<LocateFixed v-if=\"followDirectory\" />");

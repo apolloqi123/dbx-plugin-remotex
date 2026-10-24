@@ -82,6 +82,10 @@ const uploadInput = ref<HTMLInputElement>();
 // 文件夹上传（issue #78）：webkitdirectory 选择器 + 能力探测（缺失时入口隐藏）。
 const folderUploadInput = ref<HTMLInputElement>();
 const folderUploadSupported = ref(false);
+// 文件夹行右键入口的落点：文件选择器是异步的，先把目标目录记下来，等
+// input change 回来再消费（工具栏/拖拽入口不传，沿用当前目录）。
+const pendingUploadTargetDir = ref<string>();
+const pendingFolderUploadTargetDir = ref<string>();
 // 文件夹批量上传的聚合进度（复用传输面板展示；目录 X/Y · 文件 N/M）。
 const folderUploadProgress = ref<FolderUploadProgress>();
 
@@ -130,16 +134,17 @@ const dropUploadPathInputEl = ref<HTMLInputElement>();
 
 let dropUploadResolver: ((choice: "cancel" | "cwd" | { dir: string }) => void) | undefined;
 
-async function chooseUpload() {
+async function chooseUpload(targetDir?: string) {
   if (!connected.value || !canWrite.value) return;
   openTransferPanel();
   if (!rpcAvailable() || !window.dbxPlugin.fileTransfer) {
+    pendingUploadTargetDir.value = targetDir;
     uploadInput.value?.click();
     return;
   }
   try {
     const selection = await window.dbxPlugin.fileTransfer.pick({ multiple: true });
-    const uploaded = await uploadHandleFiles(selection.files);
+    const uploaded = await uploadHandleFiles(selection.files, targetDir);
     // 刷新已由 uploadHandleFiles 在成功后按实际落点完成（refreshAfterUpload/
     // loadDirectory），这里不再重复整目录拉取。
     if (uploaded) showNotice(t("uploaded", { count: uploaded }));
@@ -147,7 +152,7 @@ async function chooseUpload() {
     // 宿主文件桥失败（pick 或读盘，如 unknown plugin file handle，issue #83/#79）
     // 时不再直接终止：回退到 webview 原生文件选择（File API），上传仍可继续。
     if (isHostBridgeReadFailure(cause)) {
-      fallbackToNativeUploadPicker();
+      fallbackToNativeUploadPicker(targetDir);
       return;
     }
     showError(cause);
@@ -202,8 +207,9 @@ function isHostBridgeReadFailure(cause: unknown): boolean {
 
 // 桥接不可用时的兜底（对标 dbx-plugin-files PR #47）：提示后自动打开 webview
 // 原生文件选择器（File API，不依赖宿主句柄），上传仍可完成。
-function fallbackToNativeUploadPicker() {
+function fallbackToNativeUploadPicker(targetDir?: string) {
   showNotice(t("uploadBridgeFallback"));
+  pendingUploadTargetDir.value = targetDir;
   uploadInput.value?.click();
 }
 
@@ -419,7 +425,9 @@ function onUploadInput(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files || []);
   input.value = "";
-  if (files.length) void uploadLocalFiles(files).catch(showError);
+  const targetDir = pendingUploadTargetDir.value;
+  pendingUploadTargetDir.value = undefined;
+  if (files.length) void uploadLocalFiles(files, targetDir).catch(showError);
 }
 
 // —— 文件夹上传（issue #78）：纯前端编排，复用既有 sftp/upload 管线 ——
@@ -429,9 +437,10 @@ function onUploadInput(event: Event) {
 // 批量下降级为「已存在即跳过」+ 完成提示计数，避免上百次弹窗交互）。
 // 能力探测：浏览器无 webkitdirectory 支持时入口隐藏（onMounted 一次性探测）。
 
-function chooseFolderUpload() {
+function chooseFolderUpload(targetDir?: string) {
   if (!connected.value || !canWrite.value || !folderUploadSupported.value) return;
   openTransferPanel();
+  pendingFolderUploadTargetDir.value = targetDir;
   folderUploadInput.value?.click();
 }
 
@@ -439,13 +448,15 @@ function onFolderUploadInput(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files || []);
   input.value = "";
+  const targetDir = pendingFolderUploadTargetDir.value;
+  pendingFolderUploadTargetDir.value = undefined;
   if (!files.length) return;
   void uploadFolderFiles(files.map((file) => ({
     name: file.name,
     relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || "",
     size: file.size,
     readChunk: (offset: number, length: number) => file.slice(offset, offset + length).arrayBuffer().then((buffer) => new Uint8Array(buffer)),
-  }))).catch(showError);
+  })), targetDir).catch(showError);
 }
 
 interface FolderUploadEntry {
