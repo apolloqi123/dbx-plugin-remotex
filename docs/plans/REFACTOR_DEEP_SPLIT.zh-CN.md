@@ -14,7 +14,18 @@
 - P4 完成：App.vue 9,981→9,550；抽出 `DockMetricsStrip`、`ConnectionInfoPopover`、`TransferPopover`、`BatchBar`、`WorkbenchSftpDialogs`、`WorkbenchSessionDialogs` 六个模板组件（1,107 行），对应 scoped CSS 随 DOM 迁移。浏览器冒烟修复三处抽取问题：`FolderOpen` 图标导入、`upload-watched-once` 事件名与 Vue `.once` 归一化冲突（改为 `upload-watched-single`）、告警排查 textarea 丢失两向绑定（补回归守卫）；另清理死 `resumeInput` ref 与无用 prop。右侧 SFTP 面板与终端状态机保留在 App，避免高耦合区风险。
 - 第二批（P6–P9）完成：后端继续拆分 `connection`、`mcp/connections`、`exec/auth`、`local/fs`、`ssh/state`、`sftp/copy`、`triggers/parse`；App.vue 9,550→9,174，新增 `useAiAssistant`、`useSerialUpload` 与 `SftpWorkspacePanel`（531 行）；`useCommandSuggestions` 668→410、`useTransferQueue` 578→132。最终 review：无 P0/P1；清理无意义 `#[allow(unused_imports)]`、死导入，并补 tree/path-bar 桥接守卫。
 - 第三批（P11–P13）：App.vue 9,173→8,572（`useShellTabs`、`useTerminalMenus`、`useLocalShellPreferences`、`useWorkbenchToolbar`、`useWorkbenchSpawnTabs`、`useSftpFolderActions`）；SettingsTerminalPane 397→202（拆 4 个 section），SplitTerminalPane 648→465（renderer/clipboard 两个 composable）；mockDbxHost 1,637→263 入口 + `mock/host/*` 14 个域模块，mock registry 校验脚本同步适配；figSourceCore 确认是纯引擎、保持不动。中断 agent 留下的 `newFileTargetDir` 缺失已修复。
-- P10 完成：`scripts/test.sh --skip-host` 全部通过（后端 1286、前端 2280、dead-code 零警告、MCP stdio smoke、本地终端 smoke）。产物：`dist/io.dbx.sshx-0.7.9-beta.21-darwin-arm64.dbxp`，14,856,620 bytes，SHA-256 `7e4cbe0586b964b479be6339ba39a108366e61c9cb8826d2827b7fc8ccfe6255`。
+- P10 完成：beta.21 全量门禁通过，产物 `dist/io.dbx.sshx-0.7.9-beta.21-darwin-arm64.dbxp`，14,856,620 bytes，SHA-256 `7e4cbe0586b964b479be6339ba39a108366e61c9cb8826d2827b7fc8ccfe6255`。
+- P14 完成：`scripts/test.sh --skip-host` 全部通过（后端 1286、前端 2280、dead-code 零警告、MCP stdio smoke、本地终端 smoke）。产物：`dist/io.dbx.sshx-0.7.9-beta.22-darwin-arm64.dbxp`，14,860,729 bytes，SHA-256 `4db46b749f70d9f16106a8a06918f8b62396a2aae6dd110231f7fe9524155050`。
+
+## 完成边界
+
+本轮的自动化机械拆分到此完成。剩余未拆项均为高耦合核心或数据/引擎，继续拆分收益低于行为风险：
+
+- `frontend/src/app/App.vue`（约 8.6k 行）：终端帧 drain、连接生命周期、Esc/焦点仲裁等核心状态机。
+- `frontend/src/features/settings/components/SettingsDialog.vue`（约 929 行）：设置编排器（导航 + 共享草稿 + 保存链）。
+- `frontend/src/features/completion/lib/completion/fig/figSourceCore.ts`（737 行）：纯引擎，语料由调用方注入。
+- `backend/src/sessions/ssh/connection/open.rs`（718 行）：单个连接建立 God-function，含 PTY/注册/读循环。
+- i18n `messages/base/*.ts` 与 fig 语料：数据文件，按语言/语料边界保留。
 
 ## 目标
 
