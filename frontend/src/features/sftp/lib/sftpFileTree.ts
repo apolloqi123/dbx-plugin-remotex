@@ -37,8 +37,8 @@ function entryForPath(path: string): SftpSanitizedEntry {
 }
 
 /**
- * 根节点（默认连接根目录 "/"）；name 固定 "/"，展示层用 sftpSide.root
- * 本地化替换。uri 保持 sftp:/ 前缀，与 sftp/list 的条目 uri 同构。
+ * 根节点（默认连接根目录 "/"）；name 固定 "/"，展示层直接显示为 "/"。
+ * uri 保持 sftp:/ 前缀，与 sftp/list 的条目 uri 同构。
  */
 export function createFileTreeRoot(path = "/"): SftpFileTreeNode {
   const normalized = path || "/";

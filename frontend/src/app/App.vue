@@ -71,6 +71,8 @@ import {
   Square,
   SquarePlus,
   ListPlus,
+  LocateFixed,
+  LocateOff,
   SquareTerminal,
   Star,
   Terminal as TerminalIcon,
@@ -282,7 +284,8 @@ import { useCommandHistory } from "../features/terminal/composables/useCommandHi
 import { useSftpRename } from "../features/sftp/composables/useSftpRename";
 import { useEditorTabs } from "../features/sftp/composables/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
-import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";import {
+import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";
+import {
   activateTerminalTab,
   addTerminalTab,
   closeTerminalLayoutPane,
@@ -290,8 +293,11 @@ import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTr
   createTerminalLayout,
   findTerminalPane,
   hasTerminalSplit,
+  MAIN_TERMINAL_PANE_ID,
   removeSplitAroundPane,
   removeTerminalTab,
+  resolveActiveTabCwd,
+  shouldFollowTabCwd,
   splitTerminalLayout,
   terminalTabs,
   type TerminalLayoutOrientation,
@@ -747,6 +753,8 @@ type TerminalSearchMatchState = "idle" | "match" | "no-match";
 
 const terminalHost = ref<HTMLElement>();
 const sftpPane = ref<HTMLElement>();
+// 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
+const sftpTreePane = ref<{ scrollPathToTop(path: string): Promise<boolean> } | null>(null);
 const paneContainer = ref<HTMLElement>();
 const zmodemInput = ref<HTMLInputElement>();
 const hostContext = ref<Record<string, unknown>>({});
@@ -1748,6 +1756,15 @@ const connected = computed(() => terminalState.value === "connected" && !!sessio
 // 开独立 PTY；宿主 openWorkbench 只支持 tab 落点，所以布局完全在插件内。
 const terminalLayout = ref<TerminalLayoutNode>(createTerminalLayout());
 const shellTabSessions = new Map<string, string>();
+// 目录跟随由各终端真实 cwd 变化驱动；activeTerminalPaneId 只决定面板重开时
+// 的初始目标。主窗格主终端用 terminalCwd，其余页签用各自 OSC 7 上报的 cwd。
+// 非响应式 Map 的会话映射仍用 shellTabSessions；cwd 需要驱动 computed，单独
+// 用响应式 Map。
+const activeTerminalPaneId = ref(MAIN_TERMINAL_PANE_ID);
+const shellTabCwd = reactive(new Map<string, string>());
+const activePaneCwd = computed(() =>
+  resolveActiveTabCwd(terminalLayout.value, activeTerminalPaneId.value, terminalCwd.value, shellTabCwd),
+);
 const canSplitTerminal = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
 const terminalHasSplit = computed(() => hasTerminalSplit(terminalLayout.value));
 const splitTerminalFont = computed(() =>
@@ -1778,32 +1795,81 @@ function closeTerminalSplit() {
 }
 
 function closePane(paneId: string) {
-  for (const tabId of collectPaneTabIds(terminalLayout.value, paneId)) shellTabSessions.delete(tabId);
+  for (const tabId of collectPaneTabIds(terminalLayout.value, paneId)) {
+    shellTabSessions.delete(tabId);
+    shellTabCwd.delete(tabId);
+  }
   terminalLayout.value = closeTerminalLayoutPane(terminalLayout.value, paneId) ?? createTerminalLayout();
+  if (!findTerminalPane(terminalLayout.value, activeTerminalPaneId.value)) {
+    activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
+  }
   void nextTick(scheduleFit);
 }
 
 function createPaneTab(paneId: string) {
   if (!canOpenShellTab.value) return;
   if (!findTerminalPane(terminalLayout.value, paneId)) return;
+  activeTerminalPaneId.value = paneId;
   const tabId = randomUUID();
   terminalLayout.value = addTerminalTab(terminalLayout.value, paneId, tabId);
   void nextTick(scheduleFit);
 }
 
 function activatePaneTab(paneId: string, tabId: string) {
+  const pane = findTerminalPane(terminalLayout.value, paneId);
+  const tabChanged = pane?.activeTabId !== tabId;
+  const paneChanged = activeTerminalPaneId.value !== paneId;
+  activeTerminalPaneId.value = paneId;
   terminalLayout.value = activateTerminalTab(terminalLayout.value, paneId, tabId);
+  if (tabChanged || paneChanged) syncSftpToActivePane();
   void nextTick(scheduleFit);
 }
 
 function closePaneTab(paneId: string, tabId: string) {
   shellTabSessions.delete(tabId);
+  shellTabCwd.delete(tabId);
   terminalLayout.value = removeTerminalTab(terminalLayout.value, paneId, tabId);
+  if (!findTerminalPane(terminalLayout.value, activeTerminalPaneId.value)) {
+    activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
+  }
   void nextTick(scheduleFit);
+}
+
+/** 分屏页签上报 OSC 7：记录并只在真实目录变化时驱动跟随。 */
+function onShellTabCwd(tabId: string, path: string) {
+  const previous = shellTabCwd.get(tabId);
+  shellTabCwd.set(tabId, path);
+  // 首次上报是该页签的初始提示符；只有它本来就是活动窗格的活动页签（cwd
+  // 迟到）才跟随。重复上报（回车/resize/提示符重绘）不重复导航。
+  const activeTabId = findTerminalPane(terminalLayout.value, activeTerminalPaneId.value)?.activeTabId;
+  if (!shouldFollowTabCwd(previous, path, activeTabId === tabId)) return;
+  if (!followDirectory.value || !connected.value) return;
+  void followSftpPath(path);
+}
+
+/** 任意窗格内按下/聚焦：记录最后交互窗格，并把 SFTP 同步到该窗格的目录。 */
+function onPaneActivated(paneId: string) {
+  if (!paneId || activeTerminalPaneId.value === paneId) return;
+  activeTerminalPaneId.value = paneId;
+  syncSftpToActivePane();
+}
+
+/**
+ * 聚焦/切换窗格或页签时显示该窗格的活动目录。只在“真正切换了窗格/页签”时
+ * 调用（同一窗格内重复点击终端不会触发），因此会重新置顶但不会打断用户在
+ * 当前窗格里的连续操作。
+ */
+function syncSftpToActivePane() {
+  if (!followDirectory.value || !connected.value) return;
+  const cwd = activePaneCwd.value;
+  if (!cwd) return;
+  void followSftpPath(cwd);
 }
 
 function onShellTabOpened(tabId: string, sessionId: string) {
   shellTabSessions.set(tabId, sessionId);
+  // 分屏 PTY 在 ssh/session/open 时已由 sidecar 无条件安装 per-prompt 钩子
+  // （InstallPromptHook，静默、不写行），此处不需要再发 directoryTracking。
 }
 
 /** 布局变化后回收已不在树上的标签会话登记（PTY 由组件卸载负责关闭）。 */
@@ -1812,10 +1878,15 @@ function pruneShellTabSessions() {
   for (const tabId of shellTabSessions.keys()) {
     if (!live.has(tabId)) shellTabSessions.delete(tabId);
   }
+  for (const tabId of shellTabCwd.keys()) {
+    if (!live.has(tabId)) shellTabCwd.delete(tabId);
+  }
 }
 
 function resetTerminalLayout() {
   shellTabSessions.clear();
+  shellTabCwd.clear();
+  activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
   terminalLayout.value = createTerminalLayout();
   void nextTick(scheduleFit);
 }
@@ -2268,6 +2339,35 @@ const {
 // deep watcher 在主页面每次重渲染时都重设主题并重排；computed 按依赖缓存。
 const splitTerminalTheme = computed(() => terminalTheme());
 
+/** 主终端宿主级监听：分屏/收起分屏会重建 #main 插槽 DOM，绑定必须随宿主迁移。 */
+function attachTerminalHost(host: HTMLElement) {
+  if (terminalPasteHandler) host.addEventListener("paste", terminalPasteHandler, true);
+  if (terminalWheelHandler) host.addEventListener("wheel", terminalWheelHandler, { passive: false, capture: true });
+  if (terminalMouseDownHandler) host.addEventListener("mousedown", terminalMouseDownHandler);
+  if (terminalMouseUpHandler) host.addEventListener("mouseup", terminalMouseUpHandler);
+  ensureTerminalResizeObserver().observe(host);
+}
+
+function detachTerminalHost(host: HTMLElement) {
+  if (terminalPasteHandler) host.removeEventListener("paste", terminalPasteHandler, true);
+  if (terminalWheelHandler) host.removeEventListener("wheel", terminalWheelHandler, true);
+  if (terminalMouseDownHandler) host.removeEventListener("mousedown", terminalMouseDownHandler);
+  if (terminalMouseUpHandler) host.removeEventListener("mouseup", terminalMouseUpHandler);
+  resizeObserver?.unobserve(host);
+}
+
+// 终端宿主尺寸变化（窗口缩放/命令条让位/分屏）时：fit 重排行数之外，还要
+// 重读建议浮层锚点——光标行/列的像素位置随行高与滚动变化，浮层开着时
+// 停在旧位置会错位或越过新边界（review 第二批：resize 主动重定位）。
+function ensureTerminalResizeObserver(): ResizeObserver {
+  resizeObserver ??= new ResizeObserver(() => {
+    scheduleFit();
+    syncSuggestionAnchorsOnSettle();
+    syncGhostAnchorOnSettle();
+  });
+  return resizeObserver;
+}
+
 function createTerminal() {
   if (!terminalHost.value || terminal) return;
   // 用户设置优先、未设置跟随宿主（issue #31）：合成一次，字号/字体族同步生效；
@@ -2365,8 +2465,6 @@ function createTerminal() {
       if (cwd) {
         userVarCwdEvent = { path: cwd, at: Date.now() };
         terminalCwd.value = cwd;
-        // 本地终端模式没有远端 SFTP 可跟随（loadDirectory 作用于 SSH 会话）。
-        if (followDirectory.value && !isLocalMode.value) void followSftpPath(cwd);
       }
       return true;
     }),
@@ -2481,22 +2579,10 @@ function createTerminal() {
   // 捕获阶段的 paste 监听：拦截 Ctrl+V 之外的所有粘贴路径（浏览器右键菜单等），
   // 统一走风险确认后再写入终端。
   terminalPasteHandler = (event) => interceptTerminalPaste(event);
-  terminalHost.value.addEventListener("paste", terminalPasteHandler, true);
   terminalWheelHandler = (event) => handleTerminalWheel(event);
-  terminalHost.value.addEventListener("wheel", terminalWheelHandler, { passive: false, capture: true });
   terminalMouseDownHandler = (event) => handleTerminalMouseDown(event);
-  terminalHost.value.addEventListener("mousedown", terminalMouseDownHandler);
   terminalMouseUpHandler = (event) => handleTerminalMouseUp(event);
-  terminalHost.value.addEventListener("mouseup", terminalMouseUpHandler);
-  // 终端宿主尺寸变化（窗口缩放/命令条让位）时：fit 重排行数之外，还要
-  // 重读建议浮层锚点——光标行/列的像素位置随行高与滚动变化，浮层开着时
-  // 停在旧位置会错位或越过新边界（review 第二批：resize 主动重定位）。
-  resizeObserver = new ResizeObserver(() => {
-    scheduleFit();
-    syncSuggestionAnchorsOnSettle();
-    syncGhostAnchorOnSettle();
-  });
-  resizeObserver.observe(terminalHost.value);
+  attachTerminalHost(terminalHost.value);
   if (webglEnabled.value && !wallpaperActive.value) {
     webglRenderer.value = attachWebglRenderer(terminal, () => new WebglAddon(), webglRecoveryOptions());
   }
@@ -2505,6 +2591,25 @@ function createTerminal() {
   if (isGutterActive()) attachGutterListeners();
   scheduleFit();
 }
+
+// 布局树结构变化（首次分屏/嵌套分屏/收起分屏/重置）时 #main 插槽会被 Vue
+// 重建：已打开的 xterm 根节点留在被移除的旧宿主里，新宿主是空的——主窗格
+// （上/左）因此空白且无法输入。把终端节点迁到新宿主，重挂宿主级监听并重新
+// fit；分屏页签由各自的 SplitTerminalPane 自行创建，不受影响。
+watch(
+  terminalHost,
+  (host, previous) => {
+    if (previous && previous !== host) detachTerminalHost(previous);
+    if (!host || !terminal?.element) return;
+    if (terminal.element.parentElement !== host) host.appendChild(terminal.element);
+    if (host === previous) return;
+    attachTerminalHost(host);
+    // 迁 DOM 后 WebGL/Canvas 画布不会自行重绘；刷新一次再交给 fit 校正行长。
+    if (terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
+    scheduleFit();
+  },
+  { flush: "post" },
+);
 
 // 设置开关即时生效：开=挂 renderer（失败静默回退 DOM），关=dispose。
 // 偏好写入统一走 settingsPreferences（唯一落盘点；弹窗共享同一 ref）。
@@ -3563,11 +3668,6 @@ function applyCommandMarker(updates: Osc633StreamUpdates) {
     commandMarker.cwd = updates.cwd;
     if (updates.cwd) terminalCwd.value = updates.cwd;
     if (isLocalMode.value) localLastCwd.value = updates.cwd;
-    // OSC 633 Cwd doubles as a directory-follow fallback when the backend could
-    // not install OSC 7 tracking but the remote shell integration emits 633 frames.
-    if (followDirectory.value && directoryTrackingSupported.value === false && updates.cwd) {
-      void followSftpPath(updates.cwd);
-    }
   }
 }
 
@@ -3604,7 +3704,6 @@ function writeTerminalOutput(data: Uint8Array) {
     // （裁决见 shouldOsc7FollowOverrideUserVarCwd；无该通道时行为与从前一致）。
     if (!shouldOsc7FollowOverrideUserVarCwd(userVarCwdEvent, path, now)) continue;
     terminalCwd.value = path;
-    if (followDirectory.value) void followSftpPath(path);
   }
   // AI 修复输出采集（Warp AI 对齐批）：解码与 OSC 解析同流，命令执行期
   // （active）的输出文本进尾部环形缓冲；快进快出的命令（E/C/D 同一 chunk）
@@ -4855,7 +4954,13 @@ const localShellSurfaceOpen = ref(false);
 // host.listConnections (PR-A4 generic extension point): a read-only, secret-free list of the plugin's own connections,
 // for in-panel connection switching; hosts without it degrade to a hidden connection section.
 const dockConnections = ref<Array<{ id: string; name: string; providerId: string; connectionType?: string; readOnly?: boolean }>>([]);
+// 嵌套在会话弹层内：只切换内层 shell 菜单，不关闭父弹层（reka 嵌套层自行
+// 处理外点/焦点）；其它工具条 toggle 的互斥统一由 closeToolbarPopovers 负责。
 async function openLocalShellSurfaceMenu() {
+  if (localShellSurfaceOpen.value) {
+    localShellSurfaceOpen.value = false;
+    return;
+  }
   localShellSurfaceOpen.value = true;
   await loadLocalShells();
   try {
@@ -5938,7 +6043,7 @@ function resetSftpTree() {
 
 /** 初始树目标：跟随开启且有终端 cwd → cwd；否则当前用户 home；home 未知 → "/"。 */
 async function resolveSftpTreeTarget(): Promise<string> {
-  if (followDirectory.value && terminalCwd.value) return normalizeRemotePath(terminalCwd.value);
+  if (followDirectory.value && activePaneCwd.value) return normalizeRemotePath(activePaneCwd.value);
   if (!sftpHomePath.value) await refreshSftpHomePath();
   return sftpHomePath.value ? normalizeRemotePath(sftpHomePath.value) : "/";
 }
@@ -5951,8 +6056,13 @@ async function initializeSftpTree(): Promise<void> {
   // 会话 id 变了但 closeSession 未走的恢复路径：旧树整体作废。
   if (sftpTreeSessionId && sftpTreeSessionId !== sessionId) resetSftpTree();
   if (sftpTreeSessionId === sessionId && sftpTreeRoot.value.loaded) {
-    // 面板收起期间目录跟随只同步了 currentPath：重新打开时把树揭示到当前目录。
+    // 面板收起期间目录跟随只同步了 currentPath：重新打开时把树揭示到当前目录，
+    // 跟随开启时仍要求目标贴顶（重新挂载的树从 scrollTop=0 开始）。
     await revealSftpPath(currentPath.value);
+    if (followDirectory.value) {
+      await nextTick();
+      await scrollFollowedTarget(currentPath.value);
+    }
     return;
   }
   sftpTreeInitInFlight = true;
@@ -5968,10 +6078,37 @@ async function initializeSftpTree(): Promise<void> {
     }
     if (target !== currentPath.value || !sftpListingLoaded.value) await loadDirectory(target);
     await revealSftpPath(target);
+    if (followDirectory.value) {
+      await nextTick();
+      await scrollFollowedTarget(target);
+    }
     sftpTreeSessionId = sessionId;
   } finally {
     sftpTreeInitInFlight = false;
   }
+}
+
+/**
+ * 把跟随目标滚到树顶。行数据可能比“揭示/列表落地”晚一个渲染周期（虚拟树
+ * 的 rows 来自父级 computed），所以失败时先补一帧重试，再考虑过滤隐藏。
+ * 返回是否最终成功（树未挂载时返回 false，且不动用户的过滤条件）。
+ */
+async function scrollFollowedTarget(target: string): Promise<boolean> {
+  const treePane = sftpTreePane.value;
+  if (!treePane) return false;
+  if (await treePane.scrollPathToTop(target)) return true;
+  await nextTick();
+  if (await treePane.scrollPathToTop(target)) return true;
+  if (sftpFiltersActive.value && findFileTreeNode(sftpTreeRoot.value, target)) {
+    // 目标已在树里、只是被搜索/类型过滤隐藏：清掉过滤再滚一次（同时清
+    // 搜索草稿，避免输入框显示旧关键词并在下次键入时重新过滤）。目标本身
+    // 不在树里（例如未显示隐藏目录）时保留用户过滤条件，不做无意义清空。
+    clearSftpSearch();
+    sftpTypeFilter.value = "all";
+    await nextTick();
+    return await treePane.scrollPathToTop(target);
+  }
+  return false;
 }
 
 /** 目录跟随：面板收起时保持旧语义（只同步当前目录数据），面板打开时再揭示树。
@@ -5994,6 +6131,10 @@ async function followSftpPath(path: string): Promise<void> {
     if (currentPath.value !== target) await loadDirectory(target, true);
     // 跟随后台揭示失败已经有 #209 软提示（loadDirectory 静默档），不再叠全局横幅。
     await revealSftpPath(target, { quiet: true });
+    // 跟随目标固定显示在树顶部：祖先全部展开后按行号直接滚到顶，避免目标
+    // 落在可视区底部/视口外（虚拟列表不会自动 scrollIntoView）。
+    await nextTick();
+    await scrollFollowedTarget(target);
   } finally {
     followSftpBusy = false;
     const next = pendingFollowPath;
@@ -6081,9 +6222,16 @@ watch(sftpShowHidden, () => {
   void rebuildSftpTree();
 });
 
-// 目录跟随：终端 cwd 变化或开关打开时揭示对应路径（面板收起由调用点兜底）。
-watch([terminalCwd, followDirectory], ([cwd, follow]) => {
-  if (!follow || !cwd || !connected.value || !sftpPaneOpen.value) return;
+// 目录跟随只由真实 cwd 变化驱动：主终端（terminalCwd）与任意分屏页签
+// （onShellTabCwd，已按页签去重）。窗格聚焦切换只更新 activeTerminalPaneId，
+// 供重新打开面板时选初始目标，不再把 SFTP 反复带回各窗格目录。
+watch(followDirectory, (follow) => {
+  if (!follow || !connected.value) return;
+  // 开启跟随的瞬间以最后交互窗格的活动页签为目标。
+  if (activePaneCwd.value) void followSftpPath(activePaneCwd.value);
+});
+watch(terminalCwd, (cwd) => {
+  if (!followDirectory.value || !cwd || !connected.value) return;
   void followSftpPath(cwd);
 });
 
@@ -7706,6 +7854,7 @@ const {
   pushTerminalCommandHistory,
   confirmRiskyPaste,
   terminalInputQueue,
+  closeOtherPopovers: closeToolbarPopovers,
 });
 
 // 连接建立后刷新 AI 模式；断开时收起模式弹出层。
@@ -7770,6 +7919,31 @@ function toggleColumnsMenu() {
   const next = !columnsOpen.value;
   closeToolbarPopovers();
   columnsOpen.value = next;
+}
+
+// 锚点按钮阻止了 pointerdown 的外点关闭，切换弹层时由这里显式互斥。
+function toggleRdpResolutionMenu() {
+  const next = !rdpResolutionOpen.value;
+  closeToolbarPopovers();
+  rdpResolutionOpen.value = next;
+}
+
+function toggleRdpPasteMenu() {
+  const next = !rdpPasteOpen.value;
+  closeToolbarPopovers();
+  rdpPasteOpen.value = next;
+}
+
+function togglePanelPaletteMenu() {
+  const next = !panelPaletteOpen.value;
+  closeToolbarPopovers();
+  panelPaletteOpen.value = next;
+}
+
+function toggleBatchQuickPopover() {
+  const next = !batchQuickOpen.value;
+  closeToolbarPopovers();
+  batchQuickOpen.value = next;
 }
 
 function toggleTransferPanel() {
@@ -8230,6 +8404,8 @@ function closeToolbarPopovers() {
   panelPaletteOpen.value = false;
   rdpPasteOpen.value = false;
   rdpResolutionOpen.value = false;
+  batchQuickOpen.value = false;
+  batchTargetsOpen.value = false;
 }
 
 function closeMenus() {
@@ -8795,7 +8971,9 @@ watch([splitRatio, paneOrder, paneDirection, sftpPaneOpen, followDirectory, sudo
 // 已加载/树已展开时不重复，见 shouldLazyLoadSftpListing 与 initializeSftpTree）。
 watch(sftpPaneOpen, (open) => {
   if (!open) return;
-  if (shouldLazyLoadSftpListing({ paneOpen: open, sessionLive: !!session.value, listingLoaded: sftpListingLoaded.value }) || !sftpTreeRoot.value.loaded) {
+  // 跟随开启时即使树已加载也要重走一遍：面板重开会让 SftpTreePane 重新挂载，
+  // scrollTop 归零，需要重新揭示并把活动终端的目录滚到顶部。
+  if (shouldLazyLoadSftpListing({ paneOpen: open, sessionLive: !!session.value, listingLoaded: sftpListingLoaded.value }) || !sftpTreeRoot.value.loaded || followDirectory.value) {
     void initializeSftpTree();
   }
 });
@@ -8886,12 +9064,7 @@ onBeforeUnmount(() => {
   stopAgentPromptTimer();
   resolvePasteConfirm(false);
   resolvePendingConfirmDialog(false);
-  if (terminalHost.value) {
-    if (terminalPasteHandler) terminalHost.value.removeEventListener("paste", terminalPasteHandler, true);
-    if (terminalWheelHandler) terminalHost.value.removeEventListener("wheel", terminalWheelHandler, true);
-    if (terminalMouseDownHandler) terminalHost.value.removeEventListener("mousedown", terminalMouseDownHandler);
-    if (terminalMouseUpHandler) terminalHost.value.removeEventListener("mouseup", terminalMouseUpHandler);
-  }
+  if (terminalHost.value) detachTerminalHost(terminalHost.value);
   document.removeEventListener("click", onDocumentClickCloseMenus);
   document.removeEventListener("click", onDocumentClickCapture, true);
   document.removeEventListener("mousedown", onDocumentMouseDownCapture, true);
@@ -9060,7 +9233,7 @@ watch(historyScope, () => {
         </div>
         <Popover :open="connectionInfoOpen" @update:open="(open) => { if (!open) connectionInfoOpen = false; }">
           <PopoverAnchor as-child>
-            <button type="button" class="icon-button icon-neutral" :title="t('connectionInfo')" :aria-label="t('connectionInfo')" :aria-expanded="connectionInfoOpen" @click.stop="toggleConnectionInfo"><Info /></button>
+            <button type="button" class="icon-button icon-neutral" :title="t('connectionInfo')" :aria-label="t('connectionInfo')" :aria-expanded="connectionInfoOpen" @pointerdown.stop @click.stop="toggleConnectionInfo"><Info /></button>
           </PopoverAnchor>
           <PopoverContent class="popover connection-info-popover" align="start" :side-offset="5">
           <h3>{{ t("connectionInfo") }}</h3>
@@ -9104,7 +9277,7 @@ watch(historyScope, () => {
           <div>
             <Popover :open="rdpResolutionOpen" @update:open="(open) => { if (!open) rdpResolutionOpen = false; }">
               <PopoverAnchor as-child>
-                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpResolutionOpen }" :title="t('rdp.resolution.title')" :aria-label="t('rdp.resolution.title')" :aria-expanded="rdpResolutionOpen" @click.stop="rdpResolutionOpen = !rdpResolutionOpen"><Proportions /></button>
+                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpResolutionOpen }" :title="t('rdp.resolution.title')" :aria-label="t('rdp.resolution.title')" :aria-expanded="rdpResolutionOpen" @pointerdown.stop @click.stop="toggleRdpResolutionMenu"><Proportions /></button>
               </PopoverAnchor>
               <PopoverContent class="popover rdp-resolution-popover" align="start" :side-offset="5">
                 <h3>{{ t("rdp.resolution.title") }}</h3>
@@ -9128,7 +9301,7 @@ watch(historyScope, () => {
           <div>
             <Popover :open="rdpPasteOpen" @update:open="(open) => { if (!open) rdpPasteOpen = false; }">
               <PopoverAnchor as-child>
-                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpPasteOpen }" :title="t('rdp.paste.title')" :aria-label="t('rdp.paste.title')" :aria-expanded="rdpPasteOpen" @click.stop="rdpPasteOpen = !rdpPasteOpen"><ClipboardPaste /></button>
+                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpPasteOpen }" :title="t('rdp.paste.title')" :aria-label="t('rdp.paste.title')" :aria-expanded="rdpPasteOpen" @pointerdown.stop @click.stop="toggleRdpPasteMenu"><ClipboardPaste /></button>
               </PopoverAnchor>
               <PopoverContent class="popover rdp-paste-popover" align="start" :side-offset="5">
                 <h3>{{ t("rdp.paste.title") }}</h3>
@@ -9153,7 +9326,7 @@ watch(historyScope, () => {
         <div>
           <Popover :open="sessionMenuOpen" @update:open="(open) => { if (!open) sessionMenuOpen = false; }">
             <PopoverAnchor as-child>
-              <button class="icon-button icon-emerald" :class="{ 'is-active': sessionMenuOpen }" :title="t('sessionMenu.title')" :aria-label="t('sessionMenu.title')" :aria-expanded="sessionMenuOpen" @click.stop="toggleSessionMenu"><ChevronDown /></button>
+              <button class="icon-button icon-emerald" :class="{ 'is-active': sessionMenuOpen }" :title="t('sessionMenu.title')" :aria-label="t('sessionMenu.title')" :aria-expanded="sessionMenuOpen" @pointerdown.stop @click.stop="toggleSessionMenu"><ChevronDown /></button>
             </PopoverAnchor>
             <PopoverContent class="popover session-menu-popover" :class="{ 'session-menu-shell': sessionMenuShellOpen || sessionMenuShellPickOpen }" align="start" :side-offset="5">
               <template v-if="!sessionMenuShellOpen && !sessionMenuShellPickOpen">
@@ -9252,7 +9425,7 @@ watch(historyScope, () => {
                         v-if="canOpenLocalTab"
                         class="local-tab-button"
                         :title="t('localTerminal.openShellSurface')" :aria-label="t('localTerminal.openShellSurface')"
-                        @click="openLocalShellSurfaceMenu"
+                        @pointerdown.stop @click.stop="openLocalShellSurfaceMenu"
                       ><ListPlus /></button>
                     </PopoverAnchor>
                     <PopoverContent class="popover" align="end" :side-offset="5">
@@ -9301,17 +9474,13 @@ watch(historyScope, () => {
              SFTP 面板关闭时也可达；local 模式保留——本机 daemon（Docker
              Desktop/OrbStack）场景照常可用。面板自治，切走即卸载停轮询。 -->
         <button class="icon-button icon-blue" :class="{ 'is-active': dockerPanelOpen }" :title="t('docker.toolbarTitle')" :aria-label="t('docker.toolbarTitle')" :aria-pressed="dockerPanelOpen" @click.stop="toggleDockerPanel"><DockerWhaleLogo /></button>
-        <label v-if="!localUiMode" class="follow-directory-control" :title="t('followTerminal')">
-          <Switch size="sm" :model-value="followDirectory" :disabled="!connected || panelSurface" @update:model-value="setDirectoryTracking" />
-          <span>{{ t("followTerminal") }}</span>
-        </label>
         <span class="toolbar-separator" aria-hidden="true" />
         <button v-if="!localUiMode" class="icon-button icon-neutral" :title="t('commandTitle')" :aria-label="t('commandTitle')" :disabled="!connected" @click="openCommandDialog"><SquareTerminal /></button>
         <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchBarOpen" :disabled="!connected" @click="toggleBatchBar"><ListChecks /></button>
         <div>
           <Popover :open="quickMenuOpen" @update:open="(open) => { if (!open) quickMenuOpen = false; }">
             <PopoverAnchor as-child>
-              <button class="icon-button icon-amber" :title="t('quickCommands')" :aria-label="t('quickCommands')" :disabled="!connected" @click.stop="toggleQuickMenu"><Zap /></button>
+              <button class="icon-button icon-amber" :title="t('quickCommands')" :aria-label="t('quickCommands')" :disabled="!connected" @pointerdown.stop @click.stop="toggleQuickMenu"><Zap /></button>
             </PopoverAnchor>
             <PopoverContent class="popover quick-commands-popover" align="end" :side-offset="5">
             <!-- M32-A3 后工具条只留"列表 + 搜索 + 执行"（Termius Snippets 式）：
@@ -9374,7 +9543,7 @@ watch(historyScope, () => {
         <div>
           <Popover :open="agentModeOpen" @update:open="(open) => { if (!open) agentModeOpen = false; }">
             <PopoverAnchor as-child>
-              <button class="icon-button" :class="agentMode === 'off' ? 'icon-neutral' : 'icon-emerald is-active'" :title="t('agentTerminalQuickHint')" :aria-label="t('agentTerminalQuickHint')" :aria-pressed="agentMode !== 'off'" :disabled="!connected" @click.stop="toggleAgentModeMenu"><Bot /></button>
+              <button class="icon-button" :class="agentMode === 'off' ? 'icon-neutral' : 'icon-emerald is-active'" :title="t('agentTerminalQuickHint')" :aria-label="t('agentTerminalQuickHint')" :aria-pressed="agentMode !== 'off'" :disabled="!connected" @pointerdown.stop @click.stop="toggleAgentModeMenu"><Bot /></button>
             </PopoverAnchor>
             <PopoverContent class="popover agent-mode-popover" align="end" :side-offset="5">
             <h3>{{ t("agentTerminalSection") }}</h3>
@@ -9401,7 +9570,7 @@ watch(historyScope, () => {
         <div>
           <Popover :open="columnsOpen" @update:open="(open) => { if (!open) columnsOpen = false; }">
             <PopoverAnchor as-child>
-              <button class="icon-button icon-violet" :title="t('sftpPane.preferences')" :aria-label="t('sftpPane.preferences')" :disabled="panelSurface" @click.stop="toggleColumnsMenu"><SlidersHorizontal /></button>
+              <button class="icon-button icon-violet" :title="t('sftpPane.preferences')" :aria-label="t('sftpPane.preferences')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleColumnsMenu"><SlidersHorizontal /></button>
             </PopoverAnchor>
             <PopoverContent class="popover columns-popover" align="end" :side-offset="5">
             <!-- 单栏树不再有表头多列：这里只保留 SFTP 面板的默认开合/自动
@@ -9415,7 +9584,7 @@ watch(historyScope, () => {
           <!-- 历史卡右键菜单（ContextMenu）打开时忽略弹层的外点关闭请求：
                菜单项 pointerdown 相对弹层是"外部"，不加守卫会在 select 前把宿主弹层
                连同菜单一起卸载，动作丢失。 -->
-          <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
+          <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
 
         </div>
         </template>
@@ -9442,12 +9611,12 @@ watch(historyScope, () => {
         <!-- SFTP 文件面板开关：dock 默认不开，手动开合（连接后列表已就绪）。 -->
         <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><FolderOpen v-if="!(sftpPaneOpen && sftpViewActive)" /><PanelRightClose v-else /></button>
         <button v-if="!isRdpConnection" class="icon-button compact" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><Disc /></button>
-        <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
+        <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
         <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
         <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
         <Popover v-if="!isRdpMode" :open="panelPaletteOpen" @update:open="(open) => { if (!open) panelPaletteOpen = false; }">
           <PopoverAnchor as-child>
-            <button class="icon-button compact icon-violet" :class="{ 'is-active': panelPaletteOpen }" :title="t('terminalAppearance.schemeSection')" :aria-label="t('terminalAppearance.schemeSection')" :aria-expanded="panelPaletteOpen" @click.stop="panelPaletteOpen = !panelPaletteOpen"><Palette /></button>
+            <button class="icon-button compact icon-violet" :class="{ 'is-active': panelPaletteOpen }" :title="t('terminalAppearance.schemeSection')" :aria-label="t('terminalAppearance.schemeSection')" :aria-expanded="panelPaletteOpen" @pointerdown.stop @click.stop="togglePanelPaletteMenu"><Palette /></button>
           </PopoverAnchor>
           <PopoverContent class="popover panel-palette-popover" align="end" :side-offset="4">
             <h3>{{ t("terminalAppearance.schemeSection") }}</h3>
@@ -9640,6 +9809,8 @@ watch(historyScope, () => {
         @close-pane="closePane"
         @split="splitTerminalPane"
         @search-online="searchTextOnline"
+        @cwd="onShellTabCwd"
+        @activate-pane="onPaneActivated"
       >
         <template #main>
       <ContextMenu :open="terminalMenuOpen" @update:open="(open) => { if (!open) terminalMenuOpen = false; }">
@@ -10108,7 +10279,7 @@ watch(historyScope, () => {
             <!-- 底部条上的 popover 向上展开（reka side="top"，旧绝对定位会被裁切）。 -->
             <Popover :open="batchTargetsOpen" @update:open="(open) => { if (!open) batchTargetsOpen = false; }">
               <PopoverAnchor as-child>
-                <button class="batch-bar-targets" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" @click.stop="toggleBatchTargetsPopover"><ListChecks /><span>{{ t("batchSendTargets", { count: batchSelected.length, total: batchTargets.length }) }}</span></button>
+                <button class="batch-bar-targets" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" @pointerdown.stop @click.stop="toggleBatchTargetsPopover"><ListChecks /><span>{{ t("batchSendTargets", { count: batchSelected.length, total: batchTargets.length }) }}</span></button>
               </PopoverAnchor>
               <PopoverContent class="popover batch-targets-popover" side="top" align="start" :side-offset="6">
               <p class="muted batch-send-hint">{{ t("batchSendHint") }}</p>
@@ -10139,7 +10310,7 @@ watch(historyScope, () => {
                回车/发送按钮触发）。无真实分组时保持平铺，避免单条未分组的噪声组头。 -->
           <Popover v-if="!batchSaveMode && quickCommands.length" :open="batchQuickOpen" @update:open="(open) => { if (!open) batchQuickOpen = false; }">
             <PopoverAnchor as-child>
-              <button class="batch-bar-quick batch-bar-targets" :title="t('batchSendQuickPick')" :aria-label="t('batchSendQuickPick')" @click.stop="batchQuickOpen = !batchQuickOpen">
+              <button class="batch-bar-quick batch-bar-targets" :title="t('batchSendQuickPick')" :aria-label="t('batchSendQuickPick')" @pointerdown.stop @click.stop="toggleBatchQuickPopover">
                 <Braces />
                 <span>{{ batchQuickPickName || t("batchSendQuickPick") }}</span>
               </button>
@@ -10242,6 +10413,19 @@ watch(historyScope, () => {
           <button class="icon-button" :title="t('parentFolder')" :aria-label="t('parentFolder')" :disabled="currentPath === '/'" @click="goParent"><ArrowUp /></button>
           <button class="icon-button icon-amber" :title="t('home')" :aria-label="t('home')" :disabled="!connected" @click="loadHome"><Home /></button>
           <button class="icon-button icon-cyan" :title="t('refresh')" :aria-label="t('refresh')" :disabled="!connected || loadingFiles" @click="loadDirectory()"><RefreshCw :class="{ spinning: loadingFiles }" /></button>
+          <!-- 跟随终端目录：开启时高亮图标，关闭时弱化；偏好与主终端 cwd 同步逻辑不变。 -->
+          <button
+            class="icon-button"
+            :class="followDirectory ? 'icon-emerald is-active' : 'icon-neutral'"
+            :title="t('followTerminal')"
+            :aria-label="t('followTerminal')"
+            :aria-pressed="followDirectory"
+            :disabled="!connected || panelSurface"
+            @click="setDirectoryTracking(!followDirectory)"
+          >
+            <LocateFixed v-if="followDirectory" />
+            <LocateOff v-else />
+          </button>
           <!-- #54 路径栏双态：非编辑态把当前路径渲染成可点击分段（末段为当前位置），
                点击分段直接回跳、点击分段外区域进入编辑；编辑态是原先的完整输入框，
                提交后回到分段展示。分段切分走 remotePathInput（有单测）。 -->
@@ -10267,7 +10451,7 @@ watch(historyScope, () => {
           <div>
             <Popover :open="bookmarkSaveOpen" @update:open="(open) => { if (!open) bookmarkSaveOpen = false; }">
               <PopoverAnchor as-child>
-                <button class="icon-button icon-amber" :title="t('sftpBookmark.add')" :aria-label="t('sftpBookmark.add')" :disabled="!connected" @click.stop="toggleBookmarkSave"><Star /></button>
+                <button class="icon-button icon-amber" :title="t('sftpBookmark.add')" :aria-label="t('sftpBookmark.add')" :disabled="!connected" @pointerdown.stop @click.stop="toggleBookmarkSave"><Star /></button>
               </PopoverAnchor>
               <!-- 星标收藏弹层：label 默认取路径末段，可编辑后保存（前端先行校验 + 后端错误回显） -->
               <PopoverContent class="popover bookmark-save-popover" align="end" :side-offset="5">
@@ -10284,7 +10468,7 @@ watch(historyScope, () => {
           <div>
             <Popover :open="pathHistoryOpen" @update:open="(open) => { if (!open) pathHistoryOpen = false; }">
               <PopoverAnchor as-child>
-                <button class="icon-button" :title="t('sftpPathHistory.title')" :aria-label="t('sftpPathHistory.title')" :disabled="!connected" @click.stop="togglePathHistoryMenu"><History /></button>
+                <button class="icon-button" :title="t('sftpPathHistory.title')" :aria-label="t('sftpPathHistory.title')" :disabled="!connected" @pointerdown.stop @click.stop="togglePathHistoryMenu"><History /></button>
               </PopoverAnchor>
               <PopoverContent class="popover path-history-popover" align="end" :side-offset="5">
               <strong class="path-history-title">{{ t("sftpPathHistory.title") }}</strong>
@@ -10372,7 +10556,9 @@ watch(historyScope, () => {
           <ContextMenu :open="!!(fileMenu || blankMenu)" @update:open="(open) => { if (!open) { fileMenu = undefined; blankMenu = false; } }">
             <ContextMenuTrigger class="contents">
               <SftpTreePane
+                ref="sftpTreePane"
                 :rows="sftpTreeRows"
+                :follow-padding="followDirectory"
                 :selected-uris="selectedUriSet"
                 :selected-path="selectedPath"
                 :current-path="currentPath"

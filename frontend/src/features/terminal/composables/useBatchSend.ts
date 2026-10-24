@@ -44,8 +44,10 @@ export function useBatchSend(options: {
   pushTerminalCommandHistory: (command: string) => void;
   confirmRiskyPaste: (text: string) => Promise<boolean>;
   terminalInputQueue: { enqueue: (sessionId: string, data: Uint8Array) => void };
+  /** 工具条弹层互斥（锚点按钮已阻止 reka 的外点关闭，打开批量弹层时显式收口）。 */
+  closeOtherPopovers?: () => void;
 }) {
-  const { showError, connected, session, localSession, quickCommands, commandHistory, panelSurface, sftpPaneOpen, transferPanelOpen, persistCommandHistory, pushTerminalCommandHistory, confirmRiskyPaste, terminalInputQueue } = options;
+  const { showError, connected, session, localSession, quickCommands, commandHistory, panelSurface, sftpPaneOpen, transferPanelOpen, persistCommandHistory, pushTerminalCommandHistory, confirmRiskyPaste, terminalInputQueue, closeOtherPopovers } = options;
 
 // 即发送。目标来自 ssh/sessions/list（跨连接全部活跃会话），命令写入各会话
 // 交互终端（PTY 键盘语义，输出回显在各自终端，对齐 tiny-rdm batch send）。
@@ -206,8 +208,10 @@ async function refreshBatchTargets() {
 }
 
 function toggleBatchTargetsPopover() {
-  batchTargetsOpen.value = !batchTargetsOpen.value;
-  if (batchTargetsOpen.value) void refreshBatchTargets();
+  const next = !batchTargetsOpen.value;
+  if (next) closeOtherPopovers?.();
+  batchTargetsOpen.value = next;
+  if (next) void refreshBatchTargets();
 }
 
 function toggleBatchTargetId(sessionId: string) {

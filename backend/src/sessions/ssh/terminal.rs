@@ -72,6 +72,16 @@ pub(crate) enum RemoteShell {
     Other,
 }
 
+/// Emitted once the handshake marker is found. Everything before the marker
+/// (the echoed install line, including its CRLF) is suppressed, so without a
+/// line reset the first prompt after arming would be drawn at the column the
+/// pre-arming prompt left the cursor at — two prompts glued on one line.
+///
+/// The leading CR is load-bearing: the frontend prompt-newline transformer
+/// (see `terminalPromptNewline.ts`) treats it as "at line start" and therefore
+/// does not insert a second CRLF before the prompt hook's OSC 7 frame.
+pub(crate) const HANDSHAKE_LINE_CLEAR: &[u8] = b"\r\x1b[2K";
+
 #[derive(Default)]
 pub(crate) struct DirectoryHandshakeFilter {
     pub(crate) marker: Option<Vec<u8>>,
@@ -97,11 +107,18 @@ impl DirectoryHandshakeFilter {
             return self.fail_open();
         }
         let index = find_bytes(&self.buffered, marker)?;
+        let hidden = index > 0;
         let result = self.buffered[index + marker.len()..].to_vec();
         self.marker = None;
         self.buffered.clear();
         self.started_at = None;
-        (!result.is_empty()).then_some(result)
+        if !hidden && result.is_empty() {
+            return None;
+        }
+        let mut cleared = Vec::with_capacity(HANDSHAKE_LINE_CLEAR.len() + result.len());
+        cleared.extend_from_slice(HANDSHAKE_LINE_CLEAR);
+        cleared.extend_from_slice(&result);
+        Some(cleared)
     }
 
     pub(crate) fn flush_if_timed_out(&mut self) -> Option<Vec<u8>> {

@@ -366,6 +366,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .terminal-layout-pane { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; flex-direction: column; background: var(--background); }
 .terminal-pane-stack { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .terminal-pane-surface { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; }
+/* 分屏终端由布局树引用稳定宿主再搬进槽位；宿主自己撑满槽位。 */
+.terminal-pane-host { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.terminal-pane-host > .split-terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .terminal-pane-surface > .terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .terminal-pane-surface > .split-terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; }
 /* 编辑器宿主高度走内联 flex-basis（25-75% 由 App 夹取）；不参与伸缩，
@@ -609,7 +612,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .sftp-body { display: flex; min-height: 0; flex: 1; }
 .sftp-main { position: relative; display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
 
-.sftp-tree-row { display: flex; align-items: center; gap: 2px; width: 100%; height: 24px; padding-right: 4px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; color: var(--foreground); font-size: 12px; white-space: nowrap; text-align: left; }
+/* 行高由 SftpTreePane 的 scoped 规则（28px）与虚拟滚动统一决定，避免两处
+   高度不一致导致按行号定位时顶掉一行。 */
+.sftp-tree-row { display: flex; align-items: center; gap: 2px; width: 100%; padding-right: 4px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; color: var(--foreground); font-size: 12px; white-space: nowrap; text-align: left; }
 .sftp-tree-row:hover { background: var(--accent); }
 .sftp-tree-row.is-current { background: var(--accent); }
 .sftp-tree-row.is-current .sftp-tree-name { color: var(--primary); font-weight: 600; }
@@ -865,7 +870,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .panes--solo .terminal-stack { height: 100%; }
 
 @media (max-width: 900px) {
-  .follow-directory-control > span { display: none; }
   /* 窄屏纵向仅是「自动」模式的缺省：强制左右（.panes--horizontal）不受断点
      影响（issue #187），:not() 提一档特异性压过下面的列布局规则。高度消费
      --pane-split（issue #207），与 .panes--vertical 同源同回落。 */
@@ -880,12 +884,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   /* SFTP 面板收起时终端占满整个工作台（含窄屏纵向布局）。 */
   .panes:not(.panes--horizontal).panes--solo .terminal-stack,
   .panes--solo .terminal-stack { height: 100%; }
-}
-
-@media (max-width: 640px) {
-  /* 极窄屏：按钮不再收缩后整体宽度可能仍超出工具栏，隐藏低优先级的
-     「跟随终端目录」开关，保证其余按钮完整可点、不溢出。 */
-  .follow-directory-control { display: none; }
+  .follow-directory-control > span { display: none; }
 }
 
 /* Quick sudo command dialog */

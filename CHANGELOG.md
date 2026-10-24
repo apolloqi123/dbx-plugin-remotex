@@ -13,6 +13,55 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.16] — 2026-10-24
+
+- **根目录行显示为 “/”**。SFTP 文件树的根节点不再显示本地化的「根目录 / Root」，与路径栏保持一致，直接显示 `/`（含无障碍标签「展开/收起 /」）。
+  **The root row now shows “/”.** The SFTP tree's root node no longer uses the localized "Root" label; it displays `/` like the path bar (including the "Expand/Collapse /" accessible label).
+- **详情图标只在需要时显示**。行尾详情（i）图标默认隐藏，只在当前终端所在目录（高亮行）、鼠标悬停行或键盘焦点行显示；其余行不再常驻图标，列表更干净。悬停后图标可正常点击查看详情。
+  **Details icon shown only when needed.** The row-end details (i) icon is hidden by default and appears only on the current terminal directory (highlighted row), the hovered row, or the keyboard-focused row; other rows no longer carry a permanent icon, keeping the list clean. The icon remains clickable once the row is hovered.
+
+## [0.7.9-beta.15] — 2026-10-24
+
+- **再次分屏不再重置已有分屏终端**。布局树把分屏终端实例提升到根节点统一持有，再通过 Teleport 把稳定宿主搬进当前叶子槽位：再次分屏、嵌套分屏或关闭分屏只移动终端宿主，不再卸载重挂终端组件，已有 PTY、滚动缓冲与命令历史保持原样（此前再次分屏会把分屏 1 当成新会话重新登录到 home）。布局变化后自动重新 fit，尺寸随新槽位生效，主终端也不受影响。
+  **Splitting again no longer resets existing split terminals.** The layout tree hoists split terminal instances to the root and teleports each stable host into the current leaf slot: splitting again, nesting a split or closing a split only moves the host instead of unmounting/remounting the terminal component, so the existing PTY, scrollback and command history are preserved (previously a second split re-opened split 1 as a fresh session in the home directory). Terminals refit automatically after each layout change, and the main terminal is unaffected.
+
+## [0.7.9-beta.14] — 2026-10-24
+
+- **修复真实宿主里跟随目录被顶掉一行**。虚拟滚动不再假定行高恒为 28px：启动/行集合变化时按真实 DOM 测量行高，并统一用于窗口化、置顶余量与滚动定位；落位后再闭环测量目标行的真实屏幕位置并补齐偏差。WKWebView 下行高/缩放/窗口重排造成的整行偏移不再出现，跟随目录稳定贴顶。
+  **Fixed the followed directory being pushed one row off in the real host.** The virtual list no longer assumes a fixed 28px row height: it measures the real DOM row height on mount/row-set changes and uses it for windowing, pinning padding and scroll positioning, then closes the loop by measuring the target row's actual on-screen position and correcting any residual offset. Whole-row drift from row-height/zoom/window reflow differences in WKWebView is gone, and the followed directory pins to the top reliably.
+
+## [0.7.9-beta.13] — 2026-10-24
+
+- **点击/切换分屏窗格即同步 SFTP**。切换到另一个终端窗格或页签时，SFTP 目录跟随会切到该窗格的活动目录；只有真正换了窗格/页签才触发，同一窗格内重复点击终端不会反复重置滚动位置。
+  **Focusing a split pane syncs SFTP again.** Switching to another terminal pane or tab now follows that pane's active directory; it only triggers on a real pane/tab change, so repeated clicks inside the same pane no longer reset the scroll position.
+- **跟随目录恢复严格贴顶并保留最小余量**。跟随目录重新精确滚动到树顶部；底部只补足“目标行贴顶”所需的最小高度（列表本身够长时不补），手动滚回自然范围时余量立即撤销，避免此前的整屏空白与滚动阻尼。
+  **Followed directory is pinned to the top again with minimal padding.** The followed directory scrolls exactly to the top; the bottom only reserves the minimum height needed for that pin (none when the list itself is long enough) and drops the reserve as soon as manual scrolling returns to the natural range, avoiding the previous full-screen blank and damped scrolling.
+
+## [0.7.9-beta.12] — 2026-10-24
+
+- **分屏终端不再一行出现两个提示符**。根因不是窗口尺寸：sidecar 在安装目录钩子时会丢弃安装行的回显（含换行），但保留安装前的提示符，导致首个新提示符直接接在旧提示符后面。现在握手完成时补发 `\r\x1b[2K` 清行，分屏渲染器同时接入主终端同款提示符换行修复，安装钩子后只显示一个干净提示符。
+  **No two prompts on one line in split terminals.** The root cause was not the window size: while installing the directory hook the sidecar suppressed the install line's echo (including its newline) but kept the pre-arming prompt, so the first new prompt was appended to it. The handshake now emits `\r\x1b[2K` when it drops the echo, and the split renderer applies the same prompt-newline fix as the main terminal, leaving exactly one clean prompt.
+- **目录跟随只跟真实 `cd`，不再被窗格聚焦带着跳**。在分屏之间来回点击只记录“最后交互窗格”作为重新打开面板时的初始目标，不再逐次把 SFTP 带回各窗格目录；任意终端（主终端或分屏页签）的 OSC 7 目录真实变化仍会跟随，同一提示符的重复上报不会重复导航。
+  **Directory follow reacts to real `cd` only, not pane focus.** Clicking between split panes now merely records the last-interacted pane as the initial target when the panel is reopened; it no longer drags SFTP to each pane's directory. A genuinely new OSC 7 directory from any terminal (main or split tab) still follows, while repeated reports of the same prompt do not re-navigate.
+- **修复目录树的滚动阻尼感**。跟随置顶不再无条件在列表底部留近一屏空白：整屏可见的短列表不补余量，只有确实需要置顶的靠后目标才补最小高度，关闭跟随后立即移除余量。手动滚轮滚动恢复为正常范围。
+  **Fixed the damped SFTP tree scrolling.** Follow-to-top no longer reserves a nearly full-screen blank area at the bottom unconditionally: short lists that fit the viewport get no padding, only late targets that truly need pinning get the minimal reserve, and disabling follow removes it immediately. Manual wheel scrolling keeps its natural range.
+
+## [0.7.9-beta.11] — 2026-10-24
+
+- **分屏终端不再重复提示符**。分屏 PTY 现在等到布局/字体稳定后按实际尺寸启动，并忽略与启动尺寸相同的重复 resize；远端 shell 不再因多余的 window-change 重绘出一行两个 `[user@host ~]#`。
+  **No duplicate prompt in split terminals.** Split PTYs now spawn at the settled layout/font size and ignore redundant resizes that match the spawn size, so the remote shell no longer repaints two `[user@host ~]#` prompts on one line after an extra window-change.
+- **目录跟随覆盖所有终端窗格**。跟随以最后一次交互的窗格活动页签为准：主终端页签使用主终端 cwd，分屏与额外页签使用各自的 OSC 7 cwd；SFTP 面板收起时仍同步目录，重新打开会揭示并把跟随目录滚动到树顶部（底部预留滚动余量，末尾目录也能贴顶）；搜索/类型过滤隐藏目标时自动清除过滤。
+  **Directory follow covers every terminal pane.** Follow now tracks the last interacted pane's active tab: the main tab uses the main terminal's cwd and split/extra tabs use their own OSC 7 cwd. The directory still syncs while the SFTP panel is collapsed; reopening it reveals and scrolls the followed directory to the top of the tree (bottom scroll padding lets even the last row reach the top), and search/type filters hiding the target are cleared.
+- **跟随开关移入 SFTP 工具栏**。主工具栏的文字+Switch 改为 SFTP 路径栏的定位图标：开启为亮色、关闭为暗色，保留 `aria-pressed`、禁用态与持久化偏好。
+  **Follow toggle moves into the SFTP toolbar.** The main-toolbar label + Switch is replaced by a locate icon in the SFTP path toolbar: bright when enabled, dim when off, preserving `aria-pressed`, disabled states and the persisted preference.
+
+## [0.7.9-beta.10] — 2026-10-24
+
+- **分屏后主终端保持可用**。首次/嵌套/收起分屏会重建主终端插槽的 DOM，已打开的终端实例留在被移除的旧节点里，导致上/左主窗格空白、无法输入。现在布局变化后把终端节点迁到新宿主，重新挂载粘贴/滚轮/鼠标监听与尺寸观察并刷新重排；滚动缓冲与正在运行的命令不丢失。
+  **Main terminal stays usable after splitting.** Splitting (first, nested, or collapsing) rebuilds the main terminal slot DOM, leaving the live xterm inside the removed node; the top/left pane went blank and ignored input. The terminal element is now moved into the new host, host listeners and the resize observer are re-attached, and the view refreshes/refits, preserving scrollback and the running command.
+- **工具条弹层可再次点击收起**。SFTP 传输、SFTP 面板偏好、终端 MCP 模式、快速命令、会话、连接信息等弹层的锚点按钮不再把 pointerdown 冒泡给 reka 的“外部关闭”，避免“先关再开”导致第二次点击收不回去；RDP 分辨率/粘贴、配色快切、批量目标/快速命令之间也补齐互斥。
+  **Toolbar popovers close on a second click.** Anchor buttons for transfers, SFTP panel preferences, terminal MCP mode, quick commands, sessions, connection info and related popovers no longer let pointerdown reach reka's outside-dismiss handler, so the second click no longer closes-then-reopens the panel. Mutual exclusion is added for RDP resolution/paste, the palette switcher and the batch target/quick-command popovers.
+
 ## [0.7.9-beta.9] — 2026-10-23
 
 - **每个终端窗格独立标签栏**。主窗格与每个分屏窗格都有自己的标签页集合和标签栏，「+」固定在该窗格最后一个标签右侧；在分屏里新建的标签只属于该分屏，不再跳到主窗格。标签编号全局递增（终端 / 终端 1 / 终端 2…），每个标签拥有独立 PTY。

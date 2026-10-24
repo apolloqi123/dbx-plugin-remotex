@@ -1728,7 +1728,26 @@ fn directory_handshake_filters_split_marker() {
     assert_eq!(filter.filter(&marker[..split]), None);
     let mut final_frame = marker[split..].to_vec();
     final_frame.extend_from_slice(b"prompt$ ");
-    assert_eq!(filter.filter(&final_frame), Some(b"prompt$ ".to_vec()));
+    // The suppressed echo took the submitted line's CRLF with it: reset the
+    // line so the post-arming prompt is not glued to the previous one.
+    assert_eq!(
+        filter.filter(&final_frame),
+        Some(b"\r\x1b[2Kprompt$ ".to_vec())
+    );
+}
+
+#[test]
+fn directory_handshake_clears_the_line_even_when_no_tail_follows_the_marker() {
+    let marker = directory_tracking_marker("session-2");
+    let mut filter = DirectoryHandshakeFilter::default();
+    filter.begin(marker.clone());
+    let mut frame = b"echoed script".to_vec();
+    frame.extend_from_slice(&marker);
+    assert_eq!(
+        filter.filter(&frame),
+        Some(b"\r\x1b[2K".to_vec()),
+        "the prompt arrives in a later frame: still reset the line now"
+    );
 }
 
 #[test]

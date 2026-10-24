@@ -62,6 +62,39 @@ export function findTerminalPane(
   return findTerminalPane(node.first, paneId) ?? findTerminalPane(node.second, paneId);
 }
 
+/**
+ * 目录跟随的 cwd 选择：以「最后交互窗格的活动页签」为准——主终端页签用主
+ * 终端上报的 cwd，其余页签用各自 OSC 7 记录的 cwd；活动窗格已被关闭时回退
+ * 到主窗格，未知页签返回空串（调用方跳过跟随，避免把 SFTP 带到错误目录）。
+ */
+export function resolveActiveTabCwd(
+  node: TerminalLayoutNode,
+  activePaneId: string,
+  mainCwd: string,
+  shellTabCwd: ReadonlyMap<string, string>,
+): string {
+  const pane = findTerminalPane(node, activePaneId) ?? findTerminalPane(node, MAIN_TERMINAL_PANE_ID);
+  const tabId = pane?.activeTabId ?? MAIN_TERMINAL_TAB_ID;
+  return tabId === MAIN_TERMINAL_TAB_ID ? mainCwd : shellTabCwd.get(tabId) ?? "";
+}
+
+/**
+ * 目录跟随的触发判定。页签的首次上报是初始提示符（打开分屏/新标签），只有
+ * 该页签本来就是活动窗格的活动页签（cwd 迟到、旧 watcher 覆盖的窗口）才
+ * 跟随；其余情况只记录，供面板重开目标使用。之后只有真正换了目录才跟随，
+ * 同一提示符的重复上报（回车/resize 重绘）不触发。窗格聚焦切换不经过这里，
+ * 因此不会把 SFTP 反复带回各窗格目录。
+ */
+export function shouldFollowTabCwd(
+  previous: string | undefined,
+  next: string,
+  tabIsActive: boolean,
+): boolean {
+  if (!next) return false;
+  if (previous === undefined) return tabIsActive;
+  return next !== previous;
+}
+
 export function terminalTabs(node: TerminalLayoutNode): TerminalPaneTab[] {
   return node.kind === "pane" ? node.tabs : [...terminalTabs(node.first), ...terminalTabs(node.second)];
 }

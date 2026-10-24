@@ -434,10 +434,11 @@ impl SshRuntime {
                             // Silent session-open arming: unsupported shells are
                             // skipped without the toggle's unavailable event,
                             // and an already-armed hook (user-facing toggle
-                            // raced ahead) is left untouched. No `\r\x1b[2K`
-                            // line clear either — the typed line lands before
-                            // the first prompt and the handshake filter hides
-                            // its echo, so nothing on screen is disturbed.
+                            // raced ahead) is left untouched. The handshake
+                            // filter publishes `\r\x1b[2K` when it drops the
+                            // typed line's echo, so the first prompt after
+                            // arming starts on a clean line instead of being
+                            // appended to the pre-arming prompt.
                             if !matches!(shell, RemoteShell::Bash | RemoteShell::Zsh) {
                                 continue;
                             }

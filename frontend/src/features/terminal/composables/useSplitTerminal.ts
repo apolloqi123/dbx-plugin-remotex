@@ -75,6 +75,11 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
   let replayInFlight = false;
   let stopped = true;
   let errorReported = false;
+  // 最近一次已发送（或随 open 下发）的 PTY 尺寸：ResizeObserver 的初始回调
+  // 会在会话打开后补发同尺寸 resize，远端 shell 收到 window-change 后重绘
+  // 提示符，表现为一行两个 `[user@host ~]#`。同尺寸一律不发。
+  let lastResizeCols = 0;
+  let lastResizeRows = 0;
 
   const encoder = new TextEncoder();
 
@@ -202,6 +207,10 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
     generation += 1;
     const currentGeneration = generation;
     const api = window.dbxPlugin;
+    const spawnCols = Math.max(1, Math.floor(cols));
+    const spawnRows = Math.max(1, Math.floor(rows));
+    lastResizeCols = spawnCols;
+    lastResizeRows = spawnRows;
 
     stopListening();
     inputQueue.reset();
@@ -214,6 +223,7 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
     stopped = false;
     status.value = "connecting";
     sequencer = createSequencer();
+
 
     // Subscribe before the long-running open RPC returns so output emitted
     // under requestedSessionId is not lost.
@@ -228,8 +238,8 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
           workbenchId: options.workbenchId(),
           mainSessionId: options.mainSessionId(),
           requestedSessionId,
-          cols,
-          rows,
+          cols: spawnCols,
+          rows: spawnRows,
         }),
         { timeoutMs: OPEN_TIMEOUT_MS },
       );
@@ -267,6 +277,8 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
   function close() {
     generation += 1;
     stopped = true;
+    lastResizeCols = 0;
+    lastResizeRows = 0;
     const targetSessionId = sessionId.value;
     sessionId.value = "";
     requestedSessionId = "";
@@ -296,6 +308,9 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
     if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
     const normalizedCols = Math.max(1, Math.floor(cols));
     const normalizedRows = Math.max(1, Math.floor(rows));
+    if (normalizedCols === lastResizeCols && normalizedRows === lastResizeRows) return;
+    lastResizeCols = normalizedCols;
+    lastResizeRows = normalizedRows;
     void api
       .notify("ssh/terminal/resize", { sessionId: targetSessionId, cols: normalizedCols, rows: normalizedRows })
       .catch(() => undefined);

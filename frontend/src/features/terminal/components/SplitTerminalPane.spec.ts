@@ -13,6 +13,7 @@ const xtermMock = vi.hoisted(() => {
     rows = 24;
     options: Record<string, unknown>;
     unicode = { activeVersion: "6" };
+    buffer = { active: { type: "normal" } };
     dataHandler: ((data: string) => void) | undefined;
     selectionHandler: (() => void) | undefined;
     keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
@@ -308,6 +309,41 @@ describe("SplitTerminalPane", () => {
     listener({ channel: "ssh/terminal/out/server-split", data: frame(2, "two") });
     expect(terminal.written.map((bytes) => new TextDecoder().decode(bytes))).toEqual(["one", "two", "three"]);
 
+    wrapper.unmount();
+  });
+
+  it("reports the shell's OSC 7 cwd for directory following", async () => {
+    const { wrapper, harness } = await mountPane();
+    const listener = harness.binaryListeners[0];
+
+    listener({ channel: "ssh/terminal/out/server-split", data: frame(1, "\u001b]7;file://hostname/var/log\u0007") });
+    await flushPromises();
+
+    expect(wrapper.emitted("cwd")?.at(-1)).toEqual(["/var/log"]);
+    wrapper.unmount();
+  });
+
+  it("keeps the post-hook prompt off the previous prompt line", async () => {
+    const { wrapper, harness, terminal } = await mountPane();
+    const listener = harness.binaryListeners[0];
+
+    listener({
+      channel: "ssh/terminal/out/server-split",
+      data: frame(1, "Last login: now\r\n[root@host ~]# "),
+    });
+    listener({
+      channel: "ssh/terminal/out/server-split",
+      data: frame(2, "\u001b]7;file://host/root\u0007[root@host ~]# "),
+    });
+
+    const output = terminal.written.map((bytes) => new TextDecoder().decode(bytes)).join("");
+    // The prompt hook's OSC 7 lands while the pre-arming prompt left the cursor
+    // mid-line: the renderer must splice a CRLF in front of it instead of
+    // letting the remote prompt draw a second `[root@host ~]# ` on the same line.
+    expect(output).toBe(
+      "Last login: now\r\n[root@host ~]# \r\n\u001b]7;file://host/root\u0007[root@host ~]# ",
+    );
+    expect(wrapper.emitted("cwd")?.at(-1)).toEqual(["/root"]);
     wrapper.unmount();
   });
 

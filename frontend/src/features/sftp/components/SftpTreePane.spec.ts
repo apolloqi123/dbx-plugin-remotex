@@ -64,6 +64,7 @@ interface PaneProps {
   emptyText: string;
   loadDetails?: (entry: SftpSanitizedEntry) => Promise<SftpDetailInfo | null>;
   externalDragActive?: boolean;
+  followPadding?: boolean;
 }
 
 function mountPane(rows: SftpTreeRow[], overrides: Partial<Omit<PaneProps, "rows">> = {}) {
@@ -135,14 +136,14 @@ describe("SftpTreePane", () => {
 
     const rows = wrapper.findAll(".sftp-tree-row");
     expect(rows).toHaveLength(2);
-    expect(rows[0].find(".sftp-tree-name").text()).toBe("ROOT");
+    expect(rows[0].find(".sftp-tree-name").text()).toBe("/");
     expect(rows[1].find(".sftp-tree-name").text()).toBe("readme.txt");
     expect(rows[0].attributes("style")).toContain("padding-left: 8px");
     expect(rows[1].attributes("style")).toContain("padding-left: 22px");
     expect(rows[0].attributes("role")).toBe("treeitem");
     expect(rows[0].attributes("aria-expanded")).toBe("true");
     expect(rows[1].attributes("aria-expanded")).toBeUndefined();
-    expect(wrapper.find(".sftp-tree-caret").attributes("aria-label")).toBe("collapse ROOT");
+    expect(wrapper.find(".sftp-tree-caret").attributes("aria-label")).toBe("collapse /");
     expect(rows[0].find("svg.lucide-folder-open").exists()).toBe(true);
     expect(rows[1].find(".sftp-tree-file-icon").exists()).toBe(true);
   });
@@ -575,6 +576,134 @@ describe("SftpTreePane details card", () => {
     expect(wrapper.emitted("toggle")).toBeUndefined();
     expect(wrapper.emitted("select")).toBeUndefined();
     expect(wrapper.emitted("open")).toBeUndefined();
+  });
+});
+
+describe("SftpTreePane directory follow scrolling", () => {
+  it("pins a late row with the minimal bottom padding and drops it on manual scroll", async () => {
+    const heightSpy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    try {
+      const rows = Array.from({ length: 20 }, (_, index) => row(makeNode(`/dir${index}`, "directory")));
+      const wrapper = mountPane(rows, { followPadding: true });
+      await nextTick();
+      const scroller = wrapper.find(".sftp-tree-pane").element as HTMLElement;
+      const api = wrapper.vm as unknown as { scrollPathToTop(path: string): Promise<boolean> };
+
+      expect(await api.scrollPathToTop("/dir19")).toBe(true);
+      // maxTop = 20*28 + 172 - 200 = 532 → 最后一行正好贴顶，余量只是补足
+      // 视口高度差（不再恒为一整屏）。
+      expect(scroller.scrollTop).toBe(532);
+      const spacer = wrapper.find(".sftp-tree-follow-pad");
+      expect(spacer.exists(), "follow padding spacer missing").toBe(true);
+      expect((spacer.element as HTMLElement).style.height).toBe("172px");
+
+      // 靠前的目标自然可达顶部：不补余量。
+      expect(await api.scrollPathToTop("/dir1")).toBe(true);
+      expect(scroller.scrollTop).toBe(28);
+      expect(wrapper.find(".sftp-tree-follow-pad").exists()).toBe(false);
+
+      // 根行本来就在顶部：短列表也不补余量。
+      expect(await api.scrollPathToTop("/dir0")).toBe(true);
+      expect(scroller.scrollTop).toBe(0);
+      expect(wrapper.find(".sftp-tree-follow-pad").exists()).toBe(false);
+      wrapper.unmount();
+    } finally {
+      heightSpy.mockRestore();
+    }
+  });
+
+  it("pins with the measured row height instead of the nominal constant", async () => {
+    const heightSpy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    // 真实宿主里行高可能被主题/缩放改成 24px：虚拟窗口与置顶必须按实测值，
+    // 否则按 28px 推算会累积成“顶掉一行”。
+    const rowHeightSpy = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(24);
+    try {
+      const rows = Array.from({ length: 20 }, (_, index) => row(makeNode(`/dir${index}`, "directory")));
+      const wrapper = mountPane(rows, { followPadding: true });
+      await nextTick();
+      const scroller = wrapper.find(".sftp-tree-pane").element as HTMLElement;
+      const api = wrapper.vm as unknown as { scrollPathToTop(path: string): Promise<boolean> };
+
+      expect(await api.scrollPathToTop("/dir19")).toBe(true);
+      // 19*24 = 456；pad = 456 + 200 - 20*24 = 176。
+      expect(scroller.scrollTop).toBe(456);
+      expect((wrapper.find(".sftp-tree-follow-pad").element as HTMLElement).style.height).toBe("176px");
+      wrapper.unmount();
+    } finally {
+      rowHeightSpy.mockRestore();
+      heightSpy.mockRestore();
+    }
+  });
+
+  it("pins a shallow row in a short list instead of leaving it mid-viewport", async () => {
+    const heightSpy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    try {
+      const wrapper = mountPane(
+        [row(makeNode("/a", "directory")), row(makeNode("/b", "directory")), row(makeNode("/c", "directory"))],
+        { followPadding: true },
+      );
+      await nextTick();
+      const scroller = wrapper.find(".sftp-tree-pane").element as HTMLElement;
+      const api = wrapper.vm as unknown as { scrollPathToTop(path: string): Promise<boolean> };
+
+      // pad = 56 + 200 - 84 = 172 → /c 精确贴顶。
+      expect(await api.scrollPathToTop("/c")).toBe(true);
+      expect(scroller.scrollTop).toBe(56);
+      expect((wrapper.find(".sftp-tree-follow-pad").element as HTMLElement).style.height).toBe("172px");
+      wrapper.unmount();
+    } finally {
+      heightSpy.mockRestore();
+    }
+  });
+
+  it("releases the follow reserve once manual scrolling reaches the natural range", async () => {
+    const heightSpy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    try {
+      const rows = Array.from({ length: 20 }, (_, index) => row(makeNode(`/dir${index}`, "directory")));
+      const wrapper = mountPane(rows, { followPadding: true });
+      await nextTick();
+      const scroller = wrapper.find(".sftp-tree-pane").element as HTMLElement;
+      const api = wrapper.vm as unknown as { scrollPathToTop(path: string): Promise<boolean> };
+
+      expect(await api.scrollPathToTop("/dir19")).toBe(true);
+      expect(wrapper.find(".sftp-tree-follow-pad").exists()).toBe(true);
+
+      // 用户向上滚回自然可滚动范围（20*28-200=360）：余量撤掉，行位置不跳。
+      scroller.scrollTop = 300;
+      await wrapper.find(".sftp-tree-pane").trigger("scroll");
+      await nextTick();
+
+      expect(wrapper.find(".sftp-tree-follow-pad").exists()).toBe(false);
+      expect(scroller.scrollTop).toBe(300);
+      wrapper.unmount();
+    } finally {
+      heightSpy.mockRestore();
+    }
+  });
+
+  it("does not reserve padding for an empty folder", async () => {
+    const heightSpy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
+    try {
+      const wrapper = mountPane([], { followPadding: true });
+      await nextTick();
+      expect(wrapper.find(".sftp-tree-follow-pad").exists()).toBe(false);
+      wrapper.unmount();
+    } finally {
+      heightSpy.mockRestore();
+    }
+  });
+
+  it("scrolls the followed directory row to the top of the viewport", async () => {
+    const wrapper = mountPane([row(makeNode("/a", "directory")), row(makeNode("/b", "directory")), row(makeNode("/c", "directory"))]);
+    const scroller = wrapper.find(".sftp-tree-pane").element as HTMLElement;
+    const api = wrapper.vm as unknown as { scrollPathToTop(path: string): Promise<boolean> };
+
+    expect(await api.scrollPathToTop("/b")).toBe(true);
+    expect(scroller.scrollTop).toBe(28);
+
+    expect(await api.scrollPathToTop("/missing")).toBe(false);
+    expect(scroller.scrollTop).toBe(28);
+    wrapper.unmount();
   });
 });
 

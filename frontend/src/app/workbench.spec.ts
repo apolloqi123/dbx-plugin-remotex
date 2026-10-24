@@ -837,18 +837,21 @@ function templateGuardRefs(classMarker: string): string[] {
     }
     // 无 v-if 守卫（portal 受控面板）：取最近的 Popover/Dialog 根（两者索引较大者
     // 才是当前面板的包裹根，取错会把弹窗误归给更早的 popover）。
+    // 根标签可能带 v-if 等前置属性（如 <Popover v-if="…" :open="…">）：必须
+    // 扫完整开标签再取 :open，不能用 lastIndexOf('<Popover :open=') 精确前缀。
     let bestStart = -1;
-    let bestMatch: RegExpMatchArray | null = null;
+    let bestRef = "";
     for (const rootTag of ["Popover", "Dialog"]) {
-      const rootStart = appTemplate.lastIndexOf(`<${rootTag} :open="`, tagStart);
-      if (rootStart <= bestStart) continue;
-      const root = appTemplate.slice(rootStart).match(new RegExp(`<${rootTag} :open="!*([A-Za-z_$][\\w$]*)`));
-      if (root) {
-        bestStart = rootStart;
-        bestMatch = root;
+      const openTagRe = new RegExp(`<${rootTag}\\b[^>]*>`, "g");
+      for (let hit = openTagRe.exec(appTemplate); hit && hit.index < tagStart; hit = openTagRe.exec(appTemplate)) {
+        const ref = hit[0].match(/:open="!*([A-Za-z_$][\w$]*)/);
+        if (ref && hit.index > bestStart) {
+          bestStart = hit.index;
+          bestRef = ref[1];
+        }
       }
     }
-    if (bestMatch) refs.add(bestMatch[1]);
+    if (bestRef) refs.add(bestRef);
   }
   return [...refs];
 }
@@ -902,7 +905,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
 
   it("routes every toolbar popover toggle through closeToolbarPopovers", () => {
     // M32-A2：toggleHighlightMenu 已随高亮弹层迁设置·终端而下线。
-    for (const name of ["toggleQuickMenu", "toggleConnectionInfo", "toggleAgentModeMenu", "toggleBookmarkSave", "toggleColumnsMenu", "toggleTransferPanel", "togglePathHistoryMenu", "toggleSessionMenu"]) {
+    for (const name of ["toggleQuickMenu", "toggleConnectionInfo", "toggleAgentModeMenu", "toggleBookmarkSave", "toggleColumnsMenu", "toggleTransferPanel", "togglePathHistoryMenu", "toggleSessionMenu", "toggleRdpResolutionMenu", "toggleRdpPasteMenu", "togglePanelPaletteMenu"]) {
       // toggle 可能随模块化迁入 composables/：App.vue 找不到时到联合源里找。
       const haystack = appScript.includes(`function ${name}(`) ? appScript : `${appScript}\n${composablesScript}`;
       const start = haystack.indexOf(`function ${name}(`);
@@ -910,6 +913,22 @@ describe("App.vue popover/modal wiring structural guard", () => {
       const body = haystack.slice(start, haystack.indexOf("\n}", start));
       expect(body, `${name}() 未走 closeToolbarPopovers 统一收口`).toContain("closeToolbarPopovers()");
     }
+  });
+
+  it("stops pointerdown on every popover anchor toggle", () => {
+    // 锚点按钮对 reka DismissableLayer 属于"外部"：pointerdown 未被阻止时会先
+    // 关闭弹层，随后 click 再把它打开，表现为"第二次点击收不回去"。focus-outside
+    // 已由 shared/ui/popover/PopoverContent.vue 统一 prevent，无需在按钮处理。
+    const anchors = [...appTemplate.matchAll(/<PopoverAnchor as-child>([\s\S]*?)<\/PopoverAnchor>/g)]
+      .map((hit) => hit[1])
+      .filter((block) => /<button[\s\S]*@click/.test(block));
+    expect(anchors.length, "锚点按钮提取为空（regex 失效）").toBeGreaterThan(10);
+    for (const block of anchors) {
+      expect(block, `锚点按钮缺少 @pointerdown.stop:\n${block}`).toContain("@pointerdown.stop");
+    }
+    // 工具条里的传输按钮不在 PopoverAnchor 内（弹层用隐形锚点），同样阻止
+    // pointerdown；因此只要求总数不少于锚点按钮数。
+    expect(appTemplate.match(/@pointerdown\.stop/g)?.length ?? 0, "存在未阻止 pointerdown 的锚点按钮").toBeGreaterThanOrEqual(anchors.length);
   });
 });
 
@@ -1016,6 +1035,26 @@ it("renders the SFTP pane as a single tree column without the old table or sideb
   expect(appTemplate).not.toContain('ref="fileRowsEl"');
   expect(appTemplate).not.toContain('class="file-table"');
   expect(appTemplate).not.toContain("<SideNavPanel");
+});
+
+// 目录跟随开关收进 SFTP 路径栏：主工具条不再保留文字+Switch 控件；分屏/页签
+// 的 cwd 与窗格激活事件由布局树桥接到 App，跟随目录需要能滚动置顶。
+it("puts the directory-follow toggle in the SFTP path toolbar", () => {
+  expect(appTemplate).toContain('ref="sftpTreePane"');
+  expect(appTemplate).toContain(':follow-padding="followDirectory"');
+  expect(appTemplate).toContain('@cwd="onShellTabCwd"');
+  expect(appTemplate).toContain('@activate-pane="onPaneActivated"');
+  // 旧的主工具条文字+Switch 入口已移除（class 仍被 sudo 标签复用，不能按类名断言）。
+  expect(appTemplate).not.toContain('@update:model-value="setDirectoryTracking"');
+  expect(appTemplate).toContain("setDirectoryTracking(!followDirectory)");
+  expect(appTemplate).toContain("<LocateFixed v-if=\"followDirectory\" />");
+  expect(appTemplate).toContain("<LocateOff v-else />");
+  // 跟随在真实 cwd 变化或用户切换到别的窗格/页签时同步；同一窗格内重复
+  // 点击终端不触发，避免反复重置滚动位置。
+  expect(appVueSource).toContain("watch(terminalCwd");
+  expect(appVueSource).not.toContain("watch([activePaneCwd, followDirectory]");
+  expect(appVueSource).toContain("shouldFollowTabCwd(previous, path, activeTabId === tabId)");
+  expect(appVueSource).toContain("activeTerminalPaneId.value = paneId;\n  syncSftpToActivePane();");
 });
 
 // 右侧栏三视图与终端分屏：指标/容器不再以浮层覆盖终端，分屏入口在终端

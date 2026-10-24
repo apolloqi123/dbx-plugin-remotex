@@ -20,6 +20,8 @@ import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger 
 import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
 import { useSplitTerminal } from "../composables/useSplitTerminal";
+import { Osc7DirectoryParser } from "../lib/terminalDirectoryTracking";
+import { PromptNewlineTransformer } from "../lib/terminalPromptNewline";
 import { SPLIT_DEFAULT_COLS, SPLIT_DEFAULT_ROWS } from "../lib/terminalSplit";
 import {
   TERMINAL_SEARCH_OPTIONS_KEY,
@@ -54,6 +56,8 @@ interface Props {
   connected?: boolean;
   canWrite?: boolean;
   transferBusy?: boolean;
+  /** 布局变化计数：分屏/关闭让宿主搬到新槽位后重新 fit。 */
+  layoutEpoch?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -66,6 +70,7 @@ const props = withDefaults(defineProps<Props>(), {
   connected: false,
   canWrite: false,
   transferBusy: false,
+  layoutEpoch: 0,
 });
 
 const emit = defineEmits<{
@@ -75,6 +80,8 @@ const emit = defineEmits<{
   "new-tab": [];
   split: [orientation: "row" | "column"];
   "search-online": [engine: CtxSearchEngine, text: string];
+  /** Shell 提示钩子上报的 OSC 7 目录；真实目录变化时驱动 SFTP 跟随。 */
+  cwd: [path: string];
 }>();
 
 const t = (key: string, values: Record<string, string | number> = {}) => props.t(key, values);
@@ -104,6 +111,13 @@ let resizeObserver: ResizeObserver | undefined;
 let fitTimer = 0;
 let disposed = false;
 let appliedTheme: Record<string, unknown> | undefined;
+// 分屏会话同样挂着 per-prompt 目录钩子；OSC 7 在输出流里，按窗格解析后上报，
+// 由 App 在目录真实变化时驱动 SFTP 跟随。
+const directoryParser = new Osc7DirectoryParser();
+// 与主终端同款提示符换行修复：OSC 7 提示帧到达时若光标不在行首，先补 CRLF。
+// 目录钩子安装时 sidecar 会丢弃安装行回显并补清行，但远端 dotfile 自带 OSC 7
+// 的一次提示符双发射、以及行尾无换行的输出，仍需要在前端兜一层。
+const promptNewline = new PromptNewlineTransformer();
 
 const {
   status,
@@ -117,8 +131,18 @@ const {
   workbenchId: () => props.workbenchId,
   mainSessionId: () => props.mainSessionId,
   t: (key, values) => props.t(key, values),
-  onData: (data) => terminal?.write(data),
-  onOpened: (sessionId) => emit("opened", sessionId),
+  onData: (data) => {
+    // 全屏应用（vim/top 绝对定位重绘）不能插入换行；解析链仍吃原始字节。
+    const suppressInsert = terminal?.buffer?.active?.type === "alternate";
+    terminal?.write(promptNewline.push(data, { suppressInsert }));
+    for (const path of directoryParser.push(data)) emit("cwd", path);
+  },
+  onOpened: (sessionId) => {
+    emit("opened", sessionId);
+    // open 在途时窗格可能已重排（或字体刚加载）：连上后补一次 fit；尺寸与
+    // spawn 相同会被 useSplitTerminal 的同尺寸去重挡掉，不会重绘提示符。
+    scheduleFit();
+  },
   onError: (message) => emit("error", message),
 });
 
@@ -339,6 +363,8 @@ async function restartForMainSession(mainSessionId: string) {
   if (disposed || !mainSessionId) return;
   closeSplitSession();
   terminal?.reset();
+  directoryParser.reset();
+  promptNewline.reset();
   const dimensions = measureDimensions();
   await openSplitSession(dimensions.cols, dimensions.rows);
 }
@@ -394,9 +420,32 @@ watch(
   },
 );
 
-onMounted(() => {
+// 分屏/关闭会重建叶子槽位，终端宿主被搬进新位置：重新 fit（不抢焦点）。
+watch(
+  () => props.layoutEpoch,
+  () => {
+    if (disposed) return;
+    scheduleFit();
+  },
+);
+
+onMounted(async () => {
   createTerminal();
   observeSize();
+  // 布局刚插入时字体/弹性尺寸可能还没稳定：等 Vue patch 完成并尽量等 webfont
+  // 就绪（上限 300ms）再量，避免以 80×24 默认值或 fallback 字体度量 spawn 后
+  // 又 fit 一次大尺寸 resize（远端 shell 收到 SIGWINCH 重绘提示符，表现为
+  // 一行两个 `[user@host ~]#`）。
+  try {
+    await Promise.race([
+      document.fonts?.ready ?? Promise.resolve(),
+      new Promise((resolve) => window.setTimeout(resolve, 300)),
+    ]);
+  } catch {
+    // 字体服务不可用：连续采样/去重仍然兜底。
+  }
+  await nextTick();
+  if (disposed) return;
   const dimensions = measureDimensions();
   void openSplitSession(dimensions.cols, dimensions.rows);
 });

@@ -11,6 +11,8 @@ import {
   nextTerminalTabLabel,
   removeSplitAroundPane,
   removeTerminalTab,
+  resolveActiveTabCwd,
+  shouldFollowTabCwd,
   splitTerminalLayout,
   TERMINAL_PANE_TAB_LIMIT,
   type TerminalLayoutNode,
@@ -134,5 +136,34 @@ describe("terminalLayout", () => {
     );
     expect(collectPaneTabIds(layout, "main").sort()).toEqual(["main", "tab1"]);
     expect(collectPaneTabIds(layout, "B")).toEqual(["tabB"]);
+  });
+
+  it("resolves the followed cwd from the active pane's active tab", () => {
+    const shellCwd = new Map([["tab1", "/srv/app"], ["tabB", "/var/log"]]);
+    const split = splitTerminalLayout(createTerminalLayout(), "main", "row", "B", "tabB");
+    // 主终端页签 → 主终端 cwd。
+    expect(resolveActiveTabCwd(split, "main", "/home/user", shellCwd)).toBe("/home/user");
+    // 主窗格的额外页签 → 该页签自己的 cwd。
+    const withTab = activateTerminalTab(addTerminalTab(split, "main", "tab1"), "main", "tab1");
+    expect(resolveActiveTabCwd(withTab, "main", "/home/user", shellCwd)).toBe("/srv/app");
+    // 分屏窗格的活动页签 → 分屏 cwd。
+    expect(resolveActiveTabCwd(withTab, "B", "/home/user", shellCwd)).toBe("/var/log");
+    // 活动窗格已被关闭 → 回退主窗格（主窗格当前活动页签为 tab1）。
+    expect(resolveActiveTabCwd(withTab, "gone", "/home/user", shellCwd)).toBe("/srv/app");
+    // 未上报 cwd 的页签 → 空串（调用方跳过跟随，不做错误跳转）。
+    expect(resolveActiveTabCwd(split, "B", "/home/user", new Map())).toBe("");
+  });
+
+  it("follows only a genuinely new cwd, not the initial prompt or repeated reports", () => {
+    // 普通新建分屏的初始提示符：页签不是当前活动页签 → 只记录，不导航。
+    expect(shouldFollowTabCwd(undefined, "/data", false)).toBe(false);
+    // 活动分屏的 cwd 迟到（打开面板时还停在分屏里）→ 跟随。
+    expect(shouldFollowTabCwd(undefined, "/data", true)).toBe(true);
+    // cd 到新目录 → 跟随。
+    expect(shouldFollowTabCwd("/data", "/data/jenkins", false)).toBe(true);
+    // 同一提示符的重复 OSC 7（回车/resize 重绘）→ 不重复导航。
+    expect(shouldFollowTabCwd("/data/jenkins", "/data/jenkins", true)).toBe(false);
+    // 空路径 = 尚未上报 → 不跟随。
+    expect(shouldFollowTabCwd("/data", "", true)).toBe(false);
   });
 });
