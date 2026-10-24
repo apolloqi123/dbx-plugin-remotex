@@ -20,9 +20,14 @@ import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger 
 import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
 import { useSplitTerminal } from "../composables/useSplitTerminal";
+import { useTerminalAiSearch } from "../composables/useTerminalAiSearch";
 import { Osc7DirectoryParser } from "../lib/terminalDirectoryTracking";
+import { Osc633CommandParser } from "../lib/terminalCommandMarkers";
+import { applyLineEditControlChar } from "../lib/terminalLineModel";
 import { PromptNewlineTransformer } from "../lib/terminalPromptNewline";
 import { SPLIT_DEFAULT_COLS, SPLIT_DEFAULT_ROWS } from "../lib/terminalSplit";
+import { aiBridgeAvailable } from "../../agent/lib/aiBridge";
+import { loadAiSettings } from "../../agent/lib/aiSettings";
 import {
   TERMINAL_SEARCH_OPTIONS_KEY,
   sanitizeSearchOptions,
@@ -58,6 +63,8 @@ interface Props {
   transferBusy?: boolean;
   /** 布局变化计数：分屏/关闭让宿主搬到新槽位后重新 fit。 */
   layoutEpoch?: number;
+  /** 工作台通知（AI 结果回填/失败提示），与主终端共用同一 toast 通道。 */
+  notify?: (message: string) => void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -100,6 +107,75 @@ const searchMatchState = ref<"idle" | "match" | "no-match">("idle");
 const searchResultIndex = ref(0);
 const searchResultCount = ref(0);
 
+// `#` AI 命令搜索：状态机/锚点/直连生成与主终端共用同一 composable。
+// 本地行缓冲只在“空行键入 #”时激活，不依赖远端回显。
+let lineInput = "";
+let currentCwd = "";
+let commandRunning = false;
+const commandParser = new Osc633CommandParser();
+
+const aiSearch = useTerminalAiSearch({
+  terminal: () => terminal,
+  getHost: () => terminalHost.value,
+  t,
+  getLine: () => lineInput,
+  // 会话未连上时不截留 #（sendInput 会丢弃，卡片却已出现）。
+  isEnabled: () => status.value === "connected" && aiBridgeAvailable(window.dbxPlugin) && loadAiSettings().search,
+  gates: () => ({
+    alternateActive: terminal?.buffer.active.type === "alternate",
+    commandRunning,
+    transferBusy: props.transferBusy,
+    suggestionOpen: false,
+    completionOpen: false,
+    historyPanelOpen: false,
+    quickSelectOpen: false,
+    searchOpen: searchOpen.value,
+  }),
+  replaceLine: (command) => {
+    // 与主终端一致：Ctrl+U 清掉 shell 当前输入行，再写入命令但不回车。
+    sendInput("\u0015" + command);
+    lineInput = command;
+    terminal?.focus();
+  },
+  notify: (message) => props.notify?.(message),
+  context: () => ({
+    locale: props.locale,
+    ...(props.connectionId ? { connectionId: props.connectionId } : {}),
+    ...(currentCwd ? { cwd: currentCwd } : {}),
+  }),
+});
+
+const {
+  state: aiSearchState,
+  pending: aiSearchPending,
+  pendingQuery: aiSearchPendingQuery,
+  anchor: aiSearchAnchor,
+  barEl: aiSearchBarEl,
+  barStyle: aiSearchBarStyle,
+} = aiSearch;
+
+/** 本地行模型（与主终端同口径）：回车/Ctrl+C 清空、退格回删、Ctrl+U/W 行编辑；
+ *  ESC 序列会整行改写，模型不追（与 App 的 trackPendingInput 一致）。 */
+function trackLineInput(data: string) {
+  if (data.includes("\u001b")) return;
+  for (const character of data) {
+    if (character === "\r" || character === "\n" || character === "\u0003") lineInput = "";
+    else if (character === "\u007f") lineInput = lineInput.slice(0, -1);
+    else if (character === "\t") continue;
+    else {
+      const edited = applyLineEditControlChar(lineInput, character);
+      if (edited !== null) lineInput = edited;
+      else if (character >= " ") lineInput += character;
+    }
+  }
+}
+
+function routeTerminalData(data: string) {
+  if (aiSearch.handleData(data)) return;
+  trackLineInput(data);
+  sendInput(data);
+}
+
 let terminal: XTerm | undefined;
 let searchAddon: SearchAddon | undefined;
 let selectionDisposable: { dispose(): void } | undefined;
@@ -135,7 +211,13 @@ const {
     // 全屏应用（vim/top 绝对定位重绘）不能插入换行；解析链仍吃原始字节。
     const suppressInsert = terminal?.buffer?.active?.type === "alternate";
     terminal?.write(promptNewline.push(data, { suppressInsert }));
-    for (const path of directoryParser.push(data)) emit("cwd", path);
+    for (const path of directoryParser.push(data)) {
+      currentCwd = path;
+      emit("cwd", path);
+    }
+    // shell integration 的 OSC 633 命令生命周期：# 在命令运行中/REPL 里不截留。
+    const marker = commandParser.push(data);
+    if (marker.commandActive !== undefined) commandRunning = marker.commandActive;
   },
   onOpened: (sessionId) => {
     emit("opened", sessionId);
@@ -197,7 +279,7 @@ function createTerminal() {
     }
     return true;
   });
-  dataDisposable = terminal.onData((data) => sendInput(data));
+  dataDisposable = terminal.onData(routeTerminalData);
   selectionDisposable = terminal.onSelectionChange(() => {
     hasSelection.value = terminal?.hasSelection() ?? false;
   });
@@ -365,6 +447,11 @@ async function restartForMainSession(mainSessionId: string) {
   terminal?.reset();
   directoryParser.reset();
   promptNewline.reset();
+  aiSearch.reset();
+  commandParser.reset();
+  commandRunning = false;
+  lineInput = "";
+  currentCwd = "";
   const dimensions = measureDimensions();
   await openSplitSession(dimensions.cols, dimensions.rows);
 }
@@ -452,6 +539,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  aiSearch.reset();
   window.clearTimeout(fitTimer);
   resizeObserver?.disconnect();
   resizeObserver = undefined;
@@ -512,6 +600,25 @@ defineExpose({
     </header>
     <div class="split-terminal-body" @click="focusTerminal">
       <div ref="terminalHost" class="split-terminal-host terminal-host" />
+      <!-- `#` AI 命令搜索：与本窗格光标行同位，输入只进本地状态机不落 PTY。 -->
+      <div
+        v-if="(aiSearchState.active || aiSearchPending) && aiSearchAnchor"
+        ref="aiSearchBarEl"
+        class="terminal-ai-search mono"
+        :class="{ pending: aiSearchPending }"
+        :style="aiSearchBarStyle"
+        role="status"
+      >
+        <span class="terminal-ai-search-badge" aria-hidden="true">#</span>
+        <template v-if="aiSearchPending">
+          <span class="terminal-ai-search-query">{{ aiSearchPendingQuery }}</span>
+          <span class="terminal-ai-search-keys terminal-ai-search-pending"><Loader2 class="spinning" aria-hidden="true" /> {{ t("aiSearch.pendingHint") }}<span aria-hidden="true"> · </span><kbd>Esc</kbd> {{ t("aiSearch.pendingEscHint") }}</span>
+        </template>
+        <template v-else>
+          <span class="terminal-ai-search-query" :class="{ placeholder: !aiSearchState.query }">{{ aiSearchState.query || t("aiSearch.hintPlaceholder") }}</span>
+          <span class="terminal-ai-search-keys"><kbd>Enter</kbd> {{ t("aiSearch.hintSubmit") }}<span aria-hidden="true"> · </span><kbd>Esc</kbd> {{ t("aiSearch.hintCancel") }}</span>
+        </template>
+      </div>
       <TerminalSearchPanel
         v-if="searchOpen"
         :locale="locale"

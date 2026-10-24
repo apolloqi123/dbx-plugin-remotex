@@ -13,7 +13,15 @@ const xtermMock = vi.hoisted(() => {
     rows = 24;
     options: Record<string, unknown>;
     unicode = { activeVersion: "6" };
-    buffer = { active: { type: "normal" } };
+    buffer = { active: { type: "normal", cursorX: 0, cursorY: 0, viewportY: 0, baseY: 0 } };
+    element = {
+      querySelector: (selector: string) =>
+        selector === ".xterm-screen"
+          ? { getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }) }
+          : null,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }),
+    };
+    _core = { _renderService: { dimensions: { css: { cell: { width: 8, height: 16 } } } } };
     dataHandler: ((data: string) => void) | undefined;
     selectionHandler: (() => void) | undefined;
     keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
@@ -84,6 +92,7 @@ vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class { dispose() {} 
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class { dispose() {} } }));
 
 import SplitTerminalPane from "./SplitTerminalPane.vue";
+import { AI_SETTINGS_DEFAULTS, saveAiSettings } from "../../agent/lib/aiSettings";
 
 interface HostCall {
   method: string;
@@ -96,17 +105,20 @@ interface HostHarness {
   sendBinaryCalls: Array<{ channel: string; data: Uint8Array }>;
   binaryListeners: Array<(event: { channel: string; data?: Uint8Array; dataBase64?: string }) => void>;
   closeCalls: string[];
+  aiCalls: Array<{ method: string; params?: unknown }>;
   openError?: string;
   resolveOpen?: (sessionId: string) => void;
+  resolveAi?: () => void;
 }
 
-function installHost(options: { openError?: string; deferOpen?: boolean } = {}): HostHarness {
+function installHost(options: { openError?: string; deferOpen?: boolean; deferAi?: boolean } = {}): HostHarness {
   const harness: HostHarness = {
     calls: [],
     notifyCalls: [],
     sendBinaryCalls: [],
     binaryListeners: [],
     closeCalls: [],
+    aiCalls: [],
     openError: options.openError,
   };
   let resolveOpen: ((value: unknown) => void) | undefined;
@@ -121,6 +133,26 @@ function installHost(options: { openError?: string; deferOpen?: boolean } = {}):
   const plugin = {
     ready: Promise.resolve({}),
     locale: "en",
+    capabilities: { ai: true, aiCompletion: true },
+    request: vi.fn(async (method: string) => {
+      if (method === "host.ai.listModels") {
+        return [{ configId: "cfg-1", name: "Model", model: "model-1", isDefault: true }];
+      }
+      if (method === "host.ai.generateText") {
+        harness.aiCalls.push({ method });
+        if (options.deferAi) {
+          return new Promise((resolve) => {
+            harness.resolveAi = () => resolve("ls -la\nWhy: list the directory");
+          });
+        }
+        return "ls -la\nWhy: list the directory";
+      }
+      if (method === "host.ai.openConversation") {
+        harness.aiCalls.push({ method });
+        return undefined;
+      }
+      return undefined;
+    }),
     invoke: vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
       harness.calls.push({ method, params });
       if (method === "ssh/session/open") {
@@ -182,7 +214,7 @@ function props(overrides: Record<string, unknown> = {}) {
 }
 
 async function mountPane(
-  hostOptions: { openError?: string; deferOpen?: boolean } = {},
+  hostOptions: { openError?: string; deferOpen?: boolean; deferAi?: boolean } = {},
   overrides: Record<string, unknown> = {},
 ) {
   const harness = installHost(hostOptions);
@@ -214,6 +246,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  saveAiSettings(AI_SETTINGS_DEFAULTS);
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
@@ -276,6 +309,105 @@ describe("SplitTerminalPane", () => {
 
     expect(wrapper.emitted("closed")).toHaveLength(1);
     expect(harness.closeCalls).toEqual(["server-split"]);
+
+    wrapper.unmount();
+  });
+
+  it("activates # AI search locally without sending the hash to the PTY", async () => {
+    saveAiSettings({ ...AI_SETTINGS_DEFAULTS, search: true });
+    const { wrapper, harness, terminal } = await mountPane();
+
+    terminal.dataHandler?.("#");
+    await nextTick();
+    await flushPromises();
+
+    expect(harness.sendBinaryCalls).toHaveLength(0);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(true);
+    expect(wrapper.find(".terminal-ai-search-query").text()).toBe("aiSearch.hintPlaceholder");
+
+    terminal.dataHandler?.("list files");
+    await nextTick();
+    expect(wrapper.find(".terminal-ai-search-query").text()).toBe("list files");
+    expect(harness.sendBinaryCalls).toHaveLength(0);
+
+    terminal.dataHandler?.("\r");
+    await flushPromises();
+
+    const sent = harness.sendBinaryCalls.map((call) => new TextDecoder().decode(call.data.slice(8)));
+    expect(sent).toEqual(["\u0015ls -la"]);
+    expect(terminal.focused).toBe(true);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(false);
+
+    saveAiSettings(AI_SETTINGS_DEFAULTS);
+    wrapper.unmount();
+  });
+
+  it("keeps # as normal shell input once the line already has text", async () => {
+    saveAiSettings({ ...AI_SETTINGS_DEFAULTS, search: true });
+    const { wrapper, harness, terminal } = await mountPane();
+
+    terminal.dataHandler?.("echo ");
+    terminal.dataHandler?.("#");
+    await flushPromises();
+
+    const sent = harness.sendBinaryCalls.map((call) => new TextDecoder().decode(call.data.slice(8)));
+    expect(sent).toEqual(["echo ", "#"]);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(false);
+
+    saveAiSettings(AI_SETTINGS_DEFAULTS);
+    wrapper.unmount();
+  });
+
+  it("tracks Ctrl+U so # activates again after the shell line is cleared", async () => {
+    saveAiSettings({ ...AI_SETTINGS_DEFAULTS, search: true });
+    const { wrapper, harness, terminal } = await mountPane();
+
+    terminal.dataHandler?.("echo stale");
+    terminal.dataHandler?.("\u0015");
+    terminal.dataHandler?.("#");
+    await flushPromises();
+
+    const sent = harness.sendBinaryCalls.map((call) => new TextDecoder().decode(call.data.slice(8)));
+    expect(sent).toEqual(["echo stale", "\u0015"]);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(true);
+
+    saveAiSettings(AI_SETTINGS_DEFAULTS);
+    wrapper.unmount();
+  });
+
+  it("freezes input while AI is pending and drops the late result after Esc", async () => {
+    saveAiSettings({ ...AI_SETTINGS_DEFAULTS, search: true });
+    const { wrapper, harness, terminal } = await mountPane({ deferAi: true });
+
+    terminal.dataHandler?.("#");
+    terminal.dataHandler?.("list files");
+    terminal.dataHandler?.("\r");
+    await flushPromises();
+    expect(wrapper.find(".terminal-ai-search.pending").exists()).toBe(true);
+
+    terminal.dataHandler?.("typed-while-pending");
+    terminal.dataHandler?.("\u001b");
+    await flushPromises();
+    harness.resolveAi?.();
+    await flushPromises();
+
+    expect(harness.sendBinaryCalls).toHaveLength(0);
+    expect(harness.aiCalls.some((call) => call.method === "host.ai.openConversation")).toBe(false);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it("leaves # untouched when AI search is disabled in settings", async () => {
+    saveAiSettings({ ...AI_SETTINGS_DEFAULTS, search: false });
+    const { wrapper, harness, terminal } = await mountPane();
+
+    terminal.dataHandler?.("#");
+    await flushPromises();
+
+    const sent = harness.sendBinaryCalls.map((call) => new TextDecoder().decode(call.data.slice(8)));
+    expect(sent).toEqual(["#"]);
+    expect(wrapper.find(".terminal-ai-search").exists()).toBe(false);
 
     wrapper.unmount();
   });

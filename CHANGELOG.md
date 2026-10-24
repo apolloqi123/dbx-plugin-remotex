@@ -13,6 +13,18 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.19] — 2026-10-24
+
+- **AI 审批卡只保留需要核对的命令**。DBX 内置 AI 的工具清单不再暴露 `connectionId` 与 `timeoutSecs`：连接由宿主从会话 lifecycle 注入，超时由 sidecar 应用默认值，因此审批卡里不再出现 UUID 和等待上限，ssh_exec / ssh_exec_sudo 的参数只剩命令本身（危险确认等安全参数仍会显示）。独立 `--mcp` 客户端的工具 schema 保持不变。
+  **AI approval cards now show only the command that needs review.** The tool listing used by DBX's built-in AI no longer exposes `connectionId` or `timeoutSecs`: the host injects the connection from the session lifecycle and the sidecar applies the default timeout, so the approval card drops the UUID and wait cap. For ssh_exec / ssh_exec_sudo only the command remains (safety flags such as destructive confirmation are still shown). Standalone `--mcp` clients keep the full tool schema.
+
+## [0.7.9-beta.18] — 2026-10-24
+
+- **`#` AI 命令搜索扩展到所有终端**。新建的终端页签与分屏窗格现在和默认终端一样：空行键入 `#` 会显示 AI 命令卡片，输入只进本地搜索、不发送到远端；回车把生成的命令回填到当前输入行（不自动执行），Esc 取消。AI 关闭/不可用或行内已有内容时，`#` 仍按普通字符发送。
+  **`#` AI command search now works in every terminal.** New terminal tabs and split panes now behave like the default terminal: typing `#` on an empty line opens the AI command card, the query stays local and is never sent to the remote shell, Enter fills the generated command into that pane's input line without executing it, and Esc cancels. When AI is disabled/unavailable or the line already has text, `#` is sent as normal input.
+- **分屏 AI 搜索与主终端共用一套逻辑**。提示条样式移到全局样式，修复分屏内卡片不可见；分屏补齐 Ctrl+U/W 行编辑、OSC 633 命令运行门与会话未连接门，避免在命令运行中或无会话时截留 `#`。
+  **Split panes share one AI-search implementation with the main terminal.** The prompt-card styles are now global (fixing an invisible card inside split panes), and split panes track Ctrl+U/W line edits, OSC 633 command activity, and disconnected sessions so `#` is not intercepted while a command is running or no session is live.
+
 ## [0.7.9-beta.17] — 2026-10-24
 
 - **SFTP 行单击与文件夹右键菜单**。文件与文件夹行单击都会选中并高亮；文件夹单击同时展开/收起（Ctrl/Cmd/Shift 单击只做多选）。工具栏的「上传 / 上传文件夹 / 新建文件夹 / 新建文件」四个图标按钮移除，动作收进文件夹行右键菜单，落点就是被右键的目录；空白处右键不再弹出菜单。

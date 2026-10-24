@@ -54,7 +54,7 @@ pub(crate) use args::arg_bool;
 use args::*;
 #[allow(unused_imports)]
 use bridge::*;
-pub(crate) use catalog::tool_definitions;
+pub(crate) use catalog::{tool_definitions, tool_definitions_for_host};
 use catalog::*;
 use connections::*;
 #[allow(unused_imports)]

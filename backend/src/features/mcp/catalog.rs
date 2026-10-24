@@ -170,6 +170,37 @@ pub const TOOL_NAMES: &[&str] = &[
     "sftp_write_file",
 ];
 
+/// Tool listing for the embedded DBX AI (`mcp/tools` over the app bridge).
+///
+/// The host renders a tool approval card by dumping the prepared arguments as
+/// JSON (`AiToolApprovalCard.vue`). `connectionId` is host-injected from the
+/// open connection and `timeoutSecs` only carries a default the sidecar can
+/// apply itself, so both are display noise in that card. Omitting
+/// `connectionId` also stops the host from injecting it into the approved
+/// arguments; execution still gets the connection id from the lifecycle
+/// payload (`call_dbx_with` inserts it before dispatch).
+///
+/// Standalone `--mcp` keeps `tool_definitions()`: external clients address
+/// connections explicitly and may want an explicit wait cap.
+pub fn tool_definitions_for_host() -> Value {
+    let mut definitions = tool_definitions();
+    if let Some(tools) = definitions.as_array_mut() {
+        for tool in tools {
+            let Some(properties) = tool
+                .get_mut("inputSchema")
+                .and_then(Value::as_object_mut)
+                .and_then(|schema| schema.get_mut("properties"))
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+            properties.remove("connectionId");
+            properties.remove("timeoutSecs");
+        }
+    }
+    definitions
+}
+
 pub fn tool_definitions() -> Value {
     let mut tools = json!([
         {

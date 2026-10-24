@@ -37,6 +37,8 @@ interface Props {
   connected: boolean;
   canWrite: boolean;
   transferBusy: boolean;
+  /** 工作台通知：分屏页签里的 AI 结果/失败提示与主终端共用同一 toast。 */
+  notify?: (message: string) => void;
   /** 0 = 布局树根实例（唯一持有分屏终端实例与宿主）。 */
   depth?: number;
 }
@@ -256,6 +258,7 @@ watch(shellPaneEntries, (entries) => {
         :connected="connected"
         :can-write="canWrite"
         :transfer-busy="transferBusy"
+        :notify="notify"
         :layout-epoch="layoutEpoch"
         close-kind="tab"
         @opened="(sessionId) => emit('opened', entry.tab.id, sessionId)"

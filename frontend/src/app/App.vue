@@ -116,6 +116,7 @@ import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutErr
 import { SERIAL_STREAM_STDIN, isKnownStreamTag, supportsBinaryInput } from "../features/serial/lib/serialTerminalFrames";
 import { describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS } from "../features/terminal/lib/terminalReconnect";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/useTerminalTransportWatch";
+import { useTerminalAiSearch } from "../features/terminal/composables/useTerminalAiSearch";
 import { classifyConnectError, connectErrorKey } from "../features/connections/lib/connectError";
 import { decideConnectRetry, isDuplicatedTransportUnavailableError } from "../features/connections/lib/connectRetry";
 import { reopenHostConnection } from "../features/connections/lib/hostReopen";
@@ -185,8 +186,7 @@ import { ARBITER_PRIORITIES, resolveKeyOwners, type ArbiterClaim, type ClaimKey,
 import { aiBridgeAvailable, aiCompletionAvailable, aiRecommendationsAvailable, clearAiRecommendations, generateAiText, listAiModels, openAiConversation, pickDefaultAiModel, setAiRecommendations } from "../features/agent/lib/aiBridge";
 import { TailCapture } from "../features/agent/lib/aiCapture";
 import { parseAiResultText } from "../features/agent/lib/aiResultParse";
-import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest, buildAiSearchPrompt, buildAiSearchRequest } from "../features/agent/lib/aiRequests";
-import { canActivateAiSearch, classifyAiSearchInput, createAiSearchState, nextAiSearchState, type AiSearchState } from "../features/agent/lib/aiSearchMode";
+import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest } from "../features/agent/lib/aiRequests";
 import { loadAiSettings, saveAiSettings, sanitizeAiSettings, type AiSettings } from "../features/agent/lib/aiSettings";
 import { isExpectedNonZeroExit, shouldOfferAiFix } from "../features/agent/lib/aiFix";
 import { prepareAiOutputSnapshot, stripAnsiEscapes } from "../shared/lib/outputRedaction";
@@ -199,8 +199,7 @@ import { sanitizeNameEncoding, type SftpNameEncoding } from "../features/sftp/li
 import { batchUploadPercent, clampTransferConcurrency, clampTransferDownloadLimit, clampTransferMaxActive, runTransfers, sanitizeTransferDuplicatePolicy, type TransferDuplicatePolicy, type TransferTask,
 } from "../features/transfers/lib/transferQueue";
 import { filterQuickCommands, groupQuickCommands, quickCommandGroupCount, type QuickCommandGroupView, QUICK_COMMANDS_LIMIT } from "../features/quick-commands/lib/quickCommands";
-import { flippedOverlayBottom, overlayBelowTop, type SuggestionAnchor } from "../shared/lib/overlayPlacement";
-import { choosePromptHintsPlacement, PROMPT_HINTS_FALLBACK_BAR_HEIGHT } from "../features/terminal/lib/terminalPromptHints";
+import type { SuggestionAnchor } from "../shared/lib/overlayPlacement";
 import { registerWatch } from "../features/sftp/lib/watchEdits";
 import { batchTargetLabel } from "../features/terminal/lib/batchSend";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
@@ -694,15 +693,39 @@ function setGhostTabAccept(value: boolean) {
 // 探测（aiBridgeOk），不受挂载时序影响。
 const aiSettingsState = ref<AiSettings>(loadAiSettings());
 const aiBridgeReady = ref(false);
-const aiSearchState = ref<AiSearchState>(createAiSearchState());
-// `#` 直连生成的等待态（2026-10-02 反馈：发起后无任何提示，用户不知道在等
-// AI 返回）：pending 期间输入冻结（全部吞键）、提示条切 loading 形态、Esc
-// 本地放弃（放弃 = 过期令牌，迟到的结果不回填）；generateText 无取消桥
-// （宿主扩展清单项），放弃只能做到「结果不插入」。
-const aiSearchPending = ref(false);
-const aiSearchPendingQuery = ref("");
-let aiSearchToken = 0;
-const aiSearchAnchor = ref<SuggestionAnchor | null>(null);
+// `#` 命令搜索状态机/等待冻结/锚点/直连生成与分屏窗格共用同一 composable。
+const aiSearch = useTerminalAiSearch({
+  terminal: () => terminal,
+  getHost: () => terminalHost.value,
+  t: (key, values) => t(key, values),
+  getLine: () => pendingTerminalInput,
+  isEnabled: () => aiBridgeOk() && aiSettingsState.value.search,
+  gates: () => ({
+    alternateActive: terminal?.buffer.active.type === "alternate",
+    commandRunning: commandRunning.value,
+    transferBusy: terminalTransferBusy.value,
+    suggestionOpen: suggestionOpen.value,
+    completionOpen: completionOpen.value,
+    historyPanelOpen: historyPanelOpen.value,
+    quickSelectOpen: quickSelectOpen.value,
+    searchOpen: searchOpen.value,
+  }),
+  replaceLine: (command) => {
+    replaceTerminalLineWith(command, false);
+    terminal?.focus();
+  },
+  notify: showNotice,
+  context: aiContextExtras,
+  onActivate: dismissPromptHints,
+});
+const {
+  state: aiSearchState,
+  pending: aiSearchPending,
+  pendingQuery: aiSearchPendingQuery,
+  anchor: aiSearchAnchor,
+  barEl: aiSearchBarEl,
+  barStyle: aiSearchBarStyle,
+} = aiSearch;
 // 修复条状态：command/exitCode/output 已是脱敏后快照（触发时一次成型），
 // anchorY 为触发光标行顶（相对 terminal-host），bottom 样式按它落位。
 const aiFixBar = ref<{ command: string; exitCode: number; output: string; anchorY: number } | null>(null);
@@ -2495,52 +2518,9 @@ function createTerminal() {
       terminalDiag.swallowed += 1;
       return;
     }
-    // `#` 直连生成等待期：输入冻结（全部吞键防误操作/重复发起），Esc 本地
-    // 放弃——令牌过期，迟到的结果不回填（generateText 无取消桥）。
-    if (aiSearchPending.value) {
-      if (data === "\u001b") {
-        aiSearchToken += 1;
-        aiSearchPending.value = false;
-        aiSearchPendingQuery.value = "";
-        aiSearchAnchor.value = null;
-        showNotice(t("aiSearch.abandonedNotice"));
-      }
-      terminalDiag.swallowed += 1;
-      return;
-    }
-    // # AI 命令搜索模式（Warp AI Command Search 同位）：激活后 onData 全部
-    // 改道本地状态机，字节不进 PTY（退出无需擦远端）；回车发起宿主 AI 会话。
-    if (aiSearchState.value.active) {
-      const previous = aiSearchState.value;
-      const next = nextAiSearchState(aiSearchState.value, classifyAiSearchInput(data));
-      aiSearchState.value = next.state;
-      if (next.action === "submit") void submitAiSearch(previous.query);
-      else if (next.action === "cancel") closeAiSearch();
-      else syncAiSearchAnchor();
-      terminalDiag.swallowed += 1;
-      return;
-    }
-    // 激活判定：空行键入 #、能力+开关就绪、所有浮层/执行态门干净——# 字节
-    // 不发远端（能力缺失时 # 照常放行，shell 注释语义天然兜底）。
-    if (
-      data === "#" &&
-      pendingTerminalInput === "" &&
-      aiBridgeOk() &&
-      aiSettingsState.value.search &&
-      canActivateAiSearch({
-        alternateActive: terminal?.buffer.active.type === "alternate",
-        commandRunning: commandRunning.value,
-        transferBusy: terminalTransferBusy.value,
-        suggestionOpen: suggestionOpen.value,
-        completionOpen: completionOpen.value,
-        historyPanelOpen: historyPanelOpen.value,
-        quickSelectOpen: quickSelectOpen.value,
-        searchOpen: searchOpen.value,
-      })
-    ) {
-      aiSearchState.value = { active: true, query: "" };
-      dismissPromptHints();
-      syncAiSearchAnchor();
+    // `#` AI 命令搜索（Warp AI Command Search 同位）：等待冻结、模式内编辑与
+    // 空行激活统一由共享 composable 判定；消费的字节不进 PTY。
+    if (aiSearch.handleData(data)) {
       terminalDiag.swallowed += 1;
       return;
     }
@@ -3039,82 +3019,6 @@ function overlayOwnsKey(owners: KeyOwners, event: KeyboardEvent, overlay: Overla
 // 全链路可见降级（aiBridgeOk 各调用点新鲜探测）。
 // ---------------------------------------------------------------------------
 
-function syncAiSearchAnchor() {
-  aiSearchAnchor.value = readTerminalSuggestionAnchor();
-}
-
-// AI 搜索条定位：底边贴光标行顶并留 gap——浮在光标行上方，不遮输入行
-// （与 TerminalPromptHints 同一语义；此前 top 贴光标行顶，与光标同行）。
-// 包含块高度优先实测 terminal-pane（batch/标记条让位时 host 比 pane 矮，
-// 与 history 面板同一坐标系），退化用 suggestionViewport；皆不可测时不给
-// 内联样式，走 CSS 兜底位（贴终端底部左缘）。
-const aiSearchBarEl = ref<HTMLElement | null>(null);
-const aiSearchBarStyle = computed(() => {
-  const anchor = aiSearchAnchor.value;
-  if (!anchor) return undefined;
-  const containerHeight = aiSearchBarEl.value?.parentElement?.clientHeight || suggestionViewport.value.height || 0;
-  if (!(containerHeight > 0)) return undefined;
-  // 光标在第一行/近顶时上方放不下提示条，翻到光标行下方（与
-  // TerminalPromptHints 同一放置语义，choosePromptHintsPlacement 共用）。
-  const barHeight = aiSearchBarEl.value?.offsetHeight || PROMPT_HINTS_FALLBACK_BAR_HEIGHT;
-  if (choosePromptHintsPlacement(anchor.y, containerHeight, barHeight) === "below") {
-    // bottom 显式置 auto：CSS 兜底位有 bottom:12px，内联只给 top 时两者同时
-    // 生效会把绝对定位元素拉伸成「通天框」（真机截图回归）。
-    return { left: `${anchor.x}px`, top: `${overlayBelowTop(anchor.y, anchor.cellHeight ?? 0)}px`, bottom: "auto" };
-  }
-  return { left: `${anchor.x}px`, bottom: `${flippedOverlayBottom(anchor.y, containerHeight)}px` };
-});
-
-function closeAiSearch() {
-  aiSearchState.value = createAiSearchState();
-  aiSearchAnchor.value = null;
-}
-
-/** `#` 发起：优先直连生成（aiCompletion 能力位，桌面运行时）——列模型 →
- *  挑默认 → generateText（prompt 与面板会话共用 buildAiSearchPrompt）→
- *  **生成即回填光标处（Warp 同款默认插入，2026-10-02 体验反馈：回填确认层
- *  拆除）**——回填不等于执行，回车权仍在用户（红线不变）；Why 行走通知提示。
- *  首行为空/异常/直连能力缺失回退既有面板会话路径。 */
-async function submitAiSearch(query: string) {
-  const trimmed = query.trim();
-  closeAiSearch();
-  if (!trimmed) return;
-  const api = window.dbxPlugin;
-  if (aiCompletionAvailable(api)) {
-    // 等待态：提示条切 loading（query 冻结显示），Esc 可放弃；令牌防迟到
-    // 结果回填。listAiModels/generateText 两段 await 全程在 pending 内。
-    const token = ++aiSearchToken;
-    aiSearchPendingQuery.value = trimmed;
-    aiSearchPending.value = true;
-    // closeAiSearch 会清锚点，等待条渲染依赖它——重读一次（同一 tick，光标
-    // 未动，坐标不变）。
-    aiSearchAnchor.value = readTerminalSuggestionAnchor();
-    try {
-      const model = pickDefaultAiModel(await listAiModels(api));
-      if (!model) throw new Error("no configured ai model");
-      const result = (await generateAiText(api, { configId: model.configId, model: model.model, prompt: buildAiSearchPrompt({ query: trimmed }) })).trim();
-      if (token !== aiSearchToken) return; // 用户已放弃：结果丢弃不回填
-      const parsed = parseAiResultText(result);
-      if (!parsed) throw new Error("empty ai response");
-      replaceTerminalLineWith(parsed.command, false);
-      terminal?.focus();
-      showNotice(parsed.why || t("aiSearch.filledNotice"));
-      return;
-    } catch {
-      if (token !== aiSearchToken) return; // 放弃后失败同样静默（不打扰）
-      // 直连失败（无模型/宿主确认取消/供应商错误已泛化）→ 回退面板会话。
-    } finally {
-      if (token === aiSearchToken) {
-        aiSearchPending.value = false;
-        aiSearchPendingQuery.value = "";
-        aiSearchAnchor.value = null;
-      }
-    }
-  }
-  const sent = await openAiConversation(api, buildAiSearchRequest({ query: trimmed, context: aiContextExtras() })).catch(() => false);
-  showNotice(t(sent ? "aiSearch.sentNotice" : "aiSearch.unavailable"));
-}
-
 // —— 推荐位（P2，host.ai.setRecommendations）：修复条在场时向宿主 AI 面板
 // 推一张「修复上次失败命令」卡（≤5 张、随工作台存续）；清空点与新命令开始/
 // 条消失/会话复位对齐，best-effort 不阻塞主链路。
@@ -3593,15 +3497,12 @@ function resetCommandMarker() {
   resetGhostSuggestion();
   // AI 助手状态随会话复位（Warp AI 对齐批）：# 模式/修复条/推荐卡/输出采集
   // 缓冲（解码器重建，避免跨会话的多字节残态）。
-  closeAiSearch();
+  aiSearch.reset();
   if (promptHintsQuietTimer) {
     clearTimeout(promptHintsQuietTimer);
     promptHintsQuietTimer = undefined;
   }
   promptHintsOutputQuiet.value = true;
-  aiSearchToken += 1;
-  aiSearchPending.value = false;
-  aiSearchPendingQuery.value = "";
   aiFixBar.value = null;
   clearFixRecommendation();
   aiOutputCapture.reset();
@@ -9821,6 +9722,7 @@ watch(historyScope, () => {
         :connected="connected"
         :can-write="canWrite"
         :transfer-busy="terminalTransferBusy"
+        :notify="showNotice"
         @opened="onShellTabOpened"
         @activate-tab="activatePaneTab"
         @close-tab="closePaneTab"

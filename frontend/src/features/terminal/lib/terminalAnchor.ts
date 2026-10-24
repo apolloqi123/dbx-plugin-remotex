@@ -1,3 +1,5 @@
+import type { Terminal } from "@xterm/xterm";
+
 // 终端光标锚点换算：把 xterm buffer 坐标语义集中到一个模块，避免 App.vue 里
 // 视口/绝对行公式各自漂移。xterm typings 中：
 // - cursorY 是光标在「视口内」的相对行（0..rows-1）；
@@ -45,6 +47,59 @@ export function measureCellSizeFromDom(
     const screenWidth = screen?.getBoundingClientRect().width ?? 0;
     if (!(rowHeight > 0) || !(screenWidth > 0)) return null;
     return { width: screenWidth / cols, height: rowHeight };
+  } catch {
+    return null;
+  }
+}
+
+/** 光标格换算的共享参数：.xterm-screen 原点 + 单元格尺寸 + buffer 坐标。 */
+export interface TerminalCellFrame {
+  originLeft: number;
+  originTop: number;
+  cellWidth: number;
+  cellHeight: number;
+  cursorX: number;
+  visibleRow: number;
+}
+
+/**
+ * 光标格锚点（主终端与分屏窗格共用）：以 .xterm-screen（渲染内容区，
+ * 位于 .xterm 内边距内侧）为原点，加光标网格坐标。xterm 私有渲染尺寸
+ * 读不到时用渲染 DOM 实测兜底；仍测不出返回 null，调用方降级贴底。
+ */
+export function readTerminalCellFrame(
+  term: Terminal | undefined,
+  host: HTMLElement | null | undefined,
+): TerminalCellFrame | null {
+  if (!term || !host) return null;
+  try {
+    const core = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number; height?: number } } } } } })._core;
+    const cell = core?._renderService?.dimensions?.css?.cell;
+    let cellWidth = cell?.width ?? 0;
+    let cellHeight = cell?.height ?? 0;
+    const screen = term.element?.querySelector(".xterm-screen");
+    if (!(cellWidth > 0) || !(cellHeight > 0)) {
+      const fromDom = measureCellSizeFromDom(
+        screen ?? null,
+        term.element?.querySelector(".xterm-rows") ?? null,
+        term.cols,
+      );
+      if (!fromDom) return null;
+      cellWidth = fromDom.width;
+      cellHeight = fromDom.height;
+    }
+    const buffer = term.buffer.active;
+    const hostRect = host.getBoundingClientRect();
+    const origin = (screen ?? term.element)?.getBoundingClientRect();
+    if (!origin) return null;
+    return {
+      originLeft: origin.left - hostRect.left,
+      originTop: origin.top - hostRect.top,
+      cellWidth,
+      cellHeight,
+      cursorX: buffer.cursorX,
+      visibleRow: cursorViewportRow(buffer),
+    };
   } catch {
     return null;
   }

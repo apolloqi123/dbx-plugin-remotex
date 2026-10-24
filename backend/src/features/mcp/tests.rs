@@ -169,6 +169,47 @@ fn every_tool_carries_complete_annotations() {
     }
 }
 
+/// Embedded-AI listings hide arguments that only add noise to the host's
+/// approval card: the host injects connectionId from lifecycle and the sidecar
+/// applies timeout defaults. Standalone listings keep them for external MCP
+/// clients that address connections/caps explicitly.
+#[test]
+fn host_tool_listing_hides_display_noise_arguments() {
+    let full = tool_definitions();
+    let host = tool_definitions_for_host();
+    let properties = |definitions: &Value, name: &str| {
+        definitions
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("{name} missing from tools/list"))["inputSchema"]["properties"]
+            .as_object()
+            .cloned()
+            .unwrap()
+    };
+
+    for name in ["ssh_exec", "ssh_exec_sudo", "sftp_upload"] {
+        assert!(properties(&full, name).contains_key("connectionId"), "{name} standalone should keep connectionId");
+        assert!(!properties(&host, name).contains_key("connectionId"), "{name} host listing should hide connectionId");
+    }
+    for name in ["ssh_exec", "ssh_exec_sudo", "ssh_multi_exec"] {
+        assert!(properties(&full, name).contains_key("timeoutSecs"), "{name} standalone should keep timeoutSecs");
+        assert!(!properties(&host, name).contains_key("timeoutSecs"), "{name} host listing should hide timeoutSecs");
+    }
+    // The command remains the reviewable payload.
+    let exec = properties(&host, "ssh_exec");
+    assert!(exec.contains_key("command"), "ssh_exec must keep command");
+    let required = host
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "ssh_exec")
+        .unwrap()["inputSchema"]["required"]
+        .clone();
+    assert_eq!(required, json!(["command"]));
+}
+
 #[test]
 fn annotation_hints_align_with_gate_classification() {
     let definitions = tool_definitions();

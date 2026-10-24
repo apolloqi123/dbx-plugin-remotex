@@ -17,7 +17,7 @@ import { withShellBuiltinsSource, detectShellKind } from "../lib/completion/shel
 import { createEngineRunner } from "../lib/completion/worker/engineRunner";
 import { pluginStore, loadCompletionEngine } from "../../../shared/lib/pluginStore";
 import { canShowSuggestions, createSuggestionGuardState, type SuggestionGuardState } from "../lib/suggestionGuard";
-import { cursorViewportRow, measureCellSizeFromDom } from "../../terminal/lib/terminalAnchor";
+import { readTerminalCellFrame as readTerminalCellFrameAt, type TerminalCellFrame } from "../../terminal/lib/terminalAnchor";
 import { ArrowDown, ArrowUp } from "@lucide/vue";
 
 /** 命令输入建议浮层（P1-1）+ 结构化补全（FIG wave-1）：历史建议与 fig 引擎
@@ -489,62 +489,12 @@ function refreshSuggestionsAfterInput(data: string, lineBefore: string) {
 // anchor 计算时顺带刷新，两个建议浮层据此决定下方/上方放置。
 const suggestionViewport = ref({ height: 0 });
 
-/** 光标格换算的共享参数：.xterm-screen 原点 + 单元格尺寸 + buffer 坐标。 */
-interface TerminalCellFrame {
-  originLeft: number;
-  originTop: number;
-  cellWidth: number;
-  cellHeight: number;
-  cursorX: number;
-  visibleRow: number;
-}
-
 /**
- * 浮层与 ghost 共用的光标格锚点源（issue #120）：以 .xterm-screen（渲染
- * 内容区，位于 .xterm 内边距内侧）为原点，加光标网格坐标——可配置的终端
- * 内边距由 screen rect 自动计入，ghost 与两个建议浮层不再各自为政。
- * textarea 平时被 xterm 移出屏幕（CSS left:-9999em，仅 IME 时定位），
- * 不可用作锚点。
+ * 浮层与 ghost 共用的光标格锚点源（issue #120）：以 .xterm-screen 为原点，
+ * 加光标网格坐标；具体测量收口在 terminalAnchor（主终端与分屏窗格共用）。
  */
 function readTerminalCellFrame(): TerminalCellFrame | null {
-  const term = terminalGet();
-  const host = getTerminalHost();
-  if (!term || !host) return null;
-  try {
-    const core = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number; height?: number } } } } } })._core;
-    const cell = core?._renderService?.dimensions?.css?.cell;
-    let cellWidth = cell?.width ?? 0;
-    let cellHeight = cell?.height ?? 0;
-    const screen = term.element?.querySelector(".xterm-screen");
-    // 渲染器尺寸读不到（未就绪/WebGL 恢复切换窗口期，Windows 上更常见）时用
-    // 渲染 DOM 实测兜底：此前直接 null → 浮层永久降级贴底、不跟随不翻转。
-    if (!(cellWidth > 0) || !(cellHeight > 0)) {
-      const fromDom = measureCellSizeFromDom(
-        screen ?? null,
-        term.element?.querySelector(".xterm-rows") ?? null,
-        term.cols,
-      );
-      if (!fromDom) return null;
-      cellWidth = fromDom.width;
-      cellHeight = fromDom.height;
-    }
-    const buffer = term.buffer.active;
-    // cursorY 已是视口内相对行；旧式 `cursorY - viewportY` 在回滚区出现后为负，浮层画出画布。
-    const visibleRow = cursorViewportRow(buffer);
-    const hostRect = host.getBoundingClientRect();
-    const origin = (screen ?? term.element)?.getBoundingClientRect();
-    if (!origin) return null;
-    return {
-      originLeft: origin.left - hostRect.left,
-      originTop: origin.top - hostRect.top,
-      cellWidth,
-      cellHeight,
-      cursorX: buffer.cursorX,
-      visibleRow,
-    };
-  } catch {
-    return null;
-  }
+  return readTerminalCellFrameAt(terminalGet(), getTerminalHost());
 }
 
 function readTerminalSuggestionAnchor(): SuggestionAnchor | null {

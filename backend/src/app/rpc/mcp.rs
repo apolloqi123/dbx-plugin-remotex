@@ -10,7 +10,7 @@ impl Plugin {
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         match method {
-            "mcp/tools" => Ok(crate::features::mcp::tool_definitions()),
+            "mcp/tools" => Ok(crate::features::mcp::tool_definitions_for_host()),
 
             "mcp/call" => self
                 .runtime

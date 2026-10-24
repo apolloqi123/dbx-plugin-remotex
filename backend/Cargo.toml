@@ -1,6 +1,6 @@
 [package]
 name = "dbx-plugin-sshx"
-version = "0.7.9-beta.17"
+version = "0.7.9-beta.19"
 edition = "2021"
 license = "MIT"
 authors = ["jinpy"]
