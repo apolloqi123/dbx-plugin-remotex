@@ -3,7 +3,8 @@
 // 后端 handle_request 分派表（backend/src/app/rpc/ 各域的 match 臂）为
 // 事实全集，四路比对：
 //   ① backend 分派（含 `"a" | "b" =>` 别名臂）
-//   ② mock 已实现方法（mockDbxHost.ts 的 method === "..." 比较）
+//   ② mock 已实现方法（mockDbxHost.ts 及其按域拆分的 mock/host/*.ts 里的
+//      method === "..." 比较）
 //      缺口 = 后端有、mock 未实现、且不在 ALLOWLIST/SKIP → exit 1；
 //      幽灵 = ALLOWLIST/SKIP 里不存在于后端全集的拼错项 → exit 1。
 //   ③ 前端调用字面量（frontend/src 的 `.invoke("域/动作")` 与
@@ -32,7 +33,25 @@ function collectBackendSources(dir) {
 }
 
 const backendSrc = collectBackendSources(join(root, "backend/src/app/rpc")).join("\n");
-const mockSrc = readFileSync(join(root, "frontend/src/app/mockDbxHost.ts"), "utf8");
+// mock 实现按域拆分在 src/app/mock/host/*（mockDbxHost.ts 仍是公共入口）：
+// 扫描入口 + 全部域模块，避免拆分后方法字面量整体漏检成"未实现"。
+const mockHostDir = join(root, "frontend/src/app/mock/host");
+function collectMockSources(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      out.push(...collectMockSources(full));
+    } else if (name.endsWith(".ts")) {
+      out.push(readFileSync(full, "utf8"));
+    }
+  }
+  return out;
+}
+const mockSrc = [
+  readFileSync(join(root, "frontend/src/app/mockDbxHost.ts"), "utf8"),
+  ...collectMockSources(mockHostDir),
+].join("\n");
 
 // 方法名段含连字符（ssh/host-key/resolve 等）与驼峰（ssh/knownHosts/list、
 // sftp/diskUsage、local/saveFile、ssh/quickCommands/* 等）：字符集必须同时

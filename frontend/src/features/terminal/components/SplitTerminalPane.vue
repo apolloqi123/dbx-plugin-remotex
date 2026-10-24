@@ -4,29 +4,26 @@
  *
  * It is not a second SSH connection: the composable opens another PTY channel
  * on the main pane's already-authenticated transport, so bastion MFA is not
- * replayed. This component owns only the xterm renderer and the pane chrome;
- * session/frame/input ordering lives in useSplitTerminal.
+ * replayed. The xterm renderer lives in useSplitTerminalRenderer, clipboard
+ * menu actions in useSplitClipboard, and session/frame/input ordering lives in
+ * useSplitTerminal; this component keeps the pane chrome, AI/search state and
+ * the disposal interleaving.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, Loader2, Plus, Search, ShieldCheck, TextSelect } from "@lucide/vue";
-import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../../../shared/lib/clipboardBridge";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../../shared/ui/context-menu/index";
 import SplitTerminalHeader from "./SplitTerminalHeader.vue";
 import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
+import { useSplitClipboard } from "../composables/useSplitClipboard";
 import { useSplitSearch } from "../composables/useSplitSearch";
 import { useSplitTerminal } from "../composables/useSplitTerminal";
+import { useSplitTerminalRenderer } from "../composables/useSplitTerminalRenderer";
 import { useTerminalAiSearch } from "../composables/useTerminalAiSearch";
 import { Osc7DirectoryParser } from "../lib/terminalDirectoryTracking";
 import { Osc633CommandParser } from "../lib/terminalCommandMarkers";
 import { applyLineEditControlChar } from "../lib/terminalLineModel";
 import { PromptNewlineTransformer } from "../lib/terminalPromptNewline";
-import { SPLIT_DEFAULT_COLS, SPLIT_DEFAULT_ROWS } from "../lib/terminalSplit";
 import { aiBridgeAvailable } from "../../agent/lib/aiBridge";
 import { loadAiSettings } from "../../agent/lib/aiSettings";
 
@@ -92,10 +89,37 @@ const closeLabel = computed(() => t(props.closeKind === "tab" ? "terminalTab.clo
 const rootEl = ref<HTMLElement | null>(null);
 const terminalHost = ref<HTMLElement | null>(null);
 const menuOpen = ref(false);
-const hasSelection = ref(false);
+
+// xterm 实例、附加组件、主题/字体应用与 fit 链路由渲染器组合式持有；
+// 本组件只通过 getter 读写，dispose 时由本组件决定与 PTY 关闭的交错顺序。
+const {
+  hasSelection,
+  getTerminal,
+  getSearchAddon,
+  createTerminal,
+  measureDimensions,
+  scheduleFit,
+  observeSize,
+  focus: focusTerminal,
+  resetTerminal,
+  syncSelection,
+  isDisposed,
+  dispose: disposeRenderer,
+} = useSplitTerminalRenderer({
+  getHost: () => terminalHost.value,
+  getTheme: () => props.theme,
+  getFontFamily: () => props.fontFamily,
+  getFontSize: () => props.fontSize,
+  getActive: () => props.active,
+  getLayoutEpoch: () => props.layoutEpoch,
+  onData: (data) => routeTerminalData(data),
+  onOpenSearch: () => openSplitSearch(),
+  onSearchResults: (change) => handleSplitSearchResults(change),
+  onResize: (cols, rows) => resizeSplitSession(cols, rows),
+});
 
 // 分屏自己的搜索面板：状态与 SearchAddon 接线由 useSplitSearch 持有，
-// addon 实例仍由本组件创建/销毁，保持原有 dispose 顺序。
+// addon 实例仍由渲染器创建/销毁，保持原有 dispose 顺序。
 const {
   open: searchOpen,
   seedQuery: searchSeedQuery,
@@ -109,8 +133,8 @@ const {
   run: runSplitSearch,
   handleResultsChange: handleSplitSearchResults,
 } = useSplitSearch({
-  getTerminal: () => terminal,
-  getSearchAddon: () => searchAddon,
+  getTerminal,
+  getSearchAddon,
   closeMenu: () => (menuOpen.value = false),
 });
 
@@ -122,14 +146,14 @@ let commandRunning = false;
 const commandParser = new Osc633CommandParser();
 
 const aiSearch = useTerminalAiSearch({
-  terminal: () => terminal,
+  terminal: getTerminal,
   getHost: () => terminalHost.value,
   t,
   getLine: () => lineInput,
   // 会话未连上时不截留 #（sendInput 会丢弃，卡片却已出现）。
   isEnabled: () => status.value === "connected" && aiBridgeAvailable(window.dbxPlugin) && loadAiSettings().search,
   gates: () => ({
-    alternateActive: terminal?.buffer.active.type === "alternate",
+    alternateActive: getTerminal()?.buffer.active.type === "alternate",
     commandRunning,
     transferBusy: props.transferBusy,
     suggestionOpen: false,
@@ -142,7 +166,7 @@ const aiSearch = useTerminalAiSearch({
     // 与主终端一致：Ctrl+U 清掉 shell 当前输入行，再写入命令但不回车。
     sendInput("\u0015" + command);
     lineInput = command;
-    terminal?.focus();
+    getTerminal()?.focus();
   },
   notify: (message) => props.notify?.(message),
   context: () => ({
@@ -183,17 +207,6 @@ function routeTerminalData(data: string) {
   sendInput(data);
 }
 
-let terminal: XTerm | undefined;
-let searchAddon: SearchAddon | undefined;
-let selectionDisposable: { dispose(): void } | undefined;
-let fitAddon: FitAddon | undefined;
-let unicode11: Unicode11Addon | undefined;
-let webLinks: WebLinksAddon | undefined;
-let dataDisposable: { dispose(): void } | undefined;
-let resizeObserver: ResizeObserver | undefined;
-let fitTimer = 0;
-let disposed = false;
-let appliedTheme: Record<string, unknown> | undefined;
 // 分屏会话同样挂着 per-prompt 目录钩子；OSC 7 在输出流里，按窗格解析后上报，
 // 由 App 在目录真实变化时驱动 SFTP 跟随。
 const directoryParser = new Osc7DirectoryParser();
@@ -216,8 +229,9 @@ const {
   t: (key, values) => props.t(key, values),
   onData: (data) => {
     // 全屏应用（vim/top 绝对定位重绘）不能插入换行；解析链仍吃原始字节。
-    const suppressInsert = terminal?.buffer?.active?.type === "alternate";
-    terminal?.write(promptNewline.push(data, { suppressInsert }));
+    const term = getTerminal();
+    const suppressInsert = term?.buffer?.active?.type === "alternate";
+    term?.write(promptNewline.push(data, { suppressInsert }));
     for (const path of directoryParser.push(data)) {
       currentCwd = path;
       emit("cwd", path);
@@ -235,151 +249,20 @@ const {
   onError: (message) => emit("error", message),
 });
 
-function openTerminalLink(_event: MouseEvent, uri: string) {
-  // Same hardening as the main terminal: never let the opened page navigate
-  // its opener (reverse tabnabbing).
-  const opened = window.open();
-  if (!opened) return;
-  try {
-    opened.opener = null;
-  } catch {
-    // Some desktop webviews refuse opener writes; ignore like the built-in handler.
-  }
-  opened.location.href = uri;
-}
-
-function createTerminal() {
-  if (!terminalHost.value || terminal) return;
-  appliedTheme = { ...props.theme };
-  terminal = new XTerm({
-    convertEol: false,
-    cursorBlink: true,
-    fontFamily: props.fontFamily,
-    fontSize: props.fontSize,
-    scrollback: 5_000,
-    allowProposedApi: true,
-    theme: props.theme as ITheme,
-  });
-  fitAddon = new FitAddon();
-  terminal.loadAddon(fitAddon);
-  terminal.open(terminalHost.value);
-  // Same width/emoji handling as the primary terminal: load after open().
-  unicode11 = new Unicode11Addon();
-  terminal.loadAddon(unicode11);
-  terminal.unicode.activeVersion = "11";
-  webLinks = new WebLinksAddon(openTerminalLink);
-  terminal.loadAddon(webLinks);
-  searchAddon = new SearchAddon();
-  terminal.loadAddon(searchAddon);
-  searchAddon.onDidChangeResults(handleSplitSearchResults);
-  terminal.attachCustomKeyEventHandler((event) => {
-    if (event.type !== "keydown" || event.altKey || event.shiftKey) return true;
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-      event.preventDefault();
-      openSplitSearch();
-      return false;
-    }
-    return true;
-  });
-  dataDisposable = terminal.onData(routeTerminalData);
-  selectionDisposable = terminal.onSelectionChange(() => {
-    hasSelection.value = terminal?.hasSelection() ?? false;
-  });
-}
-
-/** Measured spawn size. Falls back to 80x24 until the pane is laid out. */
-function measureDimensions(): { cols: number; rows: number } {
-  const host = terminalHost.value;
-  if (terminal && fitAddon && host && host.clientWidth > 0 && host.clientHeight > 0) {
-    try {
-      fitAddon.fit();
-    } catch {
-      // The iframe can be detached during a tab switch; keep xterm's size.
-    }
-  }
-  const cols = terminal?.cols ?? 0;
-  const rows = terminal?.rows ?? 0;
-  return {
-    cols: cols > 0 ? cols : SPLIT_DEFAULT_COLS,
-    rows: rows > 0 ? rows : SPLIT_DEFAULT_ROWS,
-  };
-}
-
-function scheduleFit() {
-  if (disposed) return;
-  window.clearTimeout(fitTimer);
-  fitTimer = window.setTimeout(() => {
-    if (disposed || !terminal || !fitAddon) return;
-    const host = terminalHost.value;
-    if (!host?.clientWidth || !host.clientHeight) return;
-    try {
-      fitAddon.fit();
-    } catch {
-      return;
-    }
-    resizeSplitSession(terminal.cols, terminal.rows);
-  }, 20);
-}
-
-function observeSize() {
-  if (!terminalHost.value || typeof ResizeObserver === "undefined") return;
-  resizeObserver = new ResizeObserver(() => scheduleFit());
-  resizeObserver.observe(terminalHost.value);
-}
-
-function focusTerminal() {
-  terminal?.focus();
-}
-
-function clipboardDeps(): ClipboardDeps {
-  return {
-    bridge: window.dbxPlugin?.clipboard ?? null,
-    nativeClipboard: typeof navigator !== "undefined" ? navigator.clipboard ?? null : null,
-  };
-}
-
-function copySelection() {
-  const text = terminal?.getSelection() ?? "";
-  if (!text) return;
-  void writeClipboardText(text, clipboardDeps()).catch(() => undefined);
-  terminal?.focus();
-}
-
-async function pasteClipboard() {
-  try {
-    const text = await readClipboardText(clipboardDeps());
-    if (!text) return;
-    // xterm 的 paste 会按 bracketed-paste 模式包装远端需要的转义序列。
-    terminal?.paste(text);
-  } catch {
-    // 沙箱拒绝读剪贴板时保持静默；键盘 Cmd/Ctrl+V 仍走浏览器原生 paste。
-  } finally {
-    terminal?.focus();
-  }
-}
-
-function selectAllTerminal() {
-  terminal?.selectAll();
-  hasSelection.value = terminal?.hasSelection() ?? false;
-  terminal?.focus();
-}
-
-function clearTerminal() {
-  terminal?.clear();
-  terminal?.focus();
-}
-
-function sendSudoRefresh() {
-  if (!props.connected || props.transferBusy) return;
-  menuOpen.value = false;
-  sendInput("sudo -v\r");
-  terminal?.focus();
-}
+// 右键菜单的剪贴板/选区动作：只读写渲染器持有的 xterm，动作后恢复焦点。
+const { copySelection, pasteClipboard, selectAllTerminal, clearTerminal, sendSudoRefresh } = useSplitClipboard({
+  getTerminal,
+  sendInput,
+  closeMenu: () => (menuOpen.value = false),
+  isConnected: () => props.connected,
+  isTransferBusy: () => props.transferBusy,
+  syncSelection,
+});
 
 function searchSelectionOnline(engine: CtxSearchEngine) {
   menuOpen.value = false;
-  emit("search-online", engine, terminal?.getSelection() || "");
-  terminal?.focus();
+  emit("search-online", engine, getTerminal()?.getSelection() || "");
+  getTerminal()?.focus();
 }
 
 function onCloseClick() {
@@ -397,9 +280,9 @@ function onSplit(orientation: "row" | "column") {
 }
 
 async function restartForMainSession(mainSessionId: string) {
-  if (disposed || !mainSessionId) return;
+  if (isDisposed() || !mainSessionId) return;
   closeSplitSession();
-  terminal?.reset();
+  resetTerminal();
   directoryParser.reset();
   promptNewline.reset();
   aiSearch.reset();
@@ -411,35 +294,6 @@ async function restartForMainSession(mainSessionId: string) {
   await openSplitSession(dimensions.cols, dimensions.rows);
 }
 
-function sameTheme(next: Record<string, unknown>, previous: Record<string, unknown> | undefined): boolean {
-  if (next === previous) return true;
-  if (!previous) return false;
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(previous).length) return false;
-  return keys.every((key) => next[key] === previous[key]);
-}
-
-watch(
-  () => props.theme,
-  (theme) => {
-    if (!terminal || sameTheme(theme, appliedTheme)) return;
-    appliedTheme = { ...theme };
-    terminal.options.theme = theme as ITheme;
-    scheduleFit();
-  },
-  { deep: true },
-);
-
-watch(
-  () => [props.fontFamily, props.fontSize] as const,
-  ([fontFamily, fontSize]) => {
-    if (!terminal) return;
-    terminal.options.fontFamily = fontFamily;
-    terminal.options.fontSize = fontSize;
-    scheduleFit();
-  },
-);
-
 // A new main session means the old shared transport is gone: close the split
 // PTY (never leave it attached to a dead transport) and open a fresh channel
 // on the new authenticated session.
@@ -448,26 +302,6 @@ watch(
   (next, previous) => {
     if (next === previous) return;
     void restartForMainSession(next);
-  },
-);
-
-// 页签切换：隐藏期间容器尺寸为 0，重新显示后必须 fit 一次并聚焦。
-watch(
-  () => props.active,
-  async (active) => {
-    if (!active || disposed) return;
-    await nextTick();
-    scheduleFit();
-    terminal?.focus();
-  },
-);
-
-// 分屏/关闭会重建叶子槽位，终端宿主被搬进新位置：重新 fit（不抢焦点）。
-watch(
-  () => props.layoutEpoch,
-  () => {
-    if (disposed) return;
-    scheduleFit();
   },
 );
 
@@ -487,32 +321,15 @@ onMounted(async () => {
     // 字体服务不可用：连续采样/去重仍然兜底。
   }
   await nextTick();
-  if (disposed) return;
+  if (isDisposed()) return;
   const dimensions = measureDimensions();
   void openSplitSession(dimensions.cols, dimensions.rows);
 });
 
 onBeforeUnmount(() => {
-  disposed = true;
   aiSearch.reset();
-  window.clearTimeout(fitTimer);
-  resizeObserver?.disconnect();
-  resizeObserver = undefined;
-  dataDisposable?.dispose();
-  dataDisposable = undefined;
-  selectionDisposable?.dispose();
-  selectionDisposable = undefined;
-  closeSplitSession();
-  searchAddon?.dispose();
-  searchAddon = undefined;
-  fitAddon?.dispose();
-  fitAddon = undefined;
-  unicode11?.dispose();
-  unicode11 = undefined;
-  webLinks?.dispose();
-  webLinks = undefined;
-  terminal?.dispose();
-  terminal = undefined;
+  // 渲染器按原顺序停止计时器/监听，回调里先关 PTY，再销毁 addon 与 xterm。
+  disposeRenderer(() => closeSplitSession());
 });
 
 defineExpose({

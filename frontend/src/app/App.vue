@@ -106,7 +106,7 @@ import { createConnectLog } from "../features/connections/lib/connectLog";
 import { pickModalFocusTarget } from "../shared/lib/modalFocus";
 import { buildPasteConfirmation, type PasteConfirmation } from "../features/terminal/lib/dangerousCommands";
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../shared/lib/clipboardBridge";
-import { paneDirectionClass, paneSplitCssVar, resolvePaneDirection, sanitizePaneDirection, terminalFlexBasis, type PaneDirectionPref } from "../shared/lib/paneLayout";
+import { paneDirectionClass, paneSplitCssVar, resolvePaneDirection, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { isCountdownActive } from "../features/recording/lib/recordingCountdown";
 import { type SftpTypeFilter } from "../features/sftp/lib/sftpFileFilters";
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/sftpBookmarks";
@@ -140,11 +140,9 @@ import type { CompletionItem } from "../features/completion/lib/completion/core/
 import { type SftpNameEncoding } from "../features/sftp/lib/sftpName";
 import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type TransferTask,
 } from "../features/transfers/lib/transferQueue";
-import { filterQuickCommands, groupQuickCommands, quickCommandGroupCount, type QuickCommandGroupView, QUICK_COMMANDS_LIMIT } from "../features/quick-commands/lib/quickCommands";
 import { registerWatch } from "../features/sftp/lib/watchEdits";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
-import { WORKBENCH_ID } from "../shared/lib/pluginIds";
 import { clampFontSize } from "../features/terminal/lib/terminalZoom";
 import { loadLastConnectParams } from "../features/connections/lib/connectLastParams";
 import { pluginStore } from "../shared/lib/pluginStore";
@@ -209,6 +207,15 @@ import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "./comp
 import { useWallpaper } from "./composables/useWallpaper";
 import { useWorkbenchPrefs } from "./composables/useWorkbenchPrefs";
 import { useWorkbenchPanels } from "./composables/useWorkbenchPanels";
+import { useLocalShellPreferences } from "./composables/useLocalShellPreferences";
+import { useShellTabs } from "./composables/useShellTabs";
+import { useTerminalMenus } from "./composables/useTerminalMenus";
+import { useQuickCommandPanel } from "./composables/useQuickCommandPanel";
+import { useSftpFolderActions } from "./composables/useSftpFolderActions";
+import { useSftpChmod, PERM_COLUMNS, PERM_ROLES, permBit } from "./composables/useSftpChmod";
+import { useWorkbenchViewPrefs } from "./composables/useWorkbenchViewPrefs";
+import { useWorkbenchSpawnTabs } from "./composables/useWorkbenchSpawnTabs";
+import { useWorkbenchToolbar } from "./composables/useWorkbenchToolbar";
 import { useTerminalSearch } from "./composables/useTerminalSearch";
 import { useTerminalTooltip } from "./composables/useTerminalTooltip";
 import { useRdpSession } from "../features/remote-desktop/composables/useRdpSession";
@@ -241,22 +248,9 @@ import { useEditorTabs } from "../features/sftp/composables/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
 import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";
 import {
-  activateTerminalTab,
-  addTerminalTab,
-  closeTerminalLayoutPane,
-  collectPaneTabIds,
-  createTerminalLayout,
   findTerminalPane,
   hasTerminalSplit,
-  MAIN_TERMINAL_PANE_ID,
-  removeSplitAroundPane,
-  removeTerminalTab,
-  resolveActiveTabCwd,
   shouldFollowTabCwd,
-  splitTerminalLayout,
-  terminalTabs,
-  type TerminalLayoutOrientation,
-  type TerminalLayoutNode,
 } from "../features/terminal/lib/terminalLayout";
 import { useSftpCreateDirectory } from "../features/sftp/composables/useSftpCreateDirectory";
 import { useConnectionInfo } from "../features/connections/composables/useConnectionInfo";
@@ -274,9 +268,8 @@ import { useHighlightRules } from "../features/terminal/composables/useHighlight
 import { useQuickCommands } from "../features/quick-commands/composables/useQuickCommands";
 import { useAgentTerminalMode } from "../features/agent/composables/useAgentTerminalMode";
 import { useAlertTriage } from "../features/security/composables/useAlertTriage";
-import { type TransferHistoryEntry } from "../features/transfers/lib/transferHistory";
 import { useTransferHistory } from "../features/transfers/composables/useTransferHistory";
-import { resolveSftpPaneOpen, sanitizeSftpPaneDefaultOpen, resolveDirectoryFollow, sanitizeDirectoryFollowPref, sanitizeSftpAutoConnectPref, shouldLazyLoadSftpListing, sanitizeWorkbenchLayoutPrefs, type SshWorkbenchPaneOrder } from "./lib/workbenchLayout";
+import { resolveSftpPaneOpen, resolveDirectoryFollow, shouldLazyLoadSftpListing, sanitizeWorkbenchLayoutPrefs, type SshWorkbenchPaneOrder } from "./lib/workbenchLayout";
 import { pickLiveSessionForReattach, pickProtocolSessionForReattach, type SessionSummary } from "../features/connections/lib/sessionRestore";
 import { toolbarTintStyle } from "../shared/lib/toolbarTint";
 import { createGhostClickGuard } from "../features/completion/lib/ghostClickGuard";
@@ -301,23 +294,13 @@ import {
   terminalOptionPatch,
   type TerminalAppearanceState,
 } from "../features/terminal/lib/terminalAppearance";
-import { BUILTIN_TERMINAL_SCHEMES, schemeTone } from "../features/terminal/lib/terminalScheme";
 import {
-  loadTerminalBehavior,
-  persistTerminalBehavior,
-  resolveRightClickBehavior,
-  sanitizeTerminalBehavior,
   terminalBehaviorOptionPatch,
   transformPasteText,
-  type TerminalBehaviorSettings,
 } from "../features/terminal/lib/terminalBehavior";
 import {
   keyComboFromEvent,
-  loadTerminalHotkeys,
   matchTerminalHotkey,
-  persistTerminalHotkeys,
-  sanitizeTerminalHotkeys,
-  type TerminalHotkeyBindings,
 } from "../features/terminal/lib/terminalHotkeys";
 import { bridgeBinaryBytes } from "../../../shared/frontend/binaryEvent";
 import {
@@ -330,8 +313,6 @@ import {
 } from "../features/sftp/lib/sftpFileTree";
 import {
   filterSelectableSftpEntries,
-  filterSelectableSftpUris,
-  resolveSftpContextMenuSelection,
 } from "../features/sftp/lib/sftpContextMenu";
 import { type SftpSanitizedEntry } from "../features/sftp/lib/sftpEntries";
 import { mergeSftpDetail, type SftpDetailInfo } from "../features/sftp/lib/sftpDetails";
@@ -555,19 +536,11 @@ const COMMAND_HISTORY_KEY = "ssh-command-history";
 const COMMAND_HISTORY_TIMES_KEY = "ssh-command-history-times";
 const COMMAND_HISTORY_META_KEY = "ssh-command-history-meta";
 // 终端字号/字体族键移入 lib/terminalFont.ts（issue #31 字体单独设置）统一管理。
-// SFTP 面板默认打开偏好：pluginStore 全局持久化（"false" = 新工作台仅终端）。
-const SFTP_PANE_OPEN_KEY = "ssh-sftp-pane-open";
 // 跨重启的布局/视图全局偏好（issue #178）：单键 JSON，记录最近一次的
 // paneOrder / splitRatio / SFTP 面板开合 / 列显隐与列宽 / 显示隐藏文件 / 排序。
 // writeWorkbenchState 写穿（persistState 防抖统一触发），restoreUiState 启动
 // 水合为新工作台初始值；workbenchState 会话恢复字段存在时仍优先覆盖。
 const WORKBENCH_LAYOUT_KEY = "ssh-workbench-layout";
-// 目录跟随全局偏好：pluginStore 持久化（"true" = 新工作台初始即开启；per-tab
-// 的 workbenchState.followDirectory 仍优先，恢复的 tab 不被全局值覆盖）。
-const FOLLOW_DIRECTORY_KEY = "ssh-follow-directory";
-// SFTP 自动连接偏好：pluginStore 持久化（"false" = 连接成功后不自动加载
-// SFTP 目录；服务端未开 SFTP 时避免每次连接弹错误横幅，issue #179）。
-const SFTP_AUTO_CONNECT_KEY = "ssh-sftp-auto-connect";
 // 是否默认下载到「下载保存目录」（默认开）；关闭则每次下载打开目录选择窗口。
 // 文件已存在时的处理策略：rename（自动重命名，默认）/ ask（询问我）/ overwrite（覆盖）。
 // 上传并发（P1-5，1..10，默认 3）与重复目标策略（rename 默认）：sidecar
@@ -774,10 +747,31 @@ const hostKeyPrompt = ref<HostKeyPrompt>();
 const rememberHostKey = ref(true);
 const splitRatio = ref(58);
 const paneOrder = ref<SshWorkbenchPaneOrder>("terminal-left");
-// 布局方向偏好（issue #187）：auto 沿用 CSS 断点（窄屏上下/宽屏左右）；
-// vertical 始终上下（终端在上、SFTP 在下），horizontal 始终左右。持久化走
-// WORKBENCH_LAYOUT_KEY 布局偏好档（与 paneOrder 同层，writeWorkbenchState 写穿）。
-const paneDirection = ref<PaneDirectionPref>("auto");
+// 工作台视图/终端行为偏好（布局轴向、SFTP 默认/自动连接、目录跟随、终端行为
+// 与快捷键）：收口在 composables/useWorkbenchViewPrefs。
+const {
+  paneDirection,
+  sftpPaneDefaultOpen,
+  sftpAutoConnect,
+  terminalBehavior,
+  termSelectCopy,
+  terminalHotkeys,
+  followDirectory,
+  toggleSftpPaneDefaultOpen,
+  loadSftpPaneDefaultOpen,
+  toggleSftpAutoConnect,
+  loadDirectoryFollowPref,
+  persistDirectoryFollowPref,
+  setPaneDirection,
+  updateTerminalBehavior,
+  updateTerminalHotkeys,
+} = useWorkbenchViewPrefs({
+  applePlatform,
+  terminal: () => terminal,
+  showNotice: (message) => showNotice(message),
+  t: (key, values) => t(key, values),
+  scheduleFit: () => scheduleFit(),
+});
 // 右侧栏可见性：SFTP / 指标 / 容器三视图互斥，sftpPaneOpen 表示右侧栏
 // 整体开合（沿用既有 workbenchState 持久化），rightPanelView 决定当前内容。
 // 指标/容器视图不跨重启恢复，避免启动即触发轮询。
@@ -787,24 +781,13 @@ const sftpViewActive = computed(() => rightPanelView.value === "sftp");
 // 终端拖放的“面板抢落点”门控：只有 SFTP 树真的可见时才把拖入交给面板；
 // 指标/容器视图不应阻止终端接收拖拽。
 const sftpViewVisible = computed(() => sftpPaneOpen.value && sftpViewActive.value);
-const sftpPaneDefaultOpen = ref(loadSftpPaneDefaultOpen());
 // 本会话是否已成功加载过 SFTP 目录：自动连接关闭时，手动打开面板的瞬间
 // 据此惰性补载（每会话一次，断开重置）。
 const sftpListingLoaded = ref(false);
-const sftpAutoConnect = ref(loadSftpAutoConnect());
 // sftp/home 探测结果：quick tab 置顶展示（获取失败时该项隐藏）。
 const sftpHomePath = ref("");
-// 终端行为偏好（对标 Tabby「Terminal」页）：右键语义、剪贴板、响铃、渲染细项，
-// 单键 pluginStore 持久化（宿主 host.storage → localStorage 降级）；选中复制
-// 是其一个字段（旧键镜像保降级，见 LEGACY_SELECT_COPY_KEY）。
-const terminalBehavior = ref<TerminalBehaviorSettings>(loadTerminalBehavior());
-/** 选中复制（既有消费点：选区变更钩子与设置页开关）。 */
-const termSelectCopy = computed(() => terminalBehavior.value.copyOnSelect);
-// 终端快捷键绑定（对标 Tabby「Hotkeys」页）：平台默认 + 用户改写，单键持久化。
-const terminalHotkeys = ref<TerminalHotkeyBindings>(loadTerminalHotkeys(applePlatform));
 // 沙箱宿主读不到系统剪贴板：右键粘贴的降级链靠这份插件视图内的复制副本。
 const terminalCopyCache = createTerminalCopyCache();
-const followDirectory = ref(loadDirectoryFollowPref());
 // 终端 shell 最近一次上报的 cwd（OSC 7 / OSC 633 Cwd，无论跟随开关是否打开
 // 都记录）：终端拖拽上传的「当前目录」落点解析靠它，避免误用 SFTP 面板的
 // 浏览目录（初始值 "/"，拼根路径会被服务器以权限拒绝）。
@@ -896,14 +879,93 @@ function resetDragHighlightOnWindowLeave(event: DragEvent) {
   dragActive.value = false;
   terminalDragActive.value = false;
 }
-// 右键菜单由 reka ContextMenu 承载（定位/碰撞/Esc/外点关闭均交给 reka）；
-// 这里只保留受控 open 状态与负载数据，坐标由 trigger 从原生事件捕获。
-const terminalMenuOpen = ref(false);
-// 行右键菜单：selection 为打开菜单瞬间的多选快照（>1 时切换为批量区）。
-const fileMenu = ref<{ entry: SftpEntry; selection: string[] }>();
-// 右键目标为根 "/" 或当前目录（文件夹）时置位：菜单保留浏览/复制/下载，
-// 但改名/删除/压缩/切剪等破坏性动作禁用，防止把正在浏览的目录移走/删掉。
-const fileMenuProtected = ref(false);
+// 右键菜单/工具条弹层的受控 open 与负载、打开动作收口在
+// composables/useTerminalMenus；「关闭全部兄弟弹层」的族清单仍在下方
+// closeToolbarPopovers（结构守卫按该函数体扫描收口覆盖）。后续才声明的
+// ref（快速命令/会话/连接信息/RDP/配色快切/批量）一律经 getter/setter 惰性接入。
+const {
+  terminalMenuOpen,
+  fileMenu,
+  fileMenuProtected,
+  menuSelectionSnapshot,
+  showTerminalMenu,
+  showFileMenu,
+  showTransferHistoryMenu,
+  onDocumentClickCloseMenus,
+  copySelectedPaths,
+  toggleQuickMenu,
+  toggleSessionMenu,
+  toggleConnectionInfo,
+  toggleColumnsMenu,
+  toggleRdpResolutionMenu,
+  toggleRdpPasteMenu,
+  togglePanelPaletteMenu,
+  toggleBatchQuickPopover,
+  toggleTransferPanel,
+} = useTerminalMenus<SftpEntry>({
+  terminal: () => terminal,
+  terminalBehavior: () => terminalBehavior.value,
+  isRdp: () => isRdpMode.value || isRdpConnection.value,
+  pasteTerminal: () => { void pasteTerminal(); },
+  copyTerminalSelection: () => { void copyTerminalSelection(); },
+  transferHistoryMenu,
+  closeToolbarPopovers: () => closeToolbarPopovers(),
+  currentPath,
+  selectedPath,
+  getSelectedUris: () => selectedUris.value,
+  setSelectedUris: (uris) => { selectedUris.value = uris; },
+  setLastClickedUri: (uri) => { lastClickedUri.value = uri; },
+  getSelectedEntryUris: () => selectedEntries.value.map((item) => item.uri),
+  isLoadedDirectoryUri: (uri) => isLoadedDirectoryUri(uri),
+  isProtectedDirectory: (entry) => isProtectedDirectory(entry),
+  copyTextToClipboard: (value, noticeKey, values) => copyTextToClipboard(value, noticeKey, values),
+  quickMenu: {
+    isOpen: () => quickMenuOpen.value,
+    setOpen: (open) => { quickMenuOpen.value = open; },
+  },
+  resetQuickMenu: () => {
+    quickSearch.value = "";
+    quickExpandedId.value = null;
+  },
+  sessionMenu: {
+    isOpen: () => sessionMenuOpen.value,
+    setOpen: (open) => { sessionMenuOpen.value = open; },
+  },
+  closeSessionShellViews: () => {
+    sessionMenuShellOpen.value = false;
+    sessionMenuShellPickOpen.value = false;
+  },
+  connectionInfo: {
+    isOpen: () => connectionInfoOpen.value,
+    setOpen: (open) => { connectionInfoOpen.value = open; },
+  },
+  refreshConnectionInfo: () => {
+    void measureLatency();
+    void refreshConnectionAuthMethod();
+    // 发行版徽标数据源是 metrics 快照：未拉过时补拉一次（一次 exec，约 0.4s），
+    // 否则从未开过指标浮层的会话在连接信息里永远看不到徽标。
+    if (!metrics.value) void refreshMetrics();
+  },
+  columnsOpen,
+  rdpResolution: {
+    isOpen: () => rdpResolutionOpen.value,
+    setOpen: (open) => { rdpResolutionOpen.value = open; },
+  },
+  rdpPaste: {
+    isOpen: () => rdpPasteOpen.value,
+    setOpen: (open) => { rdpPasteOpen.value = open; },
+  },
+  panelPalette: {
+    isOpen: () => panelPaletteOpen.value,
+    setOpen: (open) => { panelPaletteOpen.value = open; },
+  },
+  batchQuick: {
+    isOpen: () => batchQuickOpen.value,
+    setOpen: (open) => { batchQuickOpen.value = open; },
+  },
+  transferPanelOpen,
+  closeMetrics: () => closeMetrics(),
+});
 // 文件夹行右键菜单里的新建/上传落点：目录右键命中的路径，操作完成后清空。
 const mkdirTargetDir = ref<string>();
 const newFileTargetDir = ref<string>();
@@ -957,25 +1019,23 @@ const {
   // 快捷指令程序化写入前消除行内 ghost，防残影重锚到底部光标行）。
   hideGhostSuggestion: () => hideGhostSuggestion(),
 });
-const quickMenuOpen = ref(false);
-// Termius Snippets 式面板状态：搜索过滤 / 卡片展开。
-const quickSearch = ref("");
-const quickExpandedId = ref<string | null>(null);
-const filteredQuickCommands = computed(() => filterQuickCommands(quickCommands.value, quickSearch.value));
-// 分组视图（issue #201）：派生组 + 折叠态（会话内 UI 态，不持久化）。仅一条
-// 未分组时不渲染组头（等同旧扁平视图，避免噪声）；有真实分组才分组展示。
-const groupedQuickCommands = computed<QuickCommandGroupView[]>(() => groupQuickCommands(filteredQuickCommands.value));
-const quickHasRealGroups = computed(() => quickCommandGroupCount(quickCommands.value) > 0);
-const quickCollapsedGroups = ref<string[]>([]);
-function toggleQuickGroupCollapse(groupId: string) {
-  const index = quickCollapsedGroups.value.indexOf(groupId);
-  if (index >= 0) quickCollapsedGroups.value.splice(index, 1);
-  else quickCollapsedGroups.value.push(groupId);
-}
-function quickGroupName(group: QuickCommandGroupView): string {
-  return group.id ? group.name : t("quickCommandsUngrouped");
-}
-const quickCommandGroupSummary = computed(() => t("quickCommandsGroupSummary", { groups: quickCommandGroupCount(quickCommands.value), count: quickCommands.value.length }));
+// 快速命令弹层视图态（搜索/展开/分组折叠）：收口在 composables/useQuickCommandPanel。
+const {
+  quickMenuOpen,
+  quickSearch,
+  quickExpandedId,
+  filteredQuickCommands,
+  groupedQuickCommands,
+  quickHasRealGroups,
+  quickCollapsedGroups,
+  quickCommandGroupSummary,
+  toggleQuickGroupCollapse,
+  quickGroupName,
+  toggleQuickExpand,
+} = useQuickCommandPanel({
+  quickCommands,
+  t: (key, values) => t(key, values),
+});
 // 命令建议 + 结构化补全（FIG wave-1）：浮层/引擎/调度中枢收口在
 // composables/useCommandSuggestions。
 const {
@@ -1041,11 +1101,6 @@ const {
 // —— 快速命令数据面（M32-A3）：RPC 全部留在 App，编辑器/导入视图在
 // QuickCommandsSection（设置·终端），经 SettingsDialog 上抛意图。 ——
 
-
-
-function toggleQuickExpand(id: string) {
-  quickExpandedId.value = quickExpandedId.value === id ? null : id;
-}
 // 批量发送命令条（Electerm quick-command bar 风格）：常驻贴在终端底部，回车
 // 生效只读门禁（来自 ssh/sessions/list 行的 readOnly：表单 read_only ∥
 // 宿主标准 read_only）。后端门禁为权威来源，前端据此禁用写操作。
@@ -1055,9 +1110,6 @@ const settingsOpen = ref(false);
 const SELECT_EMPTY_SENTINEL = "__empty__";
 const auditOpen = ref(false);
 const profilesOpen = ref(false);
-const chmodTarget = ref<SftpEntry>();
-const chmodDraft = ref("");
-const chmodSubmitting = ref(false);
 const diskUsage = ref<DiskUsage>();
 // Warp 式 history 面板（↑ 唤起）：状态/过滤/键位消费收口在
 // composables/useHistoryPanel；这里做数据与浮层互斥接线。
@@ -1481,20 +1533,42 @@ const rdpClipboardChunks = new Map<string, { parts: string[]; received: number }
 const isRdpMode = computed(() => rdpSession.value !== null);
 const rdpTarget = computed(() => (rdpSession.value ? `${rdpSession.value.host}:${rdpSession.value.port}` : ""));
 const localUiMode = computed(() => isLocalMode.value || localShellRestored.value || isTelnetMode.value || isSerialMode.value || isVncMode.value || isRdpMode.value);
-// —— 本地终端偏好（sidecar preferences.json 持久化；iframe 沙箱无 localStorage）——
-// shell 空串 = 跟随自动探测；integration 缺省开。
-const localShellPref = ref("");
-const localShellIntegrationPref = ref(true);
-// 本地 Shell 启动目录/环境变量（localShellCwd/localShellEnv 偏好）。envPref
-// 保留未填完的草稿行作为 UI 模型；持久化与 spawn 载荷都取净化后的副本。
-const localShellCwdPref = ref("");
-const localShellEnvPref = ref<Array<{ name: string; value: string }>>([]);
-// 净化视图：名字非空的行（与 sidecar 的 sanitize_env_pair 边界对齐的前端版）。
-const localShellEnvClean = computed(() =>
-  localShellEnvPref.value
-    .map((pair) => ({ name: pair.name.trim(), value: pair.value }))
-    .filter((pair) => pair.name),
-);
+// —— 本地终端偏好/shell 发现/选择器：收口在 composables/useLocalShellPreferences ——
+// （本地终端进程本身仍由本文件 start/close，牵动输出管线状态。）
+const {
+  localShellPref,
+  localShellIntegrationPref,
+  localShellCwdPref,
+  localShellEnvPref,
+  localShellEnvClean,
+  localShells,
+  localShellsLoading,
+  selectedShellInjectable,
+  localShellSurfaceOpen,
+  dockConnections,
+  pickLocalShell,
+  openSessionShellPick,
+  openLocalShellPrefs,
+  openLocalShellSurfaceMenu,
+  openConnectionSurface,
+  openLocalShellSurface,
+  setLocalShellPref,
+  setLocalShellIntegrationPref,
+  setLocalShellCwd,
+  setLocalShellEnv,
+  addLocalShellEnvRow,
+  removeLocalShellEnvRow,
+  canOpenLocalTab,
+  openLocalTerminalTab,
+} = useLocalShellPreferences({
+  isLocalMode: () => isLocalMode.value,
+  isLocalShellRestored: () => localShellRestored.value,
+  restartLocalTerminal: (shellOverride) => { void restartLocalTerminal(shellOverride); },
+  requestLocalTerminal: (shellOverride) => requestLocalTerminal(shellOverride),
+  // 会话下拉状态在本段之后声明，惰性写入。
+  closeSessionMenu: () => { sessionMenuOpen.value = false; },
+  setShellPickOpen: (open) => { sessionMenuShellPickOpen.value = open; },
+});
 // shell 选择器菜单：打开 shell 选项视图时拉一次 local/shells/list。
 // 会话下拉（新建/复制/命令会话/本地终端/Shell 选项）单入口状态；shell 视图
 // 为同弹层内的视图切换（非独立 popover，Esc/外点由 reka 随弹层整体收口）。
@@ -1503,48 +1577,25 @@ const sessionMenuShellOpen = ref(false);
 // 「选择 Shell 打开」子视图：同弹层视图切换（dock「+」同款列表），语义是
 // 一次性 override 打开，与设置子视图（radio = 默认偏好）刻意分开。
 const sessionMenuShellPickOpen = ref(false);
-// Dock 面板表面的配色快切弹层（底部栏精简工具条）：列出与当前宿主明暗档
-// 同调性的方案，单击即写入对应槽位并启用 custom 来源；「跟随宿主」恢复 host。
-const panelPaletteOpen = ref(false);
-// dock 工具条隐藏偏好（pluginStore 单键，跨会话记忆）：隐藏后由右上角低透明度
-// 微钮还原（ChevronDown），避免「藏了找不回」。
-const panelToolbarHidden = ref(pluginStore.getItem("ssh-panel-toolbar-hidden") === "1");
-function togglePanelToolbar() {
-  panelToolbarHidden.value = !panelToolbarHidden.value;
-  try {
-    if (panelToolbarHidden.value) pluginStore.setItem("ssh-panel-toolbar-hidden", "1");
-    else pluginStore.removeItem("ssh-panel-toolbar-hidden");
-  } catch {
-    // 存储不可用时仅本次会话生效。
-  }
-}
-const panelPaletteSlot = computed<"darkSchemeId" | "lightSchemeId">(() =>
-  appearance.value.colorScheme === "light" ? "lightSchemeId" : "darkSchemeId",
-);
-const panelSchemeChoices = computed(() => {
-  const tone = panelPaletteSlot.value === "lightSchemeId" ? "light" : "dark";
-  return [...BUILTIN_TERMINAL_SCHEMES, ...terminalAppearance.value.customSchemes].filter((scheme) => schemeTone(scheme) === tone);
+// Dock 面板配色快切 + 工具条隐藏偏好：收口在 composables/useWorkbenchToolbar。
+const {
+  panelPaletteOpen,
+  panelToolbarHidden,
+  togglePanelToolbar,
+  panelSchemeChoices,
+  panelActiveSchemeId,
+  pickPanelScheme,
+} = useWorkbenchToolbar({
+  appearanceColorScheme: () => appearance.value.colorScheme,
+  terminalAppearance: () => terminalAppearance.value,
+  // 惰性转发：updateTerminalAppearance 在本段之后才由 useTerminalAppearance 解构。
+  updateAppearance: (patch) => updateTerminalAppearance(patch),
 });
-const panelActiveSchemeId = computed(() => terminalAppearance.value.settings.schemeSource === "custom" ? terminalAppearance.value.settings[panelPaletteSlot.value] : null);
-/** 配色快切：null = 跟随宿主（关闭 custom 来源）；非空写入当前明暗档槽位。 */
-function pickPanelScheme(id: string | null) {
-  panelPaletteOpen.value = false;
-  updateTerminalAppearance(id == null
-    ? { schemeSource: "host" }
-    : { schemeSource: "custom", [panelPaletteSlot.value]: id });
-}
-const localShells = ref<Array<{ program: string; name: string; isDefault: boolean; isUserShell: boolean; injectable?: boolean }>>([]);
-const localShellsLoading = ref(false);
 // 上次本地会话跟踪到的 cwd：重开时继承（VS Code 新终端继承工作区目录惯例）。
 const localLastCwd = ref("");
 // 本地终端最近命令（633;E 收集， newest-first，cap 20）：右键菜单"重跑"用。
 // 注入关闭时无命令边界，本功能静默缺席。
 const localRecentCommands = ref<string[]>([]);
-// 当前偏好 shell 是否支持注入（ksh/csh/cmd 等裸 shell 灰掉开关）。
-const selectedShellInjectable = computed<boolean | undefined>(() => {
-  if (!localShellPref.value) return undefined;
-  return localShells.value.find((entry) => entry.program === localShellPref.value)?.injectable;
-});
 
 // Large-output rendering throttle: coalesce consecutive PTY frames into one
 // merged xterm write per animation frame (capped, order preserving). The sink
@@ -1807,20 +1858,30 @@ const isRdpConnection = computed(() => connectionProtocol.value === "rdp" || isR
 const canWrite = computed(() => !connection.value.readOnly && !connectionReadOnly.value);
 const selectedEntry = computed(() => entries.value.find((entry) => entry.uri === selectedPath.value));
 const connected = computed(() => terminalState.value === "connected" && !!session.value);
-// 终端分屏：布局树里每个叶子都能继续左右/上下分屏（A/B 上下分屏后从 B
-// 再左右分屏得到 column[A, row[B, C]]）。分屏窗格各自复用已认证 transport
-// 开独立 PTY；宿主 openWorkbench 只支持 tab 落点，所以布局完全在插件内。
-const terminalLayout = ref<TerminalLayoutNode>(createTerminalLayout());
-const shellTabSessions = new Map<string, string>();
-// 目录跟随由各终端真实 cwd 变化驱动；activeTerminalPaneId 只决定面板重开时
-// 的初始目标。主窗格主终端用 terminalCwd，其余页签用各自 OSC 7 上报的 cwd。
-// 非响应式 Map 的会话映射仍用 shellTabSessions；cwd 需要驱动 computed，单独
-// 用响应式 Map。
-const activeTerminalPaneId = ref(MAIN_TERMINAL_PANE_ID);
-const shellTabCwd = reactive(new Map<string, string>());
-const activePaneCwd = computed(() =>
-  resolveActiveTabCwd(terminalLayout.value, activeTerminalPaneId.value, terminalCwd.value, shellTabCwd),
-);
+// 终端分屏：布局树状态与窗格/页签操作收口在 composables/useShellTabs；
+// 「页签上报 cwd」「窗格激活」两个目录跟随入口仍在本文件（结构测试锁定）。
+const {
+  terminalLayout,
+  shellTabSessions,
+  activeTerminalPaneId,
+  shellTabCwd,
+  activePaneCwd,
+  openTerminalSplit,
+  splitTerminalPane,
+  closeTerminalSplit,
+  closePane,
+  createPaneTab,
+  activatePaneTab,
+  closePaneTab,
+  onShellTabOpened,
+  resetTerminalLayout,
+} = useShellTabs({
+  terminalCwd,
+  canSplit: () => canSplitTerminal.value,
+  canCreateTab: () => canOpenShellTab.value,
+  scheduleFit,
+  syncSftpToActivePane: () => syncSftpToActivePane(),
+});
 const canSplitTerminal = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
 const terminalHasSplit = computed(() => hasTerminalSplit(terminalLayout.value));
 const splitTerminalFont = computed(() =>
@@ -1829,67 +1890,6 @@ const splitTerminalFont = computed(() =>
     fontSize: appearance.value.terminal.fontSize,
   }),
 );
-
-/** 主终端菜单：把主终端窗格再分一层。 */
-function openTerminalSplit(orientation: TerminalLayoutOrientation) {
-  splitTerminalPane("main", orientation);
-}
-
-function splitTerminalPane(paneId: string, orientation: TerminalLayoutOrientation) {
-  if (!canSplitTerminal.value) return;
-  const newPaneId = randomUUID();
-  const newTabId = randomUUID();
-  terminalLayout.value = splitTerminalLayout(terminalLayout.value, paneId, orientation, newPaneId, newTabId);
-  void nextTick(scheduleFit);
-}
-
-/** 主终端菜单的「关闭分屏」：移除主终端旁边的分屏，主终端本身保留。 */
-function closeTerminalSplit() {
-  terminalLayout.value = removeSplitAroundPane(terminalLayout.value, "main");
-  pruneShellTabSessions();
-  void nextTick(scheduleFit);
-}
-
-function closePane(paneId: string) {
-  for (const tabId of collectPaneTabIds(terminalLayout.value, paneId)) {
-    shellTabSessions.delete(tabId);
-    shellTabCwd.delete(tabId);
-  }
-  terminalLayout.value = closeTerminalLayoutPane(terminalLayout.value, paneId) ?? createTerminalLayout();
-  if (!findTerminalPane(terminalLayout.value, activeTerminalPaneId.value)) {
-    activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
-  }
-  void nextTick(scheduleFit);
-}
-
-function createPaneTab(paneId: string) {
-  if (!canOpenShellTab.value) return;
-  if (!findTerminalPane(terminalLayout.value, paneId)) return;
-  activeTerminalPaneId.value = paneId;
-  const tabId = randomUUID();
-  terminalLayout.value = addTerminalTab(terminalLayout.value, paneId, tabId);
-  void nextTick(scheduleFit);
-}
-
-function activatePaneTab(paneId: string, tabId: string) {
-  const pane = findTerminalPane(terminalLayout.value, paneId);
-  const tabChanged = pane?.activeTabId !== tabId;
-  const paneChanged = activeTerminalPaneId.value !== paneId;
-  activeTerminalPaneId.value = paneId;
-  terminalLayout.value = activateTerminalTab(terminalLayout.value, paneId, tabId);
-  if (tabChanged || paneChanged) syncSftpToActivePane();
-  void nextTick(scheduleFit);
-}
-
-function closePaneTab(paneId: string, tabId: string) {
-  shellTabSessions.delete(tabId);
-  shellTabCwd.delete(tabId);
-  terminalLayout.value = removeTerminalTab(terminalLayout.value, paneId, tabId);
-  if (!findTerminalPane(terminalLayout.value, activeTerminalPaneId.value)) {
-    activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
-  }
-  void nextTick(scheduleFit);
-}
 
 /** 分屏页签上报 OSC 7：记录并只在真实目录变化时驱动跟随。 */
 function onShellTabCwd(tabId: string, path: string) {
@@ -1920,31 +1920,6 @@ function syncSftpToActivePane() {
   const cwd = activePaneCwd.value;
   if (!cwd) return;
   void followSftpPath(cwd);
-}
-
-function onShellTabOpened(tabId: string, sessionId: string) {
-  shellTabSessions.set(tabId, sessionId);
-  // 分屏 PTY 在 ssh/session/open 时已由 sidecar 无条件安装 per-prompt 钩子
-  // （InstallPromptHook，静默、不写行），此处不需要再发 directoryTracking。
-}
-
-/** 布局变化后回收已不在树上的标签会话登记（PTY 由组件卸载负责关闭）。 */
-function pruneShellTabSessions() {
-  const live = new Set(terminalTabs(terminalLayout.value).map((tab) => tab.id));
-  for (const tabId of shellTabSessions.keys()) {
-    if (!live.has(tabId)) shellTabSessions.delete(tabId);
-  }
-  for (const tabId of shellTabCwd.keys()) {
-    if (!live.has(tabId)) shellTabCwd.delete(tabId);
-  }
-}
-
-function resetTerminalLayout() {
-  shellTabSessions.clear();
-  shellTabCwd.clear();
-  activeTerminalPaneId.value = MAIN_TERMINAL_PANE_ID;
-  terminalLayout.value = createTerminalLayout();
-  void nextTick(scheduleFit);
 }
 
 const canOpenShellTab = computed(() => connected.value && !localUiMode.value && !isRdpConnection.value);
@@ -4469,153 +4444,6 @@ watch(localOpenConfirmOpen, (open) => {
   if (!open) pendingLocalShellOverride = "";
 });
 
-// 会话菜单「选择 Shell 打开」：一次性 override（dock per-shell 语义），不动
-// localShell 默认偏好。已在本地模式（运行中或恢复态）= 换 shell 重启；SSH 在
-// 连时走既有确认流（override 经 pendingLocalShellOverride 透传）。
-function pickLocalShell(program?: string) {
-  sessionMenuOpen.value = false;
-  sessionMenuShellPickOpen.value = false;
-  if (localShellRestored.value || isLocalMode.value) {
-    void restartLocalTerminal(program);
-    return;
-  }
-  requestLocalTerminal(program);
-}
-
-// 下拉内切到 shell 选择视图：同弹层视图切换，菜单不关，顺带懒加载 shell 列表。
-function openSessionShellPick() {
-  sessionMenuShellPickOpen.value = true;
-  void openLocalShellPrefs();
-}
-
-// —— shell 选择器：多平台 shell 发现 + 偏好（VS Code terminal profiles 简化版）——
-// 发现清单两个入口（设置菜单 / dock「+」面板菜单）共用；失败静默降级为仅
-// 自动探测入口，loading 守卫防重入。
-async function loadLocalShells() {
-  if (localShellsLoading.value || localShells.value.length) return;
-  localShellsLoading.value = true;
-  try {
-    const result = await window.dbxPlugin.invoke<{ shells: typeof localShells.value }>("local/shells/list", {}, { timeoutMs: 10_000 });
-    localShells.value = result.shells || [];
-  } catch {
-    // 旧 sidecar 无发现方法：菜单退化为仅注入开关（start 仍走自动探测）。
-  } finally {
-    localShellsLoading.value = false;
-  }
-}
-
-async function openLocalShellPrefs() {
-  await loadLocalShells();
-}
-
-// Dock panel "+": opens another dock entry with the selected shell type via the bridge openWorkbench
-// (the host owns the surface: inside a panel webview -> a new dock entry; inside a tab -> a new tab).
-const localShellSurfaceOpen = ref(false);
-// host.listConnections (PR-A4 generic extension point): a read-only, secret-free list of the plugin's own connections,
-// for in-panel connection switching; hosts without it degrade to a hidden connection section.
-const dockConnections = ref<Array<{ id: string; name: string; providerId: string; connectionType?: string; readOnly?: boolean }>>([]);
-// 嵌套在会话弹层内：只切换内层 shell 菜单，不关闭父弹层（reka 嵌套层自行
-// 处理外点/焦点）；其它工具条 toggle 的互斥统一由 closeToolbarPopovers 负责。
-async function openLocalShellSurfaceMenu() {
-  if (localShellSurfaceOpen.value) {
-    localShellSurfaceOpen.value = false;
-    return;
-  }
-  localShellSurfaceOpen.value = true;
-  await loadLocalShells();
-  try {
-    const listed = await window.dbxPlugin.request<{ connections?: typeof dockConnections.value }>("host.listConnections");
-    dockConnections.value = listed?.connections ?? [];
-  } catch {
-    // Legacy hosts without the listConnections extension point: the connection section stays hidden.
-    dockConnections.value = [];
-  }
-}
-function openConnectionSurface(connection: (typeof dockConnections.value)[number]) {
-  localShellSurfaceOpen.value = false;
-  void window.dbxPlugin.openWorkbench?.(
-    WORKBENCH_ID,
-    {
-      connectionId: connection.id,
-      providerId: connection.providerId,
-      connectionType: connection.connectionType,
-      connection: { id: connection.id, name: connection.name, readOnly: connection.readOnly === true },
-    },
-    { forceNew: true },
-  );
-}
-function openLocalShellSurface(program?: string) {
-  localShellSurfaceOpen.value = false;
-  void window.dbxPlugin.openWorkbench?.(
-    WORKBENCH_ID,
-    { plugin: { mode: "local-terminal", ...(program ? { shell: program } : {}) } },
-    { forceNew: true },
-  );
-}
-
-async function setLocalShellPref(program: string) {
-  localShellPref.value = program;
-  try {
-    await window.dbxPlugin.invoke("local/preferences/set", { localShell: program });
-  } catch {
-    // 旧 sidecar：会话内存态兜底。
-  }
-}
-
-async function setLocalShellIntegrationPref(enabled: boolean) {
-  localShellIntegrationPref.value = enabled;
-  try {
-    await window.dbxPlugin.invoke("local/preferences/set", { localShellIntegration: enabled });
-  } catch {
-    // 旧 sidecar：会话内存态兜底。
-  }
-}
-
-// 启动目录：空串 = 恢复默认（家目录）；sidecar 在 start 时校验现存目录。
-async function setLocalShellCwd(dir: string) {
-  localShellCwdPref.value = dir.trim();
-  try {
-    await window.dbxPlugin.invoke("local/preferences/set", { localShellCwd: localShellCwdPref.value });
-  } catch {
-    // 旧 sidecar：会话内存态兜底。
-  }
-}
-
-// 环境变量：持久化取净化副本（未填名的草稿行不落库，保留在 UI 里继续编辑）；
-// 名字重复时后者覆盖前者（与 start 载荷的 map 语义一致）。
-async function setLocalShellEnv() {
-  try {
-    await window.dbxPlugin.invoke("local/preferences/set", { localShellEnv: localShellEnvClean.value });
-  } catch {
-    // 旧 sidecar：会话内存态兜底。
-  }
-}
-
-function addLocalShellEnvRow() {
-  localShellEnvPref.value = [...localShellEnvPref.value, { name: "", value: "" }];
-}
-
-function removeLocalShellEnvRow(index: number) {
-  localShellEnvPref.value = localShellEnvPref.value.filter((_, i) => i !== index);
-  void setLocalShellEnv();
-}
-
-// P0.2 self-open: opens a separate connectionless local-terminal tab through the host openWorkbench bridge.
-// A4 target contract (spec §4/§11): the plugin payload lives only in context.plugin and the instance identity
-// (workbenchId) is generated by the host — when a legacy host omits it, the workbenchId fallback covers it.
-// The menu item is hidden on hosts without this bridge.
-const canOpenLocalTab = computed(() => Boolean(window.dbxPlugin?.openWorkbench));
-
-async function openLocalTerminalTab() {
-  const api = window.dbxPlugin;
-  if (!api.openWorkbench) return;
-  await api.openWorkbench(
-    WORKBENCH_ID,
-    { plugin: { mode: "local-terminal" } },
-    { forceNew: true },
-  );
-}
-
 // webview 重建后接回 sidecar 里仍活着的本地 shell（workbench/close 才回收）。
 async function reattachLocalSession(): Promise<boolean> {
   try {
@@ -4656,71 +4484,21 @@ async function requestHostReopenConnection(): Promise<boolean> {
   return restored;
 }
 
-// 新建会话（同连接再开一个 tab）：context 复制当前一份并换发新 workbenchId——
-// 后端按 workbenchId 开独立 PTY（#41 会话隔离），多个 tab 互不干扰、boot 恢复
-// 各回各的会话。克隆的 workbenchState 摘掉 sessionId/terminalSequence，避免新
-// tab 尝试回附旧会话。forceNew 让宿主跳过"同 connectionId 复用已有 tab"的查重
-// （桥路径不传 connectionId，按钮开的 tab 会互相查重，导致只能多开一个）；
-// 旧宿主忽略第三参，退化为原查重行为。connectionId 显式写入 context：宿主的
-// 重推凭据（reinit re-push）与 hostContext 合并都键在 context.connectionId 上，
-// 不能依赖宿主已把它合进 context（旧宿主没有那层合并）。
-function sessionTabContext(reuseAuthenticatedTransport: boolean, spawnCommand?: string): Record<string, unknown> {
-  const context: Record<string, unknown> = {
-    ...hostContext.value,
-    connectionId: connectionId.value,
-    workbenchId: randomUUID(),
-    reuseAuthenticatedTransport,
-    reuseAuthenticatedSessionId: reuseAuthenticatedTransport ? session.value?.sessionId : undefined,
-    // WT-4（WezTerm spawn 对标）：命令会话的一次性打开参数。非宿主保留
-    // 字段，随 context 原样透传给新工作台，由 sessionTransportReuse 状态
-    // 消费；契约见 docs/architecture/PROTOCOL.zh-CN.md「同 transport 命令会话」。
-    spawnCommand: spawnCommand?.trim() || undefined,
-  };
-  const persisted = context.workbenchState;
-  if (persisted && typeof persisted === "object") {
-    const { sessionId: _sessionId, terminalSequence: _terminalSequence, ...rest } = persisted as Record<string, unknown>;
-    context.workbenchState = rest;
-  }
-  return context;
-}
-
-function openNewSessionTab() {
-  const api = window.dbxPlugin;
-  if (!api.openWorkbench || !connectionId.value) return;
-  // target: "tab"：面板表面（dock iframe）调用时显式指定主工作台 tab 落点；
-  // tab 表面调用本就落 tab，旧宿主忽略该选项回落面板条目（可选降级）。
-  void api.openWorkbench(WORKBENCH_ID, sessionTabContext(false), { forceNew: true, target: "tab" });
-}
-
-// 复制会话：新 tab 仍拥有独立 PTY、回放缓冲和 workbenchId，但后端在当前
-// 已认证 SSH transport 上另开 channel，因此堡垒机不会再次发起 MFA。这里不
-// 复制或缓存 OTP；若原 transport 已失效，后端会要求走“新建会话”重新连接。
-function openCopiedSessionTab() {
-  const api = window.dbxPlugin;
-  if (!api.openWorkbench || !connectionId.value || !connected.value) return;
-  void api.openWorkbench(WORKBENCH_ID, sessionTabContext(true), { forceNew: true, target: "tab" });
-}
-
-// 命令会话（WT-4，WezTerm spawn 对标）：复制会话的同族入口，channel 启动
-// 动作从 shell 换成执行指定命令（独立 PTY，后端 shell 单引号转义）。弹窗
-// 收命令后 forceNew 开新 tab；共享 transport 引用、MaxSessions 失败可见等
-// 语义全部复用复制会话链路（PROTOCOL「同 transport 命令会话」节）。
-const spawnSessionDialogOpen = ref(false);
-const spawnSessionCommand = ref("");
-
-function openCommandSessionTab() {
-  if (!window.dbxPlugin?.openWorkbench || !connectionId.value || !connected.value) return;
-  spawnSessionCommand.value = "";
-  spawnSessionDialogOpen.value = true;
-}
-
-function confirmCommandSessionTab() {
-  const command = spawnSessionCommand.value.trim();
-  const api = window.dbxPlugin;
-  if (!api?.openWorkbench || !connectionId.value || !connected.value || !command) return;
-  spawnSessionDialogOpen.value = false;
-  void api.openWorkbench(WORKBENCH_ID, sessionTabContext(true, command), { forceNew: true, target: "tab" });
-}
+// 同工作台 spawn 新 tab（新建/复制/命令会话）：收口在
+// composables/useWorkbenchSpawnTabs（context 克隆与宿主桥细节见该文件）。
+const {
+  openNewSessionTab,
+  openCopiedSessionTab,
+  spawnSessionDialogOpen,
+  spawnSessionCommand,
+  openCommandSessionTab,
+  confirmCommandSessionTab,
+} = useWorkbenchSpawnTabs({
+  hostContext,
+  connectionId: () => connectionId.value,
+  session,
+  connected: () => connected.value,
+});
 
 
 // 传输历史 + 断点续传：状态与 sidecar 接线收口在 composables/useTransferHistory。
@@ -5420,92 +5198,36 @@ watch(terminalCwd, (cwd) => {
   void followSftpPath(cwd);
 });
 
-function onFileAreaContextMenu(event: MouseEvent) {
-  if ((event.target as HTMLElement).closest(".sftp-tree-row")) return;
-  event.preventDefault();
-  terminalMenuOpen.value = false;
-  fileMenu.value = undefined;
-}
-
-/** 文件夹行右键的新建/上传：落点就是被右键的目录，而不是面板当前目录。
- *  菜单已在动作触发前关闭，这里直接进入各对话框/文件选择器。 */
-function folderMenuAction(
-  action: "mkdir" | "newFile" | "upload" | "uploadFolder" | "symlink",
-  entry: SftpEntry,
-) {
-  const targetDir = pathFromUri(entry.uri);
-  fileMenu.value = undefined;
-  if (action === "mkdir") {
+// SFTP 文件树右键菜单与上传后增量刷新：收口在 composables/useSftpFolderActions
+// （导航/树工作区经下方/上方既有 composable 回调接线）。
+const {
+  onFileAreaContextMenu,
+  folderMenuAction,
+  refreshSftpFolder,
+  refreshSftpAfterUpload,
+} = useSftpFolderActions({
+  terminalMenuOpen,
+  fileMenu,
+  session: () => session.value,
+  currentPath,
+  sftpTreeRoot,
+  sftpShowHidden,
+  mkdirTargetDir,
+  openMkdirDialog: (targetDir) => {
     mkdirTargetDir.value = targetDir;
     operationDraft.value = "";
     operationDialog.value = "mkdir";
-  } else if (action === "symlink") {
-    beginSymlinkCreate(targetDir);
-  } else if (action === "upload") {
-    void chooseUpload(targetDir);
-  } else if (action === "uploadFolder") {
-    chooseFolderUpload(targetDir);
-  } else {
-    openNewFileDialog(targetDir);
-  }
-}
-
-/** 文件夹右键刷新：当前目录走整页 loadDirectory；树内其他目录重列子项并
- *  保持原展开态（折叠目录刷新缓存，展开目录原地更新，不强制展开）。 */
-async function refreshSftpFolder(entry: SftpEntry) {
-  fileMenu.value = undefined;
-  if (!session.value) return;
-  const path = pathFromUri(entry.uri);
-  if (path === currentPath.value) {
-    await loadDirectory();
-    return;
-  }
-  const node = findFileTreeNode(sftpTreeRoot.value, path);
-  if (!node || node.kind !== "directory") {
-    await revealSftpPath(path, { quiet: true });
-    return;
-  }
-  const wasExpanded = node.expanded;
-  node.loading = true;
-  try {
-    const listing = await listSftpDirectory(path);
-    const applied = applyFileTreeChildren(sftpTreeRoot.value, path, listing, sftpShowHidden.value);
-    if (applied) applied.expanded = wasExpanded;
-  } catch (cause) {
-    showError(cause);
-  } finally {
-    node.loading = false;
-  }
-}
-
-/** 上传完成后的目标目录刷新：当前目录走整页列表，树内目录重列子项并保留
- *  原展开态；随后刷新所有已展开分支与折叠缓存，父目录立即可见新结果。 */
-async function refreshSftpAfterUpload(targetDir?: string): Promise<void> {
-  if (!session.value) return;
-  const target = normalizeRemotePath(targetDir || currentPath.value);
-  if (target === currentPath.value) {
-    await loadDirectory();
-  } else {
-    const node = findFileTreeNode(sftpTreeRoot.value, target);
-    if (node && node.kind === "directory") {
-      const wasExpanded = node.expanded;
-      node.loading = true;
-      try {
-        const listing = await listSftpDirectory(target);
-        const applied = applyFileTreeChildren(sftpTreeRoot.value, target, listing, sftpShowHidden.value);
-        if (applied) applied.expanded = wasExpanded;
-      } catch {
-        // 目标目录暂时不可读时保留旧列表，全局错误条已由上传链给出。
-      } finally {
-        node.loading = false;
-      }
-    } else {
-      await revealSftpPath(target, { quiet: true });
-    }
-  }
-  markCollapsedTreeNodesStale(sftpTreeRoot.value);
-  await refreshExpandedSftpTree();
-}
+  },
+  beginSymlinkCreate: (targetDir) => beginSymlinkCreate(targetDir),
+  chooseUpload: (targetDir) => { void chooseUpload(targetDir); },
+  chooseFolderUpload: (targetDir) => chooseFolderUpload(targetDir),
+  openNewFileDialog: (targetDir) => openNewFileDialog(targetDir),
+  loadDirectory: () => loadDirectory(),
+  revealSftpPath: (path, opts) => revealSftpPath(path, opts),
+  listSftpDirectory: (path) => listSftpDirectory(path),
+  refreshExpandedSftpTree: () => refreshExpandedSftpTree(),
+  showError: (cause) => showError(cause),
+});
 
 /** 通用剪贴板写入 + 已复制提示（行菜单/侧栏菜单共用；失败走 sftp 错误条）。 */
 function copyTextToClipboard(value: string, noticeKey: string, values?: Record<string, string | number>) {
@@ -5560,104 +5282,10 @@ const {
   persistState, scheduleFit,
 });
 
-// 全局偏好只影响新工作台的初始面板状态；当前工作台不被连带切换。
-function toggleSftpPaneDefaultOpen() {
-  sftpPaneDefaultOpen.value = !sftpPaneDefaultOpen.value;
-  try {
-    pluginStore.setItem(SFTP_PANE_OPEN_KEY, sftpPaneDefaultOpen.value ? "true" : "false");
-  } catch {
-    // localStorage 不可用时偏好仅对当前会话生效。
-  }
-}
-
-function loadSftpPaneDefaultOpen(): boolean {
-  try {
-    return sanitizeSftpPaneDefaultOpen(pluginStore.getItem(SFTP_PANE_OPEN_KEY));
-  } catch {
-    return false;
-  }
-}
-
-// SFTP 自动连接全局偏好：关闭后连接成功不再自动加载 SFTP 目录（#179）。
-function toggleSftpAutoConnect() {
-  sftpAutoConnect.value = !sftpAutoConnect.value;
-  try {
-    pluginStore.setItem(SFTP_AUTO_CONNECT_KEY, sftpAutoConnect.value ? "true" : "false");
-  } catch {
-    // localStorage 不可用时偏好仅对当前会话生效。
-  }
-}
-
-function loadSftpAutoConnect(): boolean {
-  try {
-    return sanitizeSftpAutoConnectPref(pluginStore.getItem(SFTP_AUTO_CONNECT_KEY));
-  } catch {
-    return true;
-  }
-}
-
-// 目录跟随全局偏好：开关切换时同步写入（与 per-tab workbenchState 并行，
-// 后者为恢复的 tab 提供更精确的状态；这里是新 tab 的缺省来源）。
-function loadDirectoryFollowPref(): boolean {
-  try {
-    return sanitizeDirectoryFollowPref(pluginStore.getItem(FOLLOW_DIRECTORY_KEY));
-  } catch {
-    return false;
-  }
-}
-
-function persistDirectoryFollowPref(enabled: boolean) {
-  try {
-    pluginStore.setItem(FOLLOW_DIRECTORY_KEY, enabled ? "true" : "false");
-  } catch {
-    // pluginStore 不可用时全局偏好仅对当前会话生效，per-tab 恢复不受影响。
-  }
-}
-
 // 下载/传输/命令建议偏好与水合、下载目标/冲突询问链已收口在
-// composables/useWorkbenchPrefs（见上方早期声明点）。
-
-/**
- * 终端行为落地：把行为偏好写进 xterm 选项。字体/行高/字间距等外观项不在此处
- * （见 applyTerminalAppearance），这里只管行为类选项。
- */
-function applyTerminalBehavior() {
-  if (!terminal) return;
-  const patch = terminalBehaviorOptionPatch(terminalBehavior.value);
-  terminal.options.scrollback = patch.scrollback;
-  terminal.options.scrollOnUserInput = patch.scrollOnUserInput;
-  terminal.options.wordSeparator = patch.wordSeparator;
-  terminal.options.ignoreBracketedPasteMode = patch.ignoreBracketedPasteMode;
-  terminal.options.macOptionIsMeta = patch.macOptionIsMeta;
-}
-
-/** 行为设置局部更新（设置页控件）：归一化 → 持久化 → 即时生效。 */
-// 布局方向偏好改动（issue #187）：轴向切换后终端/SFTP 尺寸变化，重排 xterm。
-// 持久化由 WORKBENCH_LAYOUT watch 统一写穿。
-function setPaneDirection(value: PaneDirectionPref) {
-  if (paneDirection.value === value) return;
-  paneDirection.value = value;
-  scheduleFit();
-}
-
-function updateTerminalBehavior(patch: Partial<TerminalBehaviorSettings>) {
-  const next = sanitizeTerminalBehavior({ ...terminalBehavior.value, ...patch });
-  const copyChanged = next.copyOnSelect !== terminalBehavior.value.copyOnSelect;
-  terminalBehavior.value = next;
-  persistTerminalBehavior(next);
-  applyTerminalBehavior();
-  // 选中复制沿用既有即时反馈文案。
-  if (copyChanged) {
-    showNotice(t(next.copyOnSelect ? "terminalSelectCopy.enabledNotice" : "terminalSelectCopy.disabledNotice"));
-  }
-}
-
-/** 快捷键绑定更新：归一化 → 持久化。派发每次按键实时读表，无需重挂钩子。 */
-function updateTerminalHotkeys(bindings: TerminalHotkeyBindings) {
-  const next = sanitizeTerminalHotkeys(bindings, applePlatform);
-  terminalHotkeys.value = next;
-  persistTerminalHotkeys(next);
-}
+// composables/useWorkbenchPrefs（见上方早期声明点）。视图/终端行为偏好
+// （SFTP 默认/自动连接、目录跟随、终端行为与快捷键）已收口在
+// composables/useWorkbenchViewPrefs（见早期声明点）。
 
 function startDividerDrag(event: PointerEvent) {
   const container = paneContainer.value;
@@ -6343,88 +5971,14 @@ watch(connected, (value) => {
 
 // ---------------------------------------------------------------------------
 
-function toggleQuickMenu() {
-  const next = !quickMenuOpen.value;
-  closeToolbarPopovers();
-  quickMenuOpen.value = next;
-  if (next) {
-    // 每次打开回到列表态：清空搜索/展开（M32-A3 后弹层只剩列表执行）。
-    quickSearch.value = "";
-    quickExpandedId.value = null;
-  }
-}
-
-// 会话下拉：与其它 popover 同款互斥收口；打开时回到动作列表视图。
-function toggleSessionMenu() {
-  const next = !sessionMenuOpen.value;
-  closeToolbarPopovers();
-  sessionMenuOpen.value = next;
-  if (next) {
-    sessionMenuShellOpen.value = false;
-    sessionMenuShellPickOpen.value = false;
-  }
-}
-
+// 工具条弹层 toggle（quick/session/connection-info/columns/rdp/palette/batch/
+// transfer）已随菜单状态迁 composables/useTerminalMenus；shell 选项视图切换
+// 仍留在本地 shell 偏好域。
 // 下拉内切到 shell 选项视图：同弹层视图切换，菜单不关，顺带懒加载 shell 列表。
 function openSessionShellPrefs() {
   sessionMenuShellOpen.value = true;
   void openLocalShellPrefs();
 }
-
-function toggleConnectionInfo() {
-  const next = !connectionInfoOpen.value;
-  closeToolbarPopovers();
-  connectionInfoOpen.value = next;
-  if (next) {
-    void measureLatency();
-    void refreshConnectionAuthMethod();
-    // 发行版徽标数据源是 metrics 快照：未拉过时补拉一次（一次 exec，约 0.4s），
-    // 否则从未开过指标浮层的会话在连接信息里永远看不到徽标。
-    if (!metrics.value) void refreshMetrics();
-  }
-}
-
-
-// ---- 模板内联互斥清单收敛为具名 toggle（round2），与五个函数 toggle 同族 ----
-
-function toggleColumnsMenu() {
-  const next = !columnsOpen.value;
-  closeToolbarPopovers();
-  columnsOpen.value = next;
-}
-
-// 锚点按钮阻止了 pointerdown 的外点关闭，切换弹层时由这里显式互斥。
-function toggleRdpResolutionMenu() {
-  const next = !rdpResolutionOpen.value;
-  closeToolbarPopovers();
-  rdpResolutionOpen.value = next;
-}
-
-function toggleRdpPasteMenu() {
-  const next = !rdpPasteOpen.value;
-  closeToolbarPopovers();
-  rdpPasteOpen.value = next;
-}
-
-function togglePanelPaletteMenu() {
-  const next = !panelPaletteOpen.value;
-  closeToolbarPopovers();
-  panelPaletteOpen.value = next;
-}
-
-function toggleBatchQuickPopover() {
-  const next = !batchQuickOpen.value;
-  closeToolbarPopovers();
-  batchQuickOpen.value = next;
-}
-
-function toggleTransferPanel() {
-  const next = !transferPanelOpen.value;
-  closeToolbarPopovers();
-  if (next) closeMetrics();
-  transferPanelOpen.value = next;
-}
-
 
 // 认证方式：读取 ssh/sessions/list 当前会话行的 authMethod（只读方法名，
 // 不含任何凭据材料）。失败时面板显示占位符，不影响其他信息。
@@ -6624,172 +6178,34 @@ async function refreshDiskUsage() {
   diskUsage.value = usage;
 }
 
-// 权限矩阵（所有者/属组/其他人 × 读/写/执行）与八进制草稿双向换算：
-// 草稿非法或为空时以 0 为基准，setuid/setgid/sticky 高位原样保留。
-const PERM_ROLES = [
-  { who: 6, key: "permOwner" },
-  { who: 3, key: "permGroup" },
-  { who: 0, key: "permOthers" },
-] as const;
-const PERM_COLUMNS = [
-  { bit: 4, key: "permRead" },
-  { bit: 2, key: "permWrite" },
-  { bit: 1, key: "permExec" },
-] as const;
-
-function draftModeBits(raw: string): number {
-  const text = raw.trim();
-  return /^[0-7]{3,4}$/.test(text) ? parseInt(text, 8) : 0;
-}
-
-function permBit(raw: string, who: number, bit: number): boolean {
-  return Boolean(draftModeBits(raw) & (bit << who));
-}
-
-function applyPermBit(raw: string, who: number, bit: number, on: boolean): string {
-  const bits = draftModeBits(raw);
-  const mode = on ? bits | (bit << who) : bits & ~(bit << who);
-  return `0${mode.toString(8)}`;
-}
-
-function toggleChmodPerm(who: number, bit: number, event: Event) {
-  const input = event.target;
-  if (input instanceof HTMLInputElement) chmodDraft.value = applyPermBit(chmodDraft.value, who, bit, input.checked);
-}
-
-function toggleAttrsPerm(who: number, bit: number, event: Event) {
-  const input = event.target;
-  if (input instanceof HTMLInputElement) attrsMode.value = applyPermBit(attrsMode.value, who, bit, input.checked);
-}
-
-function beginChmod(entry: SftpEntry) {
-  if (!canWrite.value) return;
-  chmodTarget.value = entry;
-  chmodDraft.value = entry.permissions || "";
-  fileMenu.value = undefined;
-}
+// 权限矩阵换算与 chmod 对话框状态/提交：收口在 composables/useSftpChmod
+// （PERM_ROLES/PERM_COLUMNS 与八进制草稿换算同文件）。
+const {
+  chmodTarget,
+  chmodDraft,
+  chmodSubmitting,
+  toggleChmodPerm,
+  toggleAttrsPerm,
+  beginChmod,
+  confirmChmod,
+} = useSftpChmod<SftpEntry>({
+  canWrite: () => canWrite.value,
+  session: () => session.value,
+  sudoMode: () => sudoMode.value,
+  attrsMode,
+  closeFileMenu: () => { fileMenu.value = undefined; },
+  loadDirectory: () => loadDirectory(),
+  clearSftpDetailCache: () => clearSftpDetailCache(),
+  showNotice: (message) => showNotice(message),
+  showError: (cause) => showError(cause),
+  t: (key) => t(key),
+});
 
 function openSettings() {
   settingsOpen.value = true;
   void probeLocalCapabilities();
 }
 
-async function confirmChmod() {
-  const entry = chmodTarget.value;
-  const mode = chmodDraft.value.trim();
-  if (!session.value || !entry || !mode) return;
-  chmodSubmitting.value = true;
-  try {
-    if (sudoMode.value) {
-      await window.dbxPlugin.invoke("sudo/chmod", {
-        sessionId: session.value.sessionId,
-        path: pathFromUri(entry.uri),
-        mode,
-      });
-    } else {
-      await window.dbxPlugin.invoke("sftp/chmod", {
-        sessionId: session.value.sessionId,
-        path: pathFromUri(entry.uri),
-        mode,
-      });
-    }
-    chmodTarget.value = undefined;
-    clearSftpDetailCache();
-    await loadDirectory();
-    showNotice(t("permissionsUpdated"));
-  } catch (cause) {
-    showError(cause);
-  } finally {
-    chmodSubmitting.value = false;
-  }
-}
-
-
-// 右键菜单打开瞬间的选区快照（复制用它，而不是点击时刻的实时选区）。
-const menuSelectionSnapshot = ref("");
-
-function showTerminalMenu(event: MouseEvent) {
-  // RDP 画布占住终端视图时，右键属于远程桌面（画布 mousedown 已把右键发往
-  // rdp/input）；本地/SSH 终端菜单整类不适用，压住菜单与系统菜单即返回。
-  if (isRdpMode.value || isRdpConnection.value) {
-    event.preventDefault();
-    return;
-  }
-  // 右键四档（对标 Tabby「Mouse → Right click」）：off / menu / paste / clipboard。
-  // clipboard 档按有无选区决定复制还是粘贴；Shift+右键恒出菜单，是 off 与 paste
-  // 档下唯一回到菜单的逃生口（与既有行为一致）。
-  // preventDefault 只给非菜单分支：reka 触发器据此跳过开菜单（同时也压住系统菜单）；
-  // 菜单分支一旦 preventDefault，ContextMenuTrigger 自己就打不开了。
-  const target = resolveRightClickBehavior(terminalBehavior.value, {
-    hasSelection: terminal?.hasSelection() ?? false,
-    shiftKey: event.shiftKey,
-  });
-  if (target === "menu") {
-    // 打开瞬间快照选区文本：菜单接管焦点后 xterm 可能清空选区，复制时再
-    // getSelection() 就会拿到空串（右键复制无效的静默失败路径）。
-    menuSelectionSnapshot.value = terminal?.hasSelection() ? (terminal.getSelection() ?? "") : "";
-    terminalMenuOpen.value = true;
-    fileMenu.value = undefined;
-    return;
-  }
-  event.preventDefault();
-  terminalMenuOpen.value = false;
-  fileMenu.value = undefined;
-  if (target === "paste") void pasteTerminal();
-  else if (target === "copy") void copyTerminalSelection();
-}
-
-function showFileMenu(event: MouseEvent, entry: SftpEntry) {
-  // 不再 preventDefault/stopPropagation：事件要冒泡到包裹文件树的
-  // ContextMenuTrigger 完成定位与打开；空白区与行共用同一菜单根，由容器处理器
-  // onFileAreaContextMenu 按事件目标区分（行内目标直接返回）。
-  // 右键未选中的行（或当前无选区）时先把选区收敛到该行：否则批量动作会继续
-  // 作用于右键前的旧选区，而视觉上被点中的行看起来是活动项。命中行已在
-  // 选区内（含多选）时保留原选区。收敛结果统一过滤受保护目录：右键受保护
-  // 目录只更新 selectedPath 作为视觉锚点，绝不进入批量选区。
-  const seed = resolveSftpContextMenuSelection(entry.uri, selectedUris.value);
-  const selectable = filterSelectableSftpUris(
-    seed ?? selectedUris.value,
-    currentPath.value,
-    pathFromUri,
-    isLoadedDirectoryUri,
-  );
-  if (seed) {
-    selectedUris.value = selectable;
-    if (selectable.length) lastClickedUri.value = entry.uri;
-  } else if (selectable.length !== selectedUris.value.length) {
-    // 旧状态里残留的受保护目录同样在右键时剔除。
-    selectedUris.value = selectable;
-  }
-  selectedPath.value = entry.uri;
-  fileMenuProtected.value = isProtectedDirectory(entry);
-  fileMenu.value = {
-    entry,
-    // 与批量操作/计数同源：只快照仍挂在已加载树上的选中项。
-    selection: selectedEntries.value.map((item) => item.uri),
-  };
-  terminalMenuOpen.value = false;
-  transferHistoryMenu.value = undefined;
-}
-
-// 右键菜单关闭（reka 外点/Esc/动作选中都会把 fileMenu 置空）：受保护标记
-// 跟随菜单生命周期，下一次普通行右键重新计算。
-watch(fileMenu, (menu) => {
-  if (!menu) fileMenuProtected.value = false;
-});
-
-function showTransferHistoryMenu(event: MouseEvent, entry: TransferHistoryEntry) {
-  // 浏览器下载、上传及旧记录都可能没有可验证的本机路径：拦截系统菜单与
-  // reka 触发器（preventDefault 后 reka 跳过打开），但不展示无效操作。
-  if (!entry.localPath) {
-    event.preventDefault();
-    transferHistoryMenu.value = undefined;
-    return;
-  }
-  transferHistoryMenu.value = { taskId: entry.taskId };
-  terminalMenuOpen.value = false;
-  fileMenu.value = undefined;
-}
 
 /**
  * 工具栏弹出层互斥族统一收口（round2：收敛五处 + 三处模板内联的手抄互斥清单）。
@@ -6822,31 +6238,6 @@ function closeToolbarPopovers() {
   rdpResolutionOpen.value = false;
   batchQuickOpen.value = false;
   batchTargetsOpen.value = false;
-}
-
-function closeMenus() {
-  terminalMenuOpen.value = false;
-  fileMenu.value = undefined;
-  transferHistoryMenu.value = undefined;
-  closeToolbarPopovers();
-}
-
-/** document click 收口：reka 菜单/弹层内容 portal 到 body，内部点击会冒泡到
- *  document——旧实现面板上有 @click.stop，内部点击从不触发这里的清扫，保持语义一致。
- *  dialog-content 同样排除：模态弹窗（如 Docker 面板的日志抽屉/kill 确认）
- *  portal 在工具条 popover 之外，点弹窗内部不该把背后的工具条弹层连带收掉。 */
-function onDocumentClickCloseMenus(event: MouseEvent) {
-  if ((event.target as HTMLElement | null)?.closest?.('[data-slot="context-menu-content"], [data-slot="popover-content"], [data-slot="dialog-content"]')) return;
-  closeMenus();
-}
-
-/** 多选批量：复制所选路径（换行拼接写入剪贴板）。 */
-function copySelectedPaths() {
-  const menu = fileMenu.value;
-  fileMenu.value = undefined;
-  if (!menu) return;
-  const uris = menu.selection.length ? menu.selection : [menu.entry.uri];
-  copyTextToClipboard(uris.map((uri) => pathFromUri(uri)).join("\n"), "sftpCopy.copiedPaths", { count: uris.length });
 }
 
 /**
