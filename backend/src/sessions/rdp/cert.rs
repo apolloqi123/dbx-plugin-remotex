@@ -2,7 +2,7 @@
 //! rdp-known-certs.json）、指纹线制格式、120s fail-closed 提示代理与
 //! vendored TLS 校验器适配。
 use super::security::CertPolicy;
-use super::session::unix_now_secs;
+use crate::core::time::unix_now_secs;
 use data_encoding::HEXLOWER;
 use dbx_plugin_sdk::PluginEmitter;
 use ironrdp::client::config::{ServerCertificateVerifier, ServerCertificateVerifyFuture};

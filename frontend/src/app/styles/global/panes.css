@@ -1,0 +1,258 @@
+.panes {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.panes--reversed { flex-direction: row-reverse; }
+.terminal-pane, .sftp-pane { display: flex; height: 100%; min-width: 0; min-height: 0; flex-direction: column; background: var(--background); }
+.terminal-pane { position: relative; flex-grow: 0; flex-shrink: 0; overflow: hidden; background: var(--ssh-terminal-background); }
+/* 终端栈：编辑器页签在上、终端在下。终端与 SFTP 的分栏比例（terminalBasis）
+   移到栈容器上，内层 terminal-pane 只填满栈内剩余高度；页签为空时编辑器与
+   把手不渲染，终端回到整栈高度。终端 pane 的浮层/拖放/右键结构保持原样。 */
+.terminal-stack { display: flex; min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; flex-direction: column; overflow: hidden; }
+.terminal-stack > .terminal-workspace { flex: 1 1 auto; width: 100%; min-height: 0; }
+/* 终端工作区：递归布局树 + 底部批量条。每个叶子是一个带独立标签栏的窗格；
+   split 节点按 row/column 平分，叶子内标签通过绝对定位表面切换。 */
+.terminal-workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.terminal-layout-split { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; }
+.terminal-layout-split.split-row { flex-direction: row; }
+.terminal-layout-split.split-column { flex-direction: column; }
+.terminal-layout-split > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+.terminal-layout-split.split-row > * + * { border-left: 1px solid var(--border); }
+.terminal-layout-split.split-column > * + * { border-top: 1px solid var(--border); }
+.terminal-layout-pane { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; flex-direction: column; background: var(--background); }
+.terminal-pane-stack { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.terminal-pane-surface { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; }
+/* 分屏终端由布局树引用稳定宿主再搬进槽位；宿主自己撑满槽位。 */
+.terminal-pane-host { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.terminal-pane-host > .split-terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.terminal-pane-surface > .terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.terminal-pane-surface > .split-terminal-pane { flex: 1 1 auto; width: 100%; height: 100%; }
+/* 编辑器宿主高度走内联 flex-basis（25-75% 由 App 夹取）；不参与伸缩，
+   min-height 保证页签条与正文在极端拖拽下仍可操作。 */
+.terminal-stack > .editor-pane { flex-grow: 0; flex-shrink: 0; min-height: 120px; overflow: hidden; }
+/* 编辑器/终端分隔条：1px 视觉线 + 上下各 3px 命中区，键盘可达。 */
+.editor-divider { position: relative; z-index: 4; height: 1px; flex: 0 0 1px; background: var(--border); cursor: row-resize; touch-action: none; }
+.editor-divider::after { content: ""; position: absolute; top: -3px; bottom: -3px; left: 0; right: 0; }
+.editor-divider:hover, .editor-divider:focus-visible { background: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+.terminal-pane.drag-active { background: color-mix(in srgb, var(--primary) 5%, var(--ssh-terminal-background)); }
+.terminal-pane .drop-overlay strong { max-width: min(62vw, 460px); font-size: 12px; }
+/* 工作台内终端页签条：主/额外 PTY 同列展示，+ 新建当前连接内的终端。 */
+.terminal-tabbar {
+  display: flex;
+  height: 29px;
+  flex: 0 0 29px;
+  align-items: stretch;
+  gap: 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border);
+  padding: 2px 6px 0;
+  background: color-mix(in srgb, var(--background) 92%, var(--foreground));
+  scrollbar-width: none;
+}
+.terminal-tabbar::-webkit-scrollbar { display: none; }
+.terminal-tab {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  color: var(--muted-foreground);
+}
+.terminal-tab:hover { background: var(--accent); color: var(--foreground); }
+.terminal-tab.is-active {
+  border-color: var(--border);
+  background: var(--ssh-terminal-background);
+  color: var(--primary);
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.terminal-tab-main {
+  display: inline-flex;
+  min-width: 0;
+  height: 25px;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 0 3px 0 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.terminal-tab-main svg { width: 12px; height: 12px; flex: 0 0 12px; }
+.terminal-tab-main span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-tab-close {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  margin-right: 3px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.terminal-tab-close:hover { background: color-mix(in srgb, var(--muted-foreground) 22%, transparent); color: var(--foreground); }
+.terminal-tab-close svg { width: 11px; height: 11px; }
+.terminal-tab-add {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-self: center;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.terminal-tab-add:hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
+.terminal-tab-add:disabled { cursor: default; opacity: 0.38; }
+.terminal-tab-add svg { width: 14px; height: 14px; }
+/* 额外页签常驻挂载，v-show 只切显示；每个页签保留自己的 xterm 与会话。 */
+/* 额外页签作为主窗格的替身：与主终端共享第一个窗格的尺寸规则；分屏窗格
+   始终保留，因此切换/新建页签只影响主窗格，不会覆盖下侧/右侧分屏。 */
+.terminal-tab-aux-pane > .split-terminal-pane { flex: 1 1 auto; min-height: 0; }
+/* 内边距必须挂在 .xterm（terminal.element）而非宿主 div 上：FitAddon 只读
+   element 自身的 padding 做行数扣减，挂在宿主上会多算一行、底行溢出可视区
+   （命令条打开时正好被压在条下）。底部 8px 是常驻呼吸间距。 */
+/* z-index: 0 为宿主建立层叠上下文：xterm 内部图层（文字/选择/关键词高亮
+   decoration，xterm.css 里 z-index 高达 10）会被关在里面，否则高亮装饰层
+   会穿透 z-index: 2 的 .terminal-overlay——连接/成功动画期间 replay 写入的
+   内容其高亮块（如 Last login 的 IP）会浮到卡片遮罩之上。 */
+.terminal-host { position: absolute; z-index: 0; inset: 0; background: var(--ssh-terminal-background); }
+/* 终端响铃的视觉提示（对标 Tabby「Terminal → Sound」bell = visual，默认 off）：
+   走 ::after 覆盖层而非宿主自身的 outline / box-shadow —— 宿主背景已被 xterm 画布
+   铺满，只有独立伪元素能稳定压在最上层。强调色用 --primary：深浅两套终端配色下
+   都保得住对比度，且无需新增主题变量。时长须与 App.vue 的 TERMINAL_BELL_FLASH_MS 一致。 */
+.terminal-host::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+.terminal-host.bell-flash::after { animation: terminal-bell-flash 150ms ease-out; }
+@keyframes terminal-bell-flash {
+  from { opacity: 1; background: color-mix(in srgb, var(--primary) 16%, transparent); }
+  to { opacity: 0; }
+}
+/* 内边距可经外观设置覆盖：四个方向各自一个变量，变量缺失时回落内置值
+   （左 10 / 右 0 / 上 5 / 下 8）。必须挂在 .xterm（terminal.element）上——
+   FitAddon 只读 element 自身 padding 扣减行数，挂宿主 div 会多算一行。 */
+.terminal-host .xterm {
+  height: 100%;
+  padding: var(--ssh-terminal-padding-top, 5px) var(--ssh-terminal-padding-right, 0) var(--ssh-terminal-padding-bottom, 8px) var(--ssh-terminal-padding-left, 10px);
+  background: var(--ssh-terminal-background);
+}
+/* 选择器必须压过 xterm 6.1-beta 的 `.xterm:not(.allow-transparency)
+   .xterm-viewport{background-color:#000}`（特异性 0,3,0）——6.0.0 时该规则
+   是 `.xterm .xterm-viewport`（0,2,0），靠导入顺序即可覆盖；升 beta 后特异性
+   变高，低特异性写法静默失效、padding 环带复现黑边。这里提到 .xterm .xterm-viewport
+   （同为 0,3,0），本文件在 xterm.css 之后导入，同特异性后者生效。 */
+.terminal-host .xterm .xterm-viewport {
+  scrollbar-width: none !important;
+  /* xterm 6：主题背景色改内联到 .xterm-scrollable-element（内容盒，避开了
+     .xterm 的 padding），viewport 不再内联着色、保留库默认 #000，其矩形
+     （absolute inset:0）仍覆盖整个 .xterm —— padding 环带与 fit 富余露出
+     黑边。这里跟随插件终端背景色压掉库默认值（本文件在 xterm.css 之后
+     导入，同特异性后者生效；若未来 xterm 恢复 viewport 内联着色，内联
+     同为主题色，此规则自然让位）。 */
+  background: var(--ssh-terminal-background);
+}
+.terminal-overlay { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; padding: 24px; background: var(--ssh-terminal-background); color: var(--muted-foreground); text-align: center; }
+.terminal-overlay p { margin: 0; font-size: 12px; }
+
+
+/* Termius 风格连接卡片：挂在 .terminal-overlay（原连接中遮罩）内。
+   三段式——头部（服务器徽章 + 名称 + Show logs）、中段进度线（左服务器端点
+   旋转弧 + 流光段 → 右终端徽章）、底部状态行（Cancel / 错误+Reconnect /
+   已取消+Connect）+ 可展开日志面板。全令牌色，明暗主题随宿主。 */
+.connect-card { display: flex; width: min(400px, 94%); flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); padding: 18px 18px 14px; background: var(--popover); box-shadow: var(--shadow-modal); color: var(--foreground); text-align: left; }
+.connect-card-header { display: flex; align-items: center; gap: 11px; }
+.connect-card-badge { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 9px; background: var(--primary); color: var(--primary-foreground); }
+.connect-card-badge svg { width: 17px; height: 17px; stroke-width: 1.8; }
+/* PluginLogo 是 ?raw 引入的 assets/plugin.svg（宿主插件中心同款图形），外层为
+   span.plugin-logo 包装：块级化避免行内基线缝隙；svg 描边统一压成 currentColor
+   （覆盖原文件硬编码的 #0ea5e9，表示属性可被 CSS 规则覆盖），否则同色系徽标底
+   上不可读。尺寸不在此处定——由使用处规则给出（徽标 17px / 端点 15px），
+   裸 svg 无固有尺寸，缺上下文会落到 300×150 默认。 */
+.plugin-logo { display: block; line-height: 0; }
+.plugin-logo svg path { stroke: currentColor; }
+.connect-card-heading { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
+.connect-card-name { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.connect-card-identity { overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.connect-card-logs-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; border: 0; border-radius: var(--radius); padding: 3px 7px; background: transparent; color: var(--muted-foreground); font-size: 11px; cursor: pointer; }
+.connect-card-logs-toggle:hover { background: var(--accent); color: var(--accent-foreground); }
+.connect-card-logs-toggle svg { width: 12px; height: 12px; }
+.connect-card-track { display: flex; align-items: center; gap: 12px; padding: 2px 4px; }
+.connect-card-endpoint { position: relative; display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--muted) 60%, var(--background)); color: var(--muted-foreground); }
+.connect-card-endpoint > svg, .connect-card-endpoint .plugin-logo svg { width: 15px; height: 15px; stroke-width: 1.8; }
+.connect-card-endpoint-server { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+/* 左侧端点旋转环：常显的整圆轨道（足够可见，任何时刻都读出"同心圆环"）+
+   一段短亮弧在轨道上匀速旋转；环比图标大 8px，与图标间留出明显间隙。
+   注意选择器必须写成 .connect-card-endpoint > svg.connect-card-arc：
+   图标尺寸规则 .connect-card-endpoint > svg（15px）优先级更高，会把环压小。 */
+.connect-card-endpoint > svg.connect-card-arc { position: absolute; inset: -8px; width: 46px; height: 46px; animation: spin 1.1s linear infinite; }
+.connect-card-arc-track { fill: none; stroke: color-mix(in srgb, var(--primary) 30%, transparent); stroke-width: 2; }
+.connect-card-arc-spin { fill: none; stroke: var(--primary); stroke-width: 2; stroke-dasharray: 30 71; stroke-linecap: round; }
+.connect-card-line { position: relative; height: 2px; flex: 1; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--muted-foreground) 28%, transparent); }
+/* 不定态流光段：40% 宽渐变光斑沿线从左滑到右（后端无真实阶段，纯装饰）。 */
+.connect-card-flow { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 999px; background: linear-gradient(90deg, transparent, var(--primary), transparent); animation: connect-card-flow 1.4s ease-in-out infinite; }
+@keyframes connect-card-flow { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+/* 错误/取消态：旋转弧整体隐藏（不再留一截冻结的"残弧"），只保留淡淡轨道环；
+   错误态轨道转 destructive，进度线转 destructive。 */
+.connect-card[data-state="error"] .connect-card-arc, .connect-card[data-state="cancelled"] .connect-card-arc { animation: none; }
+.connect-card[data-state="error"] .connect-card-arc-spin, .connect-card[data-state="cancelled"] .connect-card-arc-spin { opacity: 0; }
+.connect-card[data-state="error"] .connect-card-arc-track { stroke: color-mix(in srgb, var(--destructive) 30%, transparent); }
+.connect-card[data-state="cancelled"] .connect-card-arc-track { stroke: color-mix(in srgb, var(--muted-foreground) 18%, transparent); }
+.connect-card[data-state="error"] .connect-card-flow, .connect-card[data-state="cancelled"] .connect-card-flow { display: none; }
+.connect-card[data-state="error"] .connect-card-line { background: color-mix(in srgb, var(--destructive) 55%, transparent); }
+/* 成功过渡（Termius 式）：进度线用 .connect-card-fill 从 0 填满到顶（transition
+   由 data-state 切换触发），右端点图标换对号并弹入，左侧旋转环收起。 */
+.connect-card-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 999px; background: var(--primary); transition: width .45s ease-out; }
+.connect-card[data-state="success"] .connect-card-fill { width: 100%; }
+.connect-card[data-state="success"] .connect-card-flow { display: none; }
+.connect-card[data-state="success"] .connect-card-arc { animation: none; }
+.connect-card[data-state="success"] .connect-card-arc-spin { opacity: 0; }
+.connect-card[data-state="success"] .connect-card-endpoint-target { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+.connect-card[data-state="success"] .connect-card-endpoint-target svg { animation: connect-card-check .3s ease-out; }
+@keyframes connect-card-check { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.connect-card-success-status { color: var(--primary); }
+.connect-card-footer { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 12px; }
+.connect-card-status { min-width: 0; overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.connect-card-error { min-width: 0; color: var(--destructive); font-size: 11px; overflow-wrap: anywhere; }
+.connect-card-ghost-button { display: inline-flex; min-height: 28px; flex: 0 0 auto; align-items: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 11px; background: transparent; cursor: pointer; }
+.connect-card-ghost-button:hover { background: var(--accent); }
+.connect-card .primary-button { flex: 0 0 auto; }
+/* 日志面板：与卡片同用 UI 字体（等宽栈与中文无衬线混排在 10.5px 下基线错位，
+   反而更怪）；仅时间戳保留等宽数字（纯 ASCII，无 CJK 回退问题）。 */
+.connect-card-logs { display: flex; max-height: 148px; flex-direction: column; gap: 3px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--border); padding-top: 9px; font-family: var(--ui-font-family); font-size: 11px; }
+.connect-card-log-row { display: flex; gap: 8px; color: var(--muted-foreground); line-height: 1.45; }
+.connect-card-log-row[data-level="warn"] { color: var(--warning); }
+.connect-card-log-row[data-level="error"] { color: var(--destructive); }
+.connect-card-log-ts { flex: 0 0 auto; font-family: var(--terminal-font-family); font-variant-numeric: tabular-nums; opacity: .65; }
+.connect-card-log-message { min-width: 0; overflow-wrap: anywhere; }
+.connect-card-logs-empty { margin: 0; color: var(--muted-foreground); opacity: .8; }
+@media (prefers-reduced-motion: reduce) {
+  .connect-card-arc, .connect-card-flow { animation: none; }
+  .connect-card-flow { display: none; }
+  .connect-card-fill { transition: none; }
+  .connect-card-endpoint-target svg { animation: none; }
+}
+.divider { position: relative; z-index: 4; width: 1px; flex: 0 0 1px; background: var(--border); cursor: col-resize; }
+/* 命中区加宽到 7px：1px 视觉线几乎抓不到（SFTP 分栏与 Docker 面板拖宽共用）。 */
+.divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; }
+.divider:hover { background: color-mix(in srgb, var(--foreground) 38%, var(--border)); }
+.sftp-pane { position: relative; z-index: 0; flex: 1; overflow: hidden; }

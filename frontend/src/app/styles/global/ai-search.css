@@ -1,0 +1,71 @@
+/* # AI 命令搜索提示条（Warp AI 对齐批）：主终端与分屏/新页签共用，必须放在
+   全局未 scoped 样式中——SplitTerminalPane 的浮层拿不到 App 的 scoped 规则。 */
+.terminal-ai-search {
+  position: absolute;
+  z-index: 7;
+  /* 内联样式缺帧（包含块尚不可测）时的兜底位：贴终端底部左缘。 */
+  bottom: 12px;
+  left: 8px;
+  display: flex;
+  max-width: calc(100% - 16px);
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgb(128 128 132 / 28%));
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: var(--shadow-popover);
+  padding: 3px 8px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.terminal-ai-search-badge {
+  display: inline-grid;
+  min-width: 16px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--accent, rgb(255 255 255 / 10%));
+  color: var(--accent-foreground, inherit);
+  font-weight: 700;
+  line-height: 16px;
+}
+.terminal-ai-search-query {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--popover-foreground);
+  text-overflow: ellipsis;
+}
+.terminal-ai-search-query.placeholder {
+  color: var(--muted-foreground);
+}
+.terminal-ai-search-keys {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.terminal-ai-search.pending .terminal-ai-search-query {
+  color: var(--muted-foreground);
+}
+.terminal-ai-search-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.terminal-ai-search-pending svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2;
+}
+.terminal-ai-search-keys kbd {
+  display: inline-grid;
+  min-width: 14px;
+  place-items: center;
+  border: 1px solid var(--border, rgb(128 128 132 / 28%));
+  border-radius: 4px;
+  background: var(--muted, rgb(255 255 255 / 6%));
+  padding: 0 3px;
+  font-family: var(--ui-font-family);
+  font-size: 9.5px;
+  line-height: 14px;
+}

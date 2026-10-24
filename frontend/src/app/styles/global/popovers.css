@@ -1,0 +1,95 @@
+/* 工具栏 popover 已迁移 reka Popover：内容 portal 到 body、floating-ui 定位 +
+   碰撞翻转，基础壳（背景/边框/阴影/圆角）由 wrapper 工具类提供；此处只保留
+   各弹层的尺寸与内部布局。`.popover` 类保留为后代选择器钩子（无基础规则）。 */
+.columns-popover { display: flex; width: 220px; flex-direction: column; gap: 1px; padding: 8px; }
+/* 以下五个弹层根规则原在 App.vue scoped：portal 后内容根不带 scopeId，必须全局。
+   gap:0 的三者旧为块级/无间距布局，抵消 wrapper 的 gap-2.5。 */
+.quick-commands-popover { display: flex; width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 60px)); flex-direction: column; gap: 4px; padding: 8px; overflow: auto; }
+.connection-info-popover { gap: 0; width: min(300px, calc(100vw - 24px)); padding: 8px 12px 12px; }
+.agent-mode-popover { gap: 0; width: min(280px, calc(100vw - 24px)); padding: 8px 12px 12px; }
+.bookmark-save-popover { display: flex; width: 250px; flex-direction: column; gap: 6px; padding: 8px; }
+.path-history-popover { display: flex; gap: 0; width: 250px; max-height: min(320px, 50vh); flex-direction: column; padding: 8px; overflow: auto; }
+.columns-popover label { display: flex; height: 28px; align-items: center; gap: 8px; border-radius: 4px; padding: 0 7px; cursor: pointer; }
+.columns-popover label:hover { background: var(--accent); }
+/* 旧 z60 是为了在工具栏层叠上下文里压过 xterm 装饰层；portal 后由 wrapper
+   z-50 统一参与根级排序，与右键菜单同档（菜单后挂载 DOM 序靠后自然盖住）。 */
+.transfer-popover { gap: 0; width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 52px)); padding: 8px; overflow: auto; }
+.transfer-popover h3 { margin: 2px 4px 8px; font-size: 12px; }
+/* Docker 工具条弹层（鲸鱼入口）：容器表需要比侧栏宽的横向空间，关闭即卸载。 */
+.transfer-card { display: grid; grid-template: "title actions" auto "progress progress" auto "meta meta" auto "path path" auto "error error" auto / minmax(0, 1fr) auto; position: relative; column-gap: 6px; row-gap: 4px; border-top: 1px solid var(--border); padding: 7px 4px; }
+.transfer-title { grid-area: title; min-width: 0; gap: 6px; }
+.transfer-title span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-title strong { font-size: 11px; font-variant-numeric: tabular-nums; }
+/* 压缩传输徽标（M33）：窄胶囊，弱化色，不打断标题行省略。 */
+.transfer-badge { flex: 0 0 auto !important; border: 1px solid var(--border); border-radius: 999px; padding: 0 5px; color: var(--muted-foreground); font-size: 9px; line-height: 14px; }
+.transfer-card progress { grid-area: progress; width: 100%; height: 4px; border: 0; accent-color: var(--primary); }
+.transfer-meta { grid-area: meta; min-width: 0; gap: 7px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.transfer-meta span { overflow: hidden; text-overflow: ellipsis; }
+.transfer-meta span + span::before { content: "·"; margin-right: 7px; color: var(--border); }
+.transfer-path { grid-area: path; min-width: 0; margin: 0; color: var(--muted-foreground); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.transfer-actions { grid-area: actions; display: flex; align-self: start; justify-content: flex-end; gap: 3px; }
+.transfer-actions .icon-button { width: 24px; height: 24px; min-width: 24px; padding: 3px; }
+.transfer-card .task-error { grid-area: error; }
+.link-button { align-self: flex-end; padding: 2px 0; color: var(--primary); font-size: 11px; }
+.task-error { margin: 0; color: var(--destructive); font-size: 10px; overflow-wrap: anywhere; }
+.activity-dot { position: absolute; top: 4px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 1px var(--background); }
+
+/* reka 右键菜单紧凑化：对齐旧 .context-menu 视觉（unlayered 覆盖 layered 工具类；
+   z-index 走 wrapper 的 z-50，落在弹层阶梯 context-menu(50) 一档）。 */
+[data-slot="context-menu-content"] { min-width: 160px; max-width: 280px; }
+[data-slot="context-menu-item"] { min-height: 29px; padding-top: 0; padding-bottom: 0; }
+[data-slot="context-menu-item"] svg { width: 14px; height: 14px; flex: 0 0 14px; }
+
+.zmodem-status { position: absolute; z-index: 3; right: 8px; bottom: 8px; left: 8px; display: flex; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); color: var(--foreground); font-size: 11px; pointer-events: none; }
+.zmodem-status svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.zmodem-status span:first-of-type { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* trzsz overlay reuses the zmodem status card shell and adds transfer-card
+   style progress/state affordances: a thin progress bar, file counter, speed
+   and a working cancel button (the shell itself keeps pointer-events: none). */
+.trzsz-status { flex-wrap: wrap; }
+.trzsz-status.trzsz-done { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+.trzsz-status.trzsz-failed { border-color: color-mix(in srgb, var(--destructive) 45%, var(--border)); color: var(--destructive); }
+.trzsz-status .trzsz-label { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trzsz-status progress { flex: 0 0 90px; height: 4px; border: 0; accent-color: var(--primary); }
+.trzsz-status .trzsz-count { flex: 0 0 auto; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.trzsz-status .trzsz-speed { flex: 0 0 auto; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.trzsz-status .trzsz-cancel { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; padding: 0; color: var(--muted-foreground); pointer-events: auto; }
+.trzsz-status .trzsz-cancel:hover { background: var(--accent); color: var(--foreground); }
+.trzsz-status .trzsz-cancel svg { width: 12px; height: 12px; flex: 0 0 12px; }
+/* 传输期间（trz/zmodem，issue #171）显式钉住系统鼠标指针：WKWebView 在原生
+   文件对话框往返后可能残留隐藏/错形光标（指针"看不见"，用户没法点取消）。
+   显式声明压过 .xterm 的 cursor:text 等继承/残留态；类切换本身会触发命中
+   重算，指针随之恢复可见，传输结束回落常规文本 I 形光标。 */
+.terminal-pane.transfer-busy, .terminal-pane.transfer-busy .terminal-host, .terminal-pane.transfer-busy .xterm { cursor: default; }
+/* Auto-reconnect banner pinned inside the terminal pane (top edge): keeps the
+   frozen terminal content visible below while countdown + progress + a manual
+   "reconnect now" action stay in view. */
+.reconnect-banner { position: absolute; z-index: 4; top: 8px; left: 8px; right: 8px; display: flex; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); color: var(--warning); font-size: 11px; }
+.reconnect-banner svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.reconnect-banner .reconnect-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reconnect-banner .reconnect-countdown { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.reconnect-banner .reconnect-attempt { flex: 0 0 auto; opacity: 0.75; }
+.reconnect-banner progress { flex: 0 0 64px; height: 6px; accent-color: var(--warning); }
+.reconnect-banner .reconnect-now { flex: 0 0 auto; height: 24px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: var(--radius); padding: 0 8px; background: transparent; color: var(--warning); font-size: 11px; cursor: pointer; }
+.reconnect-banner .reconnect-now:hover { background: color-mix(in srgb, var(--warning) 14%, transparent); }
+
+.modal { position: relative; display: flex; width: min(560px, 100%); max-height: calc(100vh - 32px); flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg, 8px); padding: 16px; background: var(--popover); color: var(--foreground); box-shadow: var(--shadow-modal); }
+.modal header { min-height: 24px; justify-content: space-between; gap: 12px; padding: 0; }
+.modal header > .icon-button { position: absolute; top: 8px; right: 8px; }
+.modal h2 { min-width: 0; margin: 0; padding-right: 24px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.modal > p, .modal > dl, .modal > label, .modal > input { margin-right: 0; margin-left: 0; }
+.modal > p { line-height: 1.55; }
+.modal footer { min-height: 56px; justify-content: flex-end; gap: 8px; margin: 0 -16px -16px; border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-lg, 8px) var(--radius-lg, 8px); padding: 12px 16px; background: color-mix(in srgb, var(--muted) 50%, transparent); }
+.modal footer button, .primary-button, .danger-button { display: inline-flex; min-height: 28px; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 11px; background: var(--background); }
+/* footer 按钮里的图标（删除确认的 Trash2 等）必须显式定尺寸——lucide 默认
+   24px，不定尺寸会把按钮撑得又高又粗。 */
+.modal footer button svg, .primary-button svg, .danger-button svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.modal footer button:hover, .primary-button:hover, .danger-button:hover { background: var(--accent); }
+.primary-button { border-color: color-mix(in srgb, var(--primary) 72%, var(--border)) !important; background: var(--primary) !important; color: var(--primary-foreground); cursor: pointer; }
+.danger-button { border-color: transparent !important; background: color-mix(in srgb, var(--destructive) 12%, transparent) !important; color: var(--destructive); cursor: pointer; }
+.danger-button:hover { background: color-mix(in srgb, var(--destructive) 20%, transparent) !important; }
+/* popover 内的动作按钮用紧凑档（24px），与快速命令编辑器对齐；
+   模态 footer 保持 28px 档不变。 */
+.popover .primary-button, .popover .danger-button { min-height: 24px; padding: 2px 8px; font-size: 11px; }
+.small-modal { width: min(420px, 100%); }
+.small-modal > input { margin-top: 16px; margin-bottom: 16px; }

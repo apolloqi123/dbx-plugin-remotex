@@ -15,7 +15,13 @@ import dropGate from "./messages/supplemental/dropGate";
 import terminalAppearance from "./messages/supplemental/terminalAppearance";
 import terminalFontMoved from "./messages/supplemental/terminalFontMoved";
 import quickCommandsManage from "./messages/supplemental/quickCommandsManage";
-import terminalBehavior from "./messages/supplemental/terminalBehavior";
+import terminalBehaviorEn from "./messages/supplemental/terminalBehavior.en";
+import terminalBehaviorZhCN from "./messages/supplemental/terminalBehavior.zh-CN";
+import terminalBehaviorZhTW from "./messages/supplemental/terminalBehavior.zh-TW";
+import terminalBehaviorEs from "./messages/supplemental/terminalBehavior.es";
+import terminalBehaviorIt from "./messages/supplemental/terminalBehavior.it";
+import terminalBehaviorJa from "./messages/supplemental/terminalBehavior.ja";
+import terminalBehaviorPtBR from "./messages/supplemental/terminalBehavior.pt-BR";
 import restored from "./messages/supplemental/restored";
 import acceleratorMonitor from "./messages/supplemental/acceleratorMonitor";
 import suggestionTransfer from "./messages/supplemental/suggestionTransfer";
@@ -55,6 +61,18 @@ export const messages = {
 } as const;
 
 export const supplemental: Record<string, Record<string, string>> = { ...common };
+
+/** terminalBehaviour 表按 locale 拆分为 sibling 文件；这里按原 locale 顺序
+ *  重新组装成一张表，合并语义（spread 顺序 / last-wins）保持不变。 */
+const terminalBehavior: Record<string, Record<string, string>> = {
+  en: terminalBehaviorEn,
+  "zh-CN": terminalBehaviorZhCN,
+  "zh-TW": terminalBehaviorZhTW,
+  es: terminalBehaviorEs,
+  it: terminalBehaviorIt,
+  ja: terminalBehaviorJa,
+  "pt-BR": terminalBehaviorPtBR,
+};
 
 const supplementalTables: Array<Record<string, Record<string, string>>> = [
 transferUi,

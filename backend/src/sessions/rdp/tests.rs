@@ -17,6 +17,8 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
+use crate::core::time::unix_now_secs;
+
 // —— 配置归一化 ————————————————————————————————————————————
 
 #[test]

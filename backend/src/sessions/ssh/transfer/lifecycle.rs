@@ -1,6 +1,7 @@
 //! Transfer operations for [`SshRuntime`].
 
 use super::*;
+use crate::core::time::unix_now_ms;
 
 impl SshRuntime {
     pub(crate) fn record_transfer(&self, task: Value) {

@@ -8,6 +8,8 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
+use crate::core::time::unix_now_secs;
+
 const STORAGE_VERSION: u64 = 1;
 const FILE_NAME: &str = "quick-commands.json";
 /// Cap shared with the workbench editor (`QUICK_COMMANDS_LIMIT`).
@@ -27,13 +29,6 @@ pub struct QuickCommandEntry {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct QuickCommandStore {
     pub commands: Vec<QuickCommandEntry>,
-}
-
-fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }
 
 pub fn store_path(data_dir: &Path) -> std::path::PathBuf {

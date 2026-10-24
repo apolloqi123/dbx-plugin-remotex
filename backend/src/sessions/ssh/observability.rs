@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::core::time::unix_now_secs;
+
 impl SshRuntime {
     /// Collects server metrics (CPU, memory, load, disks, network rates, top
     /// processes) with read-only commands; available even on read-only

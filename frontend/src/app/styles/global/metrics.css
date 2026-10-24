@@ -1,0 +1,36 @@
+/* Server metrics floating card and permissions */
+/* 悬浮卡挂在终端面板内部右上角：只遮挡终端一角，永不遮挡 SFTP 面板。 */
+.metrics-float { position: absolute; z-index: 6; top: 8px; right: 8px; display: flex; width: min(448px, calc(100% - 16px)); max-height: calc(100% - 16px); flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--popover); box-shadow: var(--shadow-popover); }
+/* 高占用进程行（CPU≥50% / 内存≥30%）警示色强调，扫一眼就能定位大户。 */
+.proc-hot { color: var(--warning); font-weight: 600; }
+.metrics-float > header { display: flex; min-height: 34px; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding: 3px 4px 3px 12px; }
+/* 头部三段（标题/发行版徽标/主机名）用 flex+gap 排版，不再文本堆叠；
+   主机名超长时省略号截断（完整值在 metrics-host 的 title）。 */
+.metrics-float h2 { display: flex; min-width: 0; margin: 0; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.metrics-float h2 .metrics-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.metrics-float-body { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 10px; overflow: auto; padding: 10px 12px; }
+.metrics-host { color: var(--muted-foreground); font-weight: 400; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+/* 三级信息层级（对齐现代监控面板观感）：大数字 22px/700 抓眼 → xs 标签 →
+   10px mono 副信息；卡片留白与圆角走令牌。 */
+.metric-card { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: color-mix(in srgb, var(--muted) 40%, transparent); }
+.metric-card strong { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 运行时长等长文本卡片独占整行，不在两列网格里被挤压折行。 */
+.metric-card--wide { grid-column: 1 / -1; }
+.metric-card > span { color: var(--foreground); font-size: 11px; font-weight: 500; }
+.metric-card small { color: var(--muted-foreground); font-family: var(--terminal-font-family); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metrics-disks { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.disk-row { display: grid; grid-template-columns: minmax(70px, 130px) 1fr auto; align-items: center; gap: 10px; font-size: 11px; }
+/* 超长挂载点/网卡名不得外溢压到进度条与数值列：第一列截断省略，完整值走 title。 */
+.disk-row > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disk-row progress { width: 100%; height: 8px; accent-color: var(--primary); }
+/* >=85% 磁盘占用转警示红；accent-color 是 progress 跨浏览器唯一可靠着色点
+   （::-webkit-progress-value/::-moz-progress-bar 各家不同名，规则要成对写）。 */
+.disk-row progress.disk-warn { accent-color: var(--destructive); }
+.metrics-hint { margin: 0; font-size: 10px; }
+/* 进程表复用全局 .file-header：在悬浮卡（popover 底色）内改用同底色，
+   避免 var(--background) 在卡片上显出一块色差；sticky + 阴影保留。 */
+.metrics-float .file-header,
+.metrics-side-body .file-header { background: var(--popover); box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent); }
+.side-panel-head .distro-badge { width: 18px; height: 18px; flex-basis: 18px; font-size: 11px; }
+

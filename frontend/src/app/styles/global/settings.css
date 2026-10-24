@@ -1,0 +1,107 @@
+/* SSH settings dialog */
+.settings-modal { width: min(680px, 100%); height: min(620px, calc(100vh - 48px)); }
+/* overflow-y:auto 会让 overflow-x 也算成 auto，本元素因此成为水平裁剪盒；
+   .settings-layout 的 margin:0 -16px 若冲不出裁剪盒，左栏左边 16px 会被切掉
+   （选中药丸左角变直角、视觉贴边的根因）。负 margin 移到本层、用等量 padding
+   保持子内容原位：裁剪盒扩到 modal 边缘，layout 的负 margin 在盒内成立。 */
+.settings-body { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; gap: 14px; overflow-y: auto; margin: 0 -16px; padding: 0 20px 0 16px; }
+/* 分类导航布局（对齐宿主设置页）：左栏分类 + 右栏内容；右栏滚动，左栏不滚。
+   弹窗高度固定，切分类时不再随内容多少跳动。 */
+.settings-nav-modal { height: min(600px, calc(100vh - 40px)); }
+.settings-layout { display: flex; min-height: 0; flex: 1 1 auto; margin: 0 -16px; border-top: 1px solid var(--border); }
+/* 左栏水平留白对齐宿主设置侧栏：药丸距内容边缘 12px（.settings-layout 负 margin
+   把左栏拉到弹窗 padding 边缘，这里 8px 会让选中药丸视觉贴边）。 */
+.settings-nav { display: flex; flex: 0 0 168px; flex-direction: column; gap: 1px; overflow-y: auto; border-right: 1px solid var(--border); padding: 8px 12px; }
+/* reka Tabs 包装：unlayered 规则压过 wrapper 分层工具类；.modal 按钮复位选择器
+   已排除 data-slot="tabs-trigger"（:not 按参数计特异性，复位实际是 (0,3,1)，
+   不排除会压过本组 (0,3,0) 规则、把背景抹成透明）。 */
+.settings-nav-tabs { width: 100%; }
+.settings-nav-list { display: flex; flex-direction: column; gap: 1px; width: 100%; height: auto; padding: 0; background: transparent; }
+.settings-nav .settings-nav-item { height: 28px; overflow: hidden; border: 0; border-radius: var(--radius); padding: 0 8px; background: transparent; color: var(--muted-foreground); font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; flex: 0 0 auto; justify-content: flex-start; box-shadow: none; }
+/* hover 不用 --accent：亮色（pearl）主题下它是 #f5f5f5，落在白底上等于没颜色；
+   改用前景色 8% 混合，明暗两态都可见。 */
+.settings-nav .settings-nav-item:hover { background: color-mix(in srgb, var(--foreground) 8%, transparent); }
+/* 选中态对齐宿主设置侧栏（截图「隧道维护」）：前景色实心药丸 + 反色文字，
+   暗色主题下令牌自动反转。active 优先于 hover。
+   选择器同时覆盖 data-state 与 data-active：reka 的 RovingFocusItem 会把
+   data-active="" 合并到 trigger 上，shadcn 包装类的 data-active:bg-background/
+   text-foreground（白底）只认这个属性，漏盖会出现选中项白底白字。 */
+.settings-nav .settings-nav-item[data-state="active"],
+.settings-nav .settings-nav-item[data-active],
+.settings-nav .settings-nav-item[data-state="active"]:hover,
+.settings-nav .settings-nav-item[data-active]:hover { background: var(--foreground); color: var(--background); font-weight: 500; }
+.settings-content { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 14px; overflow-y: auto; padding: 12px 16px; }
+.settings-pane { display: flex; flex-direction: column; gap: 10px; }
+.settings-pane .settings-section-title:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+/* 窄弹窗：左栏变顶部横向分类条。 */
+@media (max-width: 560px) {
+  .settings-layout { flex-direction: column; }
+  .settings-nav { flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .settings-nav-list { flex-direction: row; }
+  .settings-nav .settings-nav-item { flex: 0 0 auto; }
+}
+.settings-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted-foreground); }
+/* 开关行恢复横向布局：.settings-field 的 column 会让开关与文字掉到两行，
+   行内 flex 保持"开关 + 标签"同行（WebGL / 下载目录开关）。 */
+.settings-switch-row { flex-direction: row; align-items: center; gap: 8px; }
+.settings-radio-row { flex-direction: row; align-items: center; gap: 8px; }
+.settings-radio-row input { margin: 0; }
+.settings-field input, .settings-field textarea { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
+/* 设置表单里的 reka Select：触发钮吃满整行（原生 select 的 stretch 语义）。 */
+.settings-field [data-slot="select-trigger"] { width: 100%; min-width: 0; }
+/* 目录输入 + 浏览按钮同行：输入框吃满剩余宽度，图标按钮与输入框等高。 */
+.settings-dir-row { display: flex; align-items: center; gap: 6px; }
+.settings-dir-row input { min-width: 0; flex: 1 1 auto; }
+.browse-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); cursor: pointer; }
+.browse-button:hover { background: var(--accent); }
+.browse-button svg { width: 16px; height: 16px; flex: 0 0 16px; }
+
+/* ---- 应用内目录选择器（local/fs/browse，沙箱 iframe 无原生目录选择 API）---- */
+.folder-picker-modal { width: min(520px, 100%); height: min(460px, calc(100vh - 64px)); gap: 10px; }
+.folder-picker-path input { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
+.folder-picker-list { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; }
+.folder-picker-row { display: flex; align-items: center; gap: 8px; border: 0; border-radius: var(--radius); padding: 6px 8px; background: transparent; color: var(--foreground); font-size: 12px; text-align: left; cursor: pointer; }
+.folder-picker-row:hover { background: var(--accent); }
+.folder-picker-row svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--primary); }
+.folder-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-picker-hint { display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px; color: var(--muted-foreground); font-size: 11px; }
+.folder-picker-hint svg { width: 12px; height: 12px; }
+.folder-picker-current { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.settings-field textarea { resize: vertical; font-family: var(--terminal-font-family); }
+.settings-note { margin: 0; font-size: 10px; }
+.settings-section-title { margin: 6px 0 0; border-top: 1px solid var(--border); padding-top: 12px; font-size: 12px; }
+.settings-list { display: flex; margin: 0; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; padding: 0; list-style: none; }
+.settings-list li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); padding: 6px 8px; font-size: 11px; }
+.settings-list li:last-child { border-bottom: 0; }
+.settings-list-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.settings-list-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 12px; }
+.settings-list-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-key-icon { width: 14px; height: 14px; flex: 0 0 14px; color: var(--muted-foreground); }
+/* 全局 quick sudo 配置：来源选择行、列表操作列、内联表单操作列。 */
+.credential-source-row { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+.credential-source-row .credential-source-select { flex: 1; min-width: 0; }
+/* 「管理全局配置」入口：裸文字链接放表单行里太像半成品，升级为紧凑描边按钮。 */
+.credential-source-row .link-button { flex: 0 0 auto; align-self: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 10px; background: var(--background); color: var(--foreground); font-size: 11px; white-space: nowrap; }
+.credential-source-row .link-button:hover { background: var(--accent); }
+.settings-list-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.profiles-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 0; }
+/* 独立 profiles 弹窗：高度随内容（空态不再撑满 620px），宽度收窄，上限同设置弹窗。 */
+.profiles-modal { width: min(560px, 100%); height: auto; max-height: min(620px, calc(100vh - 48px)); }
+/* 工具行：左侧计数（muted 小字），右侧主按钮「新建配置」。 */
+.profiles-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.profiles-count { font-size: 11px; }
+.profiles-add { min-height: 26px; padding: 2px 10px; font-size: 11px; }
+/* 列表区保底高度：空态垂直居中不塌陷；有列表时随内容撑开。 */
+.profiles-content { display: flex; min-height: 240px; flex: 1 1 auto; flex-direction: column; }
+.profiles-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: 12px; text-align: center; }
+.profiles-empty svg { width: 28px; height: 28px; opacity: .55; }
+.profiles-empty p { margin: 0; }
+/* 行 hover 与录制记录列表同一视觉语言。 */
+.profiles-list li:hover { background: var(--accent); }
+.profiles-list li:first-child { border-radius: 5px 5px 0 0; }
+.profiles-list li:last-child { border-radius: 0 0 5px 5px; }
+.mcp-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mcp-limits input { width: 100%; }
+.settings-body .link-button { display: inline-flex; align-items: center; gap: 5px; }
+.settings-body .link-button svg { width: 12px; height: 12px; flex: 0 0 12px; }
+

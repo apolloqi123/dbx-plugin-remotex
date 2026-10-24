@@ -1,0 +1,304 @@
+.workbench {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.toolbar {
+  position: relative;
+  /* 本层叠上下文仍须高于终端 xterm 内部层（关键词高亮装饰 .xterm-decoration
+     z=6、.xterm-helpers z=5）与指标/录制浮动卡（.metrics-float z=6），否则
+     工具栏本身会被这些层盖住；工具栏 popover 已 portal 到 body（z-50），不再
+     随本上下文排序，仍低于 modal(80)/回放(90)。 */
+  z-index: 40;
+  isolation: isolate;
+  overflow: visible;
+  display: flex;
+  height: 36px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+}
+
+.identity, .toolbar-actions, .icon-button,
+.file-name, .transfer-title, .transfer-meta,
+.modal header, .modal footer, .file-footer {
+  display: flex;
+  align-items: center;
+}
+
+/* 标识区 + Info 按钮的左组容器：弹层锚点在外层（identity 自身 overflow
+   hidden 负责长主机名截断，弹层不会被裁）。 */
+.identity-side { display: flex; flex: 0 1 auto; align-items: center; min-width: 0; gap: 4px; }
+
+/* Dock panel surface (surface=panel): the host dock chrome provides its own
+   close/collapse/maximize controls, so the workbench toolbar collapses to a
+   slim right-aligned quick strip (font zoom, palette, settings) at dock
+   density — 30px row, compact 20px icon buttons. */
+.workbench.panel-surface .toolbar {
+  height: 30px;
+  min-height: 30px;
+  gap: 4px;
+  padding: 0 6px;
+  /* ghost 化：条子融进终端（去底色/去分隔线），按钮低透明度、hover 才显形。 */
+  background: transparent;
+  border-bottom: 0;
+}
+.workbench.panel-surface .toolbar .icon-button { width: 22px; height: 22px; }
+.workbench.panel-surface .toolbar .icon-button.compact { width: 20px; height: 20px; }
+.workbench.panel-surface .toolbar .icon-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  opacity: .72;
+}
+.workbench.panel-surface .toolbar .icon-button:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--foreground);
+  opacity: 1;
+}
+.workbench.panel-surface .toolbar .icon-button.is-active {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--foreground);
+  opacity: 1;
+}
+.workbench.panel-surface .toolbar .icon-button.is-recording { color: var(--destructive); opacity: 1; }
+
+/* 左组系统信息带：11px 等宽数字、tabular-nums 防抖动，溢出截断不换行。 */
+.panel-toolbar-left { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; overflow: hidden; }
+.panel-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.panel-metrics b { font-weight: 600; color: var(--foreground); }
+/* 降级带（ssh/metrics 失败）：占位数字弱化，原因在 tooltip 里，成功即回正常。 */
+.panel-metrics-degraded b { color: var(--muted-foreground); opacity: 0.7; }
+
+/* 工具条隐藏后的还原微钮：贴右上角悬浮于终端上，低透明度、hover 复原。 */
+.panel-toolbar-reveal {
+  position: fixed;
+  top: 4px;
+  right: 6px;
+  z-index: 45;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  opacity: .35;
+  cursor: pointer;
+}
+.panel-toolbar-reveal:hover { background: var(--accent); opacity: 1; }
+.panel-toolbar-reveal svg { width: 13px; height: 13px; }
+
+/* 传输弹层共享隐形锚点：固定定位在工具条右缘下，tab/panel 两个表面的按钮
+   都只是开关（见 App.vue header 层的单实例 Popover）。 */
+.transfer-popover-anchor { position: fixed; top: 34px; right: 8px; width: 0; height: 0; }
+
+/* Dock 面板配色快切弹层：窄体 + 列表内滚，短面板（宿主 dock 可调高度）下
+   也不被视口裁剪；行密度与 shell-surface-item 同档。 */
+.panel-palette-popover { gap: 0; width: 236px; padding: 8px; }
+.panel-palette-popover h3 { margin: 0 2px 6px; font-size: 12px; }
+.panel-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: min(220px, 46vh);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.panel-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.panel-palette-row:hover { background: var(--accent); }
+.panel-palette-row.selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.panel-palette-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-palette-swatch { flex: 0 0 auto; display: inline-flex; gap: 1px; }
+.panel-palette-swatch i { display: block; width: 6px; height: 11px; border-radius: 1px; }
+.panel-palette-footer { display: flex; justify-content: flex-end; margin-top: 6px; }
+.panel-palette-footer .link-button { gap: 5px; font-size: 11px; }
+.panel-palette-footer .link-button svg { width: 12px; height: 12px; flex: 0 0 12px; }
+
+/* Panel "+" shell menu entries. */
+.shell-surface-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+}
+.shell-surface-item:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.shell-surface-header {
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.shell-surface-item .local-shell-program {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 10px;
+}
+/* 工具条「会话」下拉（新建/复制/命令会话/本地终端/Shell 选项）：图标 + 文案的
+   整宽行菜单项，形态对齐 shell-surface-item。popover 作用域没有 .modal button
+   的扁平化兜底，需自带去边框/去背景。 */
+.session-menu-popover { min-width: 210px; }
+.session-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.session-menu-item svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.session-menu-item:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.session-menu-item:disabled { opacity: 0.45; }
+.session-menu-separator { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.session-shell-head { display: flex; align-items: center; gap: 6px; }
+.session-shell-head h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.identity { min-width: 0; overflow: hidden; gap: 6px; }
+/* 空间不足时 Info 按钮也可折叠（先缩主机名，再缩它到 0），不再硬顶
+   右侧按钮组造成叠印。 */
+.identity-side > .icon-button { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.identity > * { flex: 0 0 auto; }
+.identity strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.connection-color { width: 4px; height: 16px; flex: 0 0 4px; border-radius: 999px; }
+.read-only-badge { border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; color: var(--muted-foreground); font-size: 10px; }
+/* 窄窗口下工具栏按钮一律保持固有宽度（flex 不收缩）：收缩会把 24px 按钮压到
+   比 14px 图标还窄，相邻按钮互相叠印（"堆叠错乱"）。空间不够时优先压缩左侧
+   .identity 的 strong（省略号截断），仍不够则右侧溢出而非重叠。 */
+/* 按钮组整体不参与收缩：收缩时 flex-end 对齐会让内容向左溢出、压到
+   .identity 上（窄窗口"堆叠错乱"的另一半根因）。空间不足时由 .identity
+   的 strong 先缩到 0，再不够宁可右缘裁切也不重叠。 */
+.toolbar-actions { flex: 0 0 auto; justify-content: flex-end; gap: 2px; }
+.toolbar-actions > * { flex: 0 0 auto; }
+
+.icon-button, .link-button, .file-header button,
+/* 弹窗/路径栏按钮统一去默认样式；开关（data-slot="switch"）、下拉触发钮
+   （data-slot="select-trigger"）与页签触发钮（data-slot="tabs-trigger"）自带
+   轨道/边框/选中样式，必须排除——:not() 按参数计特异性（每条 (0,1,0)），
+   该选择器实际特异性 (0,3,1)，会把这些控件的背景抹成透明
+   （设置侧栏选中项白字无药丸、弹窗内控件隐形而工具栏正常的根因）。 */
+.modal button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]), .path-toolbar button:not(.sudo-toggle):not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]) {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+/* 图标按钮统一两档：工具栏 24px（svg 14px）/ 紧凑位 .compact 20px（svg 12px）。
+   新增图标按钮只用这两档，不再散养 16/22/26px。 */
+.icon-button {
+  display: inline-grid;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--radius);
+  padding: 0;
+}
+.icon-button.compact { width: 20px; height: 20px; }
+.icon-button:hover:not(:disabled),
+.file-header button:hover { background: var(--accent); }
+.icon-button:disabled, button:disabled { cursor: default; opacity: .42; }
+.icon-button svg, .path-toolbar svg,
+.file-header svg, .file-name svg, .transfer-title svg, .drop-overlay svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  stroke-width: 1.7;
+}
+.icon-button.compact svg { width: 12px; height: 12px; flex: 0 0 12px; }
+/* sudo 文本按钮：文字本身就是开关，关闭暗色、开启亮色描边+前景。 */
+.sudo-toggle { display: inline-flex; align-items: center; justify-content: center; height: 20px; margin-left: 2px; border: 1px solid var(--border); border-radius: 4px; padding: 0 7px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; cursor: pointer; }
+.sudo-toggle:hover:not(:disabled):not(.is-on) { background: var(--accent); }
+.sudo-toggle.is-on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--foreground); font-weight: 600; }
+.sudo-toggle:disabled { cursor: default; }
+.toolbar-separator { width: 1px; height: 16px; flex: 0 0 1px; margin: 0 3px; background: var(--border); }
+.icon-button.is-active { background: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
+.columns-popover input, .remember input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
+/* 复选/单选全局对齐主色（UA 默认蓝色与宿主主题脱节）。 */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+.icon-neutral { color: var(--muted-foreground); }
+/* 图标色保留原有六色相区分，全部从宿主令牌派生（随宿主明暗/调色板变化），
+   不再硬编码 hex、不再维护明暗双份。 */
+.icon-emerald { color: var(--success); }
+.icon-amber { color: var(--warning); }
+.icon-cyan { color: color-mix(in srgb, var(--info) 65%, var(--success)); }
+.icon-blue { color: var(--info); }
+.icon-teal { color: color-mix(in srgb, var(--success) 55%, var(--info)); }
+.icon-violet { color: color-mix(in srgb, var(--info) 60%, var(--destructive)); }
+
+/* reka Toast viewport（ol）：定位与层级在这里；toast 本体（li）只带视觉样式。
+   通知在视口底部居中 z90（tooltip 100 之下、modal 80 之上）；错误横幅在顶栏下
+   居中 z15（保持迁移前被模态遮罩覆盖的语义）。 */
+.notice-viewport, .error-viewport { position: fixed; left: 50%; width: max-content; max-width: min(720px, calc(100vw - 32px)); transform: translateX(-50%); margin: 0; padding: 0; list-style: none; }
+.notice-viewport { bottom: 24px; z-index: 90; }
+.error-viewport { top: 42px; z-index: 15; }
+.notice, .error-banner { display: flex; align-items: center; gap: 10px; border-radius: var(--radius); box-shadow: 0 6px 24px rgb(0 0 0 / 24%); }
+/* toast 通知与错误横幅同一横幅体系：令牌色弹层底 + 边框，不再反色；
+   字号对齐全局 12px（原 14px 比模态标题还大）。 */
+.notice { border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 14px; background: var(--popover); color: var(--foreground); font-size: 12px; box-shadow: var(--shadow-popover); }
+.notice-action { flex: 0 0 auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 8px; background: transparent; color: var(--primary); font-size: 11px; white-space: nowrap; cursor: pointer; }
+.notice-action:hover { background: var(--accent); }
+
+/* 自定义 tooltip：反色气泡 + 小三角（对齐 DBX 宿主观感），pointer-events
+   关闭避免遮挡 hover；above 变体翻到元素上方。宽度按内容自然展开——
+   不能加 overflow-wrap:anywhere（CJK 下 min-content 会退化成单字宽，
+   tooltip 逐字竖排）。 */
+.app-tooltip { position: fixed; z-index: 100; width: max-content; max-width: 260px; transform: translateX(-50%); border-radius: 6px; padding: 4px 10px; background: var(--foreground); color: var(--background); font-size: 11px; line-height: 1.45; text-align: center; pointer-events: none; box-shadow: 0 4px 14px rgb(0 0 0 / 18%); }
+.app-tooltip::before { content: ""; position: absolute; top: -3px; left: calc(50% + var(--arrow-offset, 0px)); width: 7px; height: 7px; transform: translateX(-50%) rotate(45deg); background: var(--foreground); }
+.app-tooltip.app-tooltip-above { transform: translateX(-50%) translateY(-100%); }
+.app-tooltip-above::before { top: auto; bottom: -3px; }
+.error-banner { justify-content: space-between; border: 1px solid color-mix(in srgb, var(--destructive) 60%, var(--border)); padding: 6px 10px; background: color-mix(in srgb, var(--destructive) 16%, var(--popover)); color: color-mix(in srgb, var(--destructive) 45%, var(--foreground)); }
+.error-banner button { display: grid; width: 20px; height: 20px; border: 0; padding: 0; place-items: center; background: transparent; color: inherit; cursor: pointer; }
+.error-banner svg { width: 13px; height: 13px; }
+

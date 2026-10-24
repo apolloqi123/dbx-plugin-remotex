@@ -548,8 +548,3 @@ pub async fn validate_sudo_timestamp(handle: &Handle<SshClient>) -> Result<(), S
         Err("sudo timestamp expired".to_string())
     }
 }
-
-/// Single-quote shell escaping for embedding a path in a remote command.
-pub fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', r"'\''"))
-}

@@ -1,6 +1,7 @@
 //! Telnet layer.
 
 use super::*;
+use crate::core::time::unix_now_ms;
 
 pub(crate) async fn publish_telnet_output(
     session_id: &str,
@@ -19,20 +20,6 @@ pub(crate) async fn publish_telnet_output(
             error.message
         );
     }
-}
-
-pub(crate) fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs())
-        .unwrap_or(0)
-}
-
-pub(crate) fn unix_now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 /// Applies one trigger decision's segments exactly like the SSH read loop:

@@ -10,15 +10,16 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, Loader2, Plus, Search, ShieldCheck, Terminal as TerminalIcon, TextSelect, X } from "@lucide/vue";
+import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, Loader2, Plus, Search, ShieldCheck, TextSelect } from "@lucide/vue";
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../../../shared/lib/clipboardBridge";
-import { pluginStore } from "../../../shared/lib/pluginStore";
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../../shared/ui/context-menu/index";
+import SplitTerminalHeader from "./SplitTerminalHeader.vue";
 import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
+import { useSplitSearch } from "../composables/useSplitSearch";
 import { useSplitTerminal } from "../composables/useSplitTerminal";
 import { useTerminalAiSearch } from "../composables/useTerminalAiSearch";
 import { Osc7DirectoryParser } from "../lib/terminalDirectoryTracking";
@@ -28,12 +29,6 @@ import { PromptNewlineTransformer } from "../lib/terminalPromptNewline";
 import { SPLIT_DEFAULT_COLS, SPLIT_DEFAULT_ROWS } from "../lib/terminalSplit";
 import { aiBridgeAvailable } from "../../agent/lib/aiBridge";
 import { loadAiSettings } from "../../agent/lib/aiSettings";
-import {
-  TERMINAL_SEARCH_OPTIONS_KEY,
-  sanitizeSearchOptions,
-  terminalSearchSeedFromSelection,
-  type TerminalSearchOptions,
-} from "../lib/terminalInteraction";
 
 interface Props {
   connectionId: string;
@@ -99,13 +94,25 @@ const terminalHost = ref<HTMLElement | null>(null);
 const menuOpen = ref(false);
 const hasSelection = ref(false);
 
-// 分屏自己的搜索面板：与主终端同一组件/持久化开关，addon 绑定本窗格 xterm。
-const searchOpen = ref(false);
-const searchSeedQuery = ref("");
-const searchSeedOptions = ref<TerminalSearchOptions>(sanitizeSearchOptions(null));
-const searchMatchState = ref<"idle" | "match" | "no-match">("idle");
-const searchResultIndex = ref(0);
-const searchResultCount = ref(0);
+// 分屏自己的搜索面板：状态与 SearchAddon 接线由 useSplitSearch 持有，
+// addon 实例仍由本组件创建/销毁，保持原有 dispose 顺序。
+const {
+  open: searchOpen,
+  seedQuery: searchSeedQuery,
+  seedOptions: searchSeedOptions,
+  matchState: searchMatchState,
+  resultIndex: searchResultIndex,
+  resultCount: searchResultCount,
+  openSearch: openSplitSearch,
+  closeSearch: closeSplitSearch,
+  clearSearch: clearSplitSearch,
+  run: runSplitSearch,
+  handleResultsChange: handleSplitSearchResults,
+} = useSplitSearch({
+  getTerminal: () => terminal,
+  getSearchAddon: () => searchAddon,
+  closeMenu: () => (menuOpen.value = false),
+});
 
 // `#` AI 命令搜索：状态机/锚点/直连生成与主终端共用同一 composable。
 // 本地行缓冲只在“空行键入 #”时激活，不依赖远端回显。
@@ -264,12 +271,7 @@ function createTerminal() {
   terminal.loadAddon(webLinks);
   searchAddon = new SearchAddon();
   terminal.loadAddon(searchAddon);
-  searchAddon.onDidChangeResults(({ resultCount, resultIndex }) => {
-    if (!searchOpen.value) return;
-    searchResultCount.value = resultCount;
-    searchResultIndex.value = resultCount > 0 && resultIndex >= 0 ? resultIndex + 1 : 0;
-    searchMatchState.value = resultCount > 0 ? "match" : "no-match";
-  });
+  searchAddon.onDidChangeResults(handleSplitSearchResults);
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.type !== "keydown" || event.altKey || event.shiftKey) return true;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -365,53 +367,6 @@ function selectAllTerminal() {
 function clearTerminal() {
   terminal?.clear();
   terminal?.focus();
-}
-
-function openSplitSearch() {
-  if (!terminal) return;
-  menuOpen.value = false;
-  searchSeedQuery.value = terminalSearchSeedFromSelection(terminal.getSelection() || "");
-  searchSeedOptions.value = sanitizeSearchOptions(pluginStore.getItem(TERMINAL_SEARCH_OPTIONS_KEY));
-  searchOpen.value = true;
-}
-
-function closeSplitSearch() {
-  searchOpen.value = false;
-  resetSplitSearchResults();
-  searchAddon?.clearDecorations();
-  terminal?.focus();
-}
-
-function clearSplitSearch() {
-  resetSplitSearchResults();
-  searchAddon?.clearDecorations();
-}
-
-function resetSplitSearchResults() {
-  searchMatchState.value = "idle";
-  searchResultIndex.value = 0;
-  searchResultCount.value = 0;
-}
-
-function runSplitSearch(
-  query: string,
-  options: { caseSensitive: boolean; regex: boolean; wholeWord: boolean },
-  direction: "next" | "prev",
-) {
-  if (!searchAddon || !query) return;
-  const searchOptions: ISearchOptions = {
-    caseSensitive: options.caseSensitive,
-    regex: options.regex,
-    wholeWord: options.wholeWord,
-    decorations: {
-      matchBackground: "#64748b55",
-      matchOverviewRuler: "#64748b",
-      activeMatchBackground: "#3b82f655",
-      activeMatchColorOverviewRuler: "#3b82f6",
-    },
-  };
-  if (direction === "prev") searchAddon.findPrevious(query, searchOptions);
-  else searchAddon.findNext(query, searchOptions);
 }
 
 function sendSudoRefresh() {
@@ -575,29 +530,14 @@ defineExpose({
     :aria-label="t('terminalSplit.title')"
     :aria-busy="status === 'connecting'"
   >
-    <header v-if="showHeader" class="split-terminal-header">
-      <span class="split-terminal-title">
-        <TerminalIcon aria-hidden="true" />
-        <span class="split-terminal-title-text">{{ t("terminalSplit.title") }}</span>
-      </span>
-      <span class="split-terminal-spacer" aria-hidden="true" />
-      <span v-if="status === 'connecting'" class="split-terminal-status" role="status">
-        <Loader2 class="spinning" aria-hidden="true" />
-        <span>{{ t("sessionStatus.connecting") }}</span>
-      </span>
-      <span v-else-if="status === 'error'" class="split-terminal-status is-error" :title="errorMessage">
-        {{ errorMessage }}
-      </span>
-      <button
-        type="button"
-        class="split-terminal-close"
-        :title="closeLabel"
-        :aria-label="closeLabel"
-        @click="onCloseClick"
-      >
-        <X aria-hidden="true" />
-      </button>
-    </header>
+    <SplitTerminalHeader
+      v-if="showHeader"
+      :status="status"
+      :error-message="errorMessage"
+      :close-label="closeLabel"
+      :t="t"
+      @close="onCloseClick"
+    />
     <div class="split-terminal-body" @click="focusTerminal">
       <div ref="terminalHost" class="split-terminal-host terminal-host" />
       <!-- `#` AI 命令搜索：与本窗格光标行同位，输入只进本地状态机不落 PTY。 -->
@@ -678,98 +618,6 @@ defineExpose({
   overflow: hidden;
   background: var(--ssh-terminal-background);
   color: var(--foreground);
-}
-
-.split-terminal-header {
-  display: flex;
-  height: 24px;
-  flex: 0 0 24px;
-  align-items: center;
-  gap: 6px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 4px 0 8px;
-  background: var(--background);
-  color: var(--muted-foreground);
-  font-size: 11px;
-  line-height: 1;
-  user-select: none;
-}
-
-.split-terminal-title {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  overflow: hidden;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.split-terminal-title-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.split-terminal-title svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  stroke-width: 1.8;
-}
-
-.split-terminal-spacer {
-  flex: 1 1 auto;
-}
-
-.split-terminal-status {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: 10.5px;
-  white-space: nowrap;
-}
-
-.split-terminal-status > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.split-terminal-status.is-error {
-  color: var(--destructive);
-}
-
-.split-terminal-status svg {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
-}
-
-.split-terminal-close {
-  display: inline-grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  place-items: center;
-  border: 0;
-  border-radius: 4px;
-  padding: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-
-.split-terminal-close:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
-
-.split-terminal-close svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.8;
 }
 
 .split-terminal-body {

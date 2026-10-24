@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::core::time::unix_now_secs;
+
 /// 绑定解析结果：生成当前窗口码所需的全部材料。
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoundTotp {

@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::core::time::unix_now_secs;
+
 impl VncSessionRuntime {
     pub fn new() -> Self {
         Self {
@@ -239,13 +241,6 @@ impl VncSessionRuntime {
         });
         json!({ "sessions": list })
     }
-}
-
-pub(crate) fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs())
-        .unwrap_or(0)
 }
 
 /// Maps engine errors onto `(message, retryable)`. Authentication and

@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::core::time::unix_now_secs;
+
 impl TelnetSessionRuntime {
     pub fn new() -> Self {
         Self {

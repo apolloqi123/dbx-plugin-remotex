@@ -7,4 +7,5 @@ pub(crate) mod otp;
 pub(crate) mod otp_store;
 pub(crate) mod plugin_ids;
 pub(crate) mod preferences;
+pub(crate) mod time;
 pub(crate) mod vault;

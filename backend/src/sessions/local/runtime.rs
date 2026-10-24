@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::core::time::unix_now_secs;
+
 impl LocalTerminalRuntime {
     pub fn new() -> Self {
         Self {
@@ -666,11 +668,4 @@ pub(super) fn spawn_pump(
         );
         sessions.write().await.remove(&session_id);
     });
-}
-
-pub(super) fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs())
-        .unwrap_or(0)
 }

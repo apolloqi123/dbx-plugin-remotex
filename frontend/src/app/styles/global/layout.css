@@ -1,0 +1,81 @@
+/* 布局方向偏好（issue #187）的纵向覆盖类：与窄屏断点同形的堆叠规则，
+   但不依赖视口——「始终上下」在宽屏同样生效。终端恒在上（.panes--reversed
+   的 row-reverse 被压成 column，左右换位对纵向无意义）。
+   高度消费容器上的 --pane-split（issue #207，App.vue 由 splitRatio 写入），
+   拖拽/键盘微调即时生效；flex-basis:auto !important 压过横向同款内联
+   flexBasis。变量缺失（历史缓存/未绑定）回落 52%。 */
+.panes--vertical, .panes--vertical.panes--reversed { flex-direction: column; }
+.panes--vertical .terminal-stack { width: 100%; height: var(--pane-split, 52%); flex-basis: auto !important; flex-shrink: 0; }
+/* 栈内终端填满编辑器/把手之外的高度（内联 flex-basis 由栈消费）。 */
+.panes--vertical .terminal-stack > .terminal-workspace { height: 100%; flex: 1 1 auto; }
+.panes--vertical .terminal-pane-surface > .terminal-pane { height: 100%; flex: 1 1 auto; }
+/* SFTP 面板 flex:1 撑满终端（--pane-split）与 1px 把手之外的余量，
+   min-height:0 防内容把面板撑出容器。 */
+.panes--vertical .sftp-pane { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
+.panes--vertical .divider { width: 100%; height: 1px; flex-basis: 1px; cursor: row-resize; }
+.panes--vertical .divider::after { top: -3px; bottom: -3px; left: 0; right: 0; }
+.panes--vertical.panes--solo .terminal-stack { height: 100%; }
+/* SFTP 收起（solo）时栈占满工作台高度；页签高度仍按内联比例。 */
+.panes--solo .terminal-stack { height: 100%; }
+
+@media (max-width: 900px) {
+  /* 窄屏纵向仅是「自动」模式的缺省：强制左右（.panes--horizontal）不受断点
+     影响（issue #187），:not() 提一档特异性压过下面的列布局规则。高度消费
+     --pane-split（issue #207），与 .panes--vertical 同源同回落。 */
+  .panes:not(.panes--horizontal), .panes--reversed:not(.panes--horizontal) { flex-direction: column; }
+  .panes:not(.panes--horizontal) .terminal-stack { width: 100%; height: var(--pane-split, 52%); flex-basis: auto !important; flex-shrink: 0; }
+  .panes:not(.panes--horizontal) .terminal-stack > .terminal-workspace { height: 100%; flex: 1 1 auto; }
+  .panes:not(.panes--horizontal) .terminal-pane-surface > .terminal-pane { height: 100%; flex: 1 1 auto; }
+  .panes:not(.panes--horizontal) .sftp-pane { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
+  .panes:not(.panes--horizontal) .divider { width: 100%; height: 1px; flex-basis: 1px; cursor: row-resize; }
+  /* 纵向布局把手命中区向下/上扩展。 */
+  .divider::after { top: -3px; bottom: -3px; left: 0; right: 0; }
+  /* SFTP 面板收起时终端占满整个工作台（含窄屏纵向布局）。 */
+  .panes:not(.panes--horizontal).panes--solo .terminal-stack,
+  .panes--solo .terminal-stack { height: 100%; }
+}
+
+/* Quick sudo command dialog */
+.quick-sudo-control { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
+.command-modal { width: min(640px, 100%); }
+.command-modal > textarea { min-height: 96px; resize: vertical; font-family: var(--terminal-font-family); line-height: 1.45; }
+.command-output { display: flex; min-height: 96px; max-height: 40vh; overflow: auto; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0; border: 1px solid var(--border); border-radius: 6px; padding: 12px; background: color-mix(in srgb, var(--muted) 45%, transparent); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.command-exit { color: var(--muted-foreground); font-size: 10px; }
+
+/* 批量发送命令条（Electerm quick-command bar 风格）：工作区底部独立一行，
+   不覆盖终端内容；上下分屏时位于下屏终端之下（FitAddon 随高度变化重排）。 */
+.terminal-pane.marker-visible .terminal-host { inset: 0 0 24px 0; }
+/* 命令标记状态条可见时，传输横幅上移避免叠压（终端同样装了 633 标记） */
+.terminal-pane.marker-visible .zmodem-status { bottom: 28px; }
+.batch-bar { position: relative; z-index: 5; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; border-top: 1px solid var(--border); padding: 4px 8px; background: var(--background); }
+.batch-bar-targets { display: inline-flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; background: var(--background); color: var(--foreground); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.batch-bar-targets:hover { background: color-mix(in srgb, var(--muted) 55%, transparent); }
+.batch-bar-targets span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.batch-bar-quick { flex: 0 1 170px; min-width: 0; }
+.batch-bar-input { flex: 1 1 auto; min-width: 60px; height: 26px; border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
+.batch-bar-input:focus { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
+.batch-bar .icon-button { flex: 0 0 auto; }
+.batch-bar-send { color: var(--success); }
+/* 底部条上的 popover 向上展开：定位由 reka side="top" 负责，这里只管尺寸布局。 */
+.batch-targets-popover { display: flex; width: min(380px, calc(100vw - 32px)); max-height: min(320px, 60vh); flex-direction: column; gap: 6px; overflow: auto; padding: 8px; }
+/* 快速命令弹层：与右上角面板同形态（搜索 + 可折叠分组 + 卡片），内部行样式
+   复用面板的 quick-search、quick-group 与 quick-card 全局类。 */
+.batch-quick-popover { display: flex; width: min(300px, calc(100vw - 32px)); max-height: min(320px, 60vh); flex-direction: column; gap: 2px; overflow: auto; padding: 8px; }
+.batch-quick-popover .quick-card { cursor: pointer; text-align: left; width: 100%; }
+.batch-quick-popover .quick-card:hover { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.batch-bar-status { display: flex; flex: 0 0 auto; align-items: flex-start; gap: 7px; margin: 4px 8px 0; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 94%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); font-size: 11px; }
+.batch-bar-status p { margin: 0; }
+.batch-bar-status .icon-button { flex: 0 0 auto; margin-left: auto; }
+.batch-send-hint { margin: 0; font-size: 11px; }
+.batch-target-actions { display: inline-flex; gap: 10px; }
+.batch-target-list { display: flex; max-height: 180px; overflow: auto; flex-direction: column; gap: 2px; }
+.batch-target-row { display: flex; align-items: center; gap: 8px; border-radius: 6px; padding: 3px 6px; font-size: 12px; cursor: pointer; }
+.batch-target-row:hover { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.batch-target-row.offline { opacity: 0.55; }
+.batch-target-row .mono { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-badge { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; font-size: 10px; color: var(--muted-foreground); }
+.batch-badge-warn { color: var(--destructive); border-color: color-mix(in srgb, var(--destructive) 45%, transparent); }
+.batch-result-list { display: flex; max-height: 96px; overflow: auto; flex-direction: column; gap: 2px; }
+.batch-result-row { font-size: 11px; color: var(--destructive); overflow-wrap: anywhere; }
+.quick-command-global-hint { margin: 0 4px 6px; font-size: 10px; color: var(--muted-foreground); }
+

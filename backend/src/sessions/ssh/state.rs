@@ -523,21 +523,7 @@ pub(crate) struct CachedMetrics {
     pub(crate) collected_at: u64,
 }
 
-/// Unix seconds for the metrics cache timestamps.
-pub(crate) fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
 /// Unix milliseconds for audit-ledger timestamps and approval durations.
-pub(crate) fn unix_now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-}
 
 /// Builds the response served from the snapshot cache: the stored fields plus
 /// a `cachedAt` marker (Unix seconds) so callers can show the age of the data.

@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
+use crate::core::time::unix_now_secs;
+
 const STORAGE_VERSION: u64 = 1;
 const FILE_NAME: &str = "sftp-bookmarks.json";
 /// Cap shared with the workbench bookmark dropdown.
@@ -30,13 +32,6 @@ pub struct BookmarkEntry {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BookmarkStore {
     pub bookmarks: Vec<BookmarkEntry>,
-}
-
-fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }
 
 pub fn store_path(data_dir: &Path) -> PathBuf {

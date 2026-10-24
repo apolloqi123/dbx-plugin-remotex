@@ -173,11 +173,6 @@ impl RestartPolicy {
     }
 }
 
-/// POSIX single-quoted shell literal (`'` → `'\''`).
-fn shell_single_quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', r"'\''"))
-}
-
 /// Provider state: one instance per sidecar process, shared by the fixed
 /// `task/*` RPC arms. Nothing here persists — the host owns persistence and
 /// reconciles resident sessions through `task/status` after a sidecar
