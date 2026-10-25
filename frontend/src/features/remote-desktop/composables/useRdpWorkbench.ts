@@ -6,14 +6,27 @@
 // sendRdpClipboard/persistState...），不 import App.vue，也不 import 任何
 import { rpc } from "../../../shared/lib/rpc";
 // SSH 内部符号——App.vue 是唯一消费方。
-import { ref, type Ref } from "vue";
-import type { RdpInputEvent } from "../lib/rdpFrame";
+import { computed, ref, type Ref } from "vue";
+import type { RdpConnectOptions } from "../components/RdpConnectDialog.vue";
+import { rdpErrorKindKey, type RdpInputEvent, type RdpSessionStateView } from "../lib/rdpFrame";
 
 /** RDP 会话内用户选择的桌面尺寸（持久化到 workbenchState 的 rdpWidth/Height，
  * 恢复 tab 时优先于连接表单的 rdp_resolution——会话内显式选择是更近的意图）。*/
 export interface RdpPersistedSize {
   width: number;
   height: number;
+}
+
+/** 连接上下文（host/port/rdp_* 直启 RDP 用）。 */
+export interface RdpConnectionContext {
+  host?: string;
+  port?: number;
+  username?: string;
+  rdpDomain?: string;
+  rdpWidth?: number;
+  rdpHeight?: number;
+  rdpCertificatePolicy?: "prompt" | "strict" | "accept-temporarily";
+  rdpClipboard?: boolean;
 }
 
 export function useRdpWorkbench(options: {
@@ -26,9 +39,22 @@ export function useRdpWorkbench(options: {
   rdpSurface: Ref<{ $el?: any } | null>;
   sendRdpInput: (event: RdpInputEvent) => void;
   sendRdpClipboard: (text: string) => void;
+  rdpState: Ref<RdpSessionStateView>;
+  rdpDialogOpen: Ref<boolean>;
+  startRdpSession: (connectOptions: RdpConnectOptions) => Promise<boolean>;
+  // 装配依赖（声明/装配在本组合式函数之后）：一律 getter 惰性接入；函数内按
+  // 原名解构，迁出代码保持逐行原样。
+  getConnection: () => Ref<RdpConnectionContext>;
+  getStoredConnectionProtocol: () => Ref<string>;
+  sftpPaneOpen: Ref<boolean>;
+  closeRightPanel: () => void;
+  getBatchBarOpen: () => Ref<boolean>;
 }) {
-  const { t, showError, showNotice, persistState, isRdpMode, rdpSession, rdpSurface, sendRdpInput, sendRdpClipboard } =
-    options;
+  const {
+    t, showError, showNotice, persistState, isRdpMode, rdpSession, rdpSurface, sendRdpInput, sendRdpClipboard,
+    rdpState, rdpDialogOpen, startRdpSession,
+    getConnection, getStoredConnectionProtocol, sftpPaneOpen, closeRightPanel, getBatchBarOpen,
+  } = options;
 
   // —— 大文本粘贴（与连接表单同一组文案）：写入远端剪贴板（快，远端 Ctrl+V）
   // 或按键注入（慢，剪贴板被禁时兜底，4k 字符/次为后端上限，分片发送）。——
@@ -126,6 +152,67 @@ export function useRdpWorkbench(options: {
     await applyRdpResolution(width, height);
   }
 
+// RDP 路由重入保护（与 sidecar 同 workbenchId 幂等查重双保险）：reconnect
+// 梯子/宿主 replay 并发触发的 openSession 会同时抵达 RDP 路由，两次 rdp/start
+// 会让 Windows 单会话策略互踢会话 → 前端持有的旧 sessionId 收到断开事件 →
+// 重连梯子再触发，工作台卡死在"连接中"。启动期间置位吞掉并发重入。
+let rdpRouteInFlight = false;
+async function routeRdpConnection(): Promise<void> {
+  if (rdpRouteInFlight) return;
+  rdpRouteInFlight = true;
+  try {
+    if (!(await startRdpFromConnection())) rdpDialogOpen.value = true;
+  } finally {
+    rdpRouteInFlight = false;
+  }
+}
+
+// 对话框发起的 RDP（回落/手动路径）：不经 openSession 的协议查询，表单协议
+// 无从判定——发起前把 tab 级协议置为 rdp，会话断开/关闭后连接级门控仍成立。
+async function connectViaRdpDialog(options: RdpConnectOptions): Promise<boolean> {
+  const storedConnectionProtocol = getStoredConnectionProtocol();
+  storedConnectionProtocol.value = "rdp";
+  return startRdpSession(options);
+}
+
+// —— RDP 会话生命周期（nyaterm-parity P3-4，与 VNC 同款互斥展示）——
+// 画面走 RdpSurface 画布；帧/输入/剪贴板/指针各走独立通道，断线重连由
+// sidecar 退避梯子驱动（reconnecting 态展示进度），graceful close/终态错误
+// 落退出覆盖层（带 errorKind 友好文案 + 手动 rdp/reconnect 出口）。
+
+/** 退出覆盖层主文案：errorKind 友好化（raw error 作细节行展示）。 */
+const rdpClosedTitle = computed(() => {
+  const kind = rdpErrorKindKey(rdpState.value.errorKind);
+  return kind ? t(`rdp.error.${kind}`) : t("rdp.closed");
+});
+
+// M32-B：RDP 连接路由——host/port 走连接绑定字段，domain/分辨率/证书策略/
+// 剪贴板走 rdp_* config 字段；凭据（密码）不在连接配置内，由 RDP 会话自身的
+// NLA/证书提示流兜底。失败回落 RdpConnectDialog（上次参数预填）。
+async function startRdpFromConnection(): Promise<boolean> {
+  const connection = getConnection();
+  const batchBarOpen = getBatchBarOpen();
+  const conn = connection.value;
+  if (!conn.host) return false;
+  // RDP 连接不渲染 SFTP 面板/分栏/批量发送栏：若同 tab 之前是 SSH 会话残留
+  // 的开启态，进入 RDP 会话前收掉，避免隐藏门控下的幽灵分栏占位。
+  if (sftpPaneOpen.value) closeRightPanel();
+  if (batchBarOpen.value) batchBarOpen.value = false;
+  return startRdpSession({
+    host: conn.host,
+    port: conn.port && conn.port > 0 ? conn.port : 3389,
+    username: conn.username || "",
+    // 尺寸优先级（P0-2）：workbenchState 里用户会话内选择的尺寸 > 连接表单
+    // rdp_resolution > 默认 1280x800。
+    width: rdpPersistedSize.value?.width ?? conn.rdpWidth ?? 1280,
+    height: rdpPersistedSize.value?.height ?? conn.rdpHeight ?? 800,
+    certificatePolicy: conn.rdpCertificatePolicy ?? "prompt",
+    clipboard: conn.rdpClipboard ?? true,
+    scaleMode: "fit",
+    ...(conn.rdpDomain ? { domain: conn.rdpDomain } : {}),
+  });
+}
+
   return {
     rdpPasteOpen,
     rdpPasteText,
@@ -146,5 +233,9 @@ export function useRdpWorkbench(options: {
     rdpWindowProportionPreset,
     applyRdpResolution,
     applyRdpCustomResolution,
+    routeRdpConnection,
+    connectViaRdpDialog,
+    startRdpFromConnection,
+    rdpClosedTitle,
   };
 }

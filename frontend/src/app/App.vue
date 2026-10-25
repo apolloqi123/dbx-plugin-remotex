@@ -140,7 +140,6 @@ import { registerWatch } from "../features/sftp/lib/editor/watchEdits";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
-import { loadLastConnectParams } from "../features/connections/lib/connectLastParams";
 import { pluginStore } from "../shared/lib/pluginStore";
 import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
 import type { DownloadConflictPolicy } from "../features/sftp/lib/transfer/downloadPrefs";
@@ -201,6 +200,7 @@ import { useTerminalTooltip } from "../features/terminal/composables/ui/useTermi
 import { useRdpSession } from "../features/remote-desktop/composables/useRdpSession";
 import { useRdpWorkbench } from "../features/remote-desktop/composables/useRdpWorkbench";
 import { useVncSession } from "../features/remote-desktop/composables/useVncSession";
+import { useVncWorkbench } from "../features/remote-desktop/composables/useVncWorkbench";
 import { useConnectCard } from "../features/connections/composables/useConnectCard";
 import { useProtocolFrameBuffers } from "../shared/composables/useProtocolFrameBuffers";
 import { useUploadChain } from "../features/sftp/composables/transfer/useUploadChain";
@@ -347,7 +347,7 @@ import SerialUploadDialog from "../features/serial/components/SerialUploadDialog
 import { initialSerialUploadState } from "../features/serial/lib/serialUpload";
 // VNC 会话（nyaterm-parity P2 2d）：连接表单 + 画布表面，帧通道在
 // handleBinary 的 vnc/frame/{id} 分支接入。
-import VncConnectDialog, { type VncConnectOptions } from "../features/remote-desktop/components/VncConnectDialog.vue";
+import VncConnectDialog from "../features/remote-desktop/components/VncConnectDialog.vue";
 import VncSurface from "../features/remote-desktop/components/VncSurface.vue";
 // RDP 会话（nyaterm-parity P3-4）：画布与 VNC 同构（同一 44 字节 patch 头，
 // 解码复用 vncFrame），输入走扫描码/unicode 双通道，证书确认走
@@ -356,7 +356,6 @@ import RdpConnectDialog, { type RdpConnectOptions } from "../features/remote-des
 import RdpSurface from "../features/remote-desktop/components/RdpSurface.vue";
 import {
   initialRdpSessionState,
-  rdpErrorKindKey,
   type RdpSessionStateView,
 } from "../features/remote-desktop/lib/rdpFrame";
 import { ToastAction, ToastClose, ToastProvider, ToastRoot, ToastViewport } from "../shared/ui/toast/index";
@@ -1789,10 +1788,17 @@ const {
   RDP_RESOLUTION_PRESETS, rdpResolutionOpen, rdpCustomWidth, rdpCustomHeight, rdpResizing,
   rdpDesktopSize, rdpPersistedSize, rdpResolutionLabel, isRdpResolutionActive,
   rdpWindowProportionPreset, applyRdpResolution, applyRdpCustomResolution,
+  routeRdpConnection, connectViaRdpDialog, startRdpFromConnection, rdpClosedTitle,
 } = useRdpWorkbench({
   t, showError, showNotice, persistState,
   isRdpMode, rdpSession, rdpSurface,
   sendRdpInput, sendRdpClipboard,
+  rdpState, rdpDialogOpen, startRdpSession,
+  getConnection: () => connection,
+  getStoredConnectionProtocol: () => storedConnectionProtocol,
+  sftpPaneOpen,
+  closeRightPanel: () => closeRightPanel(),
+  getBatchBarOpen: () => batchBarOpen,
 });
 
 const restored = computed(() => hostContext.value.restored === true);
@@ -1862,6 +1868,12 @@ const connection = computed<ConnectionSummary>(() => {
           : undefined,
     rdpClipboard: field("rdp_clipboard") === undefined ? undefined : field("rdp_clipboard") === true || field("rdp_clipboard") === "true",
   };
+});
+// —— VNC 连接路由（连接记录直启）：收口在 composables/useVncWorkbench，
+// App.vue 只保留薄挂载点（模板绑定经解构同名透出）。 ——
+const { startVncFromConnection } = useVncWorkbench({
+  connection,
+  startVncSession,
 });
 // sidecar 查询到的权威协议（connection/protocol）：真实宿主推给 webview 的
 // connection 上下文缺 external_config.protocol，openSession 路由时查询结果必须
@@ -3476,28 +3488,6 @@ async function resolveStoredConnectionProtocol(connectionId: string, bootRestore
   return { protocol: "", shell: "", cwd: "", env: [] };
 }
 
-// RDP 路由重入保护（与 sidecar 同 workbenchId 幂等查重双保险）：reconnect
-// 梯子/宿主 replay 并发触发的 openSession 会同时抵达 RDP 路由，两次 rdp/start
-// 会让 Windows 单会话策略互踢会话 → 前端持有的旧 sessionId 收到断开事件 →
-// 重连梯子再触发，工作台卡死在"连接中"。启动期间置位吞掉并发重入。
-let rdpRouteInFlight = false;
-async function routeRdpConnection(): Promise<void> {
-  if (rdpRouteInFlight) return;
-  rdpRouteInFlight = true;
-  try {
-    if (!(await startRdpFromConnection())) rdpDialogOpen.value = true;
-  } finally {
-    rdpRouteInFlight = false;
-  }
-}
-
-// 对话框发起的 RDP（回落/手动路径）：不经 openSession 的协议查询，表单协议
-// 无从判定——发起前把 tab 级协议置为 rdp，会话断开/关闭后连接级门控仍成立。
-async function connectViaRdpDialog(options: RdpConnectOptions): Promise<boolean> {
-  storedConnectionProtocol.value = "rdp";
-  return startRdpSession(options);
-}
-
 async function openSession(forceNew = false, bootRestore = false, isRetry = false, hostReopenAttempted = false) {
   if (!connectionId.value || !workbenchId.value) return;
   // 协议路由（对标 Tabby profile）：Telnet/VNC 连接不建 SSH 会话，直接驱动
@@ -3837,62 +3827,6 @@ async function closeSession(updateStatus = true) {
   }
   persistState();
 }
-
-// —— VNC 会话生命周期（nyaterm-parity P2 2d，与 Telnet 同款互斥展示）——
-// 画面走 VncSurface 画布；帧/输入/剪贴板各走独立通道。连接/关闭/输入/帧
-// 入口已收口在 composables/useVncSession，App.vue 只保留连接路由与装配。
-
-// —— 连接驱动的会话启动（对标 Tabby profile 打开）：非 SSH 连接从宿主
-// 连接表单直启各自会话；参数 = 连接 host/port + 上次使用记忆的偏好。
-// 凭据不随连接持久化，需要自动登录/VNC 密码时从工具栏弹窗进入；直启
-// 失败回落弹窗（预填 host/port，可改后重试）。
-async function startVncFromConnection(): Promise<boolean> {
-  const conn = connection.value;
-  if (!conn.host) return false;
-  const last = loadLastConnectParams<VncConnectOptions>("vnc-connect-last");
-  return startVncSession({
-    host: conn.host,
-    port: conn.port && conn.port > 0 ? conn.port : 5900,
-    scaleMode: last.scaleMode === "stretch" || last.scaleMode === "actual" ? last.scaleMode : "fit",
-  });
-}
-
-// M32-B：RDP 连接路由——host/port 走连接绑定字段，domain/分辨率/证书策略/
-// 剪贴板走 rdp_* config 字段；凭据（密码）不在连接配置内，由 RDP 会话自身的
-// NLA/证书提示流兜底。失败回落 RdpConnectDialog（上次参数预填）。
-async function startRdpFromConnection(): Promise<boolean> {
-  const conn = connection.value;
-  if (!conn.host) return false;
-  // RDP 连接不渲染 SFTP 面板/分栏/批量发送栏：若同 tab 之前是 SSH 会话残留
-  // 的开启态，进入 RDP 会话前收掉，避免隐藏门控下的幽灵分栏占位。
-  if (sftpPaneOpen.value) closeRightPanel();
-  if (batchBarOpen.value) batchBarOpen.value = false;
-  return startRdpSession({
-    host: conn.host,
-    port: conn.port && conn.port > 0 ? conn.port : 3389,
-    username: conn.username || "",
-    // 尺寸优先级（P0-2）：workbenchState 里用户会话内选择的尺寸 > 连接表单
-    // rdp_resolution > 默认 1280x800。
-    width: rdpPersistedSize.value?.width ?? conn.rdpWidth ?? 1280,
-    height: rdpPersistedSize.value?.height ?? conn.rdpHeight ?? 800,
-    certificatePolicy: conn.rdpCertificatePolicy ?? "prompt",
-    clipboard: conn.rdpClipboard ?? true,
-    scaleMode: "fit",
-    ...(conn.rdpDomain ? { domain: conn.rdpDomain } : {}),
-  });
-}
-
-// —— RDP 会话生命周期（nyaterm-parity P3-4，与 VNC 同款互斥展示）——
-// 画面走 RdpSurface 画布；帧/输入/剪贴板/指针各走独立通道，断线重连由
-// sidecar 退避梯子驱动（reconnecting 态展示进度），graceful close/终态错误
-// 落退出覆盖层（带 errorKind 友好文案 + 手动 rdp/reconnect 出口）。
-
-/** 退出覆盖层主文案：errorKind 友好化（raw error 作细节行展示）。 */
-const rdpClosedTitle = computed(() => {
-  const kind = rdpErrorKindKey(rdpState.value.errorKind);
-  return kind ? t(`rdp.error.${kind}`) : t("rdp.closed");
-});
-
 
 // HOST_PLUGIN_UI_SPEC §8.3/§7.4 workbench/close 两段式关闭：宿主拆除 panel/tab webview
 // 前先通知本 workbench 释放自己的 sidecar scope（PTY 会话），避免孤儿 PTY 活到 sidecar
