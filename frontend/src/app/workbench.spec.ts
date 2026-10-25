@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appVueSource from "./App.vue?raw";
+import sftpWorkspaceSource from "../features/sftp/composables/listing/useSftpWorkspace?raw";
 import sftpErrorsSource from "../features/sftp/lib/entries/sftpErrors?raw";
 import { Osc7DirectoryParser, parseOsc7Path } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { describeReconnectCountdown, describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay } from "../features/terminal/lib/behavior/terminalReconnect";
@@ -814,6 +815,11 @@ const appStyleIndex = appVueSource.indexOf("<style");
 const appTemplate = appVueSource.slice(appVueSource.lastIndexOf("<template>"), appVueSource.lastIndexOf("</template>", appStyleIndex));
 const appScript = appVueSource.slice(appVueSource.indexOf("<script"), appVueSource.indexOf("</script>"));
 
+// SFTP 工作区（列表/单栏树/行选中/目录跟随）已随 T14b 收口到
+// features/sftp/composables/listing/useSftpWorkspace：依赖该模块的源码断言
+// 改扫 App.vue + 工作区模块的联合源，断言意图不变（迁走不等于失守）。
+const sftpWorkspaceSurface = `${appVueSource}\n${sftpWorkspaceSource}`;
+
 // App.vue 持续模块化（状态/接线迁 composables/）：结构守卫的扫描范围相应
 // 演进为 App.vue + composables 联合源，防止"迁走即失守"。
 // 用 `**/*.ts` 递归匹配 composables 子目录（session/io/ui/listing/actions/…），
@@ -1117,10 +1123,10 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(appTemplateSurface).toContain("<LocateOff v-else />");
   // 跟随在真实 cwd 变化或用户切换到别的窗格/页签时同步；同一窗格内重复
   // 点击终端不触发，避免反复重置滚动位置。
-  expect(appVueSource).toContain("watch(terminalCwd");
-  expect(appVueSource).not.toContain("watch([activePaneCwd, followDirectory]");
-  expect(appVueSource).toContain("shouldFollowTabCwd(previous, path, activeTabId === tabId)");
-  expect(appVueSource).toContain("activeTerminalPaneId.value = paneId;\n  syncSftpToActivePane();");
+  expect(sftpWorkspaceSurface).toContain("watch(terminalCwd");
+  expect(sftpWorkspaceSurface).not.toContain("watch([activePaneCwd, followDirectory]");
+  expect(sftpWorkspaceSurface).toContain("shouldFollowTabCwd(previous, path, activeTabId === tabId)");
+  expect(sftpWorkspaceSurface).toContain("activeTerminalPaneId.value = paneId;\n  syncSftpToActivePane();");
 });
 
 // 右侧栏三视图与终端分屏：指标/容器不再以浮层覆盖终端，分屏入口在终端

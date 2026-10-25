@@ -11,7 +11,7 @@ const MAX_SPEC_LINES = 1_200;
 
 /** 迁移期白名单：值 = 当前允许的行数；清零后删除。 */
 const LINE_ALLOWLIST: Record<string, number> = {
-  "../../app/App.vue": 6765,
+  "../../app/App.vue": 6705,
   // SSH 会话主干（open/attach/重试/宿主重开/host-key）刚从 App.vue 整体迁出，
   // 逐行保留原有注释与顺序；后续任务再按职责拆分。
   "../../features/connections/composables/useSshConnection.ts": 658,

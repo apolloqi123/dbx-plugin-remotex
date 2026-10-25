@@ -81,7 +81,6 @@ import {
   createTerminalCopyCache,
   isApplePlatform,
   normalizeDropTargetDir,
-  resolveDropTargetDir,
   transferBusyPaneClass,
 } from "../features/terminal/lib/behavior/terminalInteraction";
 import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../features/terminal/lib/emulator/terminalWriteThrottle";
@@ -166,11 +165,11 @@ import { useOnlineSearch } from "../features/terminal/composables/ui/useOnlineSe
 import { usePromptHints } from "../features/terminal/composables/ui/usePromptHints";
 import { useSftpAttributes } from "../features/sftp/composables/actions/useSftpAttributes";
 import { useSftpBookmarks } from "../features/sftp/composables/actions/useSftpBookmarks";
-import { useSftpRowSelection } from "../features/sftp/composables/actions/useSftpRowSelection";
+import { useSftpDialogs } from "../features/sftp/composables/actions/useSftpDialogs";
 import { useSerialUpload } from "../features/serial/composables/useSerialUpload";
 import { useSerialWorkbench } from "../features/serial/composables/useSerialWorkbench";
 import { useTelnetWorkbench } from "../features/telnet/composables/useTelnetWorkbench";
-import { useSftpTreeWorkspace } from "../features/sftp/composables/listing/useSftpTreeWorkspace";
+import { useSftpWorkspace } from "../features/sftp/composables/listing/useSftpWorkspace";
 import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "../features/sftp/lib/paths/sftpRemotePaths";
 import { useWallpaper } from "../features/terminal/composables/ui/useWallpaper";
 import { useWorkbenchPrefs } from "./workbench/composables/useWorkbenchPrefs";
@@ -196,13 +195,12 @@ import { useVncSession } from "../features/remote-desktop/composables/useVncSess
 import { useVncWorkbench } from "../features/remote-desktop/composables/useVncWorkbench";
 import { useConnectCard } from "../features/connections/composables/useConnectCard";
 import { useProtocolFrameBuffers } from "../shared/composables/useProtocolFrameBuffers";
-import { useUploadChain } from "../features/sftp/composables/transfer/useUploadChain";
-import { useFilePreview } from "../features/sftp/composables/editor/useFilePreview";
+import { useSftpPreview } from "../features/sftp/composables/editor/useSftpPreview";
+import { useSftpDropUpload } from "../features/sftp/composables/transfer/useSftpDropUpload";
 import { useSftpDownload } from "../features/sftp/composables/transfer/useSftpDownload";
 import { useSftpDelete } from "../features/sftp/composables/actions/useSftpDelete";
 import { useSftpListLayout } from "../features/sftp/composables/listing/useSftpListLayout";
 import { useSftpSelectionClipboard } from "../features/sftp/composables/actions/useSftpSelectionClipboard";
-import { useSftpNavigation } from "../features/sftp/composables/listing/useSftpNavigation";
 import OtpPanel from "../features/security/components/OtpPanel.vue";
 import ImportWizard from "../features/connections/components/ImportWizard.vue";
 import { useTerminalAppearance } from "../features/terminal/composables/ui/useTerminalAppearance";
@@ -216,7 +214,6 @@ import { useGhostSuggest } from "../features/completion/composables/useGhostSugg
 import { useQuickSelect } from "../features/terminal/composables/ui/useQuickSelect";
 import { useHistoryPanel } from "../features/terminal/composables/ui/useHistoryPanel";
 import { useCommandHistory } from "../features/terminal/composables/ui/useCommandHistory";
-import { useSftpRename } from "../features/sftp/composables/actions/useSftpRename";
 import { useEditorTabs } from "../features/sftp/composables/editor/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
 import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";
@@ -269,19 +266,6 @@ import {
   matchTerminalHotkey,
 } from "../features/terminal/lib/behavior/terminalHotkeys";
 import { bridgeBinaryBytes } from "../../../shared/frontend/binaryEvent";
-import {
-  applyFileTreeChildren,
-  createFileTreeRoot,
-  findFileTreeNode,
-  flattenVisibleTreeRows,
-  markCollapsedTreeNodesStale,
-  type SftpFileTreeNode,
-} from "../features/sftp/lib/tree/sftpFileTree";
-import {
-  filterSelectableSftpEntries,
-} from "../features/sftp/lib/actions/sftpContextMenu";
-import { type SftpSanitizedEntry } from "../features/sftp/lib/entries/sftpEntries";
-import { mergeSftpDetail, type SftpDetailInfo } from "../features/sftp/lib/actions/sftpDetails";
 import { workbenchMessage } from "../shared/lib/i18n";
 import { randomUUID } from "../shared/lib/uuid";
 // 预览面板按需加载（含 CodeMirror + language-data，数百 KB）：定义异步组件
@@ -366,13 +350,6 @@ interface SftpEntry {
   group?: string;
   /** M14-B：显示名不可忠实还原（wire 名含 U+FFFD）；传输仍走 uri。 */
   lossy?: boolean;
-}
-
-// 服务器内复制/剪切/粘贴的剪贴板：仅当前连接内有效。
-interface SftpClipboard {
-  mode: "copy" | "cut";
-  paths: string[];
-  connectionId: string;
 }
 
 interface HostKeyPrompt {
@@ -504,7 +481,8 @@ const {
   sftpError,
   sftpErrorRetry,
   sftpErrorOpen,
-  sftpErrorKey,
+  // 错误横幅 key 经 useSftpDialogs 聚合透出（App 解构口不变），这里先别名。
+  sftpErrorKey: noticeSftpErrorKey,
   notice,
   noticeActions,
   noticeOpen,
@@ -659,10 +637,6 @@ const connectSucceeded = ref(false);
 const connectLogsOpen = ref(false);
 const connectLog = createConnectLog();
 const session = ref<SessionInfo>();
-const currentPath = ref("/");
-const entries = ref<SftpEntry[]>([]);
-const selectedPath = ref("");
-const loadingFiles = ref(false);
 const hostKeyPrompt = ref<HostKeyPrompt>();
 const rememberHostKey = ref(true);
 const splitRatio = ref(58);
@@ -705,11 +679,6 @@ const sftpViewActive = computed(() => rightPanelView.value === "sftp");
 // 终端拖放的“面板抢落点”门控：只有 SFTP 树真的可见时才把拖入交给面板；
 // 指标/容器视图不应阻止终端接收拖拽。
 const sftpViewVisible = computed(() => sftpPaneOpen.value && sftpViewActive.value);
-// 本会话是否已成功加载过 SFTP 目录：自动连接关闭时，手动打开面板的瞬间
-// 据此惰性补载（每会话一次，断开重置）。
-const sftpListingLoaded = ref(false);
-// sftp/home 探测结果：quick tab 置顶展示（获取失败时该项隐藏）。
-const sftpHomePath = ref("");
 // 沙箱宿主读不到系统剪贴板：右键粘贴的降级链靠这份插件视图内的复制副本。
 const terminalCopyCache = createTerminalCopyCache();
 // 终端 shell 最近一次上报的 cwd（OSC 7 / OSC 633 Cwd，无论跟随开关是否打开
@@ -724,6 +693,135 @@ const sftpColumnWidths = reactive<Record<SftpColumn, number>>({ ...DEFAULT_COLUM
 const sftpNameWidth = ref<number | null>(null);
 /** 正在拖拽的列（含 name）；null 表示没在拖。 */
 const sort = ref<{ column: SftpSortColumn; direction: "asc" | "desc" }>({ column: "name", direction: "asc" });
+
+// —— SFTP 面板对话框态：删除/批量删除、新建目录/文件落点、面板内剪贴板与
+// 粘贴忙碌、错误横幅 key 收口在 composables/actions/useSftpDialogs（新建文件
+// 动作逐字迁移）。删除/新建目录的动作本体仍由下方 useSftpDelete /
+// useSftpCreateDirectory 接线，本段只持有状态。——
+const {
+  deleteTarget,
+  deleteSubmitting,
+  batchDeleteOpen,
+  batchDeleteSubmitting,
+  mkdirTargetDir,
+  newFileDialog,
+  newFileDraft,
+  newFileSubmitting,
+  sftpClipboard,
+  pasteBusy,
+  sftpErrorKey,
+  openNewFileDialog,
+  createNewFile,
+} = useSftpDialogs({
+  t: (key, values) => t(key, values),
+  showNotice, showError,
+  session,
+  sftpErrorKey: noticeSftpErrorKey,
+  getConnected: () => connected.value,
+  getCanWrite: () => canWrite.value,
+  getSudoMode: () => sudoMode.value,
+  getCurrentPath: () => currentPath.value,
+  joinRemote,
+  refreshAfterUpload: (targetDir) => refreshSftpAfterUpload(targetDir),
+});
+
+// —— SFTP 工作区：当前目录列表（entries/currentPath 唯一出口）、单栏树、行选中
+// 与行内重命名收口在 composables/listing/useSftpWorkspace。树懒加载/目录跟随/
+// 导航枢纽（loadDirectory）仍由既有 useSftpTreeWorkspace / useSftpNavigation
+// 持有，工作区只做组合接线；晚于本段声明的权威态经惰性 getter/setter 注入。——
+const {
+  entries,
+  currentPath,
+  selectedPath,
+  loadingFiles,
+  sftpListingLoaded,
+  sftpHomePath,
+  sftpTreeRoot,
+  sftpTreeRows,
+  sftpTreeEntries,
+  sftpTreeTotalRows,
+  loadedTreeEntries,
+  selectedEntry,
+  selectedEntries,
+  selectedUris,
+  selectedUriSet,
+  lastClickedUri,
+  remoteBasename,
+  isProtectedDirectory,
+  isLoadedDirectoryUri,
+  onSftpSelection: selectTreeEntry,
+  onFileRowKeydown,
+  loadHome,
+  refreshSftpHomePath,
+  loadDirectory,
+  sftpSoftError,
+  toggleSudoMode,
+  enableSudoModeAndReload,
+  goParent,
+  setDirectoryTracking,
+  goToPath,
+  pathBarEditing,
+  pathBarInputEl,
+  pathBarDraft,
+  pathCrumbs,
+  beginPathBarEdit,
+  cancelPathBarEdit,
+  submitPathInput,
+  listSftpDirectory,
+  loadSftpDetails,
+  clearSftpDetailCache,
+  revealSftpPath,
+  refreshExpandedSftpTree,
+  refreshSftpAfterMutation,
+  initializeSftpTree,
+  followSftpPath,
+  toggleSftpTreeNode,
+  openSftpTreeNode,
+  commitTreeRename,
+  resetSftpTree,
+  renamingPath,
+  renameDraft,
+  renameSubmitting,
+  beginRename,
+} = useSftpWorkspace({
+  t: (key, values) => t(key, values),
+  showNotice, showError,
+  session,
+  sftpError, sftpErrorOpen, sftpErrorKey,
+  terminalCwd, sftpPaneOpen, visibleColumns, directoryTrackingSupported,
+  directoryParser: { reset: () => directoryParser.reset() },
+  sftpTreePane,
+  deleteTarget,
+  joinRemote,
+  getSudoMode: () => sudoMode.value,
+  getConnected: () => connected.value,
+  getCanWrite: () => canWrite.value,
+  getIsRdpConnection: () => isRdpConnection.value,
+  getLocalUiMode: () => localUiMode.value,
+  getIsLocalMode: () => isLocalMode.value,
+  getActivePaneCwd: () => activePaneCwd.value,
+  getFollowDirectory: () => followDirectory.value,
+  setFollowDirectory: (value) => { followDirectory.value = value; },
+  getSftpShowHidden: () => sftpShowHidden.value,
+  getSftpSearch: () => sftpSearch.value,
+  getSftpFiltersActive: () => sftpFiltersActive.value,
+  getSftpTypeFilter: () => sftpTypeFilter.value,
+  setSftpTypeFilter: (value) => { sftpTypeFilter.value = value; },
+  getPendingTerminalInput: () => pendingTerminalInput,
+  persistState: () => persistState(),
+  refreshDiskUsage: () => refreshDiskUsage(),
+  persistDirectoryFollowPref: (value) => persistDirectoryFollowPref(value),
+  resetLinkTargets: () => { linkTargets.value = {}; },
+  hydrateLinkTargets: (list, isCurrent) => hydrateLinkTargets(list, isCurrent),
+  rememberPathHistory: (path) => rememberPathHistory(path),
+  closePathHistoryMenu: () => { pathHistoryOpen.value = false; },
+  clearSftpSearch: () => clearSftpSearch(),
+  clearRowSelection: () => clearRowSelection(),
+  selectFile: (entry, event) => selectFile(entry, event),
+  openEditorTab: (entry) => openEditorTab(entry),
+  handleEditorRename: (oldPath, newPath) => handleEditorRename(oldPath, newPath),
+});
+
 // syncPrefs 实体在下方 useWorkbenchPrefs 解构后才接线；useTransferQueue 在
 // setup 早期按引用捕获它，用提升的薄包装保持既有接线时机（调用都在 setup 后）。
 let syncPrefsImpl: (() => Promise<void>) | undefined;
@@ -785,12 +883,7 @@ const {
 const columnsOpen = ref(false);
 const sudoMode = ref(false);
 
-const deleteTarget = ref<SftpEntry>();
-const deleteSubmitting = ref(false);
-const dragActive = ref(false);
-// 宿主桥接管 OS drop 时没有目标路径：SftpTreePane 把当前悬停的树行目录
-// 上抛到这里，作为 host onDrop 的上传落点。
-const sftpDragDropTarget = ref("");
+// 拖拽高亮/宿主拖放落点由 useSftpDropUpload 持有（见下方上传链接线）。
 // Terminal-local drag overlay: true only while files are dragged over the
 // terminal pane and the drop can actually be accepted (writable session).
 const terminalDragActive = ref(false);
@@ -890,9 +983,6 @@ const {
   transferPanelOpen,
   closeMetrics: () => closeMetrics(),
 });
-// 文件夹行右键菜单里的新建/上传落点：目录右键命中的路径，操作完成后清空。
-const mkdirTargetDir = ref<string>();
-const newFileTargetDir = ref<string>();
 const commandRunning = ref(false);
 // 命令历史（按连接作用域分桶）：采集/持久化/远端 shell 历史导入收口在
 // composables/useCommandHistory；watch(historyScope) 仍在 setup 尾部（见下）。
@@ -1252,60 +1342,13 @@ function toggleSftpShowHidden() {
   sftpShowHidden.value = !sftpShowHidden.value;
   persistState();
 }
-// 单栏文件树：文件夹与文件同树，目录懒加载。根固定连接根 "/"，可见行由
-// 搜索/类型过滤在 flattenVisibleTreeRows 内完成；entries 仍是"当前目录"的
-// 数据源，树节点在 loadDirectory 落地后同步子树。
-const sftpTreeRoot = ref(createFileTreeRoot("/"));
-const sftpTreeRows = computed(() =>
-  flattenVisibleTreeRows(sftpTreeRoot.value, {
-    search: sftpSearch.value,
-    type: sftpTypeFilter.value === "directory" ? "directory" : sftpTypeFilter.value === "file" ? "file" : "all",
-  }),
-);
-const sftpTreeEntries = computed(() => sftpTreeRows.value.map((row) => row.node.entry));
-const sftpTreeTotalRows = computed(() => flattenVisibleTreeRows(sftpTreeRoot.value, {}));
-// 已加载树节点全集（含被搜索/类型过滤隐藏或折叠在后代里的条目）：批量计数、
-// 删除/下载目标都以它为准，避免过滤/折叠把已选中的远端条目静默丢掉。
-function collectLoadedTreeEntries(node: SftpFileTreeNode, out: SftpSanitizedEntry[]): void {
-  out.push(node.entry);
-  for (const child of node.children) collectLoadedTreeEntries(child, out);
-}
-const loadedTreeEntries = computed(() => {
-  const out: SftpSanitizedEntry[] = [];
-  collectLoadedTreeEntries(sftpTreeRoot.value, out);
-  return out;
-});
+// 单栏文件树（根/可见行/已加载全集/行选中态）由 useSftpWorkspace 持有，
+// 这里只保留过滤草稿与快捷路径。
 // 路径弹层快捷路径（侧栏移除后仍保留在路径历史 popover 内）。
 const SFTP_QUICK_PATHS = ["/", "/home", "/tmp", "/etc", "/var", "/root"];
-// 行选中态（多选集合/保护目录拦截/键盘语义）收口在 composables/useSftpRowSelection；
-// 选中/剪贴板动作本体仍由下方 useSftpSelectionClipboard 提供（惰性注入）。
-const {
-  selectedUris,
-  selectedUriSet,
-  lastClickedUri,
-  remoteBasename,
-  isProtectedDirectory,
-  loadedDirectoryUris,
-  isLoadedDirectoryUri,
-  selectTreeEntry,
-  onFileRowKeydown,
-} = useSftpRowSelection<SftpEntry>({
-  currentPath, loadedTreeEntries, selectedPath, deleteTarget, pathFromUri,
-  canWrite: () => canWrite.value,
-  selectFile: (entry, event) => selectFile(entry, event),
-  openEditorTab: (entry) => openEditorTab(entry),
-  beginRename: (entry) => beginRename(entry),
-});
-const sftpClipboard = ref<SftpClipboard>();
-const pasteBusy = ref(false);
-const newFileDialog = ref(false);
-const newFileDraft = ref("");
-const newFileSubmitting = ref(false);
 // OTP 验证码 / 会话导入工具弹窗（SFTP 路径工具栏入口）。
 const otpPanelOpen = ref(false);
 const importPanelOpen = ref(false);
-const batchDeleteOpen = ref(false);
-const batchDeleteSubmitting = ref(false);
 // Aggregated progress for multi-item batch operations (delete / archive);
 // null while no batch is in flight.
 const batchProgress = ref<BatchProgressState | null>(null);
@@ -1869,7 +1912,6 @@ const connectionProtocol = computed<"ssh" | "telnet" | "vnc" | "serial" | "rdp">
 // 协议查询尚未返回的窗口期——这两段里 SSH 入口同样一处都不该出现。
 const isRdpConnection = computed(() => connectionProtocol.value === "rdp" || isRdpMode.value);
 const canWrite = computed(() => !connection.value.readOnly && !connectionReadOnly.value);
-const selectedEntry = computed(() => entries.value.find((entry) => entry.uri === selectedPath.value));
 const connected = computed(() => terminalState.value === "connected" && !!session.value);
 // 终端分屏：布局树状态与窗格/页签操作收口在 composables/useShellTabs；
 // 「页签上报 cwd」「窗格激活」两个目录跟随入口仍在本文件（结构测试锁定）。
@@ -2053,17 +2095,6 @@ const {
 
 // 文件传输占用统一语义：ZMODEM 或 trzsz 任一持有终端流即视为 busy。
 const terminalTransferBusy = computed(() => zmodemBusy.value || trzszBusy.value);
-// 多选可能跨不同已展开目录（也可能被过滤/折叠隐藏）：按整棵已加载树解析，
-// 顺序与树内 DFS 一致；只有已从树上消失的路径才会被剔除。
-// 兜底不变量：即使旧状态/边界路径把受保护目录塞进了 selectedUris，批量
-// 删除/归档/下载也只消费过滤后的条目。
-const selectedEntries = computed(() =>
-  filterSelectableSftpEntries(
-    loadedTreeEntries.value.filter((entry) => selectedUriSet.value.has(entry.uri)),
-    currentPath.value,
-    pathFromUri,
-  ),
-);
 
 // 跨重启持久化（布局偏好档 / UI 镜像 / 宿主 workbenchState 桥）收口在
 // composables/useWorkbenchPersistence；布局 refs 与会话仍是 App 的权威态，
@@ -3725,42 +3756,12 @@ const {
 } = useAuditLogViewer({ locale, auditOpen });
 
 
-// —— SFTP 单栏文件树：懒加载/祖先路径揭示/目录跟随/显示隐藏切换收口在
-// composables/useSftpTreeWorkspace；后段声明的导航/页签/重命名依赖惰性注入 ——
-const {
-  listSftpDirectory,
-  loadSftpDetails,
-  clearSftpDetailCache,
-  revealSftpPath,
-  refreshExpandedSftpTree,
-  refreshSftpAfterMutation,
-  initializeSftpTree,
-  followSftpPath,
-  toggleSftpTreeNode,
-  openSftpTreeNode,
-  commitTreeRename,
-  resetSftpTree,
-} = useSftpTreeWorkspace({
-  session, sudoMode, entries, currentPath, sftpListingLoaded, sftpShowHidden,
-  sftpTreeRoot, selectedUris, selectedPath, lastClickedUri, sftpErrorKey,
-  loadedTreeEntries, sftpTreePane, sftpFiltersActive, sftpTypeFilter,
-  sftpPaneOpen, isRdpConnection, localUiMode, isLocalMode, connected,
-  followDirectory, activePaneCwd, sftpHomePath, showError,
-  loadDirectory: (path, fromTerminal, quiet) => loadDirectory(path, fromTerminal, quiet),
-  refreshSftpHomePath: () => refreshSftpHomePath(),
-  clearSftpSearch: () => clearSftpSearch(),
-  openEditorTab: (entry) => openEditorTab(entry),
-  setRenameDraft: (value) => { renameDraft.value = value; },
-  commitRenameEntry: (entry) => commitRename(entry),
-});
-
-watch(terminalCwd, (cwd) => {
-  if (!followDirectory.value || !cwd || !connected.value) return;
-  void followSftpPath(cwd);
-});
+// —— SFTP 单栏文件树与目录导航（懒加载/祖先路径揭示/目录跟随/loadDirectory
+// 枢纽）已随工作区收口到 composables/listing/useSftpWorkspace，见 setup 早期
+// 的 useSftpWorkspace 解构点 ——
 
 // SFTP 文件树右键菜单与上传后增量刷新：收口在 composables/useSftpFolderActions
-// （导航/树工作区经下方/上方既有 composable 回调接线）。
+// （导航/树工作区经工作区解构出的回调接线）。
 const {
   onFileAreaContextMenu,
   folderMenuAction,
@@ -3792,32 +3793,8 @@ const {
 
 // R3-P1-3：目录列表加载的单调请求序号。慢链路下"先发 A 后发 B、A 晚到"
 // 会把列表/路径/历史整体回跳；只有最新请求允许落地，过期响应整体丢弃。
-// SFTP 目录导航：loadDirectory 枢纽/sudo/路径跳转收口在 composables/useSftpNavigation。
-const {
-  loadHome,
-  refreshSftpHomePath,
-  loadDirectory,
-  sftpSoftError,
-  toggleSudoMode,
-  enableSudoModeAndReload,
-  goParent,
-  setDirectoryTracking,
-  goToPath,
-  pathBarEditing, pathBarInputEl, pathBarDraft, pathCrumbs,
-  beginPathBarEdit, cancelPathBarEdit, submitPathInput,
-} = useSftpNavigation({
-  t, showNotice, showError, session, sudoMode, connected, canWrite,
-  currentPath, entries, loadingFiles, sftpError, sftpErrorOpen, sftpErrorKey, sftpHomePath,
-  visibleColumns, followDirectory, directoryParser, selectedPath, directoryTrackingSupported,
-  clearRowSelection: () => clearRowSelection(), parentPath, normalizeRemotePath,
-  getPendingTerminalInput: () => pendingTerminalInput,
-  persistState, refreshDiskUsage, persistDirectoryFollowPref,
-  resetLinkTargets: () => { linkTargets.value = {}; },
-  hydrateLinkTargets: (list, isCurrent) => hydrateLinkTargets(list, isCurrent),
-  rememberPathHistory: (path) => rememberPathHistory(path),
-  closePathHistoryMenu: () => { pathHistoryOpen.value = false; },
-  onListingLoaded: () => { sftpListingLoaded.value = true; },
-});
+// SFTP 目录导航（loadDirectory 枢纽/sudo/路径跳转）随工作区收口到
+// composables/listing/useSftpWorkspace，解构点见 setup 早期。
 
 // 右侧栏三视图/分栏顺序开关：收口在 composables/useWorkbenchPanels。
 // 指标视图的 open/close 由后段 useMetricsPanel 提供，按 getter 惰性求值。
@@ -3858,14 +3835,15 @@ const {
   persistState,
 });
 
-// 文件预览：收口在 composables/useFilePreview。
+// 文件预览与保存：收口在 composables/editor/useSftpPreview（预览状态机本体在
+// useFilePreview，这里只补「当前预览条目」锚点和入口）。
 const {
   previewOpen, previewTitle, previewText, previewLoading, previewPath, previewSize,
   previewEditable, previewDraft, previewSaving, previewMode, previewImageUrl,
   previewImageZoomed, previewTruncated, previewDirty, previewEditableAllowed, jsonPreviewState,
   openEntry, openImagePreview, closePreview, beginPreviewEdit, cancelPreviewEdit, savePreview,
   MAX_INLINE_PREVIEW_BYTES,
-} = useFilePreview({
+} = useSftpPreview({
   t, showNotice, showError, session, sudoMode, canWrite,
   loadDirectory: (path?: string) => loadDirectory(path),
   downloadEntry: (entry, forceSudo?: boolean) => downloadEntry(entry, forceSudo),
@@ -3928,18 +3906,8 @@ const editorPrefsAdapter = {
   reloadEditors: () => ensureExternalEditors(),
 };
 
-// 行内重命名：提交/短路语义收口在 composables/useSftpRename。
-const {
-  renamingPath,
-  renameDraft,
-  renameSubmitting,
-  beginRename,
-  commitRename,
-} = useSftpRename({
-  t, showError, session, canWrite, sudoMode, selectedPath, pathFromUri, joinRemote, loadDirectory,
-  onRenamed: (oldPath, newPath) => handleEditorRename(oldPath, newPath),
-  onMutated: refreshSftpAfterMutation,
-});
+// 行内重命名（提交/短路语义）随工作区收口到 composables/listing/useSftpWorkspace，
+// 解构点见 setup 早期的 useSftpWorkspace（beginRename/commitRename/renameDraft…）。
 
 // 新建目录对话框收口在 composables/useSftpCreateDirectory。
 const {
@@ -4001,34 +3969,8 @@ const {
   onMutated: refreshSftpAfterMutation,
 });
 
-function openNewFileDialog(targetDir?: string) {
-  if (!connected.value || !canWrite.value) return;
-  newFileTargetDir.value = targetDir;
-  newFileDraft.value = "";
-  newFileDialog.value = true;
-}
-
-async function createNewFile() {
-  const sessionId = session.value?.sessionId;
-  const name = newFileDraft.value.trim();
-  if (!sessionId || !name || newFileSubmitting.value) return;
-  const base = newFileTargetDir.value ?? currentPath.value;
-  newFileSubmitting.value = true;
-  try {
-    await window.dbxPlugin.invoke(sudoMode.value ? "sudo/touch" : "sftp/touch", {
-      sessionId,
-      path: joinRemote(base, name),
-    });
-    newFileDialog.value = false;
-    newFileTargetDir.value = undefined;
-    showNotice(t("sftpNewFile.done", { name }));
-    await refreshSftpAfterUpload(base);
-  } catch (cause) {
-    showError(cause);
-  } finally {
-    newFileSubmitting.value = false;
-  }
-}
+// 新建文件对话框与提交动作随对话框态收口到 composables/actions/useSftpDialogs
+// （openNewFileDialog/createNewFile 逐字迁移）。
 
 // 文件属性对话框：stat/chmod 状态与动作收口在 composables/useSftpAttributes。
 const {
@@ -4175,8 +4117,13 @@ function focusSftpPaneOnPointerDown(event: PointerEvent) {
   sftpPane.value?.focus({ preventScroll: true });
 }
 
-// 上传链：五路上传入口/重复策略/拖拽落点收口在 composables/useUploadChain。
+// 上传链：五路上传入口/重复策略/拖拽落点收口在 composables/useUploadChain；
+// 面板拖拽高亮/宿主拖放落点/树行 drop 由 composables/transfer/useSftpDropUpload
+// 接管（本机文件拖入的上传编排不复制实现）。
 const {
+  dragActive,
+  sftpDragDropTarget,
+  onSftpTreeDrop,
   uploadInput,
   folderUploadInput,
   folderUploadSupported,
@@ -4206,9 +4153,10 @@ const {
   chooseUpload,
   confirmDropUpload,
   resolveDropUpload,
-} = useUploadChain({
+} = useSftpDropUpload({
   t, showNotice, showError, session, connected, canWrite, currentPath, sftpHomePath,
-  terminalCwd, sftpNameEncodingState, dragActive, terminalDragActive, sftpPaneOpen: sftpViewVisible, terminalTransferBusy,
+  terminalCwd, sftpNameEncodingState, terminalDragActive, sftpPaneOpen: sftpViewVisible, terminalTransferBusy,
+  sftpViewActive,
   uploadSource, loadTransferConcurrency, loadTransferMaxActive, loadTransferDuplicatePolicy, transferDuplicateState,
   transferTasks,
   terminal: () => terminal,
@@ -4219,14 +4167,6 @@ const {
   // 与 useTransferQueue 同源判定：sudo 模式 + 可写连接（UploadSudo 车道）。
   sudoUpload: () => sudoMode.value && canWrite.value,
 });
-
-/** 树行 drop：文件夹行为目标目录；文件行回落当前目录（行本身不是落点）。
- *  事件必须同步交给上传链，webkitGetAsEntry 的 dataTransfer.items 只在
- *  当前 tick 内有效。 */
-function onSftpTreeDrop(node: SftpFileTreeNode, event: DragEvent) {
-  if (!sftpViewActive.value) return;
-  onDrop(event, node.kind === "directory" ? node.path : currentPath.value);
-}
 
 // —— 右键菜单「在线搜索」：引擎表/搜索动作收口在 composables/useOnlineSearch ——
 const {
