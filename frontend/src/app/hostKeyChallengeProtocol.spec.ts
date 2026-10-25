@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import appSource from "./App.vue?raw";
 // 事件分派收口在 composables/usePluginEvents 后，挑战路由断言扫描两个源。
 import eventsSource from "./workbench/composables/usePluginEvents.ts?raw";
-// SSH 会话主干迁入 useSshConnection 后，challenge/resolve 载荷在该源里。
-import sshSource from "../features/connections/composables/useSshConnection.ts?raw";
+// SSH 会话主干的 host-key 应答收口在 useSshHostKey 后，challenge/resolve
+// 载荷在该源里。
+import sshSource from "../features/connections/composables/useSshHostKey.ts?raw";
 
 describe("SSH host-key challenge protocol", () => {
   it("routes plugin challenges through the sidecar resolver payload", () => {

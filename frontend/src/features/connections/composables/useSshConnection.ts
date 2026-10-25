@@ -1,5 +1,4 @@
-import { ref, type Ref } from "vue";
-import type { Terminal } from "@xterm/xterm";
+import { ref } from "vue";
 import {
   describeReconnectRestoredNotice,
   isConnectionInactiveError,
@@ -9,139 +8,31 @@ import {
 } from "../../terminal/lib/behavior/terminalReconnect";
 import { classifyConnectError, connectErrorKey } from "../lib/connectError";
 import { decideConnectRetry, isDuplicatedTransportUnavailableError } from "../lib/connectRetry";
-import { reopenHostConnection } from "../lib/hostReopen";
-import type { ConnectLog } from "../lib/connectLog";
 import {
   createSessionTransportReuseState,
   fallbackToFreshTransport,
   markSessionTransportOpenSucceeded,
   sessionTransportOpenParams,
 } from "../lib/sessionTransportReuse";
-import type { SftpSoftError } from "../../sftp/composables/listing/useSftpNavigation";
-import type { ModifiedPrompt, WatchRegistry } from "../../sftp/lib/editor/watchEdits";
+import type { ReplayResult, SessionInfo, SshConnectionOptions } from "../lib/sshConnectionTypes";
 import { randomUUID } from "../../../shared/lib/uuid";
+import { useSshHostKey } from "./useSshHostKey";
 
-export interface ReplayResult {
-  frameCount: number;
-  firstAvailableSequence: number;
-  tailSequence: number;
-  complete: boolean;
-}
-
-export interface SessionInfo {
-  sessionId: string;
-  connectionId: string;
-  workbenchId?: string;
-  connected: boolean;
-  sequence: number;
-  chunkSize: number;
-  directoryTrackingSupported?: boolean;
-  replay?: ReplayResult;
-}
-
-/** host-key 挑战应答所需的最小载荷（完整弹窗状态留在 App.vue）。 */
-export interface HostKeyChallenge {
-  challengeId: string;
-  operationId: string;
-}
-
-/** 重连梯子（useSessionReconnect 持有，在本组合式函数之后装配）。 */
-export interface SshReconnectState {
-  reconnectPending: Ref<boolean>;
-  reconnectAttempt: Ref<number>;
-  reconnectNextAt: Ref<number>;
-  reconnectDelayMs: Ref<number>;
-  reconnectTimer: Ref<number>;
-  reconnectWasPending: Ref<boolean>;
-}
-
-/** 连接成功后的 SFTP 侧效应（useSftpNavigation / useSftpTreeWorkspace 持有，
- *  均在本组合式函数之后装配）。 */
-export interface SshSftpHooks {
-  loadDirectory: (path: string, fromTerminal?: boolean, quiet?: boolean) => Promise<void>;
-  refreshSftpHomePath: () => Promise<void>;
-  setDirectoryTracking: (enabled: boolean) => Promise<void>;
-  initializeSftpTree: () => void;
-  resetSftpTree: () => void;
-}
-
-/** SSH 输出管线仍由 App.vue 持有（Task 16 再迁出）：会话启停只经这组读写口
- *  触及 sequence/pending/resync 计数，避免与本地/串口帧流互染。 */
-export interface SshFrameStreams {
-  setActiveTerminalSessionId: (sessionId: string) => void;
-  getLastSequence: () => number;
-  setLastSequence: (sequence: number) => void;
-  pendingTerminalFrames: Map<number, { stream: number; data: Uint8Array }>;
-  setReplayNoProgress: (value: number) => void;
-}
-
-export interface SshConnectionOptions {
-  t: (key: string, values?: Record<string, string | number>) => string;
-  showError: (cause: unknown, target?: "terminal" | "sftp") => void;
-  showNotice: (message: string) => void;
-  connectLog: ConnectLog;
-  connectCancelled: Ref<boolean>;
-  connectSucceeded: Ref<boolean>;
-  hostKeyPrompt: Ref<HostKeyChallenge | undefined>;
-  rememberHostKey: Ref<boolean>;
-  terminalState: Ref<"connecting" | "connected" | "disconnected" | "error">;
-  terminalError: Ref<string>;
-  session: Ref<SessionInfo | undefined>;
-  connectionId: Readonly<Ref<string>>;
-  workbenchId: Readonly<Ref<string>>;
-  connectionProtocol: Readonly<Ref<"ssh" | "telnet" | "vnc" | "serial" | "rdp">>;
-  storedConnectionProtocol: Ref<string>;
-  directoryTrackingSupported: Ref<boolean | undefined>;
-  sftpListingLoaded: Ref<boolean>;
-  panelSurface: Readonly<Ref<boolean>>;
-  hostContext: Ref<Record<string, unknown>>;
-  followDirectory: Readonly<Ref<boolean>>;
-  sftpAutoConnect: Readonly<Ref<boolean>>;
-  currentPath: Readonly<Ref<string>>;
-  terminalInputQueue: { reset: () => void };
-  isDisposed: () => boolean;
-  getTerminal: () => Terminal | undefined;
-  createTerminal: () => void;
-  fitTerminalDimensions: () => { cols: number; rows: number };
-  scheduleFit: () => void;
-  resetCommandMarker: () => void;
-  initialState: () => { sessionId?: string };
-  persistState: () => void;
-  writeWorkbenchState: () => Promise<void>;
-  loadRemoteShellHistory: (sessionId: string) => void | Promise<void>;
-  restoreTransfers: () => void | Promise<void>;
-  cancelZmodemUpload: () => void;
-  teardownTrzsz: () => void;
-  startTelnetFromConnection: () => Promise<boolean>;
-  telnetDialogOpen: Ref<boolean>;
-  startVncFromConnection: () => Promise<boolean>;
-  vncDialogOpen: Ref<boolean>;
-  startSerialFromConnection: () => Promise<boolean>;
-  serialDialogOpen: Ref<boolean>;
-  routeRdpConnection: () => Promise<void>;
-  startLocalTerminal: (
-    shellOverride?: string,
-    connection?: { cwd?: string; env?: Array<{ name: string; value: string }> },
-  ) => Promise<void>;
-  // 装配依赖（声明/装配在本组合式函数之后）：一律 getter 惰性接入；函数内
-  // 按原名解构，迁出代码保持逐行原样。
-  getReconnectState: () => SshReconnectState;
-  getAgentTerminalMode: () => { clearAgentPrompts: () => void; agentRunning: Ref<unknown> };
-  getSftpHooks: () => SshSftpHooks;
-  getSftpSoftError: () => Ref<SftpSoftError | null>;
-  getExternalEditState: () => {
-    activeExternalWatches: Ref<WatchRegistry>;
-    watchModifiedQueue: Ref<ModifiedPrompt[]>;
-  };
-  rescanHighlightViewport: () => void;
-  probeLocalCapabilities: () => void;
-  frameStreams: SshFrameStreams;
-}
+export type {
+  ReplayResult,
+  SessionInfo,
+  HostKeyChallenge,
+  SshReconnectState,
+  SshSftpHooks,
+  SshFrameStreams,
+  SshConnectionOptions,
+} from "../lib/sshConnectionTypes";
 
 const OPEN_RETRY_MAX = 3;
 
-/** SSH 会话主干：协议路由查询、open/attach/关闭、重试退避、传输复用与降级、
- *  宿主重开（host reopen）与 host-key 挑战应答统一收口。
+/** SSH 会话主干：协议路由查询、open/attach/关闭、重试退避、传输复用与降级；
+ *  宿主重开（host reopen）与 host-key 挑战应答由 useSshHostKey 先行装配、
+ *  函数并入本组合式函数的公开 API，调用方无需感知拆分。
  *
  *  重连梯子（useSessionReconnect）、传输断开监听（useTerminalTransportWatch）、
  *  连接卡片（useConnectCard）都消费这里的 openSession/attachSession/
@@ -212,6 +103,17 @@ const {
   pendingTerminalFrames,
   setReplayNoProgress,
 } = frameStreams;
+
+// 宿主重开与 host-key 应答先于此装配，两个函数原样并入公开 API（调用方
+// 无变化）；连接成功时由本组合式函数清零 hostReopenFailed 供重试决策读取。
+const { requestHostReopenConnection, resolveHostKey, hostReopenFailed } = useSshHostKey({
+  t,
+  showError,
+  connectLog,
+  hostKeyPrompt,
+  rememberHostKey,
+  connectionId,
+});
 
 // 传输复用状态跨重试保留：宿主把已被占用的来源降级为普通登录时，同一
 // sidecar 会话 id 可被后续 open 复用。boot 上下文落地后由 App.vue 经
@@ -396,7 +298,7 @@ async function openSession(forceNew = false, bootRestore = false, isRetry = fals
       setReplayNoProgress(0);
     }
     connectSucceeded.value = true;
-    hostReopenFailed = false;
+    hostReopenFailed.value = false;
     inactiveWaiting.value = false;
     connectLog.push("info", t("connectCard.log.connected", { seconds: ((Date.now() - attemptStarted) / 1000).toFixed(1) }));
     const replay = await window.dbxPlugin.invoke<ReplayResult>("ssh/terminal/replay", {
@@ -459,7 +361,7 @@ async function openSession(forceNew = false, bootRestore = false, isRetry = fals
       inactive,
       bootRestore,
       preconnect,
-      hostReopenFailed,
+      hostReopenFailed: hostReopenFailed.value,
     });
     if (decision.kind === "retry") {
       openRetryAttempt = decision.attempt;
@@ -612,36 +514,6 @@ async function closeSession(updateStatus = true) {
     terminalError.value = t("disconnected");
   }
   persistState();
-}
-
-// 手动重连前请宿主按当前最新配置重开连接：连接在侧边栏被编辑（如改密码）后，
-// 宿主会摘掉 connected 标记且不回推插件，sidecar 里存的凭据就此过期——不先
-// 重开的话 openSession 只会拿旧凭据反复失败。宿主以打开连接的同款流程重新
-// 下发配置（含 vault 里的最新凭据）。失败记录下来，避免后续对空连接表
-// 反复发起 ssh/session/open；旧宿主仍可在连接表已有记录时继续拨号。
-let hostReopenFailed = false;
-async function requestHostReopenConnection(): Promise<boolean> {
-  if (!connectionId.value) return false;
-  const restored = await reopenHostConnection(window.dbxPlugin, connectionId.value);
-  hostReopenFailed = !restored;
-  return restored;
-}
-
-async function resolveHostKey(accept: boolean) {
-  const prompt = hostKeyPrompt.value;
-  if (!prompt) return;
-  hostKeyPrompt.value = undefined;
-  try {
-    await window.dbxPlugin.invoke("connection/challenge/resolve", {
-      challengeId: prompt.challengeId,
-      operationId: prompt.operationId,
-      accept,
-      remember: accept && rememberHostKey.value,
-    });
-    connectLog.push("info", t("connectCard.log.hostKeyResolved"));
-  } catch (cause) {
-    showError(cause, "terminal");
-  }
 }
 
   return {
