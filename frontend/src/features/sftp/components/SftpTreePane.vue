@@ -7,13 +7,13 @@
 // 虚拟滚动/详情卡/文件拖放分别下沉到 useTreeVirtualScroll / useTreeDetailsCard /
 // useTreeFileDrop，单行 DOM 与行内样式在 SftpTreeRow.vue。
 import { computed, ref, watch } from "vue";
-import type { SftpSanitizedEntry } from "../lib/sftpEntries";
-import type { SftpFileTreeNode, SftpTreeRow as TreeRow } from "../lib/sftpFileTree";
-import type { SftpDetailInfo } from "../lib/sftpDetails";
+import type { SftpSanitizedEntry } from "../lib/entries/sftpEntries";
+import type { SftpFileTreeNode, SftpTreeRow as TreeRow } from "../lib/tree/sftpFileTree";
+import type { SftpDetailInfo } from "../lib/actions/sftpDetails";
 import SftpTreeRow from "./SftpTreeRow.vue";
-import { useTreeDetailsCard } from "../composables/useTreeDetailsCard";
-import { useTreeFileDrop } from "../composables/useTreeFileDrop";
-import { useTreeVirtualScroll } from "../composables/useTreeVirtualScroll";
+import { useTreeDetailsCard } from "../composables/tree/useTreeDetailsCard";
+import { useTreeFileDrop } from "../composables/tree/useTreeFileDrop";
+import { useTreeVirtualScroll } from "../composables/tree/useTreeVirtualScroll";
 import { sampleHostPointer, type HostPointerSample } from "../../../shared/lib/hostPointer";
 
 const props = withDefaults(

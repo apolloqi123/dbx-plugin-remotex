@@ -8,7 +8,7 @@
 import { computed, ref, watch } from "vue";
 import { FileText, Image as ImageIcon, Loader2, Save, X } from "@lucide/vue";
 import { createPreviewAsyncComponent } from "../../../shared/lib/asyncPreview";
-import type { EditorTab } from "../composables/useEditorTabs";
+import type { EditorTab } from "../composables/editor/useEditorTabs";
 
 const props = defineProps<{
   tabs: EditorTab[];

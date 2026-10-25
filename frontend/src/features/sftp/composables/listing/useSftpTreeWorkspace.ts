@@ -1,5 +1,5 @@
 import { nextTick, watch, type Ref } from "vue";
-import { sanitizeSftpEntries, type SftpSanitizedEntry } from "../../lib/sftpEntries";
+import { sanitizeSftpEntries, type SftpSanitizedEntry } from "../../lib/entries/sftpEntries";
 import {
   applyFileTreeChildren,
   createFileTreeRoot,
@@ -8,8 +8,8 @@ import {
   markCollapsedTreeNodesStale,
   markFileTreeStale,
   type SftpFileTreeNode,
-} from "../../lib/sftpFileTree";
-import { mergeSftpDetail, type SftpDetailInfo } from "../../lib/sftpDetails";
+} from "../../lib/tree/sftpFileTree";
+import { mergeSftpDetail, type SftpDetailInfo } from "../../lib/actions/sftpDetails";
 import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "../../lib/paths/sftpRemotePaths";
 
 /**

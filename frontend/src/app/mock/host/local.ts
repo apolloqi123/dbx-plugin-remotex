@@ -56,7 +56,7 @@ export function exitLocalSession(): void {
 // ---- 原生拖拽指针探针（local/pointer/sample）----
 // 默认与旧宿主一致：没有光标样本，前端不做坐标反解、按原始宿主点命中。
 // 夹具用 __dbxMockPointerSample 注入真实光标 + 窗口几何，走查宿主把坐标
-// 多除一次缩放比例时的反解路径（见 features/sftp/lib/hostDragMapping.ts）。
+// 多除一次缩放比例时的反解路径（见 features/sftp/lib/transfer/hostDragMapping.ts）。
 export interface MockPointerSampleState {
   platform: string;
   cursor: { x: number; y: number } | null;

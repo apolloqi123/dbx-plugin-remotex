@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import EditorPane from "./EditorPane.vue";
-import type { EditorTab } from "../composables/useEditorTabs";
+import type { EditorTab } from "../composables/editor/useEditorTabs";
 
 vi.mock("./TextPreview.vue", async () => {
   const { defineComponent, h } = await import("vue");

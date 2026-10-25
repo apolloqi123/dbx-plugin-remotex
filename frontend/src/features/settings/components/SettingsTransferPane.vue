@@ -6,10 +6,10 @@ import { computed } from "vue";
 import { FolderOpen, Plus, Trash2 } from "@lucide/vue";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../shared/ui/select/index";
 import { Switch } from "../../../shared/ui/switch/index";
-import { DOWNLOAD_CONFLICT_POLICIES, type DownloadConflictPolicy } from "../../sftp/lib/downloadPrefs";
-import { type EditorAssociation, type EditorConfig, type KnownEditor } from "../../sftp/lib/editorRules";
+import { DOWNLOAD_CONFLICT_POLICIES, type DownloadConflictPolicy } from "../../sftp/lib/transfer/downloadPrefs";
+import { type EditorAssociation, type EditorConfig, type KnownEditor } from "../../sftp/lib/editor/editorRules";
 import { TRANSFER_DUPLICATE_POLICIES, type TransferDuplicatePolicy } from "../../transfers/lib/transferQueue";
-import { SFTP_NAME_ENCODINGS, type SftpNameEncoding } from "../../sftp/lib/sftpName";
+import { SFTP_NAME_ENCODINGS, type SftpNameEncoding } from "../../sftp/lib/entries/sftpName";
 
 /** 传输分栏的共享草稿（弹窗主保存链读取同一份响应式对象）。 */
 interface TransferDrafts {

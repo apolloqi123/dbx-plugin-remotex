@@ -13,7 +13,7 @@ import {
   type ImportKind,
   type ImportSessionView,
 } from "../../security/lib/otpPanel";
-import { exportSanitizedJson } from "../../sftp/lib/sanitizedDownload";
+import { exportSanitizedJson } from "../../sftp/lib/transfer/sanitizedDownload";
 
 const props = defineProps<{ t: (key: string, values?: Record<string, string | number>) => string }>();
 interface ImportSource { kind: ImportKind; labelKey: string; accept: string; windtermExtras: boolean; hintKey?: string }

@@ -13,8 +13,8 @@ import {
   Link2,
   TriangleAlert,
 } from "@lucide/vue";
-import type { SftpSanitizedEntry } from "../lib/sftpEntries";
-import type { SftpFileTreeNode } from "../lib/sftpFileTree";
+import type { SftpSanitizedEntry } from "../lib/entries/sftpEntries";
+import type { SftpFileTreeNode } from "../lib/tree/sftpFileTree";
 
 const props = defineProps<{
   row: { node: SftpFileTreeNode; depth: number; index: number };

@@ -9,7 +9,7 @@ import {
   upsertBookmark,
   validateBookmarkInput,
   type SftpBookmark,
-} from "../../lib/sftpBookmarks";
+} from "../../lib/paths/sftpBookmarks";
 
 /**
  * SFTP 路径书签（存储迁移批 1）：权威在 pluginStore（宿主 ui-storage.json，

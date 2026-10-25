@@ -108,8 +108,8 @@ import { buildPasteConfirmation, type PasteConfirmation } from "../features/term
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../shared/lib/clipboardBridge";
 import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { isCountdownActive } from "../features/recording/lib/recordingCountdown";
-import { type SftpTypeFilter } from "../features/sftp/lib/sftpFileFilters";
-import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/sftpBookmarks";
+import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilters";
+import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/paths/sftpBookmarks";
 import {
   extractMcpSettingsMirror,
   loadMcpSettingsMirror,
@@ -137,17 +137,17 @@ import { ARBITER_PRIORITIES, resolveKeyOwners, type ArbiterClaim, type ClaimKey,
 // CompletionController）；legacy 补全目录已退役，无命中即
 // pass-through（菜单关、Tab 交 shell），不造假候选。
 import type { CompletionItem } from "../features/completion/lib/completion/core/types";
-import { type SftpNameEncoding } from "../features/sftp/lib/sftpName";
+import { type SftpNameEncoding } from "../features/sftp/lib/entries/sftpName";
 import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type TransferTask,
 } from "../features/transfers/lib/transferQueue";
-import { registerWatch } from "../features/sftp/lib/watchEdits";
+import { registerWatch } from "../features/sftp/lib/editor/watchEdits";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
 import { loadLastConnectParams } from "../features/connections/lib/connectLastParams";
 import { pluginStore } from "../shared/lib/pluginStore";
 import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
-import type { DownloadConflictPolicy } from "../features/sftp/lib/downloadPrefs";
+import type { DownloadConflictPolicy } from "../features/sftp/lib/transfer/downloadPrefs";
 import { commandMarkerTooltip, formatCommandDuration, Osc633CommandParser, runningCommandElapsedMs, type Osc633StreamUpdates } from "../features/terminal/lib/panels/terminalCommandMarkers";
 import { batchProgressPercent, type BatchProgressState } from "../features/transfers/lib/sftpBatchProgress";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
@@ -223,13 +223,13 @@ import { useRdpWorkbench } from "../features/remote-desktop/composables/useRdpWo
 import { useVncSession } from "../features/remote-desktop/composables/useVncSession";
 import { useConnectCard } from "../features/connections/composables/useConnectCard";
 import { useProtocolFrameBuffers } from "../shared/composables/useProtocolFrameBuffers";
-import { useUploadChain } from "../features/sftp/composables/useUploadChain";
-import { useFilePreview } from "../features/sftp/composables/useFilePreview";
-import { useSftpDownload } from "../features/sftp/composables/useSftpDownload";
-import { useSftpDelete } from "../features/sftp/composables/useSftpDelete";
-import { useSftpListLayout } from "../features/sftp/composables/useSftpListLayout";
-import { useSftpSelectionClipboard } from "../features/sftp/composables/useSftpSelectionClipboard";
-import { useSftpNavigation } from "../features/sftp/composables/useSftpNavigation";
+import { useUploadChain } from "../features/sftp/composables/transfer/useUploadChain";
+import { useFilePreview } from "../features/sftp/composables/editor/useFilePreview";
+import { useSftpDownload } from "../features/sftp/composables/transfer/useSftpDownload";
+import { useSftpDelete } from "../features/sftp/composables/actions/useSftpDelete";
+import { useSftpListLayout } from "../features/sftp/composables/listing/useSftpListLayout";
+import { useSftpSelectionClipboard } from "../features/sftp/composables/actions/useSftpSelectionClipboard";
+import { useSftpNavigation } from "../features/sftp/composables/listing/useSftpNavigation";
 import OtpPanel from "../features/security/components/OtpPanel.vue";
 import ImportWizard from "../features/connections/components/ImportWizard.vue";
 import { useTerminalAppearance } from "../features/terminal/composables/ui/useTerminalAppearance";
@@ -243,8 +243,8 @@ import { useGhostSuggest } from "../features/completion/composables/useGhostSugg
 import { useQuickSelect } from "../features/terminal/composables/ui/useQuickSelect";
 import { useHistoryPanel } from "../features/terminal/composables/ui/useHistoryPanel";
 import { useCommandHistory } from "../features/terminal/composables/ui/useCommandHistory";
-import { useSftpRename } from "../features/sftp/composables/useSftpRename";
-import { useEditorTabs } from "../features/sftp/composables/useEditorTabs";
+import { useSftpRename } from "../features/sftp/composables/actions/useSftpRename";
+import { useEditorTabs } from "../features/sftp/composables/editor/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
 import TerminalLayoutTree from "../features/terminal/components/TerminalLayoutTree.vue";
 import {
@@ -252,14 +252,14 @@ import {
   hasTerminalSplit,
   shouldFollowTabCwd,
 } from "../features/terminal/lib/appearance/terminalLayout";
-import { useSftpCreateDirectory } from "../features/sftp/composables/useSftpCreateDirectory";
+import { useSftpCreateDirectory } from "../features/sftp/composables/actions/useSftpCreateDirectory";
 import { useConnectionInfo } from "../features/connections/composables/useConnectionInfo";
-import { useSftpArchive } from "../features/sftp/composables/useSftpArchive";
-import { useSftpPathHistory } from "../features/sftp/composables/useSftpPathHistory";
-import { useSymlink } from "../features/sftp/composables/useSymlink";
+import { useSftpArchive } from "../features/sftp/composables/transfer/useSftpArchive";
+import { useSftpPathHistory } from "../features/sftp/composables/listing/useSftpPathHistory";
+import { useSymlink } from "../features/sftp/composables/actions/useSymlink";
 import { useZmodem } from "../features/terminal/composables/ui/useZmodem";
 import { useCommandDialog } from "../features/terminal/composables/ui/useCommandDialog";
-import { useExternalEdits } from "../features/sftp/composables/useExternalEdits";
+import { useExternalEdits } from "../features/sftp/composables/editor/useExternalEdits";
 import { useBatchSend } from "../features/terminal/composables/ui/useBatchSend";
 import { useMetricsPanel, type ServerMetrics } from "../features/metrics/composables/useMetricsPanel";
 import { useTrzsz } from "../features/terminal/composables/ui/useTrzsz";
@@ -282,10 +282,10 @@ import {
   NAME_COLUMN_MIN,
   sanitizeVisibleColumns,
   type SftpColumn,
-} from "../features/sftp/lib/sftpEntries";
+} from "../features/sftp/lib/entries/sftpEntries";
 import {
   folderUploadPercent,
-} from "../features/sftp/lib/folderUpload";
+} from "../features/sftp/lib/transfer/folderUpload";
 import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "./workbench/lib/appearanceSync";
 import { attachWebglRenderer, syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../features/terminal/lib/appearance/terminalWebgl";
 import {
@@ -310,12 +310,12 @@ import {
   flattenVisibleTreeRows,
   markCollapsedTreeNodesStale,
   type SftpFileTreeNode,
-} from "../features/sftp/lib/sftpFileTree";
+} from "../features/sftp/lib/tree/sftpFileTree";
 import {
   filterSelectableSftpEntries,
-} from "../features/sftp/lib/sftpContextMenu";
-import { type SftpSanitizedEntry } from "../features/sftp/lib/sftpEntries";
-import { mergeSftpDetail, type SftpDetailInfo } from "../features/sftp/lib/sftpDetails";
+} from "../features/sftp/lib/actions/sftpContextMenu";
+import { type SftpSanitizedEntry } from "../features/sftp/lib/entries/sftpEntries";
+import { mergeSftpDetail, type SftpDetailInfo } from "../features/sftp/lib/actions/sftpDetails";
 import { workbenchMessage } from "../shared/lib/i18n";
 import { randomUUID } from "../shared/lib/uuid";
 // 预览面板按需加载（含 CodeMirror + language-data，数百 KB）：定义异步组件
@@ -358,7 +358,7 @@ import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
 import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
 import SftpWorkspacePanel from "./components/SftpWorkspacePanel.vue";
 import { Switch } from "../shared/ui/switch/index";
-import type { EditorConfig } from "../features/sftp/lib/editorRules";
+import type { EditorConfig } from "../features/sftp/lib/editor/editorRules";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select/index";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../shared/ui/context-menu/index";
 import { Popover, PopoverAnchor, PopoverContent } from "../shared/ui/popover/index";

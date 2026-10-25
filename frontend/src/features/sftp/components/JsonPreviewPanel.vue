@@ -10,7 +10,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Check, Copy, Search } from "@lucide/vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
 import { writeClipboardText, type ClipboardDeps } from "../../../shared/lib/clipboardBridge";
-import { filterJsonFields, type JsonPreviewField, type JsonPreviewState } from "../lib/jsonPreview";
+import { filterJsonFields, type JsonPreviewField, type JsonPreviewState } from "../lib/editor/jsonPreview";
 import { createPreviewAsyncComponent } from "../../../shared/lib/asyncPreview";
 // 原始视图复用只读 TextPreview；异步引入避免把 CodeMirror 拉进本组件模块图
 // 的启动求值（invalid/too-large 降级路径同样受益）。失败/加载兜底与 App 的

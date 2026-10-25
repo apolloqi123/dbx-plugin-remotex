@@ -25,7 +25,7 @@ type DbxPluginEvent = DbxPluginBackendEvent | DbxPluginEnvironmentEvent;
 interface DbxPluginDragPosition {
   /** iframe 内 CSS 像素，宿主已减去 iframe 在窗口中的偏移。注意 DBX 0.6.x 的
    *  macOS 实现把 wry 的逻辑点又除了一次 devicePixelRatio；SFTP 树会用
-   *  sidecar 光标探针反解（features/sftp/lib/hostDragMapping.ts）。 */
+   *  sidecar 光标探针反解（features/sftp/lib/transfer/hostDragMapping.ts）。 */
   x: number;
   y: number;
 }

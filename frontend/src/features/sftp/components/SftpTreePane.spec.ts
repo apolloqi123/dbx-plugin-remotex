@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { mount } from "@vue/test-utils";
 import SftpTreePane from "./SftpTreePane.vue";
-import type { SftpEntryKind, SftpSanitizedEntry } from "../lib/sftpEntries";
-import type { SftpFileTreeNode, SftpTreeRow } from "../lib/sftpFileTree";
-import type { SftpDetailInfo } from "../lib/sftpDetails";
+import type { SftpEntryKind, SftpSanitizedEntry } from "../lib/entries/sftpEntries";
+import type { SftpFileTreeNode, SftpTreeRow } from "../lib/tree/sftpFileTree";
+import type { SftpDetailInfo } from "../lib/actions/sftpDetails";
 import type { HostPointerSample } from "../../../shared/lib/hostPointer";
 
 const t = (key: string, values?: Record<string, string | number>) => {

@@ -3,7 +3,7 @@ import type { Terminal } from "@xterm/xterm";
 import type { TerminalBehaviorSettings } from "../../lib/appearance/terminalBehavior";
 import { resolveRightClickBehavior } from "../../lib/appearance/terminalBehavior";
 import type { TransferHistoryEntry } from "../../../transfers/lib/transferHistory";
-import { filterSelectableSftpUris, resolveSftpContextMenuSelection } from "../../../sftp/lib/sftpContextMenu";
+import { filterSelectableSftpUris, resolveSftpContextMenuSelection } from "../../../sftp/lib/actions/sftpContextMenu";
 import { pathFromUri } from "../../../sftp/lib/paths/sftpRemotePaths";
 
 /** 右键菜单/工具条弹层的受控开关：外部状态由 App 或各业务 composable 持有。 */

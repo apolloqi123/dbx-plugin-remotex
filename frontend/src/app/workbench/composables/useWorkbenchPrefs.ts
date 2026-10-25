@@ -12,8 +12,8 @@ import {
   type SftpCompressMode,
 } from "../lib/preferencesMirror";
 import { clampTransferConcurrency, clampTransferDownloadLimit, clampTransferMaxActive, sanitizeTransferDuplicatePolicy, type TransferDuplicatePolicy } from "../../../features/transfers/lib/transferQueue";
-import { sanitizeNameEncoding, type SftpNameEncoding } from "../../../features/sftp/lib/sftpName";
-import type { DownloadConflictPolicy } from "../../../features/sftp/lib/downloadPrefs";
+import { sanitizeNameEncoding, type SftpNameEncoding } from "../../../features/sftp/lib/entries/sftpName";
+import type { DownloadConflictPolicy } from "../../../features/sftp/lib/transfer/downloadPrefs";
 import { sanitizeActionLinksSettings, type ActionLinksSettings } from "../../../features/terminal/lib/decorations/actionLinksMatcher";
 import { sanitizeGutterSettings, type GutterSettings } from "../../../features/terminal/lib/appearance/terminalGutter";
 

@@ -26,10 +26,10 @@ import { saveConnectionEntry } from "../../connections/lib/connectionSettingMirr
 import { confirmDialog } from "../../../shared/lib/confirmDialog";
 import { rpc } from "../../../shared/lib/rpc";
 import { MIB, mibField, persistMcpSettingsMirror, settingsErrorOf, type DiscoveredKey, type KnownHostEntry, type McpSizeSettings, type SshSettings } from "../lib/settingsModel";
-import type { DownloadConflictPolicy } from "../../sftp/lib/downloadPrefs";
-import type { EditorConfig, KnownEditor } from "../../sftp/lib/editorRules";
+import type { DownloadConflictPolicy } from "../../sftp/lib/transfer/downloadPrefs";
+import type { EditorConfig, KnownEditor } from "../../sftp/lib/editor/editorRules";
 import type { TransferDuplicatePolicy } from "../../transfers/lib/transferQueue";
-import type { SftpNameEncoding } from "../../sftp/lib/sftpName";
+import type { SftpNameEncoding } from "../../sftp/lib/entries/sftpName";
 import {
   type TerminalAppearanceProfile,
   type TerminalAppearanceSettings,

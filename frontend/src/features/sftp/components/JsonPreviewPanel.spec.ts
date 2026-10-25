@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import JsonPreviewPanel from "./JsonPreviewPanel.vue";
-import { buildJsonPreview, type JsonPreviewState } from "../lib/jsonPreview";
+import { buildJsonPreview, type JsonPreviewState } from "../lib/editor/jsonPreview";
 
 const SAMPLE = '{"name":"dbx","user":{"tags":["ops"]},"port":22}';
 

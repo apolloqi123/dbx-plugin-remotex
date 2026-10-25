@@ -50,15 +50,15 @@ import {
   ContextMenuTrigger,
 } from "../../shared/ui/context-menu/index";
 import SftpTreePane from "../../features/sftp/components/SftpTreePane.vue";
-import type { SftpSanitizedEntry } from "../../features/sftp/lib/sftpEntries";
-import type { SftpDetailInfo } from "../../features/sftp/lib/sftpDetails";
-import type { SftpFileTreeNode, SftpTreeRow } from "../../features/sftp/lib/sftpFileTree";
-import type { SftpTypeFilter } from "../../features/sftp/lib/sftpFileFilters";
-import { SFTP_BOOKMARK_LABEL_MAX_LENGTH, type SftpBookmark } from "../../features/sftp/lib/sftpBookmarks";
-import type { CustomEditor, EditorConfig, KnownEditor } from "../../features/sftp/lib/editorRules";
-import type { SftpSoftError } from "../../features/sftp/composables/useSftpNavigation";
+import type { SftpSanitizedEntry } from "../../features/sftp/lib/entries/sftpEntries";
+import type { SftpDetailInfo } from "../../features/sftp/lib/actions/sftpDetails";
+import type { SftpFileTreeNode, SftpTreeRow } from "../../features/sftp/lib/tree/sftpFileTree";
+import type { SftpTypeFilter } from "../../features/sftp/lib/entries/sftpFileFilters";
+import { SFTP_BOOKMARK_LABEL_MAX_LENGTH, type SftpBookmark } from "../../features/sftp/lib/paths/sftpBookmarks";
+import type { CustomEditor, EditorConfig, KnownEditor } from "../../features/sftp/lib/editor/editorRules";
+import type { SftpSoftError } from "../../features/sftp/composables/listing/useSftpNavigation";
 import { batchProgressPercent, type BatchProgressState } from "../../features/transfers/lib/sftpBatchProgress";
-import type { RemotePathSegment } from "../../features/sftp/lib/remotePathInput";
+import type { RemotePathSegment } from "../../features/sftp/lib/paths/remotePathInput";
 import { formatBytes } from "../../shared/lib/format";
 import { pathFromUri } from "../../features/sftp/lib/paths/sftpRemotePaths";
 

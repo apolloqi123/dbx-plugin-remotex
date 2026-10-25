@@ -6,7 +6,7 @@ import { Download, FileText, FileUp, FolderOpen, FolderUp, Loader2, Pause, Play,
 import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
 import type { ResumableUploadTask } from "../../features/transfers/lib/transferResume";
 import type { BatchUploadSummary, TransferTask } from "../../features/transfers/lib/transferQueue";
-import type { FolderUploadProgress } from "../../features/sftp/lib/folderUpload";
+import type { FolderUploadProgress } from "../../features/sftp/lib/transfer/folderUpload";
 
 /** 传输弹层（tab/panel 两表面共用单实例）：活跃任务、文件夹/批次聚合卡、
  *  断点续传与落盘历史。队列/历史状态仍由 App 的 useTransferQueue /

@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import appVueSource from "./App.vue?raw";
-import sftpErrorsSource from "../features/sftp/lib/sftpErrors?raw";
+import sftpErrorsSource from "../features/sftp/lib/entries/sftpErrors?raw";
 import { Osc7DirectoryParser, parseOsc7Path } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { describeReconnectCountdown, describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay } from "../features/terminal/lib/behavior/terminalReconnect";
 import { advanceBatchProgress, batchProgressPercent, createBatchProgress } from "../features/transfers/lib/sftpBatchProgress";
 import { sampleTransferSpeed } from "../features/transfers/lib/transferSpeed";
 import { DANGEROUS_COMMAND_PATTERNS, buildPasteConfirmation, inspect } from "../features/terminal/lib/behavior/dangerousCommands";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
-import { pushPathHistory, sanitizePathHistories } from "../features/sftp/lib/sftpPathHistory";
+import { pushPathHistory, sanitizePathHistories } from "../features/sftp/lib/paths/sftpPathHistory";
 import { formatBytes, formatRate } from "../shared/lib/format";
-import { expandSelection, filterSftpEntries } from "../features/sftp/lib/sftpFileFilters";
+import { expandSelection, filterSftpEntries } from "../features/sftp/lib/entries/sftpFileFilters";
 import { getSshWorkbenchSplitLayout, resolveSftpPaneOpen, sanitizeSftpPaneDefaultOpen, resolveDirectoryFollow, sanitizeDirectoryFollowPref, sanitizeSftpAutoConnectPref, shouldLazyLoadSftpListing, sanitizeWorkbenchLayoutPrefs } from "./lib/workbenchLayout";
 import { commandMarkerTooltip, formatCommandDuration, getOsc633ParserState, Osc633CommandParser, parseOsc633StreamChunk, runningCommandElapsedMs } from "../features/terminal/lib/panels/terminalCommandMarkers";
 import { describeWorkbenchSessionStatus, isUsableSshSession, normalizeSshSessionStatus } from "../features/connections/lib/sessionStatus";
