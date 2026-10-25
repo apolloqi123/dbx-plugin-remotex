@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::core::exec::exec_plain;
+use crate::sessions::ssh::exec::exec_plain;
 
 #[path = "task_config.rs"]
 mod task_config;

@@ -23,12 +23,12 @@ pub enum TotpAlgorithm {
 }
 
 /// One OTP selection with the data the replay guard needs.
-pub(in crate::core::exec) struct TotpSelection {
+pub(in crate::sessions::ssh::exec) struct TotpSelection {
     /// Ledger-key prefix identifying the secret the code came from.
-    pub(in crate::core::exec) fingerprint: String,
-    pub(in crate::core::exec) code: String,
+    pub(in crate::sessions::ssh::exec) fingerprint: String,
+    pub(in crate::sessions::ssh::exec) code: String,
     /// Unix seconds after which the code's own window expires.
-    pub(in crate::core::exec) valid_until: u64,
+    pub(in crate::sessions::ssh::exec) valid_until: u64,
     /// Secret period (or the static fallback window).
     pub(super) period: u64,
 }
@@ -39,7 +39,7 @@ pub(in crate::core::exec) struct TotpSelection {
 /// fresh instance per call while rotation must survive across calls, which
 /// mirrors tiny-rdm's service-level `markOTPUsage`; in-memory only, cleared
 /// on sidecar restart.
-pub(in crate::core::exec) fn otp_usage_ledger() -> &'static Mutex<HashMap<String, u64>> {
+pub(in crate::sessions::ssh::exec) fn otp_usage_ledger() -> &'static Mutex<HashMap<String, u64>> {
     static LEDGER: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
     LEDGER.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -48,7 +48,7 @@ pub(in crate::core::exec) fn otp_usage_ledger() -> &'static Mutex<HashMap<String
 /// `scope|secret-fingerprint|code` with their replay-window expiry
 /// (`validUntil + period`, i.e. including the ±1-step acceptance slack).
 /// Global for the same reason as [`otp_usage_ledger`].
-pub(in crate::core::exec) fn committed_otp_ledger() -> &'static Mutex<HashMap<String, u64>> {
+pub(in crate::sessions::ssh::exec) fn committed_otp_ledger() -> &'static Mutex<HashMap<String, u64>> {
     static LEDGER: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
     LEDGER.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -57,7 +57,7 @@ pub(in crate::core::exec) fn committed_otp_ledger() -> &'static Mutex<HashMap<St
 /// each one a clean slate: hold the returned guard for the whole test so
 /// parallel tests neither share marks nor wipe each other mid-run.
 #[cfg(test)]
-pub(in crate::core::exec) fn otp_ledger_test_guard() -> std::sync::MutexGuard<'static, ()> {
+pub(in crate::sessions::ssh::exec) fn otp_ledger_test_guard() -> std::sync::MutexGuard<'static, ()> {
     static SERIAL: OnceLock<Mutex<()>> = OnceLock::new();
     let serial = SERIAL.get_or_init(|| Mutex::new(()));
     let guard = serial.lock().unwrap_or_else(|poison| poison.into_inner());
@@ -77,7 +77,7 @@ pub(in crate::core::exec) fn otp_ledger_test_guard() -> std::sync::MutexGuard<'s
 /// static code), so marks written by one resolved `SudoAuth` match lookups
 /// from the next call regardless of how the secret list was ordered or
 /// merged. Only the fingerprint is stored, never the secret.
-pub(in crate::core::exec) fn otp_secret_fingerprint(secret: &TotpSecret) -> String {
+pub(in crate::sessions::ssh::exec) fn otp_secret_fingerprint(secret: &TotpSecret) -> String {
     let canonical = match secret {
         TotpSecret::Key {
             key,
@@ -111,7 +111,7 @@ pub fn is_totp_in_replay_window(now: u64, committed_until: u64) -> bool {
     now <= committed_until
 }
 
-pub(in crate::core::exec) fn unix_now() -> u64 {
+pub(in crate::sessions::ssh::exec) fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_secs())
@@ -157,7 +157,7 @@ pub fn parse_totp_secret(input: &str) -> Option<TotpSecret> {
     })
 }
 
-pub(in crate::core::exec) fn parse_otpauth(rest: &str) -> Option<TotpSecret> {
+pub(in crate::sessions::ssh::exec) fn parse_otpauth(rest: &str) -> Option<TotpSecret> {
     let (scheme_path, query) = rest.split_once('?').unwrap_or((rest, ""));
     if !scheme_path
         .split('/')
@@ -201,11 +201,11 @@ pub(in crate::core::exec) fn parse_otpauth(rest: &str) -> Option<TotpSecret> {
     })
 }
 
-pub(in crate::core::exec) fn is_numeric_otp(input: &str) -> bool {
+pub(in crate::sessions::ssh::exec) fn is_numeric_otp(input: &str) -> bool {
     (4..=10).contains(&input.len()) && input.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-pub(in crate::core::exec) fn hotp(
+pub(in crate::sessions::ssh::exec) fn hotp(
     key: &[u8],
     counter: u64,
     digits: u32,

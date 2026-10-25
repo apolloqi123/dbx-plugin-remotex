@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::core::exec;
+use crate::sessions::ssh::exec;
 
 /// Connection-level agent terminal mode (`agentTerminalMode`). Persisted per
 /// connection in `<data_dir>/agent-modes.json` so the toggle in the terminal

@@ -20,6 +20,7 @@ mod auth;
 mod channel_error_tests;
 mod connection;
 mod download;
+pub(crate) mod exec;
 mod execution;
 mod filesystem;
 mod forwarding;
@@ -78,8 +79,8 @@ pub(crate) use transfer_util::apply_preserved_permissions;
 use transfer_util::*;
 use tree_support::*;
 
-use crate::core::exec::{
-    self, AuthFlowMode, ExecOutcome, Hints, SudoAuth, PLAIN_EXEC_TIMEOUT, SUDO_EXEC_TIMEOUT,
+use self::exec::{
+    AuthFlowMode, ExecOutcome, Hints, SudoAuth, PLAIN_EXEC_TIMEOUT, SUDO_EXEC_TIMEOUT,
 };
 use crate::core::host_key::{HostKeyState, HostKeyVerifier};
 use crate::core::model::{

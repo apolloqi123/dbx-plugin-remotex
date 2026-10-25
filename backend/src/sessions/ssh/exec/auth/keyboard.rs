@@ -8,7 +8,7 @@ use super::*;
 /// question cannot be answered before the password step.
 #[derive(Debug, Default)]
 pub struct KeyboardInteractiveState {
-    pub(in crate::core::exec) password_answered: bool,
+    pub(in crate::sessions::ssh::exec) password_answered: bool,
 }
 
 impl KeyboardInteractiveState {

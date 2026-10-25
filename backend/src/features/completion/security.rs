@@ -1,7 +1,7 @@
 //! `completion/execute` 的安全校验、参数收紧与远端命令拼装。
 //!
 //! 错误串统一 `completion:` 前缀（契约 §4.5：sidecar 字符串 Err 惯例加
-//! 前缀分类）。远端拼装必须走既有 [`crate::core::exec::shell_quote`]，逐参数
+//! 前缀分类）。远端拼装必须走既有 [`crate::sessions::ssh::exec::shell_quote`]，逐参数
 //! 单引号转义，args 是唯一可能携带用户输入的面。
 
 use crate::features::completion::protocol::CompletionExecuteRequest;
@@ -57,7 +57,7 @@ pub fn validate_and_clamp(req: &mut CompletionExecuteRequest) -> Result<(), Stri
 }
 
 /// 远端命令行拼装：`command` 原样 + 空格 + `args` 逐个
-/// [`crate::core::exec::shell_quote`]（拒绝注入面）。远端由 `SshRuntime::exec`
+/// [`crate::sessions::ssh::exec::shell_quote`]（拒绝注入面）。远端由 `SshRuntime::exec`
 /// 经 `exec` 通道直发该行，由远端默认 shell 解释。
 pub fn build_remote_command_line(command: &str, args: &[String]) -> String {
     let mut line =
@@ -65,7 +65,7 @@ pub fn build_remote_command_line(command: &str, args: &[String]) -> String {
     line.push_str(command);
     for arg in args {
         line.push(' ');
-        line.push_str(&crate::core::exec::shell_quote(arg));
+        line.push_str(&crate::sessions::ssh::exec::shell_quote(arg));
     }
     line
 }

@@ -74,7 +74,7 @@ pub use stdio::run_mcp_stdio;
 #[allow(unused_imports)]
 use stdio::*;
 
-use crate::core::exec::{self, AuthFlowMode, Hints, SudoAuth};
+use crate::sessions::ssh::exec::{self, AuthFlowMode, Hints, SudoAuth};
 use crate::core::host_key::HostKeyVerifier;
 use crate::core::model::{
     normalize_remote_path, AuthenticationMethod, JumpHost, StoredConnection, SudoSource,

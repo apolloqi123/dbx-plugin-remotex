@@ -71,7 +71,7 @@ pub fn allowed_rebuilt_command(entries: &[Vec<String>], command: &str) -> Option
     Some(
         tokens
             .iter()
-            .map(|token| crate::core::exec::shell_quote(token))
+            .map(|token| crate::sessions::ssh::exec::shell_quote(token))
             .collect::<Vec<_>>()
             .join(" "),
     )

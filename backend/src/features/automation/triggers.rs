@@ -42,7 +42,7 @@ use regex::Regex;
 use sha1::Sha1;
 use zeroize::Zeroizing;
 
-use crate::core::exec::{has_shell_prompt, normalize_auth_prompt_text};
+use crate::sessions::ssh::exec::{has_shell_prompt, normalize_auth_prompt_text};
 
 mod command;
 mod engine;

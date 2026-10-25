@@ -459,7 +459,7 @@ pub(super) fn preview_text(value: &str) -> String {
     // All-source shared exit: hostile config / JSON fields may carry ANSI ESC
     // sequences; the preview table, the sanitized export JSON and log viewers
     // are escape-capable downstream consumers, so strip before the length cap.
-    let value = crate::core::exec::strip_ansi_control_sequences(value);
+    let value = crate::sessions::ssh::exec::strip_ansi_control_sequences(value);
     if value.len() <= MAX_PREVIEW_TEXT_BYTES {
         return value;
     }

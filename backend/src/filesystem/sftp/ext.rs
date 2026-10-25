@@ -44,7 +44,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
-use crate::core::exec::shell_quote;
+use crate::sessions::ssh::exec::shell_quote;
 use crate::core::model::normalize_remote_path;
 use crate::filesystem::sftp::name::NameEncoding;
 use crate::filesystem::sftp::raw::RawAttrs;

@@ -18,7 +18,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::core::exec;
+use crate::sessions::ssh::exec;
 
 mod action;
 mod engine;

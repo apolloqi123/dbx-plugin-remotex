@@ -17,7 +17,7 @@
 use russh::client::Handle;
 use serde::Serialize;
 
-use crate::core::exec::exec_plain;
+use crate::sessions::ssh::exec::exec_plain;
 use crate::sessions::ssh::SshClient;
 
 /// MiB per byte-count unit: `nvidia-smi --format=csv,nounits` memory columns

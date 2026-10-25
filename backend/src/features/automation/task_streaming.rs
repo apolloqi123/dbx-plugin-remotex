@@ -1,7 +1,7 @@
 //! Task provider streaming layer.
 
 use super::*;
-use crate::core::exec::shell_quote as shell_single_quote;
+use crate::sessions::ssh::exec::shell_quote as shell_single_quote;
 
 pub(super) async fn wait_cancelled(cancel: &mut watch::Receiver<bool>) {
     loop {

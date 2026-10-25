@@ -30,7 +30,7 @@ pub(crate) fn section_of<'a>(output: &'a str, marker: &str) -> &'a str {
 /// per-disk `inodeUsePercent` extensions. Pure so it can be unit-tested
 /// without a server.
 pub fn parse_metrics_output(output: &str) -> serde_json::Value {
-    let mut root = crate::core::exec::parse_metrics_output(output);
+    let mut root = crate::sessions::ssh::exec::parse_metrics_output(output);
     if let Some(object) = root.as_object_mut() {
         let network = serde_json::to_value(parse_network_samples(output)).unwrap_or_default();
         object.insert("network".to_string(), network);

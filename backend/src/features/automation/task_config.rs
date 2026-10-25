@@ -1,7 +1,7 @@
 //! Task provider config layer.
 
 use super::*;
-use crate::core::exec::shell_quote as shell_single_quote;
+use crate::sessions::ssh::exec::shell_quote as shell_single_quote;
 
 pub(super) fn task_error(code: &str, message: impl std::fmt::Display) -> String {
     format!("{code}: {message}")

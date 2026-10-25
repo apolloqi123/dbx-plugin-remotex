@@ -36,5 +36,5 @@ pub fn remote_tar_command(base_dir: &str, target: &str) -> String {
 }
 
 /// 与 exec.rs 同款单引号转义：直接复用规范实现，本模块不再自带副本
-/// （`crate::core::exec::shell_quote`）。
-pub(super) use crate::core::exec::shell_quote;
+/// （`crate::sessions::ssh::exec::shell_quote`）。
+pub(super) use crate::sessions::ssh::exec::shell_quote;

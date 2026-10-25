@@ -10,7 +10,7 @@ use std::sync::Arc;
 use russh_sftp::client::SftpSession;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::core::exec;
+use crate::sessions::ssh::exec;
 use crate::sessions::ssh::RawSftpClient;
 
 /// Remote `cp`/`mv` commands run with this budget; recursive directory

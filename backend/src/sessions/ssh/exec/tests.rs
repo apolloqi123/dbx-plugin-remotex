@@ -118,7 +118,7 @@ fn shared_prompt_corpus_matches_backend_vocab() {
     // 前端 promptCorpus.spec.ts 加载同一份；改词表必须同步语料，任一侧先改
     // 即在此失败。
     let corpus: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../shared/prompt-corpus.json"))
+        serde_json::from_str(include_str!("../../../../../shared/prompt-corpus.json"))
             .expect("shared/prompt-corpus.json parses");
     let auth = SudoAuth::default();
     for case in corpus["cases"].as_array().expect("cases array") {

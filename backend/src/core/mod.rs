@@ -1,4 +1,3 @@
-pub(crate) mod exec;
 pub(crate) mod host_key;
 pub(crate) mod keys;
 pub(crate) mod model;

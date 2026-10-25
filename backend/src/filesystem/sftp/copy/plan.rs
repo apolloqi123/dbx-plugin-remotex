@@ -6,7 +6,7 @@ use super::*;
 
 use serde_json::json;
 
-use crate::core::exec;
+use crate::sessions::ssh::exec;
 use crate::core::model::normalize_remote_path;
 use crate::filesystem::sftp::name as sftp_name;
 

@@ -1,5 +1,5 @@
 //! Extended server metrics: per-interface network rates and top processes,
-//! appended to the base CPU/memory/disk sample from [`crate::core::exec`].
+//! appended to the base CPU/memory/disk sample from [`crate::sessions::ssh::exec`].
 //!
 //! The collector stays a single POSIX shell command in the same style as the
 //! base script: two network counter snapshots separated by `sleep 1`
@@ -22,7 +22,7 @@ use serde::Serialize;
 #[path = "gpu.rs"]
 pub mod metrics_gpu;
 
-use crate::core::exec::exec_plain;
+use crate::sessions::ssh::exec::exec_plain;
 use crate::sessions::ssh::SshClient;
 
 mod collect;
