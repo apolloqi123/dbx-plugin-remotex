@@ -7,7 +7,6 @@ const MAX_SOURCE_LINES: usize = 600;
 const MAX_TEST_LINES: usize = 1_200;
 
 const LINE_ALLOWLIST: &[(&str, usize)] = &[
-    ("sessions/local/runtime.rs", 671),
     ("sessions/ssh/tests.rs", 5535),
     ("features/mcp/tests.rs", 3772),
     ("features/import/tests.rs", 1692),
