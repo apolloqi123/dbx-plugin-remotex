@@ -1,102 +1,9 @@
 /* App.vue scoped styles (split out of the SFC for maintainability). */
 
-/* 工具栏 A+/A- 字号步进按钮（复用 Ctrl+滚轮的 clampFontSize 语义） */
-.font-step-label { font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: 0; }
-
-/* 快速命令栏（工具栏下拉）：M32-A3 后只剩"列表 + 搜索 + 执行"；
-   新建/编辑/导入样式随管理视图迁入 QuickCommandsSection。 */
-.quick-commands-popover h3 { margin: 2px 4px 6px; font-size: 12px; }
-
-
-/* RDP 缩放三档按钮组（isRdpMode 工具组）：与 icon-button 同密度，激活态
-   走 primary 描边与 icon-emerald 同款强调。 */
-.rdp-scale-group { display: flex; align-items: center; gap: 1px; }
-.rdp-scale-button.is-active { color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); }
-.rdp-scale-button .font-step-label { font-size: 10px; letter-spacing: .02em; }
-
-/* RDP 大文本粘贴面板（工具栏下拉）：textarea 主输入 + 双通道投递动作。 */
-.rdp-paste-popover h3 { margin: 2px 4px 8px; font-size: 12px; }
-.rdp-paste-text {
-  width: 100%;
-  min-height: 140px;
-  max-height: 260px;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--background);
-  color: var(--foreground);
-  padding: 6px 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  outline: none;
-}
-.rdp-paste-text:focus { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
-.rdp-paste-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.rdp-paste-hint { margin: 6px 4px 0; font-size: 11px; }
-/* RDP 分辨率弹层（工具栏下拉）：预设网格 + 自定义宽高行。 */
-.rdp-resolution-popover h3 { margin: 2px 4px 8px; font-size: 12px; }
-.rdp-resolution-presets { display: flex; flex-wrap: wrap; gap: 6px; }
-.rdp-resolution-item {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--foreground);
-  font-size: 11px;
-  padding: 4px 8px;
-  cursor: pointer;
-}
-.rdp-resolution-item:hover { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
-.rdp-resolution-item.is-active { color: var(--primary); border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
-.rdp-resolution-custom { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.rdp-resolution-custom input {
-  width: 72px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  color: var(--foreground);
-  font-size: 11px;
-  padding: 4px 6px;
-}
-.rdp-resolution-custom input:focus { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
-
-/* 搜索行：图标 + 无边框输入（容器边框即输入框）。 */
-.quick-search { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 4px; padding: 0 8px; background: var(--background); }
-.quick-search:focus-within { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
-.quick-search svg { width: 13px; height: 13px; flex: 0 0 13px; color: var(--muted-foreground); }
-.quick-search input { min-width: 0; flex: 1; height: 26px; border: 0; padding: 0; background: transparent; color: var(--foreground); font-size: 12px; outline: none; }
-/* 命令卡片（Termius Snippets 式）：{} 图标 + 名称/命令两行；动作按钮 hover
-   或展开时浮现；展开时显示完整命令（自动换行）。 */
-.quick-card { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; border: 1px solid transparent; border-radius: var(--radius); padding: 3px 4px; }
-.quick-card:hover { background: color-mix(in srgb, var(--accent) 55%, transparent); }
-.quick-card.expanded { border-color: var(--border); background: color-mix(in srgb, var(--accent) 40%, transparent); }
-.quick-card-main { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; border: 0; padding: 3px; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; }
-.quick-card-icon { width: 15px; height: 15px; flex: 0 0 15px; color: var(--muted-foreground); }
-.quick-card.expanded .quick-card-icon, .quick-card:hover .quick-card-icon { color: var(--primary); }
-.quick-card-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.quick-card-text strong { max-width: 100%; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.quick-card-text .mono { max-width: 100%; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.quick-card-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; opacity: 0; transition: opacity 100ms ease; }
-.quick-card:hover .quick-card-actions, .quick-card.expanded .quick-card-actions, .quick-card-actions:focus-within { opacity: 1; }
-.quick-action { height: 22px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 10px; cursor: pointer; }
-.quick-action:hover:not(:disabled) { background: var(--accent); }
-.quick-card-full { flex: 1 1 100%; margin: 2px 4px 4px 27px; color: var(--foreground); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* 分组头（issue #201）：可折叠 + 组名 + 条数徽标；未分组同样式。 */
-.quick-group { display: flex; flex-direction: column; }
-.quick-group-head { display: flex; align-items: center; gap: 5px; border: 0; padding: 3px 4px; background: transparent; color: var(--muted-foreground); text-align: left; cursor: pointer; }
-.quick-group-head:hover { color: var(--foreground); }
-.quick-group-chevron { width: 13px; height: 13px; flex: 0 0 13px; }
-.quick-group-name { min-width: 0; flex: 1; overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.quick-group-count { flex: 0 0 auto; border-radius: 8px; padding: 0 6px; background: var(--muted); color: var(--muted-foreground); font-size: 9px; line-height: 15px; }
-/* 只读 footer：限额 + "管理入口在设置" 指引，不再有编辑动作。 */
-.quick-command-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; }
-.quick-command-footer--readonly { justify-content: space-between; }
-.quick-command-limit { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }
-.quick-command-manage-hint { min-width: 0; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 终端 MCP 模式快速开关（工具栏弹出层，与设置弹窗共用三档文案；根规则见 style.css 全局） */
-.agent-mode-popover h3 { margin: 4px 0 8px; font-size: 12px; }
-.agent-mode-option { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; cursor: pointer; }
-.agent-mode-note { margin: 8px 0 0; font-size: 11px; }
+/* 终端 MCP 执行横幅 / 审批弹窗等仍留在 App 的规则；工具条（A± 字号步进、快速
+   命令下拉、RDP 工具组/弹层、agent-mode 下拉、录制态）的专属样式已随 DOM 迁入
+   components/WorkbenchToolbar.vue、SessionMenu.vue、QuickCommandsMenu.vue、
+   RdpToolbarControls.vue 的 scoped 样式（T19）。 */
 
 /* AI 终端同步执行：执行横幅（终端底部，避开命令标记条）+ 审批弹窗 */
 .agent-run-banner { position: absolute; z-index: 3; right: 8px; bottom: 36px; left: 8px; display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); font-size: 11px; }
@@ -106,7 +13,7 @@
 .agent-interrupt { flex: 0 0 auto; height: 24px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--destructive); font-size: 11px; cursor: pointer; }
 .agent-interrupt:hover { background: var(--accent); }
 /* —— 断点续传 / 进程管理 / 会话录制（F1-F3）—— */
-.is-recording { color: var(--destructive); }
+/* 录制中按钮的红色态随工具条迁入 components/WorkbenchToolbar.vue 的 scoped 样式。 */
 /* 录制中：悬浮控制条（红色呼吸点 + 时长 mono 等宽不跳动 + 停止按钮）。
    锚定视口而非终端面板：面板底边可能探出可视区（批量栏等会推高布局），
    绝对定位会被裁掉半截；fixed 与 toast 通知同款，已验证可靠。 */

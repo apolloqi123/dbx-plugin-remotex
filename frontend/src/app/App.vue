@@ -3,58 +3,34 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
-  ArrowLeft,
   ChevronDown,
-  ChevronRight,
-  ChevronUp,
   Disc,
-  Film,
   Pause,
   Play,
   ArrowLeftRight,
   ArrowUpDown,
-  Bot,
-  Braces,
-  ClipboardPaste,
-  Scan,
-  StretchHorizontal,
-  Proportions,
-  SlidersHorizontal,
   Copy,
   Eraser,
-  ExternalLink,
   File as FileIcon,
   FileText,
   FileUp,
-  Plus,
   FolderOpen,
-  Gauge,
   ImagePlay,
   History,
   Info,
-  ListChecks,
   Loader2,
-  Network,
-  Palette,
-  PanelRightClose,
   Pencil,
-  PlugZap,
   RefreshCw,
   Save,
   Search,
   Settings,
   ShieldCheck,
-  Siren,
   Square,
-  SquarePlus,
-  ListPlus,
-  SquareTerminal,
   Terminal as TerminalIcon,
   TextSelect,
   Trash2,
   TriangleAlert,
   X,
-  Zap,
 } from "@lucide/vue";
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
@@ -252,13 +228,11 @@ import ConnectingCard from "../features/connections/components/ConnectingCard.vu
 import ServerMetricsPanel, { type ServerMetricsView, type MetricsProcessSortKey } from "../features/metrics/components/ServerMetricsPanel.vue";
 import FolderPickerDialog from "../features/sftp/components/FolderPickerDialog.vue";
 import DockerPanel from "../features/docker/components/DockerPanel.vue";
-import DockerWhaleLogo from "../features/docker/components/DockerWhaleLogo.vue";
-import DockMetricsStrip from "./components/DockMetricsStrip.vue";
-import ConnectionInfoPopover from "./components/ConnectionInfoPopover.vue";
 import BatchBar from "./components/BatchBar.vue";
-import TransferPopover from "./components/TransferPopover.vue";
 import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
 import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
+import WorkbenchToolbar from "./components/WorkbenchToolbar.vue";
+import type { WorkbenchToolbarActions } from "./lib/workbenchToolbarActions";
 import SftpWorkspacePanel from "./components/SftpWorkspacePanel.vue";
 import { Switch } from "../shared/ui/switch/index";
 import type { EditorConfig } from "../features/sftp/lib/editor/editorRules";
@@ -3834,469 +3808,208 @@ watch(historyScope, () => {
   commandHistoryIndex.value = -1;
   commandHistoryBackup.value = "";
 });
+
+// 工具条组件的动作面（T19 工具栏拆分）：模板里原先直接绑定的函数在 setup 尾部
+// 一次性收敛成类型化对象，经 :actions 下发到 WorkbenchToolbar 及其子组件。
+// 状态权威仍在本文件（弹层开合走 v-model 链），组件不 inject、不持有会话逻辑。
+const toolbarActions: WorkbenchToolbarActions = {
+  togglePanelToolbar,
+  toggleSessionMenu,
+  toggleConnectionInfo,
+  measureLatency,
+  togglePaneOrder,
+  toggleSftpPane,
+  adjustTerminalZoom,
+  reconnectNow,
+  sendSudoRefresh,
+  openAlertTriage,
+  toggleDockerPanel,
+  openCommandDialog,
+  toggleBatchBar,
+  toggleAgentModeMenu,
+  applyAgentMode,
+  toggleMetricsPanel,
+  toggleRecording,
+  toggleRecordings,
+  openSettings,
+  openAuditLog,
+  toggleColumnsMenu,
+  toggleSftpPaneDefaultOpen,
+  toggleSftpAutoConnect,
+  toggleTransferPanel,
+  showTransferHistoryMenu,
+  toggleTransferPause,
+  cancelTransfer,
+  revealTransferTarget,
+  openTransferTarget,
+  refreshTransferPanel,
+  beginResumeUpload,
+  onResumeFilePicked,
+  openNewSessionTab,
+  openCopiedSessionTab,
+  openCommandSessionTab,
+  toggleLocalTerminal,
+  openSessionShellPick,
+  openSessionShellPrefs,
+  pickLocalShell,
+  setLocalShellPref,
+  setLocalShellIntegrationPref,
+  setLocalShellCwd,
+  setLocalShellEnv,
+  addLocalShellEnvRow,
+  removeLocalShellEnvRow,
+  openLocalTerminalTab,
+  openLocalShellSurfaceMenu,
+  openLocalShellSurface,
+  openConnectionSurface,
+  restartLocalTerminal,
+  requestLocalTerminal,
+  toggleQuickMenu,
+  sendQuickCommand,
+  pasteQuickCommand,
+  toggleQuickGroupCollapse,
+  quickGroupName,
+  toggleQuickExpand,
+  toggleRdpResolutionMenu,
+  applyRdpResolution,
+  rdpResolutionLabel,
+  isRdpResolutionActive,
+  rdpWindowProportionPreset,
+  applyRdpCustomResolution,
+  toggleRdpPasteMenu,
+  rdpWriteRemoteClipboard,
+  rdpTypeAsKeystrokes,
+  closeRdpSession,
+  togglePanelPaletteMenu,
+  pickPanelScheme,
+};
 </script>
 
 <template>
   <main class="workbench" :class="{ 'panel-surface': panelSurface }">
     <!-- dock 工具条隐藏后：右上角低透明度微钮还原（偏好落 pluginStore）。 -->
     <button v-if="panelSurface && panelToolbarHidden" type="button" class="panel-toolbar-reveal" :title="t('panel.showToolbar')" :aria-label="t('panel.showToolbar')" @click="togglePanelToolbar"><ChevronDown /></button>
-    <header v-if="!panelSurface || !panelToolbarHidden" class="toolbar" :style="toolbarStyle">
-      <!-- 连接信息入口：Info 图标按钮紧跟标识区（状态徽章右侧），弹层左对齐锚定。
-           Dock 面板表面整体换用下方 panel-actions 精简组（宿主 chrome 已有标题/关闭）。 -->
-      <div v-if="!panelSurface" class="identity-side">
-        <div class="identity">
-          <span v-if="connection.color" class="connection-color" :style="{ backgroundColor: connection.color }" />
-          <!-- 主标题跟随 ConnectingCard 的口径：连接名优先，未命名回退 user@host:port；
-               hover 仍可看到技术标识（UUID 只在名称与 host 全缺失时兜底出现）。 -->
-          <strong :title="connectionIdentity">{{ connection.name || connectionIdentity }}</strong>
-          <span v-if="connection.readOnly || connectionReadOnly" class="read-only-badge">{{ t("readOnly") }}</span>
-          <span class="session-pill" :class="`session-${sessionStatus}`"><span class="session-dot" aria-hidden="true" />{{ sessionPillText }}<span v-if="sessionStatus === 'reconnecting' && reconnectCountdown" class="session-pill-countdown mono">{{ t("sessionStatus.reconnectCountdown", { seconds: reconnectCountdown.seconds, attempt: reconnectCountdown.attempt }) }}</span></span>
-        </div>
-        <ConnectionInfoPopover
-          :connection-info-open="connectionInfoOpen"
-          :connection="connection"
-          :metrics-distro-badge="metricsDistroBadge"
-          :connection-auth-method-label="connectionAuthMethodLabel"
-          :connection-read-only="connectionReadOnly"
-          :connection-latency="connectionLatency"
-          :connection-latency-busy="connectionLatencyBusy"
-          :connection-latency-failed="connectionLatencyFailed"
-          :connected="connected"
-          :t="t"
-          @update:connectionInfoOpen="(value) => { if (!value) connectionInfoOpen = false; }"
-          @toggle="toggleConnectionInfo"
-          @measure="measureLatency"
-        />
-      </div>
-      <div v-if="!panelSurface" class="toolbar-actions">
-        <!-- —— SSH 工具组·视图段（分栏/字号）：连接协议门控（!isRdpConnection）
-             在组级判一次，组内按钮只保留各自其余条件（localUiMode/panelSurface）；
-             RDP 连接下整组不渲染，不产生孤儿按钮。 -->
-        <template v-if="!isRdpConnection">
-          <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :disabled="panelSurface" @click="togglePaneOrder"><ArrowLeftRight /></button>
-          <!-- Local terminal UI hides SSH-only actions outright (not disabled): the local
-               shell has no SSH session to act on. -->
-          <button v-if="!localUiMode" class="icon-button icon-cyan" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" :disabled="panelSurface" @click="toggleSftpPane"><FolderOpen v-if="!(sftpPaneOpen && sftpViewActive)" /><PanelRightClose v-else /></button>
-          <button class="icon-button" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
-          <button class="icon-button" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
-        </template>
-        <!-- —— RDP 独立工具组（isRdpMode 会话激活期）：缩放三档 + 桌面分辨率 +
-             大文本粘贴 + 断开。与 SSH 组互斥、各判一次门控；SSH 工具整类隐藏后，
-             这是远程桌面自己需要的操作面。 -->
-        <template v-if="isRdpMode">
-          <div class="rdp-scale-group" role="group" :aria-label="t('rdp.scaleMode')">
-            <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'fit' }" :title="t('rdp.scaleMode.fit')" :aria-label="t('rdp.scaleMode.fit')" :aria-pressed="rdpScaleMode === 'fit'" @click="rdpScaleMode = 'fit'"><Scan /></button>
-            <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'actual' }" :title="t('rdp.scaleMode.actual')" :aria-label="t('rdp.scaleMode.actual')" :aria-pressed="rdpScaleMode === 'actual'" @click="rdpScaleMode = 'actual'"><span class="font-step-label" aria-hidden="true">1:1</span></button>
-            <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'stretch' }" :title="t('rdp.scaleMode.stretch')" :aria-label="t('rdp.scaleMode.stretch')" :aria-pressed="rdpScaleMode === 'stretch'" @click="rdpScaleMode = 'stretch'"><StretchHorizontal /></button>
-          </div>
-          <div>
-            <Popover :open="rdpResolutionOpen" @update:open="(open) => { if (!open) rdpResolutionOpen = false; }">
-              <PopoverAnchor as-child>
-                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpResolutionOpen }" :title="t('rdp.resolution.title')" :aria-label="t('rdp.resolution.title')" :aria-expanded="rdpResolutionOpen" @pointerdown.stop @click.stop="toggleRdpResolutionMenu"><Proportions /></button>
-              </PopoverAnchor>
-              <PopoverContent class="popover rdp-resolution-popover" align="start" :side-offset="5">
-                <h3>{{ t("rdp.resolution.title") }}</h3>
-                <div class="rdp-resolution-presets">
-                  <button v-for="preset in RDP_RESOLUTION_PRESETS" :key="`${preset.width}x${preset.height}`" class="rdp-resolution-item" :class="{ 'is-active': isRdpResolutionActive(preset.width, preset.height) }" :disabled="rdpResizing" @click="applyRdpResolution(preset.width, preset.height)">
-                    {{ rdpResolutionLabel(preset.width, preset.height) }}
-                  </button>
-                  <button class="rdp-resolution-item" :disabled="rdpResizing" @click="applyRdpResolution(rdpWindowProportionPreset().width, rdpWindowProportionPreset().height)">{{ t("rdp.resolution.window") }}</button>
-                </div>
-                <div class="rdp-resolution-custom">
-                  <input v-model="rdpCustomWidth" class="mono" type="number" min="640" max="3840" :placeholder="t('rdp.width')" :aria-label="t('rdp.width')" />
-                  <span aria-hidden="true">×</span>
-                  <input v-model="rdpCustomHeight" class="mono" type="number" min="480" max="2160" :placeholder="t('rdp.height')" :aria-label="t('rdp.height')" />
-                  <button class="primary-button" :disabled="rdpResizing || !rdpCustomWidth || !rdpCustomHeight" @click="applyRdpCustomResolution">{{ t("rdp.resolution.apply") }}</button>
-                </div>
-                <p v-if="rdpDesktopSize" class="muted rdp-paste-hint">{{ t("rdp.resolution.current", { width: rdpDesktopSize.width, height: rdpDesktopSize.height }) }}</p>
-                <p class="muted rdp-paste-hint">{{ t("rdp.resolution.note") }}</p>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div>
-            <Popover :open="rdpPasteOpen" @update:open="(open) => { if (!open) rdpPasteOpen = false; }">
-              <PopoverAnchor as-child>
-                <button class="icon-button icon-cyan" :class="{ 'is-active': rdpPasteOpen }" :title="t('rdp.paste.title')" :aria-label="t('rdp.paste.title')" :aria-expanded="rdpPasteOpen" @pointerdown.stop @click.stop="toggleRdpPasteMenu"><ClipboardPaste /></button>
-              </PopoverAnchor>
-              <PopoverContent class="popover rdp-paste-popover" align="start" :side-offset="5">
-                <h3>{{ t("rdp.paste.title") }}</h3>
-                <textarea v-model="rdpPasteText" class="rdp-paste-text mono" :placeholder="t('rdp.paste.placeholder')" rows="8" spellcheck="false" />
-                <div class="rdp-paste-actions">
-                  <button class="primary-button" :disabled="!rdpPasteText" @click="rdpWriteRemoteClipboard">{{ t("rdp.paste.toClipboard") }}</button>
-                  <button class="link-button" :disabled="!rdpPasteText || rdpTypingBusy" @click="rdpTypeAsKeystrokes">{{ t("rdp.paste.type") }}</button>
-                </div>
-                <p class="muted rdp-paste-hint">{{ t("rdp.paste.toClipboardHint") }}</p>
-                <p v-if="rdpTypingTotal > 0" class="muted rdp-paste-hint">{{ rdpTypingBusy ? t("rdp.paste.typing", { sent: rdpTypingSent, total: rdpTypingTotal }) : t("rdp.paste.typeDone", { count: rdpTypingSent }) }}</p>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <button class="icon-button icon-emerald" :title="t('rdp.disconnect')" :aria-label="t('rdp.disconnect')" @click="closeRdpSession"><PlugZap /></button>
-        </template>
-        <!-- 工具条语义分组分隔线：两侧（视图段/会话菜单）在 SSH 与 RDP 两种形态
-             下都各有一侧可见，永远不会成为孤儿分隔符；其余分隔线全部收进 SSH 组。 -->
-        <span class="toolbar-separator" aria-hidden="true" />
-        <!-- 会话下拉：新建 / 复制 / 命令会话 / 本地终端 / Shell 选项收敛为单入口，
-             工具条不再平铺五个会话类按钮（视觉走查）。Shell 选项为同弹层视图切换
-             （数据与 local/shells/list 懒加载逻辑不变）。 -->
-        <div>
-          <Popover :open="sessionMenuOpen" @update:open="(open) => { if (!open) sessionMenuOpen = false; }">
-            <PopoverAnchor as-child>
-              <button class="icon-button icon-emerald" :class="{ 'is-active': sessionMenuOpen }" :title="t('sessionMenu.title')" :aria-label="t('sessionMenu.title')" :aria-expanded="sessionMenuOpen" @pointerdown.stop @click.stop="toggleSessionMenu"><ChevronDown /></button>
-            </PopoverAnchor>
-            <PopoverContent class="popover session-menu-popover" :class="{ 'session-menu-shell': sessionMenuShellOpen || sessionMenuShellPickOpen }" align="start" :side-offset="5">
-              <template v-if="!sessionMenuShellOpen && !sessionMenuShellPickOpen">
-                <h3>{{ t("sessionMenu.title") }}</h3>
-                <button v-if="!localUiMode && !isRdpConnection" class="session-menu-item" :disabled="!connectionId" @click="sessionMenuOpen = false; openNewSessionTab();"><SquarePlus />{{ t("newSessionTab") }}</button>
-                <button v-if="!localUiMode && !isRdpConnection" class="session-menu-item" :disabled="!connectionId || !connected" @click="sessionMenuOpen = false; openCopiedSessionTab();"><Copy />{{ t("copySessionTab") }}</button>
-                <button v-if="!localUiMode && !isRdpConnection" class="session-menu-item" :disabled="!connectionId || !connected" @click="sessionMenuOpen = false; openCommandSessionTab();"><TerminalIcon />{{ t("spawnSessionTab") }}</button>
-                <template v-if="!localUiMode"><hr class="session-menu-separator" /></template>
-                <!-- 本地终端：sidecar 所在机器的登录 shell。与 SSH 会话互斥展示，
-                     已连接时经确认先关 SSH；退出态由终端覆盖层提供重开出口。
-                     Telnet/VNC/RDP/串口模式下为对应的断开动作。 -->
-                <button class="session-menu-item" @click="sessionMenuOpen = false; toggleLocalTerminal();"><TerminalIcon />{{ isRdpMode ? t("rdp.disconnect") : isVncMode ? t("vnc.disconnect") : isSerialMode ? t("serial.disconnect") : isTelnetMode ? t("telnet.disconnect") : localUiMode && !localShellRestored ? t("localTerminal.close") : t("localTerminal.open") }}</button>
-                <button v-if="!isTelnetMode && !isSerialMode && !isVncMode && !isRdpMode" class="session-menu-item" @click="openSessionShellPick"><ChevronDown />{{ t("localTerminal.pickShell") }}</button>
-                <button v-if="!isTelnetMode && !isSerialMode && !isVncMode && !isRdpMode" class="session-menu-item" @click="openSessionShellPrefs"><ChevronDown />{{ t("localTerminal.settings") }}</button>
-              </template>
-              <template v-else-if="sessionMenuShellPickOpen">
-                <header class="session-shell-head">
-                  <button class="icon-button compact" :title="t('cancel')" :aria-label="t('cancel')" @click="sessionMenuShellPickOpen = false"><ArrowLeft /></button>
-                  <h3>{{ t("localTerminal.pickShell") }}</h3>
-                </header>
-                <p class="muted local-shell-hint">{{ t("localTerminal.pickShellHint") }}</p>
-                <div v-if="localShellsLoading" class="empty compact"><Loader2 class="spinning" />{{ t("loading") }}</div>
-                <template v-else-if="localShells.length">
-                  <!-- dock「+」同款列表语义：点击即以该 shell 一次性打开/重启，
-                       不改 localShell 默认偏好；首项 = 偏好/自动探测链。 -->
-                  <button class="shell-surface-item" @click="pickLocalShell()">
-                    <TerminalIcon class="h-3.5 w-3.5" />{{ t("localTerminal.autoShell") }}
-                  </button>
-                  <button v-for="entry in localShells" :key="entry.program" class="shell-surface-item" @click="pickLocalShell(entry.program)">
-                    <TerminalIcon class="h-3.5 w-3.5" />{{ entry.name }}<span class="mono local-shell-program">{{ entry.program }}</span>
-                    <span v-if="entry.isDefault" class="local-shell-badge">{{ t("localTerminal.defaultBadge") }}</span>
-                    <span v-if="entry.isUserShell" class="local-shell-badge">{{ t("localTerminal.userShellBadge") }}</span>
-                  </button>
-                </template>
-                <p v-else class="muted local-shell-hint">{{ t("localTerminal.shellsUnavailable") }}</p>
-                <footer class="local-shell-footer">
-                  <button class="primary-button" :disabled="localState === 'starting'" @click="sessionMenuOpen = false; sessionMenuShellPickOpen = false; pickLocalShell()">
-                    {{ localUiMode ? t("localTerminal.restart") : t("localTerminal.open") }}
-                  </button>
-                </footer>
-              </template>
-              <template v-else>
-                <header class="session-shell-head">
-                  <button class="icon-button compact" :title="t('cancel')" :aria-label="t('cancel')" @click="sessionMenuShellOpen = false"><ArrowLeft /></button>
-                  <h3>{{ t("localTerminal.settings") }}</h3>
-                </header>
-                <p class="muted local-shell-hint">{{ t("localTerminal.settingsHint") }}</p>
-                <div v-if="localShellsLoading" class="empty compact"><Loader2 class="spinning" />{{ t("loading") }}</div>
-                <template v-else-if="localShells.length">
-                  <label v-for="entry in localShells" :key="entry.program" class="agent-mode-option">
-                    <input type="radio" name="local-shell" :checked="localShellPref ? localShellPref === entry.program : entry.isDefault" @change="setLocalShellPref(entry.program)" />
-                    <span class="local-shell-row">
-                      <strong>{{ entry.name }}</strong>
-                      <span class="mono local-shell-program">{{ entry.program }}</span>
-                      <span v-if="entry.isDefault" class="local-shell-badge">{{ t("localTerminal.defaultBadge") }}</span>
-                      <span v-if="entry.isUserShell" class="local-shell-badge">{{ t("localTerminal.userShellBadge") }}</span>
-                    </span>
-                  </label>
-                </template>
-                <p v-else class="muted local-shell-hint">{{ t("localTerminal.shellsUnavailable") }}</p>
-                <label class="agent-mode-option" :title="selectedShellInjectable === false ? t('localTerminal.injectionUnavailable') : ''">
-                  <input type="checkbox" name="local-shell-integration" :checked="localShellIntegrationPref" :disabled="selectedShellInjectable === false" @change="setLocalShellIntegrationPref(($event.target as HTMLInputElement).checked)" />
-                  <span>{{ t("localTerminal.injection") }}</span>
-                </label>
-                <!-- 启动目录 + 环境变量（localShellCwd/localShellEnv 偏好）：
-                     change 时落库，草稿行（未填名）只留在 UI 不持久化。 -->
-                <div class="local-shell-field">
-                  <label class="local-shell-field-label" for="local-shell-cwd">{{ t("localTerminal.cwdLabel") }}</label>
-                  <input id="local-shell-cwd" :value="localShellCwdPref" class="mono local-shell-input" :placeholder="t('localTerminal.cwdPlaceholder')" spellcheck="false" @change="setLocalShellCwd(($event.target as HTMLInputElement).value)" />
-                  <p class="muted local-shell-hint">{{ t("localTerminal.cwdHint") }}</p>
-                </div>
-                <div class="local-shell-field">
-                  <div class="local-shell-env-head">
-                    <span class="local-shell-field-label">{{ t("localTerminal.envLabel") }}</span>
-                    <button class="icon-button compact" :title="t('localTerminal.envAdd')" :aria-label="t('localTerminal.envAdd')" @click="addLocalShellEnvRow"><Plus /></button>
-                  </div>
-                  <div v-for="(_, index) in localShellEnvPref" :key="index" class="local-shell-env-row">
-                    <input v-model="localShellEnvPref[index].name" class="mono local-shell-input" :placeholder="t('localTerminal.envName')" :aria-label="t('localTerminal.envName')" spellcheck="false" @change="setLocalShellEnv()" />
-                    <input v-model="localShellEnvPref[index].value" class="mono local-shell-input" :placeholder="t('localTerminal.envValue')" :aria-label="t('localTerminal.envValue')" spellcheck="false" @change="setLocalShellEnv()" />
-                    <button class="icon-button compact" :title="t('localTerminal.envRemove')" :aria-label="t('localTerminal.envRemove')" @click="removeLocalShellEnvRow(index)"><Trash2 /></button>
-                  </div>
-                  <p class="muted local-shell-hint">{{ t("localTerminal.envHint") }}</p>
-                </div>
-                <footer class="local-shell-footer">
-                  <!-- 本地模式中按钮保持可用：restart 语义（关当前 → 按新偏好重开）。
-                       仅 starting 期间禁用防双击。 -->
-                  <button
-                    v-if="canOpenLocalTab"
-                    class="local-tab-button"
-                    :title="t('localTerminal.openInNewTab')" :aria-label="t('localTerminal.openInNewTab')"
-                    @click="openLocalTerminalTab"
-                  ><SquarePlus /></button>
-                  <Popover :open="localShellSurfaceOpen" @update:open="(open) => (localShellSurfaceOpen = open)">
-                    <PopoverAnchor as-child>
-                      <button
-                        v-if="canOpenLocalTab"
-                        class="local-tab-button"
-                        :title="t('localTerminal.openShellSurface')" :aria-label="t('localTerminal.openShellSurface')"
-                        @pointerdown.stop @click.stop="openLocalShellSurfaceMenu"
-                      ><ListPlus /></button>
-                    </PopoverAnchor>
-                    <PopoverContent class="popover" align="end" :side-offset="5">
-                      <button class="shell-surface-item" @click="openLocalShellSurface()">
-                        <TerminalIcon class="h-3.5 w-3.5" />{{ t("localTerminal.autoShell") }}
-                      </button>
-                      <!-- 已配置默认 Shell 时隐藏发现列表（与 dock「+」launch-options
-                           同规则）：autoShell 项已按偏好打开，无需再选。 -->
-                      <template v-if="!localShellPref">
-                        <button v-for="entry in localShells" :key="entry.program" class="shell-surface-item" @click="openLocalShellSurface(entry.program)">
-                          <TerminalIcon class="h-3.5 w-3.5" />{{ entry.name }}<span class="mono local-shell-program">{{ entry.program }}</span>
-                        </button>
-                      </template>
-                      <template v-if="dockConnections.length">
-                        <p class="shell-surface-header">{{ t("localTerminal.connectionTerminals") }}</p>
-                        <button v-for="connection in dockConnections" :key="`conn-${connection.id}`" class="shell-surface-item" @click="openConnectionSurface(connection)">
-                          <TerminalIcon class="h-3.5 w-3.5" />{{ connection.name }}
-                        </button>
-                      </template>
-                    </PopoverContent>
-                  </Popover>
-                  <button class="primary-button" :disabled="localState === 'starting'" @click="sessionMenuOpen = false; sessionMenuShellOpen = false; localShellRestored || isLocalMode ? restartLocalTerminal() : requestLocalTerminal()">
-                    {{ localUiMode ? t("localTerminal.restart") : t("localTerminal.open") }}
-                  </button>
-                </footer>
-              </template>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <!-- —— SSH 工具组·运维/命令/记录/SFTP 工具段：组级 !isRdpConnection 判
-             一次，段内三条语义分隔线随组渲染，RDP 连接下不会再出现孤儿分隔符。
-             组内按钮只保留 localUiMode/isSerialMode/panelSurface 等自身条件。 -->
-        <template v-if="!isRdpConnection">
-        <!-- 串口文件上传入口（NyaTerm 对齐 P0-3）：仅串口模式可用；传输中禁发。 -->
-        <button v-if="isSerialMode" class="icon-button icon-emerald" :title="t('serial.upload.open')" :aria-label="t('serial.upload.open')" :disabled="serialUploadBusy" @click="serialUploadDialogOpen = true"><FileUp /></button>
-        <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('reconnect')" :aria-label="t('reconnect')" :disabled="terminalState === 'connecting' && !reconnectPending" @click="reconnectNow"><PlugZap /></button>
-        <!-- 一键 sudo -v：向当前 PTY 写入命令刷新 sudo 凭据缓存；quick sudo 自动应答
-             是否启用由连接设置决定（设置弹窗），工作台不再提供开关。 -->
-        <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('sudoRefresh.title')" :aria-label="t('sudoRefresh.title')" :disabled="!connected" @click="sendSudoRefresh"><ShieldCheck /></button>
-        <!-- quick sudo profiles 管理入口（M32-A）已归位设置·sudo：工具条不再放
-             管理类按钮，sudoRefresh 保留为会话内即时动作。 -->
-        <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('alertTriage.title')" :aria-label="t('alertTriage.title')" @click="openAlertTriage"><Siren /></button>
-        <!-- main 新增的端口转发入口同属 SSH 专属：沿用 A4 惯例在本地模式整体隐藏。 -->
-        <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><Network /></button>
-        <!-- 容器管理右侧栏视图（鲸鱼 logo 独立入口）：与 SFTP/指标互斥切换；
-             SFTP 面板关闭时也可达；local 模式保留——本机 daemon（Docker
-             Desktop/OrbStack）场景照常可用。面板自治，切走即卸载停轮询。 -->
-        <button class="icon-button icon-blue" :class="{ 'is-active': dockerPanelOpen }" :title="t('docker.toolbarTitle')" :aria-label="t('docker.toolbarTitle')" :aria-pressed="dockerPanelOpen" @click.stop="toggleDockerPanel"><DockerWhaleLogo /></button>
-        <span class="toolbar-separator" aria-hidden="true" />
-        <button v-if="!localUiMode" class="icon-button icon-neutral" :title="t('commandTitle')" :aria-label="t('commandTitle')" :disabled="!connected" @click="openCommandDialog"><SquareTerminal /></button>
-        <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchBarOpen" :disabled="!connected" @click="toggleBatchBar"><ListChecks /></button>
-        <div>
-          <Popover :open="quickMenuOpen" @update:open="(open) => { if (!open) quickMenuOpen = false; }">
-            <PopoverAnchor as-child>
-              <button class="icon-button icon-amber" :title="t('quickCommands')" :aria-label="t('quickCommands')" :disabled="!connected" @pointerdown.stop @click.stop="toggleQuickMenu"><Zap /></button>
-            </PopoverAnchor>
-            <PopoverContent class="popover quick-commands-popover" align="end" :side-offset="5">
-            <!-- M32-A3 后工具条只留"列表 + 搜索 + 执行"（Termius Snippets 式）：
-                 新建/编辑/导入管理归位设置·终端（QuickCommandsSection）。 -->
-            <h3>{{ t("quickCommands") }}</h3>
-            <p class="quick-command-global-hint">{{ t("quickCommandsGlobalHint") }}</p>
-            <div v-if="quickCommands.length" class="quick-search">
-              <Search />
-              <input v-model="quickSearch" :placeholder="t('quickCommandsSearch')" spellcheck="false" />
-            </div>
-            <div v-if="!quickCommands.length" class="empty compact">{{ t("quickCommandsEmpty") }}</div>
-            <div v-else-if="!filteredQuickCommands.length" class="empty compact">{{ t("quickCommandsNoMatch") }}</div>
-            <template v-else-if="quickHasRealGroups">
-              <section v-for="group in groupedQuickCommands" :key="group.id || '__ungrouped__'" class="quick-group">
-                <button class="quick-group-head" :aria-expanded="!quickCollapsedGroups.includes(group.id)" @click="toggleQuickGroupCollapse(group.id)">
-                  <ChevronDown v-if="!quickCollapsedGroups.includes(group.id)" class="quick-group-chevron" />
-                  <ChevronRight v-else class="quick-group-chevron" />
-                  <span class="quick-group-name">{{ quickGroupName(group) }}</span>
-                  <span class="quick-group-count">{{ group.commands.length }}</span>
-                </button>
-                <template v-if="!quickCollapsedGroups.includes(group.id)">
-                  <div v-for="item in group.commands" :key="item.id" class="quick-command-row quick-card" :class="{ expanded: quickExpandedId === item.id }">
-                    <button class="quick-card-main" :title="item.command" :aria-label="item.command" @click="toggleQuickExpand(item.id)">
-                      <Braces class="quick-card-icon" />
-                      <span class="quick-card-text">
-                        <strong>{{ item.name }}</strong>
-                        <span class="mono">{{ item.command }}</span>
-                      </span>
-                    </button>
-                    <div class="quick-card-actions">
-                      <button class="quick-action" :disabled="!connected" @click="sendQuickCommand(item)">{{ t("quickCommandRun") }}</button>
-                      <button class="quick-action" :disabled="!connected" @click="pasteQuickCommand(item)">{{ t("quickCommandPaste") }}</button>
-                    </div>
-                    <div v-if="quickExpandedId === item.id" class="quick-card-full mono">{{ item.command }}</div>
-                  </div>
-                </template>
-              </section>
-            </template>
-            <div v-for="item in filteredQuickCommands" v-else :key="item.id" class="quick-command-row quick-card" :class="{ expanded: quickExpandedId === item.id }">
-              <button class="quick-card-main" :title="item.command" :aria-label="item.command" @click="toggleQuickExpand(item.id)">
-                <Braces class="quick-card-icon" />
-                <span class="quick-card-text">
-                  <strong>{{ item.name }}</strong>
-                  <span class="mono">{{ item.command }}</span>
-                </span>
-              </button>
-              <div class="quick-card-actions">
-                <button class="quick-action" :disabled="!connected" @click="sendQuickCommand(item)">{{ t("quickCommandRun") }}</button>
-                <button class="quick-action" :disabled="!connected" @click="pasteQuickCommand(item)">{{ t("quickCommandPaste") }}</button>
-              </div>
-              <div v-if="quickExpandedId === item.id" class="quick-card-full mono">{{ item.command }}</div>
-            </div>
-            <footer class="quick-command-footer quick-command-footer--readonly">
-              <span class="quick-command-limit">{{ quickCommandGroupSummary }}</span>
-              <span class="quick-command-manage-hint">{{ t("quickCommands.manageHint") }}</span>
-            </footer>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div>
-          <Popover :open="agentModeOpen" @update:open="(open) => { if (!open) agentModeOpen = false; }">
-            <PopoverAnchor as-child>
-              <button class="icon-button" :class="agentMode === 'off' ? 'icon-neutral' : 'icon-emerald is-active'" :title="t('agentTerminalQuickHint')" :aria-label="t('agentTerminalQuickHint')" :aria-pressed="agentMode !== 'off'" :disabled="!connected" @pointerdown.stop @click.stop="toggleAgentModeMenu"><Bot /></button>
-            </PopoverAnchor>
-            <PopoverContent class="popover agent-mode-popover" align="end" :side-offset="5">
-            <h3>{{ t("agentTerminalSection") }}</h3>
-            <label v-for="mode in AGENT_MODES" :key="mode" class="agent-mode-option">
-              <input type="radio" name="agent-mode" :checked="agentMode === mode" :disabled="agentModeBusy" @change="applyAgentMode(mode)" />
-              <span>{{ t(`agentTerminal${mode === "off" ? "Off" : mode === "auto" ? "Auto" : "Strict"}`) }}</span>
-            </label>
-            <p class="muted agent-mode-note">{{ agentModeHint }}</p>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <!-- 高亮规则管理（M32-A2）已归位设置·终端（HighlightRulesSection）：
-             工具条不再放配置编辑器，渲染扫描（compiledHighlightRules）仍在。 -->
-        <span class="toolbar-separator" aria-hidden="true" />
-        <button class="icon-button icon-emerald" :class="{ 'is-active': sftpPaneOpen && rightPanelView === 'metrics' }" :title="t('metrics')" :aria-label="t('metrics')" :aria-pressed="sftpPaneOpen && rightPanelView === 'metrics'" :disabled="!connected" @click="toggleMetricsPanel"><Gauge /></button>
-        <button class="icon-button" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><Disc /></button>
-        <button class="icon-button" :class="{ 'is-active': recordingsOpen }" :title="t('recordingsTitle')" :aria-label="t('recordingsTitle')" :aria-pressed="recordingsOpen" @click="toggleRecordings"><Film /></button>
-        <!-- 设置弹窗承载 SSH/SFTP/终端专属分节（sudo/agent/安全/命名编码…），
-             RDP 连接下整类不适用——入口随之隐藏（RDP 实验开关在非 RDP tab 的
-             设置·终端里仍可达）；审计日志只记录 SSH/SFTP 操作，RDP 从不入审计。 -->
-        <button class="icon-button icon-violet" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><Settings /></button>
-        <button class="icon-button icon-amber" :title="t('auditLog.title')" :aria-label="t('auditLog.title')" @click="openAuditLog"><FileText /></button>
-        <span class="toolbar-separator" aria-hidden="true" />
-        <div>
-          <Popover :open="columnsOpen" @update:open="(open) => { if (!open) columnsOpen = false; }">
-            <PopoverAnchor as-child>
-              <button class="icon-button icon-violet" :title="t('sftpPane.preferences')" :aria-label="t('sftpPane.preferences')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleColumnsMenu"><SlidersHorizontal /></button>
-            </PopoverAnchor>
-            <PopoverContent class="popover columns-popover" align="end" :side-offset="5">
-            <!-- 单栏树不再有表头多列：这里只保留 SFTP 面板的默认开合/自动
-                 连接偏好，不再声称可自定义列（visibleColumns 仅作持久化兼容）。 -->
-            <label :title="t('sftpPane.defaultOpenHint')"><input type="checkbox" :checked="sftpPaneDefaultOpen" @change="toggleSftpPaneDefaultOpen" />{{ t("sftpPane.defaultOpen") }}</label>
-            <label :title="t('sftpPane.autoConnectHint')"><input type="checkbox" :checked="sftpAutoConnect" @change="toggleSftpAutoConnect" />{{ t("sftpPane.autoConnect") }}</label>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div>
-          <!-- 历史卡右键菜单（ContextMenu）打开时忽略弹层的外点关闭请求：
-               菜单项 pointerdown 相对弹层是"外部"，不加守卫会在 select 前把宿主弹层
-               连同菜单一起卸载，动作丢失。 -->
-          <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
-
-        </div>
-        </template>
-      </div>
-      <!-- dock 面板左组：系统信息带（CPU/内存/网速，5s 轮询），flex:1 把
-           右侧按钮组推到右缘；数据未就绪/不支持时整条隐藏不占位。 -->
-      <div v-if="panelSurface" class="panel-toolbar-left">
-        <DockMetricsStrip
-          :panel-metrics-visible="panelMetricsVisible"
-          :panel-metrics-failed="panelMetricsFailed"
-          :panel-cpu-percent="panelCpuPercent"
-          :panel-mem-percent="panelMemPercent"
-          :panel-net-rates="panelNetRates"
-          :panel-metrics-error-title="panelMetricsErrorTitle"
-          :format-rate="formatRate"
-          :t="t"
-        />
-      </div>
-      <!-- Dock 面板表面（底部栏）的精简工具区：宿主 dock chrome 已带标题与
-           关闭/收起/最大化，这里只留终端快捷操作——字号、录屏、传输、配色快切、
-           设置与工具条收起，密度对齐底部栏（紧凑 30px 工具条 + 透明 ghost 按钮）。 -->
-      <div v-if="panelSurface" class="toolbar-actions panel-actions">
-        <!-- 在 tab 打开当前连接（宿主 openWorkbench → 新 tab，panel 自己保持轻量）。 -->
-        <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><ExternalLink /></button>
-        <!-- SFTP 文件面板开关：dock 默认不开，手动开合（连接后列表已就绪）。 -->
-        <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><FolderOpen v-if="!(sftpPaneOpen && sftpViewActive)" /><PanelRightClose v-else /></button>
-        <button v-if="!isRdpConnection" class="icon-button compact" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><Disc /></button>
-        <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
-        <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
-        <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
-        <Popover v-if="!isRdpMode" :open="panelPaletteOpen" @update:open="(open) => { if (!open) panelPaletteOpen = false; }">
-          <PopoverAnchor as-child>
-            <button class="icon-button compact icon-violet" :class="{ 'is-active': panelPaletteOpen }" :title="t('terminalAppearance.schemeSection')" :aria-label="t('terminalAppearance.schemeSection')" :aria-expanded="panelPaletteOpen" @pointerdown.stop @click.stop="togglePanelPaletteMenu"><Palette /></button>
-          </PopoverAnchor>
-          <PopoverContent class="popover panel-palette-popover" align="end" :side-offset="4">
-            <h3>{{ t("terminalAppearance.schemeSection") }}</h3>
-            <ul class="panel-palette-list" role="listbox">
-              <li>
-                <button type="button" class="panel-palette-row" :class="{ selected: panelActiveSchemeId === null }" role="option" :aria-selected="panelActiveSchemeId === null" @click="pickPanelScheme(null)">
-                  <span class="panel-palette-name">{{ t("terminalAppearance.modeFollowHost") }}</span>
-                </button>
-              </li>
-              <li v-for="scheme in panelSchemeChoices" :key="scheme.id">
-                <button type="button" class="panel-palette-row" :class="{ selected: panelActiveSchemeId === scheme.id }" role="option" :aria-selected="panelActiveSchemeId === scheme.id" :title="scheme.name" :aria-label="scheme.name" @click="pickPanelScheme(scheme.id)">
-                  <span class="panel-palette-name">{{ scheme.name }}</span>
-                  <span class="panel-palette-swatch" aria-hidden="true"><i v-for="(color, index) in scheme.colors.slice(0, 6)" :key="index" :style="{ background: color }" /></span>
-                </button>
-              </li>
-            </ul>
-            <footer class="panel-palette-footer">
-              <button type="button" class="link-button" @click="panelPaletteOpen = false; openSettings()"><Settings />{{ t("terminalAppearance.moreSettings") }}</button>
-            </footer>
-          </PopoverContent>
-        </Popover>
-        <button v-if="!isRdpConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><Settings /></button>
-        <button class="icon-button compact" :title="t('panel.hideToolbar')" :aria-label="t('panel.hideToolbar')" :aria-pressed="panelToolbarHidden" @click="togglePanelToolbar"><ChevronUp /></button>
-      </div>
-      <!-- 传输弹层单实例（tab/panel 两表面共用）：Popover 挂在 header 层，锚点是
-           工具条右缘下的隐形定位点（.transfer-popover-anchor，固定定位不随表面
-           工具条高度变化）；tab 工具条与 dock panel-actions 里的按钮都只是
-           toggleTransferPanel 的普通开关——panel 没有这组 tab 工具条实例，
-           共享锚点让同一个弹层在两个表面都能弹出（内容单拷贝零复制）。 -->
-      <TransferPopover
-        :transfer-panel-open="transferPanelOpen"
-        :transfer-list="transferList"
-        :transfer-history="transferHistory"
-        :resumable-tasks="resumableTasks"
-        :folder-upload-progress="folderUploadProgress"
-        :file-batch-progress="fileBatchProgress"
-        :paused-task-ids="pausedTaskIds"
-        :transfer-speeds="transferSpeeds"
-        :transfer-history-menu="transferHistoryMenu"
-        :transfer-history-loading="transferHistoryLoading"
-        :transfer-history-failed="transferHistoryFailed"
-        :resumable-loading="resumableLoading"
-        :folder-upload-percent="folderUploadPercent"
-        :batch-upload-percent="batchUploadPercent"
-        :format-bytes="formatBytes"
-        :transfer-percent="transferPercent"
-        :transfer-bar-value="transferBarValue"
-        :transfer-shown-bytes="transferShownBytes"
-        :transfer-bytes-title="transferBytesTitle"
-        :transfer-pausable="transferPausable"
-        :t="t"
-        @update:transferPanelOpen="(value) => { if (!value && !transferHistoryMenu) transferPanelOpen = false; }"
-        @close-history-menu="transferHistoryMenu = undefined"
-        @show-history-menu="showTransferHistoryMenu"
-        @toggle-pause="toggleTransferPause"
-        @cancel="cancelTransfer"
-        @reveal="revealTransferTarget"
-        @open-file="openTransferTarget"
-        @refresh="refreshTransferPanel"
-        @open-clear="transferHistoryClearOpen = true"
-        @begin-resume="beginResumeUpload"
-        @resume-picked="onResumeFilePicked"
-      />
-    </header>
+    <!-- 工作台工具条：外壳/身份区/主操作位/panel 变体 + 会话、快速命令、
+         RDP 工具组、配色快切子组件（T19 自本模板迁出）。状态与动作仍由
+         本文件持有，经显式 props/v-model/actions 下发。 -->
+    <WorkbenchToolbar
+      v-model:connection-info-open="connectionInfoOpen"
+      v-model:agent-mode-open="agentModeOpen"
+      v-model:columns-open="columnsOpen"
+      v-model:transfer-panel-open="transferPanelOpen"
+      v-model:transfer-history-clear-open="transferHistoryClearOpen"
+      v-model:serial-upload-dialog-open="serialUploadDialogOpen"
+      v-model:forwards-open="forwardsOpen"
+      v-model:session-menu-open="sessionMenuOpen"
+      v-model:session-menu-shell-open="sessionMenuShellOpen"
+      v-model:session-menu-shell-pick-open="sessionMenuShellPickOpen"
+      v-model:local-shell-surface-open="localShellSurfaceOpen"
+      v-model:quick-menu-open="quickMenuOpen"
+      v-model:quick-search="quickSearch"
+      v-model:panel-palette-open="panelPaletteOpen"
+      v-model:rdp-scale-mode="rdpScaleMode"
+      v-model:rdp-resolution-open="rdpResolutionOpen"
+      v-model:rdp-custom-width="rdpCustomWidth"
+      v-model:rdp-custom-height="rdpCustomHeight"
+      v-model:rdp-paste-open="rdpPasteOpen"
+      v-model:rdp-paste-text="rdpPasteText"
+      :t="t"
+      :panel-surface="panelSurface"
+      :panel-toolbar-hidden="panelToolbarHidden"
+      :toolbar-style="toolbarStyle"
+      :connection="connection"
+      :connection-identity="connectionIdentity"
+      :connection-read-only="connectionReadOnly"
+      :session-status="sessionStatus"
+      :session-pill-text="sessionPillText"
+      :reconnect-countdown="reconnectCountdown"
+      :metrics-distro-badge="metricsDistroBadge"
+      :connection-auth-method-label="connectionAuthMethodLabel"
+      :connection-latency="connectionLatency"
+      :connection-latency-busy="connectionLatencyBusy"
+      :connection-latency-failed="connectionLatencyFailed"
+      :connected="connected"
+      :is-rdp-connection="isRdpConnection"
+      :is-rdp-mode="isRdpMode"
+      :is-serial-mode="isSerialMode"
+      :is-vnc-mode="isVncMode"
+      :is-telnet-mode="isTelnetMode"
+      :local-ui-mode="localUiMode"
+      :is-local-mode="isLocalMode"
+      :local-shell-restored="localShellRestored"
+      :pane-order="paneOrder"
+      :sftp-pane-open="sftpPaneOpen"
+      :sftp-view-active="sftpViewActive"
+      :right-panel-view="rightPanelView"
+      :terminal-state="terminalState"
+      :reconnect-pending="reconnectPending"
+      :serial-upload-busy="serialUploadBusy"
+      :connection-id="connectionId"
+      :docker-panel-open="dockerPanelOpen"
+      :batch-send-bar-open="batchBarOpen"
+      :agent-mode="agentMode"
+      :agent-mode-busy="agentModeBusy"
+      :agent-mode-hint="agentModeHint"
+      :recording-active="recordingActive"
+      :recording-target="recordingTarget"
+      :recordings-open="recordingsOpen"
+      :sftp-pane-default-open="sftpPaneDefaultOpen"
+      :sftp-auto-connect="sftpAutoConnect"
+      :active-transfers="activeTransfers"
+      :panel-metrics-visible="panelMetricsVisible"
+      :panel-metrics-failed="panelMetricsFailed"
+      :panel-cpu-percent="panelCpuPercent"
+      :panel-mem-percent="panelMemPercent"
+      :panel-net-rates="panelNetRates"
+      :panel-metrics-error-title="panelMetricsErrorTitle"
+      :format-rate="formatRate"
+      :panel-scheme-choices="panelSchemeChoices"
+      :panel-active-scheme-id="panelActiveSchemeId"
+      :local-shells="localShells"
+      :local-shells-loading="localShellsLoading"
+      :local-shell-pref="localShellPref"
+      :local-shell-integration-pref="localShellIntegrationPref"
+      :selected-shell-injectable="selectedShellInjectable"
+      :local-shell-cwd-pref="localShellCwdPref"
+      :local-shell-env-pref="localShellEnvPref"
+      :local-state="localState"
+      :can-open-local-tab="canOpenLocalTab"
+      :dock-connections="dockConnections"
+      :quick-commands="quickCommands"
+      :filtered-quick-commands="filteredQuickCommands"
+      :grouped-quick-commands="groupedQuickCommands"
+      :quick-has-real-groups="quickHasRealGroups"
+      :quick-collapsed-groups="quickCollapsedGroups"
+      :quick-expanded-id="quickExpandedId"
+      :quick-command-group-summary="quickCommandGroupSummary"
+      :resolution-presets="RDP_RESOLUTION_PRESETS"
+      :rdp-resizing="rdpResizing"
+      :rdp-desktop-size="rdpDesktopSize"
+      :rdp-typing-busy="rdpTypingBusy"
+      :rdp-typing-sent="rdpTypingSent"
+      :rdp-typing-total="rdpTypingTotal"
+      :transfer-list="transferList"
+      :transfer-history="transferHistory"
+      :resumable-tasks="resumableTasks"
+      :folder-upload-progress="folderUploadProgress"
+      :file-batch-progress="fileBatchProgress"
+      :paused-task-ids="pausedTaskIds"
+      :transfer-speeds="transferSpeeds"
+      :transfer-history-menu="transferHistoryMenu"
+      :transfer-history-loading="transferHistoryLoading"
+      :transfer-history-failed="transferHistoryFailed"
+      :resumable-loading="resumableLoading"
+      :folder-upload-percent="folderUploadPercent"
+      :batch-upload-percent="batchUploadPercent"
+      :format-bytes="formatBytes"
+      :transfer-percent="transferPercent"
+      :transfer-bar-value="transferBarValue"
+      :transfer-shown-bytes="transferShownBytes"
+      :transfer-bytes-title="transferBytesTitle"
+      :transfer-pausable="transferPausable"
+      :actions="toolbarActions"
+      @close-history-menu="transferHistoryMenu = undefined"
+    />
 
     <div v-if="tooltip" ref="tooltipBubble" class="app-tooltip" :class="{ 'app-tooltip-above': tooltip.above }" :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px`, '--arrow-offset': `${tooltip.arrowOffset}px` }" role="tooltip">{{ tooltip.text }}</div>
     <ToastProvider :label="t('notification')">
