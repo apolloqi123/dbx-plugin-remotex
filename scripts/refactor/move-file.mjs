@@ -147,6 +147,10 @@ const movedText = rewrite(
 const pending = [];
 let rewrittenSpecifiers = movedText.hits;
 for (const file of walk(SRC)) {
+  // The moved file is still on disk here; skip it so a self-import cannot queue
+  // a write that would resurrect the old path after `git mv`. Its own specifiers
+  // are handled exactly once, by the rebase pass above.
+  if (file === from) continue;
   const before = readFileSync(file, "utf8");
   const after = rewrite(
     before,
@@ -172,3 +176,20 @@ console.log(
   `moved ${relative(ROOT, from)} -> ${relative(ROOT, to)}; ` +
     `rewrote ${rewrittenSpecifiers} specifier(s) in ${pending.length} file(s)`,
 );
+
+// 4. Audit structural guards. They discover sources through `import.meta.glob`,
+//    which the codemod deliberately never rewrites, but moving a file into a
+//    deeper directory can silently drop it from a glob's depth. Warn instead of
+//    editing the glob files.
+const under = (path, dir) => path.startsWith(`${dir}${sep}`);
+if (under(to, join(SRC, "app")) || under(to, join(SRC, "features"))) {
+  const globUsers = walk(SRC).filter((file) => readFileSync(file, "utf8").includes("import.meta.glob("));
+  if (globUsers.length > 0) {
+    console.warn(
+      [
+        `note: ${globUsers.length} file(s) use import.meta.glob; verify these globs still resolve the moved file after the move (glob depth was not rewritten):`,
+        ...globUsers.map((file) => `  ${relative(ROOT, file)}`),
+      ].join("\n"),
+    );
+  }
+}
