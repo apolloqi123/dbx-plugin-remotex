@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { paneDirectionClass, paneSplitCssVar, resolvePaneDirection, sanitizePaneDirection, terminalFlexBasis, PANE_DIRECTION_NARROW_BREAKPOINT } from "./paneLayout";
+import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolvePaneDirection, resolveWorkbenchPaneLayout, sanitizePaneDirection, terminalFlexBasis, PANE_DIRECTION_NARROW_BREAKPOINT } from "./paneLayout";
 
 describe("terminalFlexBasis", () => {
   it("gives the terminal the full row when nothing else is open", () => {
@@ -65,6 +65,56 @@ describe("resolvePaneDirection", () => {
   it("horizontal always splits side by side regardless of width", () => {
     expect(resolvePaneDirection({ pref: "horizontal", viewportWidth: 375 })).toBe("row");
     expect(resolvePaneDirection({ pref: "horizontal", viewportWidth: 2560 })).toBe("row");
+  });
+});
+
+describe("resolveWorkbenchPaneLayout", () => {
+  it("forces a bottom split for Docker regardless of the user's horizontal preference", () => {
+    expect(
+      resolveWorkbenchPaneLayout({
+        dockerOpen: true,
+        pref: "horizontal",
+        viewportWidth: 1920,
+        splitRatio: 58,
+        dockerSplitRatio: DOCKER_SPLIT_RATIO_DEFAULT,
+      }),
+    ).toEqual({ direction: "column", ratio: 67 });
+  });
+
+  it("uses the Docker ratio instead of the SFTP ratio while Docker is open", () => {
+    expect(
+      resolveWorkbenchPaneLayout({
+        dockerOpen: true,
+        pref: "auto",
+        viewportWidth: 1920,
+        splitRatio: 58,
+        dockerSplitRatio: 62,
+      }),
+    ).toEqual({ direction: "column", ratio: 62 });
+  });
+
+  it("keeps the existing side-by-side layout when Docker is closed", () => {
+    expect(
+      resolveWorkbenchPaneLayout({
+        dockerOpen: false,
+        pref: "horizontal",
+        viewportWidth: 640,
+        splitRatio: 58,
+        dockerSplitRatio: 67,
+      }),
+    ).toEqual({ direction: "row", ratio: 58 });
+  });
+
+  it("keeps auto narrow stacking for SFTP when Docker is closed", () => {
+    expect(
+      resolveWorkbenchPaneLayout({
+        dockerOpen: false,
+        pref: "auto",
+        viewportWidth: 640,
+        splitRatio: 58,
+        dockerSplitRatio: 67,
+      }),
+    ).toEqual({ direction: "column", ratio: 58 });
   });
 });
 

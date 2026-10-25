@@ -106,7 +106,7 @@ import { createConnectLog } from "../features/connections/lib/connectLog";
 import { pickModalFocusTarget } from "../shared/lib/modalFocus";
 import { buildPasteConfirmation, type PasteConfirmation } from "../features/terminal/lib/dangerousCommands";
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../shared/lib/clipboardBridge";
-import { paneDirectionClass, paneSplitCssVar, resolvePaneDirection, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
+import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { isCountdownActive } from "../features/recording/lib/recordingCountdown";
 import { type SftpTypeFilter } from "../features/sftp/lib/sftpFileFilters";
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/sftpBookmarks";
@@ -746,6 +746,8 @@ const loadingFiles = ref(false);
 const hostKeyPrompt = ref<HostKeyPrompt>();
 const rememberHostKey = ref(true);
 const splitRatio = ref(58);
+// Docker 底部分屏的独立比例：默认终端 67% / 容器 33%，每次打开 Docker 重置。
+const dockerSplitRatio = ref(DOCKER_SPLIT_RATIO_DEFAULT);
 const paneOrder = ref<SshWorkbenchPaneOrder>("terminal-left");
 // 工作台视图/终端行为偏好（布局轴向、SFTP 默认/自动连接、目录跟随、终端行为
 // 与快捷键）：收口在 composables/useWorkbenchViewPrefs。
@@ -777,6 +779,8 @@ const {
 // 指标/容器视图不跨重启恢复，避免启动即触发轮询。
 const sftpPaneOpen = ref(loadSftpPaneDefaultOpen());
 const rightPanelView = ref<RightPanelView>("sftp");
+// 容器视图：关闭/切换后即卸载停轮询。Docker 打开期间分栏固定为上下。
+const dockerPanelOpen = computed(() => sftpPaneOpen.value && rightPanelView.value === "docker");
 const sftpViewActive = computed(() => rightPanelView.value === "sftp");
 // 终端拖放的“面板抢落点”门控：只有 SFTP 树真的可见时才把拖入交给面板；
 // 指标/容器视图不应阻止终端接收拖拽。
@@ -2009,29 +2013,37 @@ const connectionAuthMethodLabel = computed(() => formatAuthMethodLabel(connectio
 }));
 // 连接色染色按主题分级（light 压低 alpha 保 muted 文字 AA 对比度，P2-4）。
 const toolbarStyle = computed(() => toolbarTintStyle(connection.value.color, appearance.value.colorScheme));
-// 终端让宽（纯计算在 lib/paneLayout）：右侧栏（SFTP/指标/容器）按用户拖拽比例。
-const terminalBasis = computed(() => ({
-  flexBasis: terminalFlexBasis({ sftpOpen: sftpPaneOpen.value, splitRatio: splitRatio.value }),
+// 工作台分栏：Docker 固定为终端在上、容器在下（默认终端 67% / 容器 33%），
+// 不受左右/上下偏好与换位影响；SFTP/指标沿用用户轴向与 splitRatio。
+const paneLayout = computed(() => resolveWorkbenchPaneLayout({
+  dockerOpen: dockerPanelOpen.value,
+  pref: paneDirection.value,
+  viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined,
+  splitRatio: splitRatio.value,
+  dockerSplitRatio: dockerSplitRatio.value,
 }));
-// 纵向分栏（issue #207）：「始终上下」/ 窄屏断点的两栏高度改由容器上的
-// --pane-split 变量消费 splitRatio（拖拽/键盘微调唯一数据源），CSS 不再钉死。
-// solo（SFTP 收起）不设变量，回落既有 solo 全屏规则。
-const paneSplitStyle = computed(() => paneSplitCssVar({ sftpOpen: sftpPaneOpen.value, splitRatio: splitRatio.value }));
+// 终端让宽（纯计算在 lib/paneLayout）：右侧栏按当前生效比例让出份额。
+const terminalBasis = computed(() => ({
+  flexBasis: terminalFlexBasis({ sftpOpen: sftpPaneOpen.value, splitRatio: paneLayout.value.ratio }),
+}));
+// 纵向分栏（issue #207）：「始终上下」/ 窄屏断点/ Docker 底栏的两栏高度改由
+// 容器上的 --pane-split 变量消费当前生效比例，CSS 不再钉死。
+// solo（右侧栏收起）不设变量，回落既有 solo 全屏规则。
+const paneSplitStyle = computed(() => paneSplitCssVar({ sftpOpen: sftpPaneOpen.value, splitRatio: paneLayout.value.ratio }));
 const orderedPaneClass = computed(() => [
   paneOrder.value === "sftp-left" ? "panes panes--reversed" : "panes",
   paneDirectionClass(paneDirection.value),
+  dockerPanelOpen.value ? "panes--docker-split" : "",
   sftpPaneOpen.value ? "" : "panes--solo",
 ].filter(Boolean).join(" "));
-// 分栏当前生效轴向：auto 模式下跟随视口断点（与 style.css @media 同值），
-// 强制模式恒定。事件时机（拖拽/键盘）现读现用，不做响应式缓存——resize 不会
-// 触发重算，但下次事件自然取到新值。
-function currentPaneDirection(): "column" | "row" {
-  return resolvePaneDirection({ pref: paneDirection.value, viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined });
-}
+// Docker 每次打开回到 1/3；拖动只在本次打开期间生效（视图本身不跨重启恢复）。
+watch(dockerPanelOpen, (open) => {
+  if (open) dockerSplitRatio.value = DOCKER_SPLIT_RATIO_DEFAULT;
+});
 // 把手提示按轴向：纵向拖的是高度、横向拖的是宽度（与 onDividerKeydown 的
-// 方向键映射一致）；跟随 currentPaneDirection 的断点/强制模式。
+// 方向键映射一致）。
 const dividerResizeHint = computed(() =>
-  currentPaneDirection() === "column" ? t("dividerResizeHintHeight") : t("dividerResizeHint"),
+  paneLayout.value.direction === "column" ? t("dividerResizeHintHeight") : t("dividerResizeHint"),
 );
 // 搜索防抖与过滤态：列表排序/列布局/虚拟滚动器保留供全局列设置与偏好兼容，
 // 单栏树只消费搜索草稿、清空入口与"过滤是否生效"。
@@ -4578,7 +4590,7 @@ const forwardsOpen = ref(false);
 
 // 容器管理：右侧栏第三视图（与 SFTP/指标互斥）；面板本体仍由 DockerPanel
 // 自治（会话解析/轮询/动作/引擎设置都在组件内），切走即卸载停轮询。
-const dockerPanelOpen = computed(() => sftpPaneOpen.value && rightPanelView.value === "docker");
+// 打开期间的分栏轴向/比例由上方 dockerPanelOpen + paneLayout 接管。
 
 // 关键词高亮：规则表 CRUD 收口在 composables/useHighlightRules（渲染引擎在下方）。
 const {
@@ -5291,19 +5303,21 @@ function startDividerDrag(event: PointerEvent) {
   const container = paneContainer.value;
   if (!container) return;
   const pointerId = event.pointerId;
-  // 纵向布局（强制上下或窄屏断点）把手沿 Y 轴拖拽：按下时定轴，拖动中不变。
-  const vertical = currentPaneDirection() === "column";
+  // 纵向布局（强制上下 / 窄屏断点 / Docker 底栏）把手沿 Y 轴拖拽：
+  // 按下时定轴，拖动中不变；Docker 使用独立比例，避免改动 SFTP 分栏。
+  const vertical = paneLayout.value.direction === "column";
+  const targetRatio = dockerPanelOpen.value ? dockerSplitRatio : splitRatio;
   const move = (next: PointerEvent) => {
     if (next.pointerId !== pointerId) return;
     const bounds = container.getBoundingClientRect();
     if (vertical) {
       // splitRatio 是终端占比；纵向终端恒在上，把手下移 = 终端变高。
       const fromTop = ((next.clientY - bounds.top) / bounds.height) * 100;
-      splitRatio.value = Math.max(35, Math.min(80, fromTop));
+      targetRatio.value = Math.max(35, Math.min(80, fromTop));
     } else {
       const fromLeft = ((next.clientX - bounds.left) / bounds.width) * 100;
       const terminalPercent = paneOrder.value === "terminal-left" ? fromLeft : 100 - fromLeft;
-      splitRatio.value = Math.max(35, Math.min(80, terminalPercent));
+      targetRatio.value = Math.max(35, Math.min(80, terminalPercent));
     }
     scheduleFit();
   };
@@ -5331,7 +5345,7 @@ function startDividerDrag(event: PointerEvent) {
 // 向右/向下移」（终端占比随之增大/减小由 nudgeSplitDivider 按轴解释）。
 const DIVIDER_KEY_STEP_PX = 16;
 function onDividerKeydown(event: KeyboardEvent, nudge: (deltaPx: number) => void) {
-  const vertical = currentPaneDirection() === "column";
+  const vertical = paneLayout.value.direction === "column";
   const horizontalKeys = event.key === "ArrowLeft" || event.key === "ArrowRight";
   const verticalKeys = event.key === "ArrowUp" || event.key === "ArrowDown";
   if (vertical ? !verticalKeys : !horizontalKeys) return;
@@ -5345,15 +5359,16 @@ function nudgeSplitDivider(deltaPx: number) {
   const container = paneContainer.value;
   if (!container) return;
   const bounds = container.getBoundingClientRect();
+  const targetRatio = dockerPanelOpen.value ? dockerSplitRatio : splitRatio;
   // splitRatio 是终端占比：横向 terminal-left 时把手右移 = 终端变宽（sftp-left
   // 反向）；纵向终端恒在上，把手下移 = 终端变高。
-  if (currentPaneDirection() === "column") {
+  if (paneLayout.value.direction === "column") {
     if (!bounds.height) return;
-    splitRatio.value = Math.max(35, Math.min(80, splitRatio.value + (deltaPx / bounds.height) * 100));
+    targetRatio.value = Math.max(35, Math.min(80, targetRatio.value + (deltaPx / bounds.height) * 100));
   } else {
     if (!bounds.width) return;
     const sign = paneOrder.value === "terminal-left" ? 1 : -1;
-    splitRatio.value = Math.max(35, Math.min(80, splitRatio.value + (deltaPx / bounds.width) * 100 * sign));
+    targetRatio.value = Math.max(35, Math.min(80, targetRatio.value + (deltaPx / bounds.width) * 100 * sign));
   }
   scheduleFit();
   persistState();
@@ -7982,8 +7997,8 @@ watch(historyScope, () => {
         v-if="sftpPaneOpen && !isRdpConnection && (rightPanelView === 'docker' || !localUiMode)"
         class="divider"
         role="separator"
-        :aria-orientation="currentPaneDirection() === 'column' ? 'horizontal' : 'vertical'"
-        :aria-valuenow="Math.round(splitRatio)"
+        :aria-orientation="paneLayout.direction === 'column' ? 'horizontal' : 'vertical'"
+        :aria-valuenow="Math.round(paneLayout.ratio)"
         aria-valuemin="35"
         aria-valuemax="80"
         :title="dividerResizeHint"

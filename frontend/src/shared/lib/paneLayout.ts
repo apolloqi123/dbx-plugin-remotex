@@ -1,6 +1,9 @@
 // 面板分栏让宽的纯计算（App.vue terminalBasis 共用）。
-// Docker 面板为 metrics-float 同款浮层，不参与分栏让宽；只有 SFTP 分栏
-// 需要终端让出份额。
+// SFTP/指标视图按用户分栏比例；Docker 视图固定为底部分屏，见
+// resolveWorkbenchPaneLayout。
+
+/** Docker 底部分屏默认终端占比：终端 67% / 容器 33%（约 1/3 高度）。 */
+export const DOCKER_SPLIT_RATIO_DEFAULT = 67;
 
 /** 终端 flex-basis：SFTP 分栏开时按用户拖拽比例让出份额，
  *  SFTP flex:1 吸收剩余——两栏同显，谁也不挤没谁。 */
@@ -46,6 +49,22 @@ export function resolvePaneDirection(input: { pref: PaneDirectionPref; viewportW
   if (input.pref === "horizontal") return "row";
   const width = typeof input.viewportWidth === "number" && input.viewportWidth > 0 ? input.viewportWidth : Number.POSITIVE_INFINITY;
   return width <= PANE_DIRECTION_NARROW_BREAKPOINT ? "column" : "row";
+}
+
+/** 工作台分栏的最终轴向与终端占比。Docker 视图固定在终端下方（约 1/3 高），
+ *  不受左右/上下偏好与换位影响；其他视图沿用用户偏好。 */
+export function resolveWorkbenchPaneLayout(input: {
+  dockerOpen: boolean;
+  pref: PaneDirectionPref;
+  viewportWidth?: number;
+  splitRatio: number;
+  dockerSplitRatio: number;
+}): { direction: PaneDirection; ratio: number } {
+  if (input.dockerOpen) return { direction: "column", ratio: input.dockerSplitRatio };
+  return {
+    direction: resolvePaneDirection({ pref: input.pref, viewportWidth: input.viewportWidth }),
+    ratio: input.splitRatio,
+  };
 }
 
 /** 分栏容器覆盖类：auto 不加类（沿用 CSS 默认与断点），强制模式加类压过断点。 */
