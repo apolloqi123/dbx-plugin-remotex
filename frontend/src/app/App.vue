@@ -66,7 +66,8 @@ import {
   normalizeDropTargetDir,
   transferBusyPaneClass,
 } from "../features/terminal/lib/behavior/terminalInteraction";
-import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
+import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS } from "../features/terminal/composables/session/useTerminalTransportWatch";
+import { useTerminalReconnect } from "../features/terminal/composables/session/useTerminalReconnect";
 import { useCommandMarker } from "../features/terminal/composables/session/useCommandMarker";
 import { useTerminalClipboard } from "../features/terminal/composables/io/useTerminalClipboard";
 import { useTerminalInput } from "../features/terminal/composables/io/useTerminalInput";
@@ -125,7 +126,6 @@ import { useTerminalGutter } from "../features/terminal/composables/ui/useTermin
 import { transferPausable } from "../features/transfers/lib/transferResume";
 import { auditKindLabel, auditKindOptions, auditOutcomeLabel } from "../features/security/lib/auditLog";
 import { useAuditLogViewer } from "../features/security/composables/useAuditLogViewer";
-import { useSessionReconnect } from "../features/connections/composables/useSessionReconnect";
 import { usePluginEvents } from "./workbench/composables/usePluginEvents";
 import { useDockMetrics } from "../features/metrics/composables/useDockMetrics";
 import { useEditorOpenWith } from "../features/sftp/composables/editor/useEditorOpenWith";
@@ -690,7 +690,7 @@ const {
   markLocalExited: (code) => markLocalExited(code),
   reportTransportUnavailable: (sessionId) => terminalTransportWatch.reportUnavailable(sessionId),
   isReconnectPending: () => reconnectPending.value,
-  scheduleSessionReconnect: () => scheduleSessionReconnect(),
+  scheduleSessionReconnect: () => scheduleReconnect(),
 });
 
 const {
@@ -1666,7 +1666,7 @@ const {
   consumeFrameViaZmodem: (data) => consumeFrameViaZmodem(data),
   terminalTransportWatch: () => terminalTransportWatch,
   isReconnectPending: () => reconnectPending.value,
-  scheduleSessionReconnect: () => scheduleSessionReconnect(),
+  scheduleSessionReconnect: () => scheduleReconnect(),
   isDisposed: () => disposed,
   persistState: () => persistState(),
   // 其余二进制通道的会话/帧流由各自 composable 持有（useProtocolFrameBuffers 等）。
@@ -2583,31 +2583,28 @@ const {
   },
 });
 
-// 传输断开/会话被杀的统一入口：有界退避自动重连，梯子耗尽才落到
-// disconnected 终态等待手动重连。
-// 重连梯子：收口在 composables/useSessionReconnect。
+// 传输断开/会话被杀的统一入口：有界退避自动重连（useSessionReconnect）+ 浏览器/
+// 宿主失联探测（useTerminalTransportWatch），装配收口在 useTerminalReconnect。
 const {
+  terminalTransportWatch,
   reconnectPending,
   reconnectCountdown,
   reconnectWasPending,
   reconnectTimer,
   reconnectAttempt,
-  reconnectCountdownTimer,
   reconnectNextAt,
   reconnectDelayMs,
-  scheduleSessionReconnect,
-} = useSessionReconnect({
-  t,
-  terminalState, terminalError,
-  isDisposed: () => disposed,
-  openSession,
-  requestHostReopenConnection,
-});
-const terminalTransportWatch = useTerminalTransportWatch({
+  scheduleReconnect,
+  cancelReconnect,
+  reconnectNow,
+} = useTerminalReconnect({
   t,
   terminalState,
   terminalError,
   session,
+  isDisposed: () => disposed,
+  openSession,
+  requestHostReopenConnection,
   resetInputQueue: () => terminalInputQueue.reset(),
   probeTransport: (sessionId) => window.dbxPlugin.invoke<ReplayResult>(
     "ssh/terminal/replay",
@@ -2615,10 +2612,12 @@ const terminalTransportWatch = useTerminalTransportWatch({
     { timeoutMs: TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS },
   ),
   attachSession,
+  // 手动重连路径本体在连接卡片（useConnectCard）；点击时才求值，可引用下方解构。
+  reconnectNow: () => connectCardReconnectNow(),
 });
 // 连接卡片四态与手动重连入口：收口在 composables/useConnectCard（会话主干
 // openSession/closeSession/宿主重开由 useSshConnection 持有，经 options 注入）。
-const { connectCardState, connectLogEntries, reconnect, cancelConnect, startConnect, reconnectNow } = useConnectCard({
+const { connectCardState, connectLogEntries, reconnect, cancelConnect, startConnect, reconnectNow: connectCardReconnectNow } = useConnectCard({
   t,
   terminalState,
   connectCancelled, connectSucceeded, connectLog,
@@ -3484,7 +3483,7 @@ const { handlePluginEvent } = usePluginEvents({
   t, session, terminalState, showError, showNotice,
   terminalDiag, batchBarSourceId, applyRemoteBatchBarState,
   hostKeyPrompt, rdpCertPrompt, rdpCertRemember, connectLog,
-  scheduleSessionReconnect, reconnectPending,
+  scheduleSessionReconnect: scheduleReconnect, reconnectPending,
   localSession, markLocalExited,
   telnetSession, telnetState, telnetError, markTelnetClosed,
   vncSession, vncState, vncError, markVncClosed,
@@ -4081,8 +4080,7 @@ onBeforeUnmount(() => {
   hideTooltip();
   persistThrottle.cancel(); // 卸载兜底：丢弃挂起定时器后直接落盘（保留既有语义）
   void writeWorkbenchState();
-  window.clearTimeout(reconnectTimer.value);
-  window.clearInterval(reconnectCountdownTimer.value);
+  cancelReconnect();
   window.clearInterval(terminalDiagTimer);
   disposePromptHints();
   stopCommandMarkerTick();
