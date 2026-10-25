@@ -56,7 +56,6 @@ import {
   X,
   Zap,
 } from "@lucide/vue";
-import { resolveTerminalInputRoute } from "../features/terminal/lib/transfer/terminalTrzsz";
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
@@ -67,12 +66,11 @@ import {
   normalizeDropTargetDir,
   transferBusyPaneClass,
 } from "../features/terminal/lib/behavior/terminalInteraction";
-import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutError } from "../features/terminal/lib/emulator/terminalInputQueue";
-import { SERIAL_STREAM_STDIN } from "../features/serial/lib/serialTerminalFrames";
-import { isSessionGoneError } from "../features/terminal/lib/behavior/terminalReconnect";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
 import { useCommandMarker } from "../features/terminal/composables/session/useCommandMarker";
 import { useTerminalClipboard } from "../features/terminal/composables/io/useTerminalClipboard";
+import { useTerminalInput } from "../features/terminal/composables/io/useTerminalInput";
+import { useTerminalKeys } from "../features/terminal/composables/io/useTerminalKeys";
 import { useTerminalAiSearch } from "../features/terminal/composables/ui/useTerminalAiSearch";
 import { classifyConnectError, connectErrorKey } from "../features/connections/lib/connectError";
 import { useSshConnection, type ReplayResult, type SessionInfo } from "../features/connections/composables/useSshConnection";
@@ -88,17 +86,12 @@ import {
   persistMcpSettingsMirror,
 } from "../features/settings/lib/settingsModel";
 import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
-import { EnterLineTracker, acceptCommandWithContinuation, canCaptureEnterLine, echoConfirmsLine, extractDesyncedCommand, extractEchoedCommand } from "../features/terminal/lib/behavior/terminalEnterCapture";
-import { applyLineEditControlChar } from "../features/terminal/lib/emulator/terminalLineModel";
-import { loadGhostTabAccept, matchesGhostFullAccept, matchesGhostWordAccept, resolveCtrlFRoute, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
+import { loadGhostTabAccept, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
 import { createPreviewAsyncComponent } from "../shared/lib/asyncPreview";
 import { settingsPreferences } from "../features/settings/lib/settingsPreferences";
 // 终端交互提示守卫（issue #150 及其反馈扩展）：远端询问输入/要求选择（MFA/
 // 验证码/密码待输入、选择菜单、y/n 确认）时，↑/↓ 留给远端交互，不唤起历史
 // 面板；键入应答不开建议/ghost 浮层。
-import { cursorAbsoluteRow } from "../features/terminal/lib/emulator/terminalAnchor";
-import { evaluateGhost } from "../features/terminal/lib/decorations/terminalGhostSuggest";
-import { ARBITER_PRIORITIES, resolveKeyOwners, type ArbiterClaim, type ClaimKey, type KeyOwners, type OverlayId } from "../shared/lib/overlayArbiter";
 // AI 助手（Warp AI 对齐批）：宿主 AI 通道封装与失败修复已收口
 // composables/useAiAssistant；`#` 命令搜索状态机在 useTerminalAiSearch。
 // 结构化补全（FIG wave-1 最终架构）：唯一结构化补全来源 = fig 引擎
@@ -120,7 +113,6 @@ import { formatCommandDuration, Osc633CommandParser } from "../features/terminal
 import { batchProgressPercent, type BatchProgressState } from "../features/transfers/lib/sftpBatchProgress";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
-import { normalizeTerminalInputBytes } from "../features/terminal/lib/emulator/terminalInput";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
@@ -237,10 +229,6 @@ import {
   loadTerminalAppearance,
   type TerminalAppearanceState,
 } from "../features/terminal/lib/appearance/terminalAppearance";
-import {
-  keyComboFromEvent,
-  matchTerminalHotkey,
-} from "../features/terminal/lib/behavior/terminalHotkeys";
 import { workbenchMessage } from "../shared/lib/i18n";
 import { randomUUID } from "../shared/lib/uuid";
 // 预览面板按需加载（含 CodeMirror + language-data，数百 KB）：定义异步组件
@@ -264,9 +252,6 @@ import TerminalSearchPanel from "../features/terminal/components/TerminalSearchP
 import TerminalQuickSelectPanel from "../features/terminal/components/TerminalQuickSelectPanel.vue";
 import TerminalHistoryPanel from "../features/terminal/components/TerminalHistoryPanel.vue";
 import TerminalPromptHints from "../features/terminal/components/TerminalPromptHints.vue";
-import {
-  commandHistoryHotkeyPassthrough,
-} from "../features/terminal/lib/panels/historyPanel";
 import TerminalGutter from "../features/terminal/components/TerminalGutter.vue";
 import CommandSuggestions from "../features/completion/components/CommandSuggestions.vue";
 import CompletionMenu from "../features/completion/components/CompletionMenu.vue";
@@ -663,43 +648,50 @@ const terminalCwd = ref("");
 // 跨模块依赖一律经 getter/回调注入——本段之后的 composable 才有实现。
 let terminal: Terminal | undefined;
 
-// 主终端键入路由（传输占用/`#` AI 搜索/行快照与建议刷新）：实例只做 onData
-// 接线，路由规则留在 App（Task 17 收口到 useTerminalInput）。
-// Named handler: main's WKWebView input-loss fallback shares this route.
-// Gate is local-terminal aware (a4): no SSH session AND no local shell means
-// there is no PTY to receive input.
-function routeTerminalData(data: string) {
-  if (!session.value && !localSession.value) return;
-  // 文件传输占用路由：trzsz 持有流时，传输中的输入进 filter（Ctrl+C 停传输、
-  // 其余吞掉），等待协商期直接吞掉（防止杂散键入干扰 trz 握手）；zmodem 持有
-  // 流时输入保持阻塞，否则走普通 PTY 键盘写入（8 字节序号前缀已封装）。
-  const route = resolveTerminalInputRoute({ zmodemBusy: zmodemBusy.value, trzszBusy: trzszBusy.value });
-  if (route === "trzsz") {
-    feedTrzszTerminalInput(data);
-    terminalDiag.swallowed += 1;
-    return;
-  }
-  if (route === "blocked") {
-    terminalDiag.swallowed += 1;
-    return;
-  }
-  // `#` AI 命令搜索（Warp AI Command Search 同位）：等待冻结、模式内编辑与
-  // 空行激活统一由共享 composable 判定；消费的字节不进 PTY。
-  if (aiSearch.handleData(data)) {
-    terminalDiag.swallowed += 1;
-    return;
-  }
-  // 首帧优化：键入字节先发送，输入记录随后同步完成，bookkeeping 不阻塞发送路径。
-  // 命令建议（P1-1）：行快照先于 trackPendingInput 取（\r 会清空行缓冲），
-  // 之后按输入事件推进抑制门并刷新浮层。快速命令/粘贴/自动应答不走路由，
-  // 天然不会触发浮层，也不会进入采集。
-  sendTerminalBytes(new TextEncoder().encode(data));
-  const lineBeforeInput = pendingTerminalInput;
-  trackPendingInput(data);
-  refreshSuggestionsAfterInput(data, lineBeforeInput);
-  refreshGhostAfterInput(data);
-  terminalDiag.keys += 1;
-}
+// 主终端输入、行跟踪与有序输入队列收口在
+// features/terminal/composables/io/useTerminalInput；实例只做 onData 接线
+// （WKWebView 输入丢失兜底共用同一路由）。依赖（会话态/传输占用/建议与 ghost
+// 刷新/断线梯子）多在后段声明，故一律经 getter 惰性读取（setup 期不求值）；
+// 行缓冲 pendingTerminalInput 本体仍在本文件，经 getter/setter 注入。
+const {
+  sendTerminalBytes,
+  routeTerminalData,
+  trackPendingInput,
+  readEchoTextBeforeCursor,
+  terminalInputQueue,
+  serialInputQueue,
+} = useTerminalInput({
+  session: () => session.value,
+  localSession: () => localSession.value,
+  telnetSession: () => telnetSession.value,
+  serialSession: () => serialSession.value,
+  serialBinaryInput: () => serialBinaryInput.value,
+  setSerialBinaryInput: (enabled) => { serialBinaryInput.value = enabled; },
+  serialUploadBusy: () => serialUploadBusy.value,
+  terminalState: () => terminalState.value,
+  zmodemBusy: () => zmodemBusy.value,
+  trzszBusy: () => trzszBusy.value,
+  terminalTransferBusy: () => terminalTransferBusy.value,
+  handleAiSearchData: (data) => aiSearch.handleData(data),
+  feedTrzszTerminalInput: (data) => feedTrzszTerminalInput(data),
+  diag: () => terminalDiag,
+  getPendingTerminalInput: () => pendingTerminalInput,
+  setPendingTerminalInput: (value) => { pendingTerminalInput = value; },
+  setPromptHintsLineEmpty: (empty) => { promptHintsLineEmpty.value = empty; },
+  refreshSuggestionsAfterInput: (data, lineBeforeInput) => refreshSuggestionsAfterInput(data, lineBeforeInput),
+  refreshGhostAfterInput: (data) => refreshGhostAfterInput(data),
+  notifyCompletionLineChanged: () => completionController.lineChanged(),
+  terminal: () => terminal,
+  commandMarkerActive: () => commandMarker.active,
+  pushTerminalCommandHistory: (command) => pushTerminalCommandHistory(command),
+  showError,
+  isLocalMode: () => isLocalMode.value,
+  isTelnetMode: () => isTelnetMode.value,
+  markLocalExited: (code) => markLocalExited(code),
+  reportTransportUnavailable: (sessionId) => terminalTransportWatch.reportUnavailable(sessionId),
+  isReconnectPending: () => reconnectPending.value,
+  scheduleSessionReconnect: () => scheduleSessionReconnect(),
+});
 
 const {
   searchAddon,
@@ -1725,54 +1717,8 @@ if (typeof window !== "undefined") {
   }
 }
 
-const terminalInputQueue = createTerminalInputQueue({
-  // Only SSH sends use the reconnect watcher below. A stalled local PTY or
-  // Telnet send must not be mislabeled as an exited local process or SSH loss.
-  sendTimeoutMs: (sessionId) => (sessionId === session.value?.sessionId ? 8_000 : 0),
-  send: (sessionId, payload) => {
-    terminalDiag.sends += 1;
-    // 通道按会话身份选择（telnet: 前缀 / 本地会话 / SSH，见
-    // terminalInputChannel）：本地会话误发 ssh 通道会被 sidecar 的 SSH
-    // 会话表拒收，表现为终端看似在线却打不进字。
-    return window.dbxPlugin.sendBinary(terminalInputChannel(sessionId, localSession.value?.sessionId), payload);
-  },
-  onError: (cause) => {
-    terminalDiag.errors += 1;
-    terminalInputQueue.reset();
-    // 本地会话的输入错误（进程退出/会话被回收）直接落退出态，不走 SSH 重连梯子。
-    if (isLocalMode.value) {
-      markLocalExited(null);
-      return;
-    }
-    const sshSessionId = session.value?.sessionId;
-    if (!isTelnetMode.value && sshSessionId && (cause instanceof TerminalInputTimeoutError || isSessionGoneError(cause))) {
-      terminalTransportWatch.reportUnavailable(sshSessionId);
-      return;
-    }
-    showError(cause, "terminal");
-    // 会话被外部杀掉（宿主重推连接的 disconnect、sidecar 重启）时本 tab 无
-    // 事件感知，终端看似活着实则打不进字。输入撞上死会话时按传输断开的
-    // 同款有界梯子自动重连。错误串契约见 backend ssh.rs session()。
-    if (terminalState.value === "connected" && !reconnectPending.value && isSessionGoneError(cause)) scheduleSessionReconnect();
-  },
-});
-
-// 串口专用输入队列：与 SSH/Telnet 共用同一有序实现，但负载带 Stdin 流
-// 标签（B1 TerminalFrame 形状），序列号独立计数；宿主对未知通道/方法报错
-// 时一次性降级 JSON 兼容路径（serialBinaryInput）。
-const serialInputQueue = createTerminalInputQueue({
-  frameTag: SERIAL_STREAM_STDIN,
-  send: (sessionId, payload) => {
-    if (!sessionId.startsWith("serial:")) return;
-    return window.dbxPlugin
-      .sendBinary(`serial/terminal/in/${sessionId.slice("serial:".length)}`, payload)
-      .catch((cause: unknown) => {
-        serialBinaryInput.value = false;
-        throw cause;
-      });
-  },
-  onError: (cause) => showError(cause, "terminal"),
-});
+// SSH/本地/Telnet 与串口的有序输入队列（含通道选择与失败落梯子）随
+// useTerminalInput 迁至 io/useTerminalInput.ts；解构见上方 terminalInputQueue。
 
 const locale = ref("zh-CN");
 const t = (key: string, values: Record<string, string | number> = {}) => workbenchMessage(locale.value, key, values);
@@ -2246,219 +2192,9 @@ const {
 // deep watcher 在主页面每次重渲染时都重设主题并重排；computed 按依赖缓存。
 const splitTerminalTheme = computed(() => terminalTheme());
 
-/**
- * 终端快捷键派发（对标 Tabby「Hotkeys」页）：先由 lib 侧把事件折算成规范组合串
- * （基于 event.code，Shift 恒保留为修饰键，故 Ctrl+= 与 Ctrl+Shift+= 不会塌成一个），
- * 再到用户可改写的注册表里查动作。lib 只做纯解析与匹配，命令执行留在 App。
- *
- * 默认表刻意不绑裸 Ctrl+A / Ctrl+C / Ctrl+F：这些要留给远端 shell 的
- * readline 与 SIGINT，只有 macOS 的 Cmd 系列、以及其余平台的 Ctrl+Shift 系列被占用。
- */
-function handleTerminalKey(event: KeyboardEvent) {
-  if (event.type !== "keydown") return true;
-  // 右键菜单打开时暂停终端键盘捕获（P2-8）：按键归菜单导航，不落远端 shell
-  // （macOS 直写路径已在 onData 包装层同步暂停）。不取消浏览器默认动作。
-  if (terminalMenuOpen.value) return false;
-  // xterm 的 false 只跳过终端处理，不会取消浏览器默认动作或冒泡。
-  const consume = () => {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  };
-  // IME 组合中不出 ghost（组合文本尚未落行；提交后的 onData 会重算）。
-  if (event.isComposing || event.keyCode === 229) hideGhostSuggestion();
-  // ghost 逐词接受（Ctrl+→ / Ctrl+Shift+→，macOS / Windows·Linux 同收；
-  // Warp word-accept）：只注入剩余文本的首个「空白串 + 词」块。#138 批 2 起
-  // 与结构化补全菜单同屏共存——菜单只占用 ↑↓/Tab/Esc，带修饰的 → 归 ghost。
-  // 复查 commandRunning/传输占用（与 evaluateGhost 同门）：update 与 accept
-  // 之间远端可能已开跑（回车竞态），不能把剩余字节打进运行中的命令。
-  if (
-    ghostMatch.value &&
-    !suggestionOpen.value &&
-    matchesGhostWordAccept(event.key, event) &&
-    !(commandRunning.value || terminalTransferBusy.value)
-  ) {
-    acceptGhostSuggestionWord();
-    return consume();
-  }
-  // ghost 整段接受（Warp 口径三键恒可用：裸 → / Ctrl+F / Ctrl+E——ghost 态
-  // 光标在行尾，截获 0x06/0x05 等价 → 与 End，无 ghost 时照发远端 readline；
-  // 「Tab 接受建议」开关开启时 Tab 在无菜单态也接受，菜单开着则归菜单）：
-  // #138 批 2 起不再被结构化补全菜单抑制（菜单不占用裸 →；ghost 是行内灰
-  // 字、菜单在光标行上/下，同屏共存）。历史建议浮层开着时无 ghost（数据分
-  // 工），此判保持。未命中接受键的按键原样放行给 shell。
-  if (
-    ghostMatch.value &&
-    !suggestionOpen.value &&
-    (matchesGhostFullAccept(event.key, event) || (ghostTabAccept.value && event.key === "Tab" && !completionOpen.value)) &&
-    !(event.ctrlKey && event.key === "Tab") &&
-    !(commandRunning.value || terminalTransferBusy.value)
-  ) {
-    // 用过即散：接受 ghost 命中引导条教的键位（→ / Ctrl+F / Ctrl+E），此后不再教。
-    dismissPromptHints();
-    acceptGhostSuggestion();
-    return consume();
-  }
-  // Ctrl+F 终端搜索（issue #108a，iTerm2 同位）：ghost 建议可见待接受时上方
-  // 分支已把 Ctrl+F 消费为整段接受（Warp 键位模型不变）；无 ghost 才轮到
-  // 搜索。传输占用（trz/zmodem 协议拥有输入流）时放行——与 resolveTerminalInputRoute
-  // 同判，不打断传输（Ctrl+F 的 0x06 由传输 filter/远端自行解释）。
-  if (
-    event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
-    event.key.toLowerCase() === "f" &&
-    resolveCtrlFRoute({ ghostVisible: !!ghostMatch.value, transferBusy: terminalTransferBusy.value }) === "search"
-  ) {
-    openTerminalSearch();
-    return consume();
-  }
-  // 命令建议浮层开启时优先消费导航/回填键；Tab 仅在延伸/显式选中时回填，
-  // 其余关闭浮层放行 shell 补全（issue #138）。结构化补全浮层（线 2）优先级
-  // 更高，按键语义相同（↑↓/Tab/Enter/Esc）。
-  if (
-    completionOpen.value &&
-    overlayOwnsKey(terminalOverlayKeyOwners(), event, "completion") &&
-    handleCompletionKey(event)
-  )
-    return consume();
-  if (
-    suggestionOpen.value &&
-    overlayOwnsKey(terminalOverlayKeyOwners(), event, "suggestion") &&
-    handleSuggestionKey(event)
-  )
-    return consume();
-  // Warp 式 history 面板（↑ 唤起）：面板开启时优先消费导航/回填键（↑↓ 移动、
-  // Enter/Tab 回填、Esc 关闭），其余按键原样放行——焦点回到终端时打字仍会
-  // 走 onData 链刷新锚点。未开启时裸 ↑ 经仲裁器唤起门打开全量视图（过滤交给
-  // 面板内搜索框，不读行缓冲）；alternate 屏（vim/htop 靠 ↑ 导航）、命令运行中、
-  // 传输占用、既有浮层开启时不抢 ↑，shell 原生 readline 历史在那些场景依旧可达。
-  if (
-    historyPanelOpen.value &&
-    overlayOwnsKey(terminalOverlayKeyOwners(), event, "historyPanel") &&
-    handleHistoryPanelKey(event)
-  )
-    return consume();
-  if (
-    event.type === "keydown" &&
-    event.key === "ArrowUp" &&
-    !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) &&
-    !event.isComposing &&
-    event.keyCode !== 229 &&
-    terminalOverlayKeyOwners().arrowUp === "historyPanel"
-  ) {
-    openHistoryPanel();
-    return consume();
-  }
-  // 搜索框已打开时 Esc 先关面板，不参与快捷键匹配（关闭键不可改写）。
-  {
-    const mod = event.metaKey || event.ctrlKey;
-    if (mod && event.shiftKey && (event.key === "d" || event.key === "D")) {
-      // 快速输入丢失诊断浮层（#33/#71）：三计数锁定丢失层，双击浮层关闭。
-      terminalDiagVisible.value = !terminalDiagVisible.value;
-      return consume();
-    }
-  }
-  if (event.key === "Escape" && terminalOverlayKeyOwners().escape === "search") {
-    closeTerminalSearch();
-    return consume();
-  }
-  // ghost 键位胶囊菜单开着时 Esc 先收菜单，不落远端（批 4e）。
-  if (event.key === "Escape" && terminalOverlayKeyOwners().escape === "ghost") {
-    ghostKeycapMenuOpen.value = false;
-    return consume();
-  }
-  // Quick Select 浮层按键（WT-1）：↑↓ 移动、Enter 复制当前项、Esc 关闭。
-  // 浮层是被动的（焦点留在终端、不接管键盘），未命中的按键原样放行远端 shell。
-  if (
-    quickSelectOpen.value &&
-    overlayOwnsKey(terminalOverlayKeyOwners(), event, "quickSelect") &&
-    handleQuickSelectKey(event)
-  )
-    return consume();
-  const combo = keyComboFromEvent(event);
-  if (!combo) return true;
-  switch (matchTerminalHotkey(terminalHotkeys.value, combo)) {
-    case "search":
-      openTerminalSearch();
-      return consume();
-    case "quick-select":
-      if (quickSelectOpen.value) closeQuickSelect();
-      else openQuickSelect();
-      return consume();
-    case "command-history":
-      // ↑ 裸键之外的补充唤起（可配置键位，默认含 Ctrl+R——Warp Command Search
-      // 的默认键 workspace:show_command_search）：同一 gate，开↔关 toggle；
-      // 热键入口聚焦搜索框（批 3d）——热键用户要的就是 Warp Ctrl+R 式搜索流。
-      // 总开关关闭（issue #169）或 alternate 屏（vim 的 Ctrl+R 是 redo，less/
-      // tmux copy-mode 同理，#108 反馈二顺带修复）时不 consume：原样透传远端；
-      // 其余 gate 关闭场景维持吞键（传输占用放行 ^R 会污染 zmodem/trzsz
-      // 字节流，交互提示待答会把控制字符打进 OTP 输入）。
-      if (commandHistoryHotkeyPassthrough({ enabled: historyPanelEnabled.value, alternateActive: terminal?.buffer.active.type === "alternate" })) return true;
-      if (historyPanelOpen.value) closeHistoryPanel();
-      else if (historyPanelGateOpen()) openHistoryPanel(true);
-      return consume();
-    case "completions":
-      // 手动唤起结构化补全菜单（Warp completions 手动键同位）：只在输入面
-      // 可用时开门——history 面板/终端搜索占用时不开（避免浮层叠在其下），
-      // alternate 屏/命令运行中/传输占用与自动弹出路径同门；菜单已开时等于
-      // 重算刷新。引擎 off 或无候选由 controller 原样关闭，无副作用。
-      if (historyPanelOpen.value || searchOpen.value) return consume();
-      if (commandRunning.value || terminalTransferBusy.value || terminal?.buffer.active.type === "alternate") return consume();
-      // 用过即散：手动补全命中引导条教的键位（Ctrl+Space），此后不再教。
-      dismissPromptHints();
-      openCompletionsManually();
-      return consume();
-    case "ai-fix":
-      // 失败命令 AI 修复（Warp Fix-with-AI 同位）：修复条在场才动作；缺席时
-      // 放行远端（键位未占用任何远端常用语义，放行最诚实）。
-      if (!aiFixBar.value) return true;
-      void aiFixFromBar();
-      return consume();
-    case "ai-assist":
-      // 唤起 AI 助手（Warp Agent Mode 入口同位）：开关关闭/能力缺失给可见
-      // 降级提示并消费；就绪则选中文本/屏幕尾部快照发起 ask 会话。
-      if (!aiBridgeOk() || !aiSettingsState.value.assist) {
-        showNotice(t("aiAssist.unavailable"));
-        return consume();
-      }
-      void aiAssistFromTerminal();
-      return consume();
-    case "copy":
-      // 无选区时不消费：裸 Ctrl+C 仍要作为 SIGINT 发给远端。
-      if (!terminal?.hasSelection()) return true;
-      void copyTerminalSelection();
-      return consume();
-    case "paste":
-      // 不取消默认动作：放行浏览器原生 paste 事件（自带真实 clipboardData，
-      // 沙箱 iframe 中无需剪贴板读权限），由 terminalHost 的 capture 拦截器
-      // 统一走风险确认。stopPropagation 挡住宿主/文档级快捷键；返回 false
-      // 让 xterm 跳过该键，否则 Ctrl+V 会先作为 ^V 字符发给远端。
-      event.stopPropagation();
-      return false;
-    case "select-all":
-      selectAllTerminal();
-      return consume();
-    case "clear":
-      clearTerminal();
-      return consume();
-    case "zoom-in":
-      adjustTerminalZoom(1);
-      return consume();
-    case "zoom-out":
-      adjustTerminalZoom(-1);
-      return consume();
-    case "reset-zoom":
-      resetTerminalZoom();
-      return consume();
-    case "scroll-to-top":
-      terminal?.scrollToTop();
-      return consume();
-    case "scroll-to-bottom":
-      terminal?.scrollToBottom();
-      return consume();
-    default:
-      return true;
-  }
-}
+// 终端按键路由与浮层键权仲裁（热键派发/ghost 接受/Ctrl+F 分派/补全/建议/
+// 历史面板/Quick Select 消费顺序）收口在 io/useTerminalKeys.ts；
+// handleTerminalKey 由下方解构经 getKeyHandler 接入 xterm。
 
 // 终端响铃：视觉/听觉两态收口在 composables/useTerminalBell。
 const {
@@ -2551,85 +2287,8 @@ const {
   terminalMenuOpen, terminalCopyCache, clipboardDeps,
 });
 
-// ---------------------------------------------------------------------------
-// 浮层键权仲裁器接线（docs/plans/IMPL_PLAN_OVERLAY_KEY_ARBITER.zh-CN.md）：
-// claims 的可见性沿用各浮层既有判定（can*/gate/open 布尔），判定零迁移——
-// 仲裁器只把「这个键维度此刻归谁」收口为查表。惰性求值：仅浮层分支到达时
-// 才构建/采样（普通键入不读 buffer，热路径零增量）。优先级一律取
-// ARBITER_PRIORITIES 表，接线处不写数字。ghost 的 → 族接受分支不查表（其
-// 组合键条件即让位编码的另一半，见 overlayArbiter.ts ClaimKey 注）。
-function priority(key: ClaimKey, overlay: OverlayId): number {
-  return ARBITER_PRIORITIES[key][overlay] ?? 0;
-}
-
-function terminalOverlayKeyOwners(): KeyOwners {
-  const panelOpen = historyPanelOpen.value;
-  return resolveKeyOwners([
-    // 历史面板：开着全占导航/接受/Esc；关着仅持有裸 ↑ 的唤起——gate 判
-    // false 即不可见，↑ 归远端（#150 交互提示待答态由此编码）。
-    ...panelClaims(panelOpen),
-    // 引导条锚点：唯一锚点 claimant；其他浮层在场时其自身 overlayOpen 门
-    // （shouldShowPromptHints）已置不可见，仲裁器兜底不双持。
-    { overlay: "promptHints", key: "anchor", priority: priority("anchor", "promptHints"), visible: promptHintsVisible.value },
-    // ghost：→ 族词块/整段接受（让位建议浮层——数据分工；运行中/传输占用
-    // 在分支内复查回车竞态）与键位胶囊菜单的 Esc；Tab 接受仅在开关开启且
-    // 菜单未开时可见（对 completion 让位）。→ 族分支本体不查表（其组合键
-    // 条件即让位编码的另一半），Tab/Esc 维度由 handleSuggestionKey 等查表。
-    { overlay: "ghost", key: "tab", priority: priority("tab", "ghost"), visible: !!ghostMatch.value && !suggestionOpen.value && ghostTabAccept.value && !completionOpen.value },
-    { overlay: "ghost", key: "accept", priority: priority("accept", "ghost"), visible: !!ghostMatch.value && !suggestionOpen.value },
-    { overlay: "ghost", key: "escape", priority: priority("escape", "ghost"), visible: ghostKeycapMenuOpen.value },
-    // 补全/建议/quick-select/搜索：开着即声明各自键域（判定在各 handler
-    // 内，查表只决定轮不轮到它）。
-    ...fourKeyClaims("completion", completionOpen.value),
-    ...fourKeyClaims("suggestion", suggestionOpen.value),
-    { overlay: "quickSelect", key: "arrowUp", priority: priority("arrowUp", "quickSelect"), visible: quickSelectOpen.value },
-    { overlay: "quickSelect", key: "arrowDown", priority: priority("arrowDown", "quickSelect"), visible: quickSelectOpen.value },
-    { overlay: "quickSelect", key: "enter", priority: priority("enter", "quickSelect"), visible: quickSelectOpen.value },
-    { overlay: "quickSelect", key: "escape", priority: priority("escape", "quickSelect"), visible: quickSelectOpen.value },
-    { overlay: "search", key: "escape", priority: priority("escape", "search"), visible: searchOpen.value },
-  ]);
-}
-
-/** 面板 claims：开 = 导航/Enter/Tab/Esc 全占；关 = 仅裸 ↑ 的唤起门。
- *  唤起门叠加 issue #169 的功能开关：关闭后 gate 不可见，↑ 归远端 shell
- *  原生历史；热键入口（Ctrl+R，见 command-history 分支）同样受开关控制。 */
-function panelClaims(panelOpen: boolean): ArbiterClaim[] {
-  const gate = priority("arrowUp", "historyPanel");
-  const arrowUpGate = panelOpen || (historyPanelGateOpen() && historyPanelEnabled.value);
-  return [
-    { overlay: "historyPanel", key: "arrowUp", priority: gate, visible: arrowUpGate },
-    { overlay: "historyPanel", key: "arrowDown", priority: gate, visible: panelOpen },
-    { overlay: "historyPanel", key: "enter", priority: priority("enter", "historyPanel"), visible: panelOpen },
-    { overlay: "historyPanel", key: "tab", priority: priority("tab", "historyPanel"), visible: panelOpen },
-    { overlay: "historyPanel", key: "escape", priority: priority("escape", "historyPanel"), visible: panelOpen },
-  ];
-}
-
-/** 导航类浮层（补全/建议）的标准四键 claims：↑↓/Enter/Tab/Esc。 */
-function fourKeyClaims(overlay: OverlayId, visible: boolean): ArbiterClaim[] {
-  return (["arrowUp", "arrowDown", "enter", "tab", "escape"] as const).map((key) => ({
-    overlay,
-    key,
-    priority: priority(key, overlay),
-    visible,
-  }));
-}
-
-/** 事件 → 键维度；不映射的按键（字母/修饰系）不参与浮层仲裁。 */
-function keyEventClaimKey(event: KeyboardEvent): ClaimKey | null {
-  if (event.key === "ArrowUp") return "arrowUp";
-  if (event.key === "ArrowDown") return "arrowDown";
-  if (event.key === "Enter") return "enter";
-  if (event.key === "Tab") return "tab";
-  if (event.key === "ArrowRight") return "accept";
-  if (event.key === "Escape") return "escape";
-  return null;
-}
-
-function overlayOwnsKey(owners: KeyOwners, event: KeyboardEvent, overlay: OverlayId): boolean {
-  const dimension = keyEventClaimKey(event);
-  return dimension !== null && owners[dimension] === overlay;
-}
+// 浮层键权仲裁（claims 可见性/优先级表/键维度映射）随 useTerminalKeys 迁至
+// io/useTerminalKeys.ts；本篇只保留 AI 助手与行跟踪的解构接线。
 
 // AI 助手（Warp AI 对齐批）：设置/修复条/输出采集/推荐位在
 // composables/useAiAssistant；`#` 命令搜索状态机在 useTerminalAiSearch
@@ -2637,131 +2296,9 @@ function overlayOwnsKey(owners: KeyOwners, event: KeyboardEvent, overlay: Overla
 // 一律不回写 PTY、不代执行（执行权在人）；插件零密钥，能力缺失全链路可见
 // 降级（aiBridgeOk 各调用点新鲜探测）。
 
-// —— 行改写追踪（issue #192 失真回退采集）：键入模型在 Tab 补全 / ↑ 召回 /
-// 光标移动等 shell 改写行的事件后与真实行失真（事件本身不进模型），主路径
-// 的「模型行 ⊂ 屏幕行」对照从此永远失配 → 漏采。状态机在 EnterLineTracker
-// （lib/terminalEnterCapture.ts）：改写前缀 = 首个改写事件时的模型行（提取
-// 锚），改写后键入 = 回显活性证据（关回显的凭据输入永不上屏 → 拒采）。
-const enterLineTracker = new EnterLineTracker();
-// 反斜杠续行草稿（多行命令）：暂存去续行反斜杠的前段，下一行回车拼接。
-let pendingContinuation = "";
-
-function trackPendingInput(data: string) {
-  if (data.includes("\u001b")) {
-    // ESC 序列块（↑ 召回 / Home / End / 方向键）：readline 会改写整行，键入
-    // 模型自此失真——整块跳过模型记账（原行为不变），但改写事件必须记账，
-    // 否则回退采集失去全部证据（issue #192：↑ 召回改参后回车不入史）。
-    enterLineTracker.noteRewrite(pendingTerminalInput);
-    return;
-  }
-  for (const character of data) {
-    if (character === "\r" || character === "\n" || character === "\u0003") {
-      // 回车执行点（Ctrl+C 是清行不是执行）：远端未装 shell integration 的
-      // SSH 会话没有 OSC 633 E 帧，手动键入的命令只有这里能入 commandHistory
-      // （↑ history 面板的数据源）。门过滤 + 回显对照见 lib/terminalEnterCapture.ts。
-      if (character !== "\u0003") captureEnterLine(pendingTerminalInput);
-      pendingTerminalInput = "";
-      enterLineTracker.reset();
-      // Ctrl+C 放弃当前（可能未完成的续行）命令：续行草稿一并作废。
-      if (character === "\u0003") pendingContinuation = "";
-    }
-    else if (character === "\u007f") {
-      pendingTerminalInput = pendingTerminalInput.slice(0, -1);
-      // 退格与远端行编辑同步（该字符模型与屏幕都不再有），证据尾巴同步削。
-      enterLineTracker.noteBackspace();
-    }
-    else if (character === "\t") {
-      // Tab 补全：shell 改写行且补全插入段不进模型（#169 只覆盖「补全后立
-      // 即回车」——前缀仍是子串；继续键入即失真）。记改写事件走回退采集。
-      enterLineTracker.noteRewrite(pendingTerminalInput);
-    }
-    else {
-      // readline 行编辑控制字节（Ctrl+U 清行 / Ctrl+W 删词）：回显不可见但
-      // 真实行已变，模型必须跟上，否则建议/补全对着死字符检索（#138 review
-      // P0-B）。未认领的字节按原逻辑放行（可打印追加，其余忽略）——忽略的
-      // 控制字节（Ctrl+A/E/L/R 等）同样是 shell 行改写，记改写事件。
-      const edited = applyLineEditControlChar(pendingTerminalInput, character);
-      if (edited !== null) pendingTerminalInput = edited;
-      else if (character >= " ") {
-        pendingTerminalInput += character;
-        enterLineTracker.notePrintable(character);
-      }
-      else enterLineTracker.noteRewrite(pendingTerminalInput);
-    }
-  }
-  // 行缓冲变更点（FIG wave-1 锚点）：revision 前进作废在途结果 + 防抖调度
-  // （输入门未放行时只作废不调度；常规键入路径随后由
-  // refreshSuggestionsAfterInput 的 request("typing") 即时冲掉防抖）。
-  completionController.lineChanged();
-  // 引导条的行空判定与行缓冲同步推进（pendingTerminalInput 是普通变量，
-  // 引导条显隐要响应式，就在这个唯一汇点镜像一份）。
-  promptHintsLineEmpty.value = pendingTerminalInput === "";
-}
-
-/** 回车行兜底采集：门过滤 + 回显对照后写入 commandHistory；与 E 帧/命令
- *  弹窗采集共用 pushTerminalCommandHistory，重复命令由环去重置顶，时间戳
- *  覆盖更新（回车先采、E 帧后到，最终值一致）。
- *  issue #192 两段增强：① 模型失真回退——Tab 补全后继续键入 / ↑ 召回后编
- *  辑的行，模型与屏幕对照必然失配，改以行改写状态（改写前缀锚 + 键入尾巴
- *  回显证据）从屏幕直接提取（extractDesyncedCommand），凭据/选择提示形态
- *  命中即拒；② 反斜杠续行合并——尾奇数反斜杠的行暂存，与下一行拼接成一条
- *  入史（与远端历史文件导入 parseShellHistoryText 同语义），Ctrl+C 作废草稿。 */
-function captureEnterLine(line: string) {
-  if (
-    !canCaptureEnterLine(line, {
-      alternateActive: terminal?.buffer.active.type === "alternate",
-      transferBusy: terminalTransferBusy.value || serialUploadBusy.value,
-      shellCommandActive: commandMarker.active,
-    })
-  ) {
-    return;
-  }
-  const echo = readEchoTextBeforeCursor();
-  // 以屏幕回显提取的命令入史（issue #169）：模型行只含键入前缀，Tab 补全/
-  // 历史展开后的真实命令（`cd blen` → `cd blender/`）只在回显里；提取失败
-  // （屏幕不可测）回落模型行，不劣于旧行为。模型失配时走失真回退提取
-  // （issue #192），两级都拒采则放弃（宁可漏采，不错采）。
-  const extracted =
-    echoConfirmsLine(echo, line)
-      ? extractEchoedCommand(echo, line) ?? line
-      : extractDesyncedCommand(echo, enterLineTracker.snapshot());
-  if (!extracted) return;
-  const { entry, pending } = acceptCommandWithContinuation(pendingContinuation, extracted);
-  pendingContinuation = pending;
-  if (entry) pushTerminalCommandHistory(entry);
-}
-
-/**
- * 读光标前（含向上折行链）的屏幕文本，作回显对照源。拼接含提示符前缀
- * （prompt 边界不可知），对照语义因此是「模型行是屏幕文本的子串」而非全等；
- * buffer 不可测（测试/渲染器未就绪）返回 null，由 echoConfirmsLine 放行。
- */
-function readEchoTextBeforeCursor(): string | null {
-  if (!terminal) return null;
-  try {
-    const buffer = terminal.buffer.active;
-    if (buffer.type !== "normal") return null;
-    const rowY = cursorAbsoluteRow(buffer);
-    const cursorRow = buffer.getLine(rowY);
-    if (!cursorRow) return null;
-    const parts: string[] = [];
-    let text = "";
-    for (let x = 0; x < buffer.cursorX; x += 1) text += cursorRow.getCell(x)?.getChars() ?? "";
-    parts.push(text);
-    let row = cursorRow;
-    while (row.isWrapped && rowY - parts.length >= 0) {
-      const previous = buffer.getLine(rowY - parts.length);
-      if (!previous) break;
-      row = previous;
-      let wrapped = "";
-      for (let x = 0; x < terminal.cols; x += 1) wrapped += row.getCell(x)?.getChars() ?? "";
-      parts.unshift(wrapped);
-    }
-    return parts.join("");
-  } catch {
-    return null;
-  }
-}
+// 行改写追踪（EnterLineTracker）、回车行兜底采集与回显对照随
+// useTerminalInput 迁至 io/useTerminalInput.ts（captureEnterLine 的语义与
+// 门过滤仍在 lib/terminalEnterCapture.ts，行为不变）。
 
 // ---------------------------------------------------------------------------
 // 命令输入建议浮层（P1-1）：采集→抑制门→检索→定位→按键消费。
@@ -2813,37 +2350,62 @@ const {
   isInteractivePromptPending: () => interactivePromptGatePending(),
   readTerminalCellFrame,
 });
-function sendTerminalBytes(data: Uint8Array) {
-  // 串口会话优先：B1 主路径走 `serial/terminal/in/{id}` 二进制写通道（专用
-  // 有序队列 + Stdin 流标签帧）；宿主报错（未知通道/旧 sidecar）一次性降级
-  // serial/write JSON 兼容路径。
-  if (serialSession.value) {
-    // 上传进行中吞掉键入：X/Y/ZMODEM 的 ACK/NAK/CAN 控制字符窗口内，
-    // 用户字节会污染协议流（进度状态在终端 overlay 上提示"传输中"）。
-    // B1 互斥：二进制写帧与 JSON 键入共用这道前端闸门；sidecar 侧另有
-    // 二进制帧拒收后盾。
-    if (serialUploadBusy.value) return;
-    if (serialBinaryInput.value) {
-      serialInputQueue.enqueue(`serial:${serialSession.value.sessionId}`, normalizeTerminalInputBytes(data));
-      return;
-    }
-    const dataBase64 = window.dbxPlugin.encodeBase64(normalizeTerminalInputBytes(data));
-    void window.dbxPlugin.invoke("serial/write", { sessionId: serialSession.value.sessionId, dataBase64 }).catch((cause) => showError(cause, "terminal"));
-    return;
-  }
-  // Telnet 会话优先：同一终端视图同一时刻只挂一个会话（SSH/本地/Telnet 互斥），
-  // telnet: 前缀在队列 send 回调里拆成 telnet/terminal/in/{id} 通道。
-  if (telnetSession.value) {
-    terminalInputQueue.enqueue(`telnet:${telnetSession.value.sessionId}`, normalizeTerminalInputBytes(data));
-    return;
-  }
-  // Ignore typing while an SSH session is reconnecting. Keeping bytes in a
-  // stale session queue can replay partial commands after the browser returns.
-  if (!localSession.value && terminalState.value !== "connected") return;
-  const sessionId = localSession.value?.sessionId ?? session.value?.sessionId;
-  if (!sessionId) return;
-  terminalInputQueue.enqueue(sessionId, normalizeTerminalInputBytes(data));
-}
+// 终端按键路由与浮层键权仲裁：热键派发/ghost 接受/Ctrl+F 分派/补全建议历史
+// 面板与 Quick Select 的消费顺序、按键维度仲裁表收口在 io/useTerminalKeys。
+// 状态均为本文件权威（Ref 直取），命令执行经回调注入；xterm 侧经上方
+// getKeyHandler 惰性取用（本段晚于实例装配）。
+const {
+  handleTerminalKey,
+} = useTerminalKeys({
+  terminalMenuOpen,
+  hideGhostSuggestion,
+  ghostMatch,
+  ghostKeycapMenuOpen,
+  suggestionOpen,
+  completionOpen,
+  commandRunning,
+  terminalTransferBusy,
+  acceptGhostSuggestionWord,
+  acceptGhostSuggestion,
+  dismissPromptHints,
+  ghostTabAccept,
+  openTerminalSearch,
+  closeTerminalSearch,
+  handleCompletionKey,
+  handleSuggestionKey,
+  historyPanelOpen,
+  handleHistoryPanelKey,
+  openHistoryPanel,
+  closeHistoryPanel,
+  historyPanelGateOpen,
+  historyPanelEnabled,
+  searchOpen,
+  quickSelectOpen,
+  handleQuickSelectKey,
+  openQuickSelect,
+  closeQuickSelect,
+  closeGhostKeycapMenu: () => { ghostKeycapMenuOpen.value = false; },
+  toggleTerminalDiag: () => { terminalDiagVisible.value = !terminalDiagVisible.value; },
+  terminalHotkeys,
+  openCompletionsManually,
+  hasAiFixBar: () => !!aiFixBar.value,
+  aiFixFromBar: () => aiFixFromBar(),
+  aiBridgeOk: () => aiBridgeOk(),
+  isAiAssistEnabled: () => aiSettingsState.value.assist,
+  aiAssistFromTerminal: () => aiAssistFromTerminal(),
+  showNotice,
+  t: (key) => t(key),
+  terminal: () => terminal,
+  copyTerminalSelection: () => copyTerminalSelection(),
+  selectAllTerminal: () => selectAllTerminal(),
+  clearTerminal: () => clearTerminal(),
+  adjustTerminalZoom: (delta) => adjustTerminalZoom(delta),
+  resetTerminalZoom: () => resetTerminalZoom(),
+  isPromptHintsVisible: () => promptHintsVisible.value,
+});
+
+// 主终端字节写入口（串口/Telnet/SSH·本地分派与队列入队）随 useTerminalInput
+// 迁至 io/useTerminalInput.ts；解构见上方 sendTerminalBytes。
 
 // 输出写入/dispatch 已迁至 useTerminalWriter（writeTerminalOutput /
 // dispatchTerminalOutput 由上方解构）；ZMODEM 占用期与 trzsz 过滤链顺序不变。
