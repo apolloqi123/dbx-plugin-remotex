@@ -878,7 +878,10 @@ function scriptBlockRefs(startMarker: string, endMarker: string): Set<string> {
   const start = haystack.indexOf(startMarker);
   if (start < 0) return new Set();
   const found = haystack.indexOf(endMarker, start);
-  const body = haystack.slice(start, found >= 0 ? found : blockEnd(haystack, start));
+  // endMarker 可能只出现在后续 composable 里：块体必须同时受花括号边界约束，
+  // 否则会把无关文件的 `.value` 扫描进来，守卫会被同名状态意外“覆盖”。
+  const bodyEnd = blockEnd(haystack, start);
+  const body = haystack.slice(start, found >= 0 && found < bodyEnd ? found : bodyEnd);
   return new Set([...body.matchAll(/([A-Za-z_$][\w$]*)\.value/g)].map((match) => match[1]));
 }
 
