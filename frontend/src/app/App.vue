@@ -87,7 +87,7 @@ import {
 import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../features/terminal/lib/emulator/terminalWriteThrottle";
 import { createOutputGate } from "../features/terminal/lib/emulator/terminalBackpressure";
 import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutError } from "../features/terminal/lib/emulator/terminalInputQueue";
-import { SERIAL_STREAM_STDIN, isKnownStreamTag, supportsBinaryInput } from "../features/serial/lib/serialTerminalFrames";
+import { SERIAL_STREAM_STDIN, isKnownStreamTag } from "../features/serial/lib/serialTerminalFrames";
 import { describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS } from "../features/terminal/lib/behavior/terminalReconnect";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
 import { useCommandMarker } from "../features/terminal/composables/session/useCommandMarker";
@@ -176,6 +176,8 @@ import { useSftpAttributes } from "../features/sftp/composables/actions/useSftpA
 import { useSftpBookmarks } from "../features/sftp/composables/actions/useSftpBookmarks";
 import { useSftpRowSelection } from "../features/sftp/composables/actions/useSftpRowSelection";
 import { useSerialUpload } from "../features/serial/composables/useSerialUpload";
+import { useSerialWorkbench } from "../features/serial/composables/useSerialWorkbench";
+import { useTelnetWorkbench } from "../features/telnet/composables/useTelnetWorkbench";
 import { useSftpTreeWorkspace } from "../features/sftp/composables/listing/useSftpTreeWorkspace";
 import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "../features/sftp/lib/paths/sftpRemotePaths";
 import { useWallpaper } from "../features/terminal/composables/ui/useWallpaper";
@@ -184,6 +186,7 @@ import { useSplitDivider } from "./workbench/composables/useSplitDivider";
 import { useWorkbenchPanels } from "./workbench/composables/useWorkbenchPanels";
 import { useWorkbenchPersistence } from "./workbench/composables/useWorkbenchPersistence";
 import { useLocalShellPreferences } from "../features/terminal/composables/session/useLocalShellPreferences";
+import { useLocalShellSession } from "../features/terminal/composables/session/useLocalShellSession";
 import { useShellTabs } from "../features/terminal/composables/ui/useShellTabs";
 import { useTerminalMenus } from "../features/terminal/composables/ui/useTerminalMenus";
 import { useQuickCommandPanel } from "../features/quick-commands/composables/useQuickCommandPanel";
@@ -336,8 +339,8 @@ import { Dialog, DialogContent, DialogTitle } from "../shared/ui/dialog/index";
 import SettingsDialog from "../features/settings/components/SettingsDialog.vue";
 import TerminalContextMenu from "../features/terminal/components/TerminalContextMenu.vue";
 import PortForwardDialog from "../features/forwarding/components/PortForwardDialog.vue";
-import TelnetConnectDialog, { type TelnetConnectOptions } from "../features/telnet/components/TelnetConnectDialog.vue";
-import SerialConnectDialog, { type SerialConnectOptions } from "../features/serial/components/SerialConnectDialog.vue";
+import TelnetConnectDialog from "../features/telnet/components/TelnetConnectDialog.vue";
+import SerialConnectDialog from "../features/serial/components/SerialConnectDialog.vue";
 // 串口文件上传（NyaTerm 对齐 P0-3）：弹窗 + overlay 状态机在 lib/serialUpload，
 // 状态/送数/取消在 composables/useSerialUpload；模板复位仍需初始态构造器。
 import SerialUploadDialog from "../features/serial/components/SerialUploadDialog.vue";
@@ -1393,44 +1396,74 @@ const promptNewline = new PromptNewlineTransformer();
 // OSC 633 shell-integration markers (pure frontend parse; no-op streams pass through).
 const commandMarkerParser = new Osc633CommandParser();
 
-// —— 本地终端（sidecar 所在机器的交互式登录 shell）——
-// 与 SSH 会话共用同一条渲染管线（乱序重组/补发/633 命令标记/输出节流），
-// 同一时刻只展示一个会话：进入本地模式前先经确认关闭 SSH 会话。会话帧用
-// 独立的 sequence/pending 状态，避免与 SSH 流互染。
-const localSession = ref<{ sessionId: string; shell: string } | null>(null);
-const localState = ref<"starting" | "running" | "exited">("exited");
-const localExitCode = ref<number | null>(null);
-const localOpenConfirmOpen = ref(false);
-const isLocalMode = computed(() => localSession.value !== null);
-// A4 restored shell (spec §7.6/§8.4): a restored local tab never auto-starts a shell; the exit
-// overlay as the shell state waiting for an explicit start; cleared once a shell actually comes up (startLocalTerminal succeeds)
-// cleared. localUiMode = "local-terminal UI state" (running session or restored shell); SSH-only toolbar actions gate on it,
-// SSH-only toolbar actions and display branches gate on it, decoupled from session existence.
-const localShellRestored = ref(false);
-// Telnet 会话（P2-3）：与 SSH/本地终端同款互斥展示。并入 localUiMode 后，
-// 所有 SSH-only 工具栏分支对 Telnet 自动隐藏；Telnet 专属分支按 isTelnetMode
-// 优先接在既有 localSession 分支前面。
-const telnetSession = ref<{ sessionId: string; host: string; port: number } | null>(null);
-const telnetDialogOpen = ref(false);
-const telnetState = ref<"idle" | "connecting" | "running" | "closed">("idle");
-const telnetError = ref("");
-const isTelnetMode = computed(() => telnetSession.value !== null);
-const telnetTarget = computed(() => (telnetSession.value ? `${telnetSession.value.host}:${telnetSession.value.port}` : ""));
-// 串口会话（P3 + B1 增强）：与 SSH/本地/Telnet 同款互斥展示，并入
-// localUiMode。出帧由读线程单线程递增 sequence；键盘输入主路径走
-// `serial/terminal/in/{id}` 二进制写通道（B1，Stdin=3 标签），JSON
-// `serial/write` 保留为兼容/降级路径；resize 无协议概念（设计稿 §4）。
-const serialSession = ref<{ sessionId: string; port: string; baudRate: number } | null>(null);
-const serialDialogOpen = ref(false);
-const serialState = ref<"idle" | "running" | "closed">("idle");
-const serialError = ref("");
-// B1 解码契约：输出帧遇到未知流标签（> Stdin=3）一律静默丢弃并计数。
-// B1 能力开关：true = 键盘走二进制写通道。初始值取 serial/start 的
-// binaryInput 能力字段（未声明 = 旧 sidecar → JSON 兼容路径）；通道报错
-// （未知方法/会话消失）时 send 回调一次性降级 JSON。
-const serialBinaryInput = ref(true);
-const isSerialMode = computed(() => serialSession.value !== null);
-const serialTarget = computed(() => (serialSession.value ? `${serialSession.value.port}@${serialSession.value.baudRate}` : ""));
+// —— 本地终端 / Telnet / 串口：会话状态机与生命周期（启停/互斥确认/恢复外壳/
+// 重新接回/连接驱动直启）收口在各自 composable。模板同名绑定经解构透出；
+// 帧流（useProtocolFrameBuffers）、偏好（useLocalShellPreferences）、其他协议
+// 会话与 xterm 实例均在本段之后声明/装配，故经 getter 惰性接入。
+const {
+  localSession, localState, localExitCode, localOpenConfirmOpen, isLocalMode, localShellRestored,
+  localLastCwd, localRecentCommands,
+  startLocalTerminal, closeLocalTerminal, dismissRestoredLocalShell, toggleLocalTerminal,
+  rerunLocalCommand, restartLocalTerminal, requestLocalTerminal, confirmLocalTerminal,
+  reattachLocalSession,
+} = useLocalShellSession({
+  t: (key) => t(key),
+  showError,
+  terminalState,
+  terminalError,
+  session,
+  sftpPaneOpen,
+  isDisposed: () => disposed,
+  getTerminal: () => terminal,
+  getWorkbenchId: () => workbenchId,
+  closeRightPanel: () => closeRightPanel(),
+  getBatchBarOpen: () => batchBarOpen,
+  getSessionMenus: () => ({ sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen }),
+  getLocalShellPrefs: () => ({ localShellPref, localShellIntegrationPref, localShellCwdPref, localShellEnvClean }),
+  getLocalFrameStreams: () => ({ localLastSequence, localPendingFrames, localReplayNoProgress, requestLocalReplay }),
+  resetCommandMarker: () => resetCommandMarker(),
+  getReconnectPending: () => reconnectPending,
+  getOtherModes: () => ({ isRdpMode, closeRdpSession, isVncMode, closeVncSession, isSerialMode, closeSerialSession, isTelnetMode, closeTelnetSession }),
+  settledTerminalDimensions,
+  terminalCursorPosition,
+  scheduleFit,
+  trackPendingInput,
+  sendConfirmedPaste: (payload) => sendConfirmedPaste(payload),
+  closeSession,
+});
+// Telnet 会话（P2-3）：互斥展示语义与状态机收口在 composables/useTelnetWorkbench。
+const {
+  telnetSession, telnetDialogOpen, telnetState, telnetError, isTelnetMode, telnetTarget,
+  startTelnetSession, closeTelnetSession, startTelnetFromConnection,
+} = useTelnetWorkbench({
+  showError,
+  isDisposed: () => disposed,
+  getTerminal: () => terminal,
+  getConnectionId: () => connectionId,
+  getWorkbenchId: () => workbenchId,
+  getRuntimeEndpoint: () => runtimeEndpoint,
+  getConnection: () => connection,
+  getTelnetFrameStreams: () => ({ telnetLastSequence, telnetPendingFrames, telnetReplayNoProgress }),
+  fitTerminalDimensions,
+  scheduleFit,
+});
+// 串口会话（P3 + B1 增强）：二进制写通道/能力探测与状态机收口在
+// composables/useSerialWorkbench。
+const {
+  serialSession, serialDialogOpen, serialState, serialError, serialBinaryInput,
+  isSerialMode, serialTarget, startSerialSession, closeSerialSession, startSerialFromConnection,
+} = useSerialWorkbench({
+  showError,
+  isDisposed: () => disposed,
+  getTerminal: () => terminal,
+  localShellRestored,
+  getWorkbenchId: () => workbenchId,
+  getConnection: () => connection,
+  getSerialFrameStreams: () => ({ serialLastSequence, serialPendingFrames, serialUnknownStreamFrames }),
+  getSerialInputQueue: () => serialInputQueue,
+  cancelSerialUploadForSessionClose: (sessionId) => cancelSerialUploadForSessionClose(sessionId),
+  scheduleFit,
+});
 // 串口文件上传 overlay 状态：进度由 sidecar 的 serial/upload/progress 事件
 // 驱动；running 期间吞掉键入（协议控制字符窗口）且禁止并发第二次 upload。
 // 状态机/送数/取消收口在 composables/useSerialUpload（会话关闭经
@@ -1526,11 +1559,6 @@ const {
   // 惰性转发：updateTerminalAppearance 在本段之后才由 useTerminalAppearance 解构。
   updateAppearance: (patch) => updateTerminalAppearance(patch),
 });
-// 上次本地会话跟踪到的 cwd：重开时继承（VS Code 新终端继承工作区目录惯例）。
-const localLastCwd = ref("");
-// 本地终端最近命令（633;E 收集， newest-first，cap 20）：右键菜单"重跑"用。
-// 注入关闭时无命令边界，本功能静默缺席。
-const localRecentCommands = ref<string[]>([]);
 
 // Large-output rendering throttle: coalesce consecutive PTY frames into one
 // merged xterm write per animation frame (capped, order preserving). The sink
@@ -3810,153 +3838,6 @@ async function closeSession(updateStatus = true) {
   persistState();
 }
 
-// —— 本地终端生命周期 ——
-// 退出态统一入口：exitCode 为 null 表示 sidecar 未上报（进程被杀/会话已回收），
-// 覆盖层对 null 只显示"已退出"，有值时显示退出码。
-
-async function startLocalTerminal(
-  shellOverride?: string,
-  connection?: { cwd?: string; env?: Array<{ name: string; value: string }> },
-) {
-  if (localState.value === "starting" || isLocalMode.value) return;
-  localState.value = "starting";
-  // 本地模式与 SFTP 分栏/批量栏互斥（对齐 RDP 进入会话前的收口惯例 4348）：
-  // 按钮层的 !localUiMode 门控只藏入口、不收已开的面板——SSH 工作台带分栏切
-  // 本地、或恢复态 tab 从布局镜像水合出 sftpPaneOpen=true，都会留下对着空
-  // 会话的幽灵分栏。persistState 由既有 watch 带上。
-  if (sftpPaneOpen.value) closeRightPanel();
-  if (batchBarOpen.value) batchBarOpen.value = false;
-  try {
-    const info = await window.dbxPlugin.invoke<{ sessionId: string; shell: string }>("local/terminal/start", {
-      workbenchId: workbenchId.value,
-      // spawn 尺寸必须等于面板稳定后的尺寸（单靠 fitTerminalDimensions 不够——
-      // dock「+」新 tab 此时可能还没布局完，fit 回落 80×24，稍后的真实 fit 是
-      // 一次跨几何 resize，ConPTY 整屏重绘＝提示符/横幅渲染两遍）。
-      ...(await settledTerminalDimensions()),
-      // ConPTY 以 PSEUDOCONSOLE_INHERIT_CURSOR 创建，开场 CSI 6n 问的是
-      // 「终端光标在哪」，子进程从该位置开始输出——必须回真实光标位置；
-      // 回视口尺寸等于宣称光标在最后一行，横幅会被从底部重画（顶部孤字/
-      // 双提示符的来源）。
-      ...terminalCursorPosition(),
-      // Shell precedence: explicit dock choice > user preference > auto-detection.
-      ...(shellOverride?.trim() ? { shell: shellOverride.trim() } : localShellPref.value ? { shell: localShellPref.value } : {}),
-      ...(localShellIntegrationPref.value ? {} : { shellIntegration: false }),
-      // cwd 优先级：重开继承上次跟踪目录 > 连接表单启动目录 > 偏好启动目录
-      // > 不传（家目录）。目录可能已被删，sidecar 会回落家目录。
-      ...(localLastCwd.value
-        ? { cwd: localLastCwd.value }
-        : connection?.cwd
-          ? { cwd: connection.cwd }
-          : localShellCwdPref.value
-            ? { cwd: localShellCwdPref.value }
-            : {}),
-      // 环境变量：偏好与连接表单合并（同名时连接表单覆盖），sidecar 侧还有
-      // 一道同规则净化兜底。
-      ...(() => {
-        const pairs = [...localShellEnvClean.value, ...(connection?.env ?? [])];
-        return pairs.length ? { env: Object.fromEntries(pairs.map((pair) => [pair.name, pair.value])) } : {};
-      })(),
-      // spawn 是快路径，但宿主桥丢响应时 promise 永久 pending＝纯黑屏；
-      // 与同文件其他交互调用一致地给超时，失败落入 catch 走 showError。
-    }, { timeoutMs: 10_000 });
-    if (disposed) {
-      void window.dbxPlugin.invoke("local/session/close", { sessionId: info.sessionId }, { timeoutMs: 10_000 }).catch(() => undefined);
-      return;
-    }
-    localSession.value = { sessionId: info.sessionId, shell: info.shell };
-    localState.value = "running";
-    // The restored shell ends here: the session was explicitly restarted.
-    localShellRestored.value = false;
-    localExitCode.value = null;
-    localLastSequence.value = 0;
-    localPendingFrames.clear();
-    localReplayNoProgress.value = 0;
-    resetCommandMarker();
-    await nextTick();
-    scheduleFit();
-    terminal?.focus();
-  } catch (cause) {
-    localState.value = "exited";
-    showError(cause, "terminal");
-  }
-}
-
-async function closeLocalTerminal() {
-  const sessionId = localSession.value?.sessionId;
-  localSession.value = null;
-  localState.value = "exited";
-  localPendingFrames.clear();
-  localOpenConfirmOpen.value = false;
-  sessionMenuOpen.value = false;
-  sessionMenuShellOpen.value = false;
-  sessionMenuShellPickOpen.value = false;
-  if (!sessionId) return;
-  await window.dbxPlugin.invoke("local/session/close", { sessionId }, { timeoutMs: 10_000 }).catch(() => undefined);
-  terminal?.focus();
-}
-
-// —— Telnet 会话生命周期（P2-3，与本地终端同款互斥与补发机制）——
-// 退出态统一入口：error 为 null 表示 sidecar 未带原因（会话已被回收），
-// 非空时在退出覆盖层展示（连接失败/对端断开）。
-
-async function startTelnetSession(options: TelnetConnectOptions): Promise<boolean> {
-  // 同一终端视图互斥：残留的 closed 会话先清场再开新连接。
-  if (telnetSession.value && telnetState.value !== "closed") await closeTelnetSession();
-  // 自动登录两种形态互斥：声明式（提示正则 + 凭据，sidecar 落内置默认正则）
-  // 优先；否则走 Expect 规则 + 密文槽。凭据只进 start 载荷与发送计划，
-  // sidecar 侧不落日志/事件。
-  const autoLogin = options.declarative
-    ? { declarative: options.declarative }
-    : options.rules
-      ? {
-          rules: options.rules,
-          secrets: [options.secret1 ?? "", options.secret2 ?? ""],
-        }
-      : undefined;
-  try {
-    const info = await window.dbxPlugin.invoke<{ sessionId: string; host: string; port: number }>("telnet/start", {
-      connectionId: connectionId.value || undefined,
-      workbenchId: workbenchId.value,
-      host: options.host,
-      port: options.port,
-      runtimeHost: runtimeEndpoint.value.host || options.host,
-      runtimePort: runtimeEndpoint.value.port || options.port,
-      enterMode: options.enterMode,
-      backspaceMode: options.backspaceMode,
-      ...fitTerminalDimensions(),
-      ...(autoLogin ? { autoLogin } : {}),
-    });
-    if (disposed) {
-      void window.dbxPlugin.invoke("telnet/close", { sessionId: info.sessionId }).catch(() => undefined);
-      return false;
-    }
-    telnetSession.value = { sessionId: info.sessionId, host: info.host, port: info.port };
-    telnetState.value = "connecting";
-    telnetError.value = "";
-    telnetLastSequence.value = 0;
-    telnetPendingFrames.clear();
-    telnetReplayNoProgress.value = 0;
-    await nextTick();
-    scheduleFit();
-    terminal?.focus();
-    return true;
-  } catch (cause) {
-    showError(cause, "terminal");
-    return false;
-  }
-}
-
-async function closeTelnetSession() {
-  const sessionId = telnetSession.value?.sessionId;
-  telnetSession.value = null;
-  telnetState.value = "idle";
-  telnetError.value = "";
-  telnetPendingFrames.clear();
-  if (!sessionId) return;
-  await window.dbxPlugin.invoke("telnet/close", { sessionId }).catch(() => undefined);
-  terminal?.focus();
-}
-
 // —— VNC 会话生命周期（nyaterm-parity P2 2d，与 Telnet 同款互斥展示）——
 // 画面走 VncSurface 画布；帧/输入/剪贴板各走独立通道。连接/关闭/输入/帧
 // 入口已收口在 composables/useVncSession，App.vue 只保留连接路由与装配。
@@ -3965,18 +3846,6 @@ async function closeTelnetSession() {
 // 连接表单直启各自会话；参数 = 连接 host/port + 上次使用记忆的偏好。
 // 凭据不随连接持久化，需要自动登录/VNC 密码时从工具栏弹窗进入；直启
 // 失败回落弹窗（预填 host/port，可改后重试）。
-async function startTelnetFromConnection(): Promise<boolean> {
-  const conn = connection.value;
-  if (!conn.host) return false;
-  const last = loadLastConnectParams<TelnetConnectOptions>("telnet-connect-last");
-  return startTelnetSession({
-    host: conn.host,
-    port: conn.port && conn.port > 0 ? conn.port : 23,
-    enterMode: last.enterMode === "cr" || last.enterMode === "lf" ? last.enterMode : "crlf",
-    backspaceMode: last.backspaceMode === "ctrl_h" ? "ctrl_h" : "del",
-  });
-}
-
 async function startVncFromConnection(): Promise<boolean> {
   const conn = connection.value;
   if (!conn.host) return false;
@@ -3986,23 +3855,6 @@ async function startVncFromConnection(): Promise<boolean> {
     port: conn.port && conn.port > 0 ? conn.port : 5900,
     scaleMode: last.scaleMode === "stretch" || last.scaleMode === "actual" ? last.scaleMode : "fit",
   });
-}
-
-// M32-B：串口连接路由——从连接 config 组装 SerialConnectOptions。设备路径
-// 是唯一硬前提（其余参数有 sidecar 默认值）；startSerialSession 内部吞错并
-// 落 showError，成功与否以 serialSession 挂载为准。
-async function startSerialFromConnection(): Promise<boolean> {
-  const conn = connection.value;
-  if (!conn.serialPort) return false;
-  await startSerialSession({
-    portName: conn.serialPort,
-    baudRate: conn.serialBaud ?? 115200,
-    dataBits: conn.serialDataBits ?? "8",
-    parity: conn.serialParity ?? "none",
-    stopBits: conn.serialStopBits ?? "1",
-    backspaceMode: conn.serialBackspace ?? "del",
-  });
-  return serialSession.value !== null;
 }
 
 // M32-B：RDP 连接路由——host/port 走连接绑定字段，domain/分辨率/证书策略/
@@ -4042,67 +3894,6 @@ const rdpClosedTitle = computed(() => {
 });
 
 
-// —— 串口会话生命周期（P3，与 Telnet 同款互斥展示；无 replay，掉帧仅按
-// pending 上限清空兜底）——
-// 退出态统一入口：error 为 null 表示 sidecar 未带原因（主动关闭），
-// 非空时在退出覆盖层展示（读线程 IO 失败/设备拔线）。
-
-async function startSerialSession(options: SerialConnectOptions) {
-  // 同一终端视图互斥：残留的 closed 会话先清场再开新连接。
-  if (serialSession.value && serialState.value !== "closed") await closeSerialSession();
-  try {
-    // 线上字段为 snake_case：SerialStartRequest 未启用 camelCase rename；
-    // 响应则由 sidecar 手拼 json!，sessionId/port/baudRate 为 camelCase，
-    // binaryInput 为 B1 能力字段（旧 sidecar 缺失 → JSON 兼容路径）。
-    const info = await window.dbxPlugin.invoke<{ sessionId: string; port: string; baudRate: number; binaryInput?: boolean }>("serial/start", {
-      workbenchId: workbenchId.value,
-      port_name: options.portName,
-      baud_rate: options.baudRate,
-      data_bits: options.dataBits,
-      parity: options.parity,
-      stop_bits: options.stopBits,
-      backspace_mode: options.backspaceMode,
-    });
-    if (disposed) {
-      void window.dbxPlugin.invoke("serial/close", { sessionId: info.sessionId }).catch(() => undefined);
-      return;
-    }
-    serialSession.value = { sessionId: info.sessionId, port: info.port, baudRate: info.baudRate };
-    serialState.value = "running";
-    serialError.value = "";
-    serialLastSequence.value = 0;
-    serialPendingFrames.clear();
-    serialUnknownStreamFrames.value = 0;
-    // 能力探测降级（设计稿 §2）：未声明 binaryInput 的 sidecar 走 JSON
-    // serial/write；通道报错时再一次性降级（send 回调）。
-    serialBinaryInput.value = supportsBinaryInput(info);
-    serialInputQueue.reset();
-    // 从 A4 恢复外壳 tab 直接起串口时清掉外壳态，退出覆盖层随即让位。
-    localShellRestored.value = false;
-    await nextTick();
-    scheduleFit();
-    terminal?.focus();
-  } catch (cause) {
-    showError(cause, "terminal");
-  }
-}
-
-async function closeSerialSession() {
-  const sessionId = serialSession.value?.sessionId;
-  serialSession.value = null;
-  serialState.value = "idle";
-  serialError.value = "";
-  serialPendingFrames.clear();
-  serialUnknownStreamFrames.value = 0;
-  serialBinaryInput.value = true;
-  serialInputQueue.reset();
-  // 上传挂在会话上：随会话关闭一并终止（sidecar cancel 幂等）。
-  cancelSerialUploadForSessionClose(sessionId);
-  if (!sessionId) return;
-  await window.dbxPlugin.invoke("serial/close", { sessionId }).catch(() => undefined);
-  terminal?.focus();
-}
-
 // HOST_PLUGIN_UI_SPEC §8.3/§7.4 workbench/close 两段式关闭：宿主拆除 panel/tab webview
 // 前先通知本 workbench 释放自己的 sidecar scope（PTY 会话），避免孤儿 PTY 活到 sidecar
 // 退出。特 性探测：旧宿主不发 workbench/close，也无此 API。置 disposed 拦住在途的
@@ -4133,119 +3924,6 @@ if (window.dbxPlugin.workbench?.onClose) {
     rdpDesktopSize.value = null;
     rdpClipboardChunks.clear();
   });
-}
-
-// "Close" on a restored shell: there is no session to close — fall into the same disconnected state as an SSH restored tab
-// (no connection replay, spec §7.6) and the exit overlay steps aside.
-function dismissRestoredLocalShell() {
-  localShellRestored.value = false;
-  localState.value = "exited";
-  terminalState.value = "disconnected";
-  terminalError.value = t("restartDisconnected");
-}
-
-// Toolbar local-terminal button: running -> close; restored shell -> reopen directly (nothing to close, skipping
-// SSH confirm flow); serial/telnet mode -> close that session; an SSH state walks the existing confirm flow.
-function toggleLocalTerminal() {
-  if (isRdpMode.value) {
-    void closeRdpSession();
-    return;
-  }
-  if (isVncMode.value) {
-    void closeVncSession();
-    return;
-  }
-  if (isSerialMode.value) {
-    void closeSerialSession();
-    return;
-  }
-  if (isTelnetMode.value) {
-    void closeTelnetSession();
-    return;
-  }
-  if (localShellRestored.value) {
-    void restartLocalTerminal();
-    return;
-  }
-  if (isLocalMode.value) {
-    void closeLocalTerminal();
-    return;
-  }
-  requestLocalTerminal();
-}
-
-// 右键菜单"重跑最近命令"：把命令写入本地 PTY（危险命令复用粘贴确认），
-// 补回车立即执行；多行命令归一为回车分隔。
-async function rerunLocalCommand(command: string) {
-  if (!localSession.value) return;
-  const payload = command.replace(/\r\n|\r|\n/g, "\r") + "\r";
-  trackPendingInput(payload);
-  await sendConfirmedPaste(payload);
-}
-
-async function restartLocalTerminal(shellOverride?: string) {
-  await closeLocalTerminal();
-  await startLocalTerminal(shellOverride);
-}
-
-// 一次性 shell override 的确认挂起：requestLocalTerminal 在 SSH 在连时先走
-// 确认弹窗，所选 shell 存这里；确认/取消两路各自消费/清空（watch 兜底）。
-let pendingLocalShellOverride = "";
-
-// SSH 会话在连/连接中/重连中时先经确认关闭（本地模式与 SSH 会话互斥展示，
-// connecting 途中放行会让在途 ssh/session/open 成功后与本地会话抢同一终端
-// 视图），再开本地终端。
-function requestLocalTerminal(shellOverride?: string) {
-  // 串口/Telnet/VNC/RDP 会话占用终端视图时不开本地终端（互斥展示）。
-  if (isSerialMode.value || isTelnetMode.value || isVncMode.value || isRdpMode.value) return;
-  if (isLocalMode.value || localState.value === "starting") return;
-  if (session.value || reconnectPending.value || terminalState.value === "connecting") {
-    pendingLocalShellOverride = shellOverride ?? "";
-    localOpenConfirmOpen.value = true;
-    return;
-  }
-  void startLocalTerminal(shellOverride);
-}
-
-async function confirmLocalTerminal() {
-  localOpenConfirmOpen.value = false;
-  const shellOverride = pendingLocalShellOverride || undefined;
-  pendingLocalShellOverride = "";
-  await closeSession();
-  await startLocalTerminal(shellOverride);
-}
-
-// 确认弹窗取消（按钮/X/外点/Esc 多路）统一清掉挂起的 override，避免残留到
-// 下一次无 override 的确认；confirm 路径在本行同步消费后才会触发本 watch。
-watch(localOpenConfirmOpen, (open) => {
-  if (!open) pendingLocalShellOverride = "";
-});
-
-// webview 重建后接回 sidecar 里仍活着的本地 shell（workbench/close 才回收）。
-async function reattachLocalSession(): Promise<boolean> {
-  try {
-    const result = await window.dbxPlugin.invoke<{ sessions?: Array<{ sessionId: string; workbenchId: string; shell: string }> }>(
-      "local/session/list",
-      {},
-      { timeoutMs: 10_000 },
-    );
-    const match = (result?.sessions || []).find((session) => session.workbenchId === workbenchId.value);
-    if (!match) return false;
-    localSession.value = { sessionId: match.sessionId, shell: match.shell };
-    localState.value = "running";
-    localExitCode.value = null;
-    localLastSequence.value = 0;
-    localPendingFrames.clear();
-    // 回放走统一补发路径（requestLocalReplay，自带超时与 resync）：环形缓冲
-    // 淘汰过帧的活会话（累计输出 > 2MiB 必然发生）接回尾部继续，而不是被
-    // !complete 误判成已退出——shell 在 sidecar 里还活着。
-    requestLocalReplay(0, null);
-    await nextTick();
-    scheduleFit();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 // 手动重连前请宿主按当前最新配置重开连接：连接在侧边栏被编辑（如改密码）后，
