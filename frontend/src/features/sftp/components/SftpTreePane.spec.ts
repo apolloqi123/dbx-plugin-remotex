@@ -909,6 +909,41 @@ describe("SftpTreePane drag and drop targeting", () => {
     }
   });
 
+  it("keeps the host target when dragActive arrives after the first position", async () => {
+    // App 先收到宿主坐标、再让 externalDragActive prop 变 true：后到的
+    // active watch 不能重启 :hover/pointer 兜底覆盖宿主目标。
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: false });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const originalQuerySelector = document.querySelector.bind(document);
+    const querySpy = vi.spyOn(document, "querySelector").mockImplementation((selector: string) => {
+      if (selector === ".sftp-tree-row:hover") return rowA;
+      return originalQuerySelector(selector);
+    });
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(rowB);
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      const activate = wrapper.setProps({ externalDragActive: true });
+      expect(api.markDropTargetAt({ x: 20, y: 40 })).toBe("/b");
+      await activate;
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+      expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
+    } finally {
+      pointSpy.mockRestore();
+      querySpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
   it("clears the drag state on dragend", async () => {
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);

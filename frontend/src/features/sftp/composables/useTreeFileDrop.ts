@@ -46,8 +46,8 @@ export function useTreeFileDrop(options: {
     () => externalDragActive(),
     (active) => {
       if (active) {
-        hostPositioned = false;
-        startPointerTracking();
+        // 宿主坐标可能先于 active prop 到达：已由坐标接管时不要重启兜底。
+        if (!hostPositioned) startPointerTracking();
       } else {
         hostPositioned = false;
         stopPointerTracking();
@@ -101,7 +101,7 @@ export function useTreeFileDrop(options: {
   }
 
   function startPointerTracking() {
-    if (pointerTracking || typeof document === "undefined") return;
+    if (hostPositioned || pointerTracking || typeof document === "undefined") return;
     pointerTracking = true;
     lastHoverUri = "";
     document.addEventListener("mousemove", trackPointer, true);
@@ -111,7 +111,7 @@ export function useTreeFileDrop(options: {
     // CSS :hover 仍会随指针更新。轮询命中的行，不命中时保持现状（避免把
     // 已由 dragover/指针事件标记的目标误清）。
     hoverPollTimer = setInterval(() => {
-      if (!externalDragActive()) return;
+      if (hostPositioned || !externalDragActive()) return;
       const rowEl = document.querySelector<HTMLElement>(".sftp-tree-row:hover");
       if (!rowEl) return;
       const index = Number(rowEl.dataset.treeIndex);
