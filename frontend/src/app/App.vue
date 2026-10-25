@@ -706,9 +706,16 @@ const HIGHLIGHT_SCAN_MIN_INTERVAL_MS = 33;
 const terminalHost = ref<HTMLElement>();
 const sftpPane = ref<HTMLElement>();
 // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
-const sftpTreePane = ref<{ scrollPathToTop(path: string): Promise<boolean> } | null>(null);
-/** SftpWorkspacePanel 把内部树实例回填到上面的 ref，保持目录跟随即有语义。 */
-function bindSftpWorkspaceTreePane(api: { scrollPathToTop(path: string): Promise<boolean> } | null) {
+const sftpTreePane = ref<{
+  scrollPathToTop(path: string): Promise<boolean>;
+  markDropTargetAt(point: { x: number; y: number }): string;
+} | null>(null);
+/** SftpWorkspacePanel 把内部树实例回填到上面的 ref，保持目录跟随与宿主拖拽落点。
+ *  markDropTargetAt 接宿主转发的 iframe 内坐标，命中目录行并返回目标路径。 */
+function bindSftpWorkspaceTreePane(api: {
+  scrollPathToTop(path: string): Promise<boolean>;
+  markDropTargetAt(point: { x: number; y: number }): string;
+} | null) {
   sftpTreePane.value = api;
 }
 /** 路径输入框随工具栏移入子组件：回填 composable 的 ref，进入编辑态仍能聚焦。 */
@@ -6600,18 +6607,24 @@ async function initialize() {
   }, { themeChannel: onHostThemeChange });
   unsubscribeEvent = api.onEvent(handleEvent);
   unsubscribeBinary = api.onBinary(handleBinary);
-  unsubscribeFileDrag = api.fileTransfer?.onDragState((active) => {
+  unsubscribeFileDrag = api.fileTransfer?.onDragState((active, position) => {
+    dragActive.value = active;
     // 新一次拖拽从“无目标”开始；结束事件不能清目标——部分宿主先发
     // active=false，再回调 onDrop，提前清掉会让上传落回当前目录。
-    if (active) sftpDragDropTarget.value = "";
-    dragActive.value = active;
+    if (!active) return;
+    sftpDragDropTarget.value = "";
+    // 宿主转发的原生拖拽坐标（iframe CSS 像素）直接命中当前悬停行：
+    // 不再依赖冻结的 :hover 或缺失的 dragover。
+    if (position) sftpTreePane.value?.markDropTargetAt(position);
   });
   unsubscribeFileDrop = api.fileTransfer?.onDrop((files, drop) => {
     // 宿主目录展开撞上限（如单文件夹 2000 文件）只交付前缀：明确提示而不是
     // 静默丢文件；完整上传指引工具栏「上传文件夹」选择器（浏览器枚举，无此限）。
     if (drop?.truncated) showNotice(t("hostDrop.truncated"));
-    // 宿主 onDrop 不带光标下的目标行：取树行拖拽悬停路径，缺省回当前目录。
-    const target = sftpDragDropTarget.value || undefined;
+    // 新宿主附带落点坐标：以落点命中的目录行为准（空白/文件 = 当前目录）；
+    // 旧宿主没有坐标时回落到拖拽期间记录的目标。
+    const pointed = drop?.position ? sftpTreePane.value?.markDropTargetAt(drop.position) : "";
+    const target = drop?.position ? (pointed || undefined) : (sftpDragDropTarget.value || undefined);
     sftpDragDropTarget.value = "";
     void handleHostFileDrop(files, target);
   });

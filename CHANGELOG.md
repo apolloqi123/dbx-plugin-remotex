@@ -13,6 +13,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.24] — 2026-10-25
+
+- **修复系统文件拖入 SFTP 面板时悬停目标不跟随**。DBX 宿主现在把原生拖拽坐标转发进插件 iframe；插件按 iframe 内坐标命中当前目录行，悬停高亮、2s 自动展开和最终 drop 落点都随光标移动，不再被冻结的 `:hover` 或首个目标锁住。旧宿主不带坐标时仍走原有 DOM/指针兜底，行为不变。
+  **Fix the SFTP hover target when dragging OS files in.** The DBX host now forwards native drag coordinates into the plugin iframe; the plugin hit-tests the current directory row from those iframe-local coordinates, so hover highlight, the 2s auto-expand and the final drop target follow the pointer instead of being stuck on the first row or a frozen `:hover`. Hosts without coordinates keep the existing DOM/pointer fallback unchanged.
+
 ## [0.7.9-beta.23] — 2026-10-25
 
 - **容器管理改为终端下方 1/3 分屏**。打开容器面板时，无论工作台当前是左右还是上下布局，容器都固定在终端下方，默认终端 67% / 容器 33%；分栏把手可拖动或键盘微调，关闭后重新打开回到 1/3。SFTP/指标视图仍沿用用户原有的分栏方向与比例，DockerPanel 内部行为不变。

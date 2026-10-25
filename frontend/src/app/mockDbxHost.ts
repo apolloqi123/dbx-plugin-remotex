@@ -63,8 +63,9 @@ import { handleRdpInvoke } from "./mock/host/rdp";
 import { handleOtpInvoke } from "./mock/host/otp";
 import { aiConversations, aiGenerations, getAiRecommendationStats, handleAiHostRequest } from "./mock/host/ai";
 
-const request: DbxPluginApi["request"] = async <T = unknown>(method: string, params?: unknown) => {
-  if (method === "host.getContext") return context as T;
+const fileDragStateListeners = new Set<(active: boolean, position?: { x: number; y: number }) => void>();
+
+const request: DbxPluginApi["request"] = async <T = unknown>(method: string, params?: unknown) => {  if (method === "host.getContext") return context as T;
   const aiResult = handleAiHostRequest(method, params);
   if (aiResult !== UNHANDLED) return aiResult as T;
   // host.listConnections（PR-A4 扩展点）：返回夹具连接（只读无密），供面板
@@ -187,7 +188,10 @@ window.dbxPlugin = {
     },
     finish: async () => undefined,
     cancel: async () => undefined,
-    onDragState: () => () => undefined,
+    onDragState: (listener) => {
+      fileDragStateListeners.add(listener);
+      return () => fileDragStateListeners.delete(listener);
+    },
     onDrop: () => () => undefined,
   },
   // 宿主 host.storage mock（Host API 1.2，pluginHostBridge storage 命名空间同形）：
@@ -248,9 +252,14 @@ queueMicrotask(() => document.dispatchEvent(new CustomEvent("dbx-plugin-init", {
 // 走查 i18n 切换链（瞬态 notice 不随切语重译的 R5-P2-2 维持豁免，不在本夹具
 // 模拟范围）。
 (window as unknown as { __dbxMockSetLocale?: (next: string) => void }).__dbxMockSetLocale = setMockLocale;
-
 // mock 专有调试入口：把本地终端打入退出态（验证退出覆盖层/退出码显示）。
 (window as unknown as { __dbxMockExitLocal?: () => void }).__dbxMockExitLocal = exitLocalSession;
+
+// mock 专有调试入口：模拟宿主原生文件拖拽坐标（dragstate.position），
+// 供 visual.html 走查「悬停行随光标切换」。
+(window as unknown as { __dbxMockDragState?: (active: boolean, position?: { x: number; y: number }) => void }).__dbxMockDragState = (active, position) => {
+  fileDragStateListeners.forEach((listener) => listener(active, position));
+};
 
 // mock 专有调试入口：向 SSH 可视会话注入一段终端输出（issue #150 交互提示
 // 守卫走查用——在页面里摆出 MFA/验证码/选择菜单等远端提示行，验证 ↑/↓ 与

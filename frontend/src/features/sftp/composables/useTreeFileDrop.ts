@@ -3,6 +3,11 @@ import type { SftpFileTreeNode, SftpTreeRow } from "../lib/sftpFileTree";
 
 const DROP_EXPAND_DELAY = 2_000;
 
+export interface TreeDragPoint {
+  x: number;
+  y: number;
+}
+
 /** 文件拖放到目录行：只有宿主文件拖拽（dataTransfer.types 含 "Files" 或宿主
  *  dragActive）才高亮；折叠目录悬停 2s 后 toggle 由父级懒加载展开。drop 必须
  *  同步上抛原始 DragEvent，父级要在同一 tick 里读取 dataTransfer.items。 */
@@ -25,6 +30,8 @@ export function useTreeFileDrop(options: {
   let pointerTracking = false;
   let lastPointerTrackAt = 0;
   let hoverPollTimer: ReturnType<typeof setInterval> | undefined;
+  // 宿主已开始转发原生拖拽坐标：坐标命中优先于 DOM 事件与 :hover 兜底。
+  let hostPositioned = false;
   // 冻结的 :hover 会一直返回拖入时的行。仅当轮询看到「与上次不同的行」时才认为
   // 指针真的移动了（live hover），用它兜底；同一行的重复上报一律忽略，避免
   // 把 pointer/dragover 已命中的新目标（A 展开后拖到 B）覆盖回旧行。
@@ -38,8 +45,11 @@ export function useTreeFileDrop(options: {
   watch(
     () => externalDragActive(),
     (active) => {
-      if (active) startPointerTracking();
-      else {
+      if (active) {
+        hostPositioned = false;
+        startPointerTracking();
+      } else {
+        hostPositioned = false;
         stopPointerTracking();
         clearDragVisuals();
       }
@@ -47,25 +57,43 @@ export function useTreeFileDrop(options: {
     { immediate: true },
   );
 
-  // 宿主桥只给 dragActive 布尔值，不保证把 dragover 派发到行元素。用全局
-  // 指针位置做兜底：拖拽期间按 elementFromPoint 找到行，复用同一套标记。
+  /** 坐标命中目录行：宿主转发的是 iframe 内 CSS 像素，与 elementFromPoint 同域。 */
+  function targetAtPoint(point: TreeDragPoint): { node: SftpFileTreeNode; index: number } | undefined {
+    if (typeof document === "undefined" || typeof document.elementFromPoint !== "function") return undefined;
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return undefined;
+    const element = document.elementFromPoint(point.x, point.y) as HTMLElement | null;
+    const rowEl = element?.closest<HTMLElement>(".sftp-tree-row");
+    if (!rowEl) return undefined;
+    const index = Number(rowEl.dataset.treeIndex);
+    const target = rows()[index];
+    if (!target || target.node.kind !== "directory") return undefined;
+    return { node: target.node, index };
+  }
+
+  /** 宿主拖拽坐标入口（dragstate.position）：命中即高亮/计时，返回目标路径。 */
+  function markDropTargetAt(point: TreeDragPoint): string {
+    hostPositioned = true;
+    stopPointerTracking();
+    const target = targetAtPoint(point);
+    if (!target) {
+      clearDragTarget();
+      return "";
+    }
+    markRowDragTarget(target.node);
+    return target.node.path;
+  }
+
+  // 宿主桥只给 dragActive 布尔值（旧宿主），不保证把 dragover 派发到行元素。
+  // 用全局指针位置做兜底：拖拽期间按 elementFromPoint 找到行，复用同一套标记。
   function trackPointer(event: MouseEvent) {
-    if (!externalDragActive()) return;
+    if (!externalDragActive() || hostPositioned) return;
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
     if (!event.clientX && !event.clientY) return;
     const now = performance.now();
     if (now - lastPointerTrackAt < 60) return;
     lastPointerTrackAt = now;
-    if (typeof document.elementFromPoint !== "function") return;
-    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
-    const rowEl = element?.closest<HTMLElement>(".sftp-tree-row");
-    if (!rowEl) {
-      clearDragTarget();
-      return;
-    }
-    const index = Number(rowEl.dataset.treeIndex);
-    const target = rows()[index];
-    if (!target || target.node.kind !== "directory") {
+    const target = targetAtPoint({ x: event.clientX, y: event.clientY });
+    if (!target) {
       clearDragTarget();
       return;
     }
@@ -131,6 +159,7 @@ export function useTreeFileDrop(options: {
   /** 整场拖拽结束：行间 dragleave 只清目标，lastHoverUri 必须留到会话结束，
    *  否则冻结的 :hover 会在下一次轮询重新生效。 */
   function endDragSession() {
+    hostPositioned = false;
     clearDragTarget();
     lastHoverUri = "";
   }
@@ -219,6 +248,7 @@ export function useTreeFileDrop(options: {
     onRowDragOver,
     onRowDragLeave,
     onRowDrop,
+    markDropTargetAt,
     clearDragTarget,
   };
 }

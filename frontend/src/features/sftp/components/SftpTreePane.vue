@@ -95,7 +95,7 @@ const {
   onScrollHook: hideDetails,
 });
 
-const { dragOverUri, onTreeDragOver, onRowDragOver, onRowDragLeave, onRowDrop } = useTreeFileDrop({
+const { dragOverUri, onTreeDragOver, onRowDragOver, onRowDragLeave, onRowDrop, markDropTargetAt } = useTreeFileDrop({
   rows: () => props.rows,
   externalDragActive: () => props.externalDragActive,
   emit: {
@@ -187,7 +187,7 @@ function onRowContext(node: SftpFileTreeNode, mouseEvent: MouseEvent) {
   emit("context", node, mouseEvent);
 }
 
-defineExpose({ scrollPathToTop });
+defineExpose({ scrollPathToTop, markDropTargetAt });
 
 function moveRowFocus(node: SftpFileTreeNode, offset: number): boolean {
   const index = rowIndexOf(node);

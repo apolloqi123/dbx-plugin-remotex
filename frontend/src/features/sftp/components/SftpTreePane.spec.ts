@@ -867,6 +867,48 @@ describe("SftpTreePane drag and drop targeting", () => {
     }
   });
 
+  it("uses forwarded host drag positions even when :hover is frozen", async () => {
+    // DBX 宿主现在把原生拖拽坐标转发进 iframe：坐标命中优先于 DOM 事件与
+    // :hover 兜底，A 展开后移动到 B 必须立刻换目标。
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const originalQuerySelector = document.querySelector.bind(document);
+    const querySpy = vi.spyOn(document, "querySelector").mockImplementation((selector: string) => {
+      if (selector === ".sftp-tree-row:hover") return rowA;
+      return originalQuerySelector(selector);
+    });
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(rowB);
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      expect(api.markDropTargetAt({ x: 20, y: 40 })).toBe("/b");
+      await nextTick();
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+
+      // 冻结的 :hover 仍报 A：宿主机坐标已接管，目标必须保持 B。
+      await vi.advanceTimersByTimeAsync(300);
+      expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+
+      pointSpy.mockReturnValue(rowA);
+      expect(api.markDropTargetAt({ x: 20, y: 10 })).toBe("/a");
+      await nextTick();
+      expect(rowEls[0].classes()).toContain("is-drop-target");
+      expect(rowEls[1].classes()).not.toContain("is-drop-target");
+    } finally {
+      pointSpy.mockRestore();
+      querySpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
   it("clears the drag state on dragend", async () => {
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);

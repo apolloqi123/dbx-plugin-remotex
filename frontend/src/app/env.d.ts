@@ -22,6 +22,12 @@ interface DbxPluginEnvironmentEvent {
 
 type DbxPluginEvent = DbxPluginBackendEvent | DbxPluginEnvironmentEvent;
 
+interface DbxPluginDragPosition {
+  /** iframe 内 CSS 像素，宿主已减去 iframe 在窗口中的偏移。 */
+  x: number;
+  y: number;
+}
+
 interface DbxPluginFileTransferApi {
   pick(options?: { accept?: string; multiple?: boolean }): Promise<{ files: Array<{ handleId: string; name: string; size: number; contentType: string }> }>;
   read(handleId: string, offset: number, length?: number): Promise<{ dataBase64: string; length: number; eof: boolean }>;
@@ -29,12 +35,15 @@ interface DbxPluginFileTransferApi {
   write(handleId: string, offset: number, data: Uint8Array | ArrayBuffer | string): Promise<{ written: number; nextOffset: number }>;
   finish(handleId: string): Promise<void>;
   cancel(handleId: string): Promise<void>;
-  onDragState(listener: (active: boolean) => void): () => void;
+  /** position 为宿主转发的原生拖拽坐标（旧宿主省略）：用于在 iframe 内命中
+   *  当前悬停行，替代已冻结的 :hover / 缺失的 dragover。 */
+  onDragState(listener: (active: boolean, position?: DbxPluginDragPosition) => void): () => void;
   /** onDrop 条目：relativePath 为可选增量——宿主遍历拖入目录后按树内相对路径
    * （`/` 分隔，含文件名）附带，文件夹上传据此重建目录结构；旧宿主不带。
    * drop 为第二参数：truncated 表示宿主目录展开撞上限（如单文件夹 2000 文件）
-   * 只交付了前缀——宿主桥对旧监听器保持单参兼容，插件按需消费。 */
-  onDrop(listener: (files: Array<{ handleId: string; name: string; size: number; contentType: string; relativePath?: string }>, drop?: { dropId?: string; truncated?: boolean }) => void): () => void;
+   * 只交付了前缀——宿主桥对旧监听器保持单参兼容，插件按需消费；position 为
+   * 落点坐标（旧宿主省略）。 */
+  onDrop(listener: (files: Array<{ handleId: string; name: string; size: number; contentType: string; relativePath?: string }>, drop?: { dropId?: string; truncated?: boolean; position?: DbxPluginDragPosition }) => void): () => void;
 }
 
 interface DbxPluginTheme {
