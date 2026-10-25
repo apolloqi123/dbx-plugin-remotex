@@ -93,7 +93,7 @@ impl StoredConnection {
         // 不因旧文本非法而阻止连接。启用时非法配置仍直接失败（D7）。
         let triggers = triggers_enabled
             .then(|| {
-                crate::features::automation::triggers::parse_triggers(
+                super::triggers::parse_triggers(
                     external_config.and_then(|config| config.get("triggers")),
                     &|key| {
                         connection_secrets

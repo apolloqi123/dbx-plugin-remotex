@@ -2,6 +2,7 @@
 
 mod discovery;
 mod known_hosts;
+pub(crate) mod decode_error;
 
 #[cfg(test)]
 mod tests;

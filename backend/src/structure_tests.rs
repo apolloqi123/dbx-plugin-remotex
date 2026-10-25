@@ -84,7 +84,6 @@ fn sources_stay_within_line_budget() {
 }
 
 #[test]
-#[ignore = "Wave 7 removes core -> upper-layer dependencies"]
 fn core_does_not_depend_on_upper_layers() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core");
     let mut files = Vec::new();

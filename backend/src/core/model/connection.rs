@@ -232,7 +232,7 @@ pub struct StoredConnection {
     /// Expect-style terminal triggers (tssh parity, contract §2.1): parsed and
     /// validated eagerly only when `triggers_enabled` is true. `None` = disabled.
     /// Secret answers are resolved from `connection_secrets` at parse time.
-    pub triggers: Option<crate::features::automation::triggers::TriggersConfig>,
+    pub triggers: Option<triggers::TriggersConfig>,
     /// Local command fetching the login password when none is stored
     /// (`external_config.password_command`; tssh PasswordCommand parity).
     /// Runs only when `password` is empty — explicit credentials win.
@@ -256,6 +256,7 @@ impl StoredConnection {
 mod fields;
 mod jump;
 mod parse;
+pub(crate) mod triggers;
 
 pub use fields::*;
 pub use jump::*;

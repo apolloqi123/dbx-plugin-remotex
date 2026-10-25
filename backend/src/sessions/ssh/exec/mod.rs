@@ -16,7 +16,6 @@ use tokio::sync::watch;
 
 mod auth;
 mod metrics;
-mod quote;
 mod run;
 mod terminal;
 
@@ -39,9 +38,10 @@ pub const EXEC_CANCELLED_MESSAGE: &str = "Remote command was cancelled";
 
 pub use auth::*;
 pub use metrics::*;
-pub use quote::*;
 pub use run::*;
 pub use terminal::*;
+
+pub use crate::core::shell_quote::shell_quote;
 
 const PASSWORD_PROMPT_PATTERS: &[&str] = &[
     "password:",

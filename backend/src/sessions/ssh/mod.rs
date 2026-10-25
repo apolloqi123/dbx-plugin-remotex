@@ -65,8 +65,9 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-pub(crate) use auth::private_key_decode_failure;
 use auth::*;
+#[cfg(test)]
+use crate::core::keys::decode_error::looks_like_public_key;
 use sftp_format::*;
 pub(crate) use sftp_format::{
     classify_raw_kind, format_permissions, lookup_owner_group_names, RawSftpClient,

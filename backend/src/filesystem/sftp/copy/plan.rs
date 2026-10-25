@@ -6,8 +6,8 @@ use super::*;
 
 use serde_json::json;
 
-use crate::sessions::ssh::exec;
 use crate::core::model::normalize_remote_path;
+use crate::core::shell_quote::shell_quote;
 use crate::filesystem::sftp::name as sftp_name;
 
 /// Whether an operation copies or moves its sources.
@@ -194,8 +194,8 @@ pub fn same_directory(from: &str, to_dir: &str) -> bool {
 pub fn build_copy_command(source: &str, target: &str) -> String {
     format!(
         "cp -a -- {} {}",
-        exec::shell_quote(source),
-        exec::shell_quote(target)
+        shell_quote(source),
+        shell_quote(target)
     )
 }
 
@@ -203,8 +203,8 @@ pub fn build_copy_command(source: &str, target: &str) -> String {
 pub fn build_move_command(source: &str, target: &str) -> String {
     format!(
         "mv -f -- {} {}",
-        exec::shell_quote(source),
-        exec::shell_quote(target)
+        shell_quote(source),
+        shell_quote(target)
     )
 }
 
@@ -218,7 +218,7 @@ pub fn build_exists_probe_command(targets: &[String]) -> String {
         }
         command.push_str(&format!(
             "test -e {} && echo {}",
-            exec::shell_quote(target),
+            shell_quote(target),
             index
         ));
     }

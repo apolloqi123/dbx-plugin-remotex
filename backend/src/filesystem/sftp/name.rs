@@ -12,32 +12,7 @@
 //! 由 `sftp_raw` 的裸包客户端取得；本模块对 `&[u8]` 工作的所有函数都是纯函数，
 //! 两条路径共用同一套语义。
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NameEncoding {
-    /// UTF-8 优先，无效字节按 latin-1 重试（默认）。
-    Auto,
-    /// 固定按 latin-1 解码（服务器端文件系统编码确知非 UTF-8 时选用）。
-    Latin1,
-}
-
-impl NameEncoding {
-    /// 偏好串 → 编码（白名单外返回 None，由 preferences 层拒绝/回退）。
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "auto" => Some(Self::Auto),
-            "latin-1" => Some(Self::Latin1),
-            _ => None,
-        }
-    }
-
-    /// 序列化回偏好串。
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Latin1 => "latin-1",
-        }
-    }
-}
+pub use crate::core::model::name_encoding::NameEncoding;
 
 /// 显示解码结果：`text` 只用于展示，`lossy` 标记展示文本无法忠实还原
 /// 传输字节（例如 crate 路径早已把非法字节替换成 U+FFFD）。

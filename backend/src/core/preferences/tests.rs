@@ -306,7 +306,7 @@ fn sftp_pipeline_prefs_clamp_and_roundtrip() {
     assert!(!sftp_compat_mode(data_dir.path()));
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), None),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     // 写入 + 读回：深度超界钳制、非法编码拒绝（不落盘污染）。
     save_preferences(
@@ -329,7 +329,7 @@ fn sftp_pipeline_prefs_clamp_and_roundtrip() {
     assert!(sftp_compat_mode(data_dir.path()));
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), None),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     // 非法形状报错。
     assert!(save_preferences(data_dir.path(), &json!({ "sftp_compat_mode": "yes" })).is_err());
@@ -391,7 +391,7 @@ fn transfer_download_limit_kib_clamps_and_defaults_to_unlimited() {
 
 #[test]
 fn transfer_compress_prefs_default_auto_with_clamped_threshold() {
-    use crate::features::transfer::compress::CompressPolicy;
+    use crate::core::preferences::transfer::CompressPolicy;
     let data_dir = tempfile::tempdir().expect("tempdir");
     // 缺省：策略 auto、阈值 64 MiB。
     assert_eq!(
@@ -400,7 +400,7 @@ fn transfer_compress_prefs_default_auto_with_clamped_threshold() {
     );
     assert_eq!(
         transfer_compress_threshold_mib(data_dir.path()),
-        crate::features::transfer::compress::THRESHOLD_MIB_DEFAULT
+        crate::core::preferences::transfer::THRESHOLD_MIB_DEFAULT
     );
     // 写入读回：off + 阈值 0（=不限下限）；on 亦合法。
     save_preferences(
@@ -420,7 +420,7 @@ fn transfer_compress_prefs_default_auto_with_clamped_threshold() {
     .expect("save oversized threshold");
     assert_eq!(
         transfer_compress_threshold_mib(data_dir.path()),
-        crate::features::transfer::compress::THRESHOLD_MIB_MAX
+        crate::core::preferences::transfer::THRESHOLD_MIB_MAX
     );
     assert!(
         save_preferences(data_dir.path(), &json!({ "transfer_compress_mode": "yes" }),).is_err()
@@ -428,11 +428,11 @@ fn transfer_compress_prefs_default_auto_with_clamped_threshold() {
     // 纯函数直测：非法形状（非数值/负数）回落默认值，0 是合法下限。
     assert_eq!(
         sanitize_transfer_compress_threshold_mib(&json!("abc")),
-        crate::features::transfer::compress::THRESHOLD_MIB_DEFAULT
+        crate::core::preferences::transfer::THRESHOLD_MIB_DEFAULT
     );
     assert_eq!(
         sanitize_transfer_compress_threshold_mib(&json!(-1)),
-        crate::features::transfer::compress::THRESHOLD_MIB_DEFAULT
+        crate::core::preferences::transfer::THRESHOLD_MIB_DEFAULT
     );
     assert_eq!(sanitize_transfer_compress_threshold_mib(&json!(0)), 0);
 }
@@ -442,29 +442,29 @@ fn sftp_encoding_override_resolves_priority_three_states() {
     // 三态：连接覆盖 > 全局 > 缺省 auto（resolve 纯函数直测）。
     assert_eq!(
         resolve_sftp_name_encoding(Some("latin-1"), Some("auto")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         resolve_sftp_name_encoding(None, Some("latin-1")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         resolve_sftp_name_encoding(None, None),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     // 白名单回退：覆盖值非法（gbk）时回退全局；全局也非法回缺省。
     assert_eq!(
         resolve_sftp_name_encoding(Some("gbk"), Some("latin-1")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         resolve_sftp_name_encoding(Some("gbk"), None),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     // 大小写/空白容错与全局读取器一致（parse 语义共用）。
     assert_eq!(
         resolve_sftp_name_encoding(Some(" LATIN-1 "), None),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
 }
 
@@ -477,22 +477,22 @@ fn sftp_encoding_override_pref_roundtrip_and_priority() {
         .is_none());
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), None),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-1")),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     // 全局 latin-1：未覆盖连接跟随全局。
     save_preferences(data_dir.path(), &json!({ "sftp_name_encoding": "latin-1" }))
         .expect("save global");
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-1")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), None),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     // 连接覆盖优先于全局；未覆盖连接仍跟随全局。
     save_preferences(
@@ -508,15 +508,15 @@ fn sftp_encoding_override_pref_roundtrip_and_priority() {
     .expect("save overrides");
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-1")),
-        crate::filesystem::sftp::name::NameEncoding::Auto
+        crate::core::model::NameEncoding::Auto
     );
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-2")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-9")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     // 非法桶（gbk / 非字符串 / 空 connectionId）清洗丢弃，不报错。
     let prefs = load_preferences(data_dir.path());
@@ -546,11 +546,11 @@ fn sftp_encoding_override_pref_roundtrip_and_priority() {
     .expect("remove conn-1 bucket");
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-1")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
     assert_eq!(
         sftp_name_encoding_for(data_dir.path(), Some("conn-2")),
-        crate::filesystem::sftp::name::NameEncoding::Latin1
+        crate::core::model::NameEncoding::Latin1
     );
 }
 

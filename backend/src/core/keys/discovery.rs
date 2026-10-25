@@ -43,7 +43,7 @@ pub fn read_private_key_file(path: &Path) -> Result<String, String> {
                 Ok(text)
             } else {
                 // 与连接期同一套可操作错误分类（#21），底层错误原样保留。
-                Err(crate::sessions::ssh::private_key_decode_failure(
+                Err(super::decode_error::private_key_decode_failure(
                     &text, &error, false,
                 ))
             }

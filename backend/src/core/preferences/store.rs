@@ -96,7 +96,7 @@ pub fn load_preferences(data_dir: &Path) -> Value {
     if let Some(mode) = map
         .get("transfer_compress_mode")
         .and_then(Value::as_str)
-        .and_then(crate::features::transfer::compress::CompressPolicy::parse)
+        .and_then(crate::core::preferences::transfer::CompressPolicy::parse)
     {
         prefs.insert(
             "transfer_compress_mode".to_string(),
@@ -117,7 +117,7 @@ pub fn load_preferences(data_dir: &Path) -> Value {
     if let Some(encoding) = map
         .get("sftp_name_encoding")
         .and_then(Value::as_str)
-        .and_then(crate::filesystem::sftp::name::NameEncoding::parse)
+        .and_then(crate::core::model::NameEncoding::parse)
     {
         prefs.insert(
             "sftp_name_encoding".to_string(),
@@ -207,7 +207,7 @@ pub fn load_preferences(data_dir: &Path) -> Value {
     // 形状清洗在 startup_commands 模块（单测覆盖）。
     if let Some(store) = map
         .get("startup_commands")
-        .and_then(crate::features::terminal::startup_commands::sanitize_store)
+        .and_then(super::startup_commands::sanitize_store)
     {
         prefs.insert("startup_commands".to_string(), store);
     }
@@ -349,7 +349,7 @@ pub fn save_preferences(data_dir: &Path, params: &Value) -> Result<Value, String
     // 压缩传输（gzip 混合方案）：策略走白名单（非法报错，同 sftp_name_encoding
     // 的严格向），阈值数值钳制到 0..=65536 MiB（0=不限下限），非法回落默认。
     if let Some(value) = params.get("transfer_compress_mode") {
-        let mode = crate::features::transfer::compress::CompressPolicy::parse(
+        let mode = crate::core::preferences::transfer::CompressPolicy::parse(
             value
                 .as_str()
                 .ok_or_else(|| "transfer_compress_mode must be auto, on or off".to_string())?,
@@ -375,7 +375,7 @@ pub fn save_preferences(data_dir: &Path, params: &Value) -> Result<Value, String
         map.insert("sftp_compat_mode".to_string(), Value::Bool(enabled));
     }
     if let Some(value) = params.get("sftp_name_encoding") {
-        let encoding = crate::filesystem::sftp::name::NameEncoding::parse(
+        let encoding = crate::core::model::NameEncoding::parse(
             value
                 .as_str()
                 .ok_or_else(|| "sftp_name_encoding must be auto or latin-1".to_string())?,
@@ -487,7 +487,7 @@ pub fn save_preferences(data_dir: &Path, params: &Value) -> Result<Value, String
     // 连接级启动命令（P0-4）：整表替换（对象按 connectionId 分桶，前端
     // 读改写合并自己的桶），形状清洗在 startup_commands 模块（单测覆盖）。
     if let Some(value) = params.get("startup_commands") {
-        let store = crate::features::terminal::startup_commands::sanitize_store(value).ok_or_else(
+        let store = super::startup_commands::sanitize_store(value).ok_or_else(
             || "startup_commands must be an object keyed by connectionId".to_string(),
         )?;
         map.insert("startup_commands".to_string(), store);

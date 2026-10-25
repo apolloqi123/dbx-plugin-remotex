@@ -27,29 +27,24 @@
 //! 安全红线：应答内容只存在于发送计划里，绝不进日志、事件或错误信息；
 //! `TriggersConfig` 的 `Debug` 实现对密文应答（`Secret`/`Totp`）脱敏。
 
-use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::process::Output;
 use std::time::Duration;
 
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
-use hmac::{Hmac, Mac};
-use regex::Regex;
-use sha1::Sha1;
 use zeroize::Zeroizing;
 
 use crate::sessions::ssh::exec::{has_shell_prompt, normalize_auth_prompt_text};
 
 mod command;
 mod engine;
-mod parse;
 mod send;
-mod totp;
-mod types;
+pub use crate::core::model::connection::triggers::*;
+
+#[cfg(test)]
+use aes_gcm::{aead::KeyInit, Aes256Gcm, Nonce};
+#[cfg(test)]
+use crate::core::model::connection::triggers::TSSH_ENC_SECRET_KEY;
 
 #[cfg(test)]
 mod tests;
@@ -59,48 +54,7 @@ pub use command::*;
 #[allow(unused_imports)]
 pub use engine::*;
 #[allow(unused_imports)]
-pub use parse::*;
-#[allow(unused_imports)]
 pub use send::*;
-#[allow(unused_imports)]
-pub use totp::*;
-#[allow(unused_imports)]
-pub use types::*;
-
-/// Stage-count ceiling (contract D8): guards against config abuse.
-pub const MAX_STAGES: usize = 16;
-/// Pattern length ceiling, aligned with `exec::MAX_PROMPT_HINT_LEN` (D8).
-pub const MAX_PATTERN_LEN: usize = 512;
-/// `timeoutSecs` range: 1..=600 (D8); absent means the default.
-pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
-pub const MAX_TIMEOUT_SECS: u64 = 600;
-/// `sleepMs` range: 0..=5000 (D8); absent means the default.
-pub const DEFAULT_SLEEP_MS: u64 = 100;
-pub const MAX_SLEEP_MS: u64 = 5000;
-/// Send-text cap: the `\|` split and the per-char `passSleep = each` shape
-/// both multiply the answer into segments, so an unbounded answer could stall
-/// the terminal read loop on a misconfigured rule.
-pub const MAX_SEND_TEXT_LEN: usize = 4096;
-/// Command-line cap for `sendCommand`/`password_command`/`passphrase_command`.
-pub const MAX_COMMAND_LEN: usize = 1024;
-/// Runtime cap on captured stdout of a trigger/credential command: these
-/// commands answer prompts (passwords, OTPs), so multi-KB output is a bug.
-pub const MAX_COMMAND_OUTPUT_BYTES: usize = 4096;
-/// Fixed command timeout (contract D4).
-pub const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
-/// The only secret slots a `sendSecretKey` may reference (contract D5); the
-/// manifest provides one password field per slot bound to `connection_secrets`.
-pub const SECRET_SLOT_KEYS: &[&str] = &["trigger_answer_1", "trigger_answer_2"];
-/// Rolling match buffer ceiling (contract D2).
-const MAX_BUFFER_BYTES: usize = 8 * 1024;
-/// TOTP secret ceiling after base32 decode (RFC 4226 recommends ≥16 bytes;
-/// 64 is a generous abuse cap).
-const MAX_TOTP_SECRET_BYTES: usize = 64;
-/// tssh (trzsz-ssh) `--enc-secret` obfuscation key, byte-for-byte identical to
-/// tssh's embedded `secretEncodeKey` (tssh/config.go): hex blobs are
-/// `nonce(12) || AES-256-GCM(ct||tag)` under this key. Obfuscation, not
-/// encryption — the same trust level tssh itself documents.
-const TSSH_ENC_SECRET_KEY: &[u8; 32] = b"THE_UNSAFE_KEY_FOR_ENCODING_ONLY";
 
 /// A resolved answer's send plan: decision kind, the `(payload, delay_ms)`
 /// segments, and the unresolved command line for `sendCommand` answers.

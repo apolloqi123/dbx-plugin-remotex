@@ -37,7 +37,7 @@ pub(crate) fn sanitize_local_shell_env(value: &Value) -> Option<Value> {
     let entries = value.as_array()?;
     let mut pairs = Vec::new();
     for entry in entries {
-        if pairs.len() >= crate::sessions::local::USER_ENV_MAX_PAIRS {
+        if pairs.len() >= super::env::USER_ENV_MAX_PAIRS {
             break;
         }
         let name = match entry.get("name").and_then(Value::as_str) {
@@ -45,7 +45,7 @@ pub(crate) fn sanitize_local_shell_env(value: &Value) -> Option<Value> {
             None => continue,
         };
         let text = entry.get("value").and_then(Value::as_str).unwrap_or("");
-        if let Some((name, text)) = crate::sessions::local::sanitize_env_pair(name, text) {
+        if let Some((name, text)) = super::env::sanitize_env_pair(name, text) {
             pairs.push(json!({ "name": name, "value": text }));
         }
     }
@@ -124,12 +124,12 @@ pub fn transfer_max_active(data_dir: &Path) -> u64 {
 /// 现决——改动对下一个任务生效，进行中任务按原定通道完成。
 pub fn transfer_compress_mode(
     data_dir: &Path,
-) -> crate::features::transfer::compress::CompressPolicy {
+) -> crate::core::preferences::transfer::CompressPolicy {
     load_preferences(data_dir)
         .get("transfer_compress_mode")
         .and_then(Value::as_str)
-        .and_then(crate::features::transfer::compress::CompressPolicy::parse)
-        .unwrap_or(crate::features::transfer::compress::CompressPolicy::Auto)
+        .and_then(crate::core::preferences::transfer::CompressPolicy::parse)
+        .unwrap_or(crate::core::preferences::transfer::CompressPolicy::Auto)
 }
 
 /// 压缩传输生效阈值（MiB）：0 = 不设下限（冒烟/显式全量场景），
@@ -138,8 +138,8 @@ pub fn sanitize_transfer_compress_threshold_mib(value: &Value) -> u64 {
     sanitize_u64_clamped(
         value,
         0,
-        crate::features::transfer::compress::THRESHOLD_MIB_MAX,
-        crate::features::transfer::compress::THRESHOLD_MIB_DEFAULT,
+        crate::core::preferences::transfer::THRESHOLD_MIB_MAX,
+        crate::core::preferences::transfer::THRESHOLD_MIB_DEFAULT,
     )
 }
 
@@ -147,7 +147,7 @@ pub fn transfer_compress_threshold_mib(data_dir: &Path) -> u64 {
     load_preferences(data_dir)
         .get("transfer_compress_threshold_mib")
         .map(sanitize_transfer_compress_threshold_mib)
-        .unwrap_or(crate::features::transfer::compress::THRESHOLD_MIB_DEFAULT)
+        .unwrap_or(crate::core::preferences::transfer::THRESHOLD_MIB_DEFAULT)
 }
 
 /// 老旧服务器兼容模式（M14-B）：缺省关。开启后 SFTP 会话不做流水线并发、
@@ -178,7 +178,7 @@ pub fn sanitize_sftp_encoding_overrides(value: &Value) -> Option<Value> {
         }
         if let Some(encoding) = entry
             .as_str()
-            .and_then(crate::filesystem::sftp::name::NameEncoding::parse)
+            .and_then(crate::core::model::NameEncoding::parse)
         {
             out.insert(
                 connection_id.clone(),
@@ -195,12 +195,12 @@ pub fn sanitize_sftp_encoding_overrides(value: &Value) -> Option<Value> {
 pub fn resolve_sftp_name_encoding(
     override_value: Option<&str>,
     global_value: Option<&str>,
-) -> crate::filesystem::sftp::name::NameEncoding {
+) -> crate::core::model::NameEncoding {
     let parse =
-        |raw: Option<&str>| raw.and_then(crate::filesystem::sftp::name::NameEncoding::parse);
+        |raw: Option<&str>| raw.and_then(crate::core::model::NameEncoding::parse);
     parse(override_value)
         .or_else(|| parse(global_value))
-        .unwrap_or(crate::filesystem::sftp::name::NameEncoding::Auto)
+        .unwrap_or(crate::core::model::NameEncoding::Auto)
 }
 
 /// 连接级编码判定：`connection_id` 命中覆盖桶（且值合法）时覆盖全局偏好，
@@ -208,7 +208,7 @@ pub fn resolve_sftp_name_encoding(
 pub fn sftp_name_encoding_for(
     data_dir: &Path,
     connection_id: Option<&str>,
-) -> crate::filesystem::sftp::name::NameEncoding {
+) -> crate::core::model::NameEncoding {
     let prefs = load_preferences(data_dir);
     let override_value = connection_id.and_then(|id| {
         prefs

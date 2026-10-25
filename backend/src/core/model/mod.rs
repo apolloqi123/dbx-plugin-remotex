@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-mod connection;
+pub(crate) mod connection;
+pub(crate) mod name_encoding;
 mod paths;
 mod terminal;
 
@@ -15,6 +16,7 @@ pub const TRANSFER_CHUNK_SIZE: usize = 256 * 1024;
 pub const MAX_TRANSFER_SIZE: u64 = 16 * 1024 * 1024 * 1024;
 
 pub use connection::*;
+pub use name_encoding::NameEncoding;
 pub use paths::*;
 pub use terminal::*;
 

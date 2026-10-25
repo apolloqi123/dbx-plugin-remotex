@@ -11,8 +11,12 @@ use base64::Engine as _;
 use serde_json::{json, Map, Value};
 
 mod sanitize;
+pub(crate) mod startup_commands;
 mod store;
+pub(crate) mod transfer;
 mod wallpaper;
+
+pub(crate) mod env;
 
 #[cfg(test)]
 mod tests;
@@ -20,6 +24,10 @@ mod tests;
 #[allow(unused_imports)]
 pub use sanitize::*;
 #[allow(unused_imports)]
+pub use startup_commands::*;
+#[allow(unused_imports)]
 pub use store::*;
+#[allow(unused_imports)]
+pub use transfer::*;
 #[allow(unused_imports)]
 pub use wallpaper::*;
