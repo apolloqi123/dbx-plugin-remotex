@@ -2,11 +2,11 @@
 import { computed } from "vue";
 import { Copy, X } from "@lucide/vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import type { QuickSelectHit, QuickSelectKind } from "../lib/quickSelect";
+import type { QuickSelectHit, QuickSelectKind } from "../lib/decorations/quickSelect";
 
 /**
  * Quick Select overlay panel (WezTerm counterpart, WT-1): renders the regex
- * hits collected by lib/quickSelect.ts as a list; clicking an entry (or Enter
+ * hits collected by lib/decorations/quickSelect.ts as a list; clicking an entry (or Enter
  * on the active one, handled by the terminal key path) copies its text.
  * Mirrors TerminalSearchPanel: a pane-anchored overlay so the terminal keeps
  * focus and the hotkey registry path handles Esc/arrows/Enter uniformly.

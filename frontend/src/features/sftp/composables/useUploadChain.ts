@@ -1,7 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, type Ref } from "vue";
 import { filesFromClipboard } from "../../../shared/lib/clipboardFiles";
 import { displayPathToWire } from "../lib/sftpName";
-import { normalizeDropTargetDir, resolveDropTargetDir } from "../../terminal/lib/terminalInteraction";
+import { normalizeDropTargetDir, resolveDropTargetDir } from "../../terminal/lib/behavior/terminalInteraction";
 import { runTransfers, summarizeBatchUpload } from "../../transfers/lib/transferQueue";
 import { createFileBatchCard, type FileBatchCardState } from "../../transfers/lib/fileBatch";
 import { X } from "@lucide/vue";

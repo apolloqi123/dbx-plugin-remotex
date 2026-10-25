@@ -21,14 +21,14 @@ import {
   sanitizeTerminalAppearanceState,
   TERMINAL_APPEARANCE_KEY,
   type TerminalAppearanceState,
-} from "../../../features/terminal/lib/terminalAppearance";
+} from "../../../features/terminal/lib/appearance/terminalAppearance";
 import {
   parsePersistedTerminalFontFamily,
   parsePersistedTerminalFontSize,
   TERMINAL_FONT_FAMILY_KEY,
   TERMINAL_FONT_SIZE_KEY,
   type TerminalFontOverride,
-} from "../../../features/terminal/lib/terminalFont";
+} from "../../../features/terminal/lib/appearance/terminalFont";
 
 /** 跨表面同步的三个存储键（与 pluginStore 声明一致，单点便于对账）。 */
 export const APPEARANCE_SYNC_KEYS = {

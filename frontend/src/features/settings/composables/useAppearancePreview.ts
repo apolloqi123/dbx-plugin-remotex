@@ -8,8 +8,8 @@ import {
   terminalOptionPatch,
   type TerminalAppearanceProfile,
   type TerminalAppearanceState,
-} from "../../terminal/lib/terminalAppearance";
-import { contrastRatio, parseHexColor, type TerminalThemeLike } from "../../terminal/lib/terminalScheme";
+} from "../../terminal/lib/appearance/terminalAppearance";
+import { contrastRatio, parseHexColor, type TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
 
 export function useAppearancePreview(options: {
   appearance: () => TerminalAppearanceState;

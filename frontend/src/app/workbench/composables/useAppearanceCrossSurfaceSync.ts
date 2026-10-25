@@ -5,8 +5,8 @@ import {
   type AppearanceSyncDecision,
   type AppearanceSyncSnapshot,
 } from "../lib/appearanceSync";
-import type { TerminalAppearanceState } from "../../../features/terminal/lib/terminalAppearance";
-import type { TerminalFontOverride } from "../../../features/terminal/lib/terminalFont";
+import type { TerminalAppearanceState } from "../../../features/terminal/lib/appearance/terminalAppearance";
+import type { TerminalFontOverride } from "../../../features/terminal/lib/appearance/terminalFont";
 
 /**
  * 跨表面终端外观同步驱动（tab ↔ dock 面板）：低频轮询直读宿主桥/localStorage

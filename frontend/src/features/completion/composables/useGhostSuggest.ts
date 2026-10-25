@@ -1,8 +1,8 @@
 import type { Terminal } from "@xterm/xterm";
 import type { QuickCommand } from "../../quick-commands/lib/quickCommands";
 import { ref, type Ref } from "vue";
-import { cursorAbsoluteRow } from "../../terminal/lib/terminalAnchor";
-import { classifyGhostInput, createGhostState, evaluateGhost, firstGhostWordChunk, nextGhostState, ghostMenuSuppressed, terminalCharCells, type TerminalGhostState } from "../../terminal/lib/terminalGhostSuggest";
+import { cursorAbsoluteRow } from "../../terminal/lib/emulator/terminalAnchor";
+import { classifyGhostInput, createGhostState, evaluateGhost, firstGhostWordChunk, nextGhostState, ghostMenuSuppressed, terminalCharCells, type TerminalGhostState } from "../../terminal/lib/decorations/terminalGhostSuggest";
 import { settingsPreferences } from "../../settings/lib/settingsPreferences";
 
 /** 终端行内 ghost 自动建议（对标 Warp/fish autosuggest）：状态机纯逻辑在

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ChevronDown, ChevronUp, Search, X } from "@lucide/vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import { persistSearchOptions, type TerminalSearchOptions } from "../lib/terminalInteraction";
+import { persistSearchOptions, type TerminalSearchOptions } from "../lib/behavior/terminalInteraction";
 import { ToggleGroup, ToggleGroupItem } from "../../../shared/ui/toggle-group/index";
 
 type TerminalSearchMatchState = "idle" | "match" | "no-match";

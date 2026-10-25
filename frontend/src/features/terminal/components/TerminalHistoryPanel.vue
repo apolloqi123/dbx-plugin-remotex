@@ -14,10 +14,10 @@
 // 令牌体系随宿主主题，不引 reka 弹层——避免与 xterm 键盘捕获争焦点。
 import { computed, onMounted, ref, watchEffect } from "vue";
 import { Search, Terminal as TerminalIcon, X } from "@lucide/vue";
-import { formatCommandDuration } from "../lib/terminalCommandMarkers";
+import { formatCommandDuration } from "../lib/panels/terminalCommandMarkers";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import type { HistoryPanelEntry } from "../lib/historyPanel";
-import { chooseHistoryPanelPlacement, relativeHistoryAge } from "../lib/historyPanel";
+import type { HistoryPanelEntry } from "../lib/panels/historyPanel";
+import { chooseHistoryPanelPlacement, relativeHistoryAge } from "../lib/panels/historyPanel";
 import { flippedOverlayBottom, overlayBelowTop, overlayMaxHeight, type SuggestionAnchor } from "../../../shared/lib/overlayPlacement";
 
 interface Props {

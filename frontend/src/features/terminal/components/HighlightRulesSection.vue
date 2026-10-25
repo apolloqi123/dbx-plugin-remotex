@@ -5,7 +5,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { Pencil, Trash2 } from "@lucide/vue";
 import { ToggleGroup, ToggleGroupItem } from "../../../shared/ui/toggle-group/index";
-import { HIGHLIGHT_COLOR_DEFAULT, sanitizeHighlightRuleInput, type HighlightDisplayMode, type HighlightRuleView } from "../lib/keywordHighlight";
+import { HIGHLIGHT_COLOR_DEFAULT, sanitizeHighlightRuleInput, type HighlightDisplayMode, type HighlightRuleView } from "../lib/decorations/keywordHighlight";
 
 const props = defineProps<{
   rules: HighlightRuleView[];

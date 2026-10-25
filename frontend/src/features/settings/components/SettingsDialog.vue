@@ -18,7 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "../../../shared/ui/tabs/index";
 import TerminalHotkeyEditor from "../../terminal/components/TerminalHotkeyEditor.vue";
 import HighlightRulesSection from "../../terminal/components/HighlightRulesSection.vue";
 import QuickCommandsSection from "../../quick-commands/components/QuickCommandsSection.vue";
-import { HIGHLIGHT_RULES_LIMIT, type HighlightDisplayMode, type HighlightRuleView } from "../../terminal/lib/keywordHighlight";
+import { HIGHLIGHT_RULES_LIMIT, type HighlightDisplayMode, type HighlightRuleView } from "../../terminal/lib/decorations/keywordHighlight";
 import { settingsPreferences } from "../lib/settingsPreferences";
 import { QUICK_COMMANDS_LIMIT, type QuickCommand } from "../../quick-commands/lib/quickCommands";
 import { SSH_AGENT_APPROVED_STORE_KEY, SSH_AGENT_MODES_STORE_KEY, sanitizeAgentTerminalMode, sanitizeRememberedCommands } from "../../agent/lib/agentTerminal";
@@ -34,15 +34,15 @@ import {
   type TerminalAppearanceProfile,
   type TerminalAppearanceSettings,
   type TerminalAppearanceState,
-} from "../../terminal/lib/terminalAppearance";
-import type { TerminalColorScheme, TerminalThemeLike } from "../../terminal/lib/terminalScheme";
-import type { TerminalBehaviorSettings } from "../../terminal/lib/terminalBehavior";
-import type { TerminalHotkeyBindings } from "../../terminal/lib/terminalHotkeys";
+} from "../../terminal/lib/appearance/terminalAppearance";
+import type { TerminalColorScheme, TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
+import type { TerminalBehaviorSettings } from "../../terminal/lib/appearance/terminalBehavior";
+import type { TerminalHotkeyBindings } from "../../terminal/lib/behavior/terminalHotkeys";
 import type { PaneDirectionPref } from "../../../shared/lib/paneLayout";
 import type { AiSettings } from "../../agent/lib/aiSettings";
-import { type ActionLinkMatcherToggles, type ActionLinksSettings } from "../../terminal/lib/actionLinksMatcher";
+import { type ActionLinkMatcherToggles, type ActionLinksSettings } from "../../terminal/lib/decorations/actionLinksMatcher";
 import { rdpExperimentalEnabled as parseRdpExperimentalEnabled } from "../../remote-desktop/lib/rdpExperimental";
-import type { GutterSettings } from "../../terminal/lib/terminalGutter";
+import type { GutterSettings } from "../../terminal/lib/appearance/terminalGutter";
 import { useConnectionSettings } from "../composables/useConnectionSettings";
 import { useSudoProfiles } from "../composables/useSudoProfiles";
 import { useTerminalFontControls } from "../composables/useTerminalFontControls";

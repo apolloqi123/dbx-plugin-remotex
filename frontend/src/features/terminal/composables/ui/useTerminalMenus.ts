@@ -1,7 +1,7 @@
 import { ref, watch, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
-import type { TerminalBehaviorSettings } from "../../lib/terminalBehavior";
-import { resolveRightClickBehavior } from "../../lib/terminalBehavior";
+import type { TerminalBehaviorSettings } from "../../lib/appearance/terminalBehavior";
+import { resolveRightClickBehavior } from "../../lib/appearance/terminalBehavior";
 import type { TransferHistoryEntry } from "../../../transfers/lib/transferHistory";
 import { filterSelectableSftpUris, resolveSftpContextMenuSelection } from "../../../sftp/lib/sftpContextMenu";
 import { pathFromUri } from "../../../sftp/lib/paths/sftpRemotePaths";

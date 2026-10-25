@@ -15,15 +15,15 @@ import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger 
 import SplitTerminalHeader from "./SplitTerminalHeader.vue";
 import TerminalContextMenu, { type CtxSearchEngine } from "./TerminalContextMenu.vue";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
-import { useSplitClipboard } from "../composables/useSplitClipboard";
-import { useSplitSearch } from "../composables/useSplitSearch";
-import { useSplitTerminal } from "../composables/useSplitTerminal";
-import { useSplitTerminalRenderer } from "../composables/useSplitTerminalRenderer";
-import { useTerminalAiSearch } from "../composables/useTerminalAiSearch";
-import { Osc7DirectoryParser } from "../lib/terminalDirectoryTracking";
-import { Osc633CommandParser } from "../lib/terminalCommandMarkers";
-import { applyLineEditControlChar } from "../lib/terminalLineModel";
-import { PromptNewlineTransformer } from "../lib/terminalPromptNewline";
+import { useSplitClipboard } from "../composables/ui/useSplitClipboard";
+import { useSplitSearch } from "../composables/ui/useSplitSearch";
+import { useSplitTerminal } from "../composables/ui/useSplitTerminal";
+import { useSplitTerminalRenderer } from "../composables/ui/useSplitTerminalRenderer";
+import { useTerminalAiSearch } from "../composables/ui/useTerminalAiSearch";
+import { Osc7DirectoryParser } from "../lib/emulator/terminalDirectoryTracking";
+import { Osc633CommandParser } from "../lib/panels/terminalCommandMarkers";
+import { applyLineEditControlChar } from "../lib/emulator/terminalLineModel";
+import { PromptNewlineTransformer } from "../lib/emulator/terminalPromptNewline";
 import { aiBridgeAvailable } from "../../agent/lib/aiBridge";
 import { loadAiSettings } from "../../agent/lib/aiSettings";
 

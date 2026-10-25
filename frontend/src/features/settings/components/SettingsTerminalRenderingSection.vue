@@ -6,7 +6,7 @@ import {
   SCROLLBACK_MAX,
   SCROLLBACK_MIN,
   type TerminalBehaviorSettings,
-} from "../../terminal/lib/terminalBehavior";
+} from "../../terminal/lib/appearance/terminalBehavior";
 
 defineProps<{
   webglEnabled: boolean;

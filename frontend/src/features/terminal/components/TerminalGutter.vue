@@ -6,7 +6,7 @@
 // 左内边距，gutter 永远只占 padding 环带，不遮终端文本。pointer-events 关闭，
 // 点击/选择行为完全穿透给终端。
 import { onBeforeUnmount, ref, watch } from "vue";
-import type { GutterRow } from "../lib/terminalGutter";
+import type { GutterRow } from "../lib/appearance/terminalGutter";
 
 const props = defineProps<{
   /** 已算好的 gutter 行（像素 top 与终端画布对齐）。 */

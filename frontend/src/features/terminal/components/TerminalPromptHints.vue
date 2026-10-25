@@ -11,7 +11,7 @@ import { computed, ref } from "vue";
 import { X } from "@lucide/vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
 import { flippedOverlayBottom, overlayBelowTop, type SuggestionAnchor } from "../../../shared/lib/overlayPlacement";
-import { choosePromptHintsPlacement, PROMPT_HINTS_FALLBACK_BAR_HEIGHT } from "../lib/terminalPromptHints";
+import { choosePromptHintsPlacement, PROMPT_HINTS_FALLBACK_BAR_HEIGHT } from "../lib/emulator/terminalPromptHints";
 
 interface Props {
   locale: string;

@@ -16,7 +16,7 @@ import { parseAiResultText } from "../../../agent/lib/aiResultParse";
 import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest } from "../../../agent/lib/aiRequests";
 import { loadAiSettings, saveAiSettings, sanitizeAiSettings, type AiSettings } from "../../../agent/lib/aiSettings";
 import { shouldOfferAiFix } from "../../../agent/lib/aiFix";
-import type { Osc633StreamUpdates } from "../../lib/terminalCommandMarkers";
+import type { Osc633StreamUpdates } from "../../lib/panels/terminalCommandMarkers";
 import { prepareAiOutputSnapshot, stripAnsiEscapes } from "../../../../shared/lib/outputRedaction";
 import { confirmDialog } from "../../../../shared/lib/confirmDialog";
 

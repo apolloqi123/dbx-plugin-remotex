@@ -13,7 +13,7 @@ import {
   type TerminalBellMode,
   type TerminalLinkModifier,
   type TerminalRightClickMode,
-} from "../../terminal/lib/terminalBehavior";
+} from "../../terminal/lib/appearance/terminalBehavior";
 
 defineProps<{
   terminalBehavior: TerminalBehaviorSettings;

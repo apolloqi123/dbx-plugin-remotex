@@ -4,7 +4,7 @@
  * 分屏窗格额外提供关闭窗格按钮；标签的 PTY 生命周期由父级按 tab id 管理。
  */
 import { Plus, Terminal as TerminalIcon, X } from "@lucide/vue";
-import type { TerminalPaneTab } from "../lib/terminalLayout";
+import type { TerminalPaneTab } from "../lib/appearance/terminalLayout";
 
 interface Props {
   tabs: TerminalPaneTab[];

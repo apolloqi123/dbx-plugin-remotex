@@ -13,9 +13,9 @@ import {
   type TerminalAppearanceState,
   type TerminalCursorInactiveStyle,
   type TerminalCursorStyle,
-} from "../../terminal/lib/terminalAppearance";
-import type { TerminalThemeLike } from "../../terminal/lib/terminalScheme";
-import { TERMINAL_FONT_MAX, TERMINAL_FONT_MIN } from "../../terminal/lib/terminalZoom";
+} from "../../terminal/lib/appearance/terminalAppearance";
+import type { TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
+import { TERMINAL_FONT_MAX, TERMINAL_FONT_MIN } from "../../terminal/lib/appearance/terminalZoom";
 import { useAppearancePreview } from "../composables/useAppearancePreview";
 import type { TerminalFontControls } from "../composables/useTerminalFontControls";
 

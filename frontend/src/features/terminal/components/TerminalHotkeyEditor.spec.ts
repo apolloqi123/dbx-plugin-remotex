@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { nextTick } from "vue";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import TerminalHotkeyEditor from "./TerminalHotkeyEditor.vue";
-import { defaultTerminalHotkeys, formatHotkeyDisplay, TERMINAL_HOTKEY_ACTIONS, type TerminalHotkeyBindings } from "../lib/terminalHotkeys";
+import { defaultTerminalHotkeys, formatHotkeyDisplay, TERMINAL_HOTKEY_ACTIONS, type TerminalHotkeyBindings } from "../lib/behavior/terminalHotkeys";
 
 // 组件只做展示与录制，绑定表的权威态在 App；因此断言口径集中在「上抛了什么」，
 // 而不是「组件内部存了什么」——上抛结果就是契约。

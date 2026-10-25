@@ -9,11 +9,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import SettingsDialog from "./SettingsDialog.vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import { TERMINAL_BEHAVIOR_DEFAULTS } from "../../terminal/lib/terminalBehavior";
-import { ACTION_IDS, type TerminalHotkeyBindings } from "../../terminal/lib/terminalHotkeys";
-import { ACTION_LINK_SETTINGS_DEFAULTS } from "../../terminal/lib/actionLinksMatcher";
-import { DEFAULT_TERMINAL_APPEARANCE_SETTINGS } from "../../terminal/lib/terminalAppearance";
-import { GUTTER_TIMESTAMP_DEFAULT_FORMAT } from "../../terminal/lib/terminalGutter";
+import { TERMINAL_BEHAVIOR_DEFAULTS } from "../../terminal/lib/appearance/terminalBehavior";
+import { ACTION_IDS, type TerminalHotkeyBindings } from "../../terminal/lib/behavior/terminalHotkeys";
+import { ACTION_LINK_SETTINGS_DEFAULTS } from "../../terminal/lib/decorations/actionLinksMatcher";
+import { DEFAULT_TERMINAL_APPEARANCE_SETTINGS } from "../../terminal/lib/appearance/terminalAppearance";
+import { GUTTER_TIMESTAMP_DEFAULT_FORMAT } from "../../terminal/lib/appearance/terminalGutter";
 
 const t = (key: string, values?: Record<string, string | number>) => workbenchMessage("zh-CN", key, values);
 

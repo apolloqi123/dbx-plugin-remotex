@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import TerminalSearchPanel from "./TerminalSearchPanel.vue";
-import { TERMINAL_SEARCH_OPTIONS_KEY, type TerminalSearchOptions } from "../lib/terminalInteraction";
+import { TERMINAL_SEARCH_OPTIONS_KEY, type TerminalSearchOptions } from "../lib/behavior/terminalInteraction";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 
 const baseProps = {

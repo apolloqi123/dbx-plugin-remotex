@@ -14,7 +14,7 @@ import {
   terminalTabs,
   type TerminalLayoutOrientation,
   type TerminalLayoutNode,
-} from "../../lib/terminalLayout";
+} from "../../lib/appearance/terminalLayout";
 import { randomUUID } from "../../../../shared/lib/uuid";
 
 /**

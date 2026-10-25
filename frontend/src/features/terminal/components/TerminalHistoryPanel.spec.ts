@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import TerminalHistoryPanel from "./TerminalHistoryPanel.vue";
-import type { HistoryPanelEntry } from "../lib/historyPanel";
+import type { HistoryPanelEntry } from "../lib/panels/historyPanel";
 
 const NOW = Date.now();
 const entries: HistoryPanelEntry[] = [

@@ -12,13 +12,13 @@ import {
   type TerminalAppearanceProfile,
   type TerminalAppearanceSettings,
   type TerminalAppearanceState,
-} from "../../terminal/lib/terminalAppearance";
+} from "../../terminal/lib/appearance/terminalAppearance";
 import {
   BUILTIN_TERMINAL_SCHEMES,
   parseSchemeImport,
   type TerminalColorScheme,
   type TerminalThemeLike,
-} from "../../terminal/lib/terminalScheme";
+} from "../../terminal/lib/appearance/terminalScheme";
 import { confirmDialog } from "../../../shared/lib/confirmDialog";
 import { settingsErrorOf } from "../lib/settingsModel";
 import { useAppearancePreview } from "../composables/useAppearancePreview";

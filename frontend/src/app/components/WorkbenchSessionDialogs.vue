@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/dialog/index
 import { Loader2, TriangleAlert, X } from "@lucide/vue";
 import { purposeKeyLabel, sanitizeTriagePayload, severityClass, type TriageResult } from "../../features/security/lib/alertTriage";
 import { rdpCertStatusKey } from "../../features/remote-desktop/lib/rdpFrame";
-import type { PasteConfirmation } from "../../features/terminal/lib/dangerousCommands";
+import type { PasteConfirmation } from "../../features/terminal/lib/behavior/dangerousCommands";
 
 /** 会话/安全弹窗组：命令会话、主机密钥、RDP 证书、Agent 审批、告警排查、
  *  粘贴确认、通用确认、本地终端确认。状态与决议 Promise 仍由 App 的

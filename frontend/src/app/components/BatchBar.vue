@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Braces, ChevronDown, ChevronRight, ListChecks, Loader2, Save, Search, Send, X } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
-import { batchTargetLabel, type BatchSendTarget } from "../../features/terminal/lib/batchSend";
+import { batchTargetLabel, type BatchSendTarget } from "../../features/terminal/lib/transfer/batchSend";
 import { QUICK_COMMANDS_LIMIT, type QuickCommand, type QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
 
 /** 批量发送命令条（Electerm quick-command bar）：贴终端底部，回车即发送。

@@ -19,7 +19,7 @@ import {
   type TerminalLayoutOrientation,
   type TerminalPaneLeaf,
   type TerminalPaneTab,
-} from "../lib/terminalLayout";
+} from "../lib/appearance/terminalLayout";
 
 interface Props {
   node: TerminalLayoutNode;

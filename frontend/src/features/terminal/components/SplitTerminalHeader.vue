@@ -7,7 +7,7 @@
  * button) so its scoped styles travel with the markup.
  */
 import { Loader2, Terminal as TerminalIcon, X } from "@lucide/vue";
-import type { SplitTerminalStatus } from "../composables/useSplitTerminal";
+import type { SplitTerminalStatus } from "../composables/ui/useSplitTerminal";
 
 interface Props {
   status: SplitTerminalStatus;

@@ -7,8 +7,8 @@
 // 语义（16 色 + 前景/背景/光标/选区），预览与外层终端在数据源上同构
 // （都来自 applySchemeToTerminalTheme 的结果），不会出现「预览好看实际不对」。
 import { computed } from "vue";
-import type { TerminalCursorStyle } from "../lib/terminalAppearance";
-import type { TerminalThemeLike } from "../lib/terminalScheme";
+import type { TerminalCursorStyle } from "../lib/appearance/terminalAppearance";
+import type { TerminalThemeLike } from "../lib/appearance/terminalScheme";
 
 const props = defineProps<{
   theme: TerminalThemeLike;

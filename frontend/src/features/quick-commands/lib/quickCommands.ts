@@ -8,7 +8,7 @@
 // 未分组是 groupId 为空串的虚拟组，旧数据经迁移函数自动归入。
 
 import { pluginStore } from "../../../shared/lib/pluginStore";
-import { normalizeTerminalInputText } from "../../terminal/lib/terminalInput";
+import { normalizeTerminalInputText } from "../../terminal/lib/emulator/terminalInput";
 
 export interface QuickCommand {
   id: string;

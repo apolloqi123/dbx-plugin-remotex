@@ -6,8 +6,8 @@ import {
   parseFontSync,
   type AppearanceSyncSnapshot,
 } from "./appearanceSync";
-import { defaultTerminalAppearanceState, type TerminalAppearanceState } from "../../../features/terminal/lib/terminalAppearance";
-import type { TerminalFontOverride } from "../../../features/terminal/lib/terminalFont";
+import { defaultTerminalAppearanceState, type TerminalAppearanceState } from "../../../features/terminal/lib/appearance/terminalAppearance";
+import type { TerminalFontOverride } from "../../../features/terminal/lib/appearance/terminalFont";
 
 function snapshot(overrides: Partial<AppearanceSyncSnapshot> = {}): AppearanceSyncSnapshot {
   return { appearance: null, fontFamily: null, fontSize: null, ...overrides };

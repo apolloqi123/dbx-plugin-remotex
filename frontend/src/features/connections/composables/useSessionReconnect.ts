@@ -1,5 +1,5 @@
 import { ref, watch, type Ref, onBeforeUnmount } from "vue";
-import { describeReconnectCountdown, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS, type ReconnectCountdown } from "../../terminal/lib/terminalReconnect";
+import { describeReconnectCountdown, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS, type ReconnectCountdown } from "../../terminal/lib/behavior/terminalReconnect";
 
 /** 传输断开重连梯子（有界退避）：pending/倒计时（250ms tick 供状态胶囊与
  * 横幅）/尝试计数；梯子第一级先请宿主按最新配置重开连接。耗尽落到

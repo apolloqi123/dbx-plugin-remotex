@@ -23,7 +23,7 @@ import {
   type TerminalHotkeyActionId,
   type TerminalHotkeyBindings,
   type TerminalHotkeyGroup,
-} from "../lib/terminalHotkeys";
+} from "../lib/behavior/terminalHotkeys";
 
 const props = defineProps<{
   bindings: TerminalHotkeyBindings;

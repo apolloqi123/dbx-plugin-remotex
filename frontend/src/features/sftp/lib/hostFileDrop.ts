@@ -1,4 +1,4 @@
-import { canAcceptTerminalDrop } from "../../terminal/lib/terminalInteraction";
+import { canAcceptTerminalDrop } from "../../terminal/lib/behavior/terminalInteraction";
 
 /**
  * 桌面宿主把 OS 级拖放以已打开的句柄推给插件（bridge filedrop）。落点按

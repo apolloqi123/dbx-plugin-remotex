@@ -2,8 +2,8 @@
 // 选择器键使用，不会作为字体串写入（写入前映射回 null/真实字体串）。状态由
 // 设置弹窗持有（初始化一次，应用/恢复默认后刷新），外观分栏只负责渲染。
 import { reactive } from "vue";
-import { clampFontSize } from "../../terminal/lib/terminalZoom";
-import { loadTerminalFontOverride } from "../../terminal/lib/terminalFont";
+import { clampFontSize } from "../../terminal/lib/appearance/terminalZoom";
+import { loadTerminalFontOverride } from "../../terminal/lib/appearance/terminalFont";
 
 const FOLLOW_HOST = "__follow-host__";
 const CUSTOM = "__custom__";

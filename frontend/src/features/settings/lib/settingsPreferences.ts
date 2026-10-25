@@ -13,8 +13,8 @@
 
 import { ref, type Ref } from "vue";
 import { pluginStore } from "../../../shared/lib/pluginStore";
-import { COMMAND_HISTORY_LIMIT, sanitizeCommandHistoryLimit } from "../../terminal/lib/commandHistory";
-import { loadWebglEnabled, persistWebglEnabled } from "../../terminal/lib/terminalWebgl";
+import { COMMAND_HISTORY_LIMIT, sanitizeCommandHistoryLimit } from "../../terminal/lib/panels/commandHistory";
+import { loadWebglEnabled, persistWebglEnabled } from "../../terminal/lib/appearance/terminalWebgl";
 
 /** 偏好键（唯一声明点；Dialog 与组合式函数不再各自硬编码）。 */
 export const SETTINGS_PREFERENCE_KEYS = {

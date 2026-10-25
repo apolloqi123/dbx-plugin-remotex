@@ -4,7 +4,7 @@
 // resolveMode / dockerParams 同时被 logs 调用方使用：这里作为返回成员导出，
 // 不在别处重复推导（模式不同 → target/sessionId 不同，重复实现必然漂移）。
 import { onMounted, onScopeDispose, onUnmounted, ref, watch } from "vue";
-import { normalizeBatchTargets } from "../../terminal/lib/batchSend";
+import { normalizeBatchTargets } from "../../terminal/lib/transfer/batchSend";
 import { rpc } from "../../../shared/lib/rpc";
 import {
   dockerEngineParams,

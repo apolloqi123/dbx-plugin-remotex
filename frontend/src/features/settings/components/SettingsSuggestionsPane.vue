@@ -18,7 +18,7 @@ import {
   MAX_COMMAND_HISTORY_LIMIT,
   MIN_COMMAND_HISTORY_LIMIT,
   sanitizeCommandHistoryLimit,
-} from "../../terminal/lib/commandHistory";
+} from "../../terminal/lib/panels/commandHistory";
 import { settingsPreferences } from "../lib/settingsPreferences";
 import { clearSuggestionBlocklist, loadSuggestionBlocklist } from "../../completion/lib/suggestionBlocklist";
 

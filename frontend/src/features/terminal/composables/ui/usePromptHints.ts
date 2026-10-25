@@ -1,14 +1,14 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
 import type { SuggestionAnchor } from "../../../../shared/lib/overlayPlacement";
-import { formatHotkeyDisplay, type TerminalHotkeyActionId, type TerminalHotkeyBindings } from "../../lib/terminalHotkeys";
-import { isPasswordPromptLine, loadPromptHintsDismissed, loadPromptHintsEnabled, savePromptHintsDismissed, savePromptHintsEnabled, shouldShowPromptHints } from "../../lib/terminalPromptHints";
-import { interactivePromptNearCursor, isInteractivePromptPending } from "../../lib/interactivePromptGuard";
+import { formatHotkeyDisplay, type TerminalHotkeyActionId, type TerminalHotkeyBindings } from "../../lib/behavior/terminalHotkeys";
+import { isPasswordPromptLine, loadPromptHintsDismissed, loadPromptHintsEnabled, savePromptHintsDismissed, savePromptHintsEnabled, shouldShowPromptHints } from "../../lib/emulator/terminalPromptHints";
+import { interactivePromptNearCursor, isInteractivePromptPending } from "../../lib/behavior/interactivePromptGuard";
 
 /**
  * 空提示符快捷键引导条（TerminalPromptHints）：引导 Warp 对齐批次的键位
  * （↑ 历史 / Ctrl+R 搜索 / Ctrl+Space 补全 / → 接受行内建议）。开关与一次性
- * 消散旗标存 pluginStore；显隐门在 lib/terminalPromptHints.ts（纯函数），
+ * 消散旗标存 pluginStore；显隐门在 lib/emulator/terminalPromptHints.ts（纯函数），
  * 行空判定由调用方经 promptHintsLineEmpty 两个汇点镜像；用户实际用过任一被
  * 引导功能（开面板/手动补全/接受 ghost）即永久消散。
  *

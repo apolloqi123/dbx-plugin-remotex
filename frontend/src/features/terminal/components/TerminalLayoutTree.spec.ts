@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import { defineComponent, h, nextTick, onBeforeUnmount, onMounted } from "vue";
 import TerminalLayoutTree from "./TerminalLayoutTree.vue";
-import { addTerminalTab, createTerminalLayout, splitTerminalLayout, type TerminalLayoutNode } from "../lib/terminalLayout";
+import { addTerminalTab, createTerminalLayout, splitTerminalLayout, type TerminalLayoutNode } from "../lib/appearance/terminalLayout";
 
 const lifecycle = { mounts: 0, unmounts: 0 };
 

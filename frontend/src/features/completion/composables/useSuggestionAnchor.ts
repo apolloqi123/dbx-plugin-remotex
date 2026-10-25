@@ -1,7 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
 import type { SuggestionAnchor } from "../../../shared/lib/overlayPlacement";
 import { ref } from "vue";
-import { readTerminalCellFrame as readTerminalCellFrameAt, type TerminalCellFrame } from "../../terminal/lib/terminalAnchor";
+import { readTerminalCellFrame as readTerminalCellFrameAt, type TerminalCellFrame } from "../../terminal/lib/emulator/terminalAnchor";
 
 /** 浮层锚点读取与回显后重锚（issue #120「浮层离焦点太远」）：建议浮层与
  *  结构化补全浮层共用同一光标格锚点源与生命周期钩子；两浮层的开合态以

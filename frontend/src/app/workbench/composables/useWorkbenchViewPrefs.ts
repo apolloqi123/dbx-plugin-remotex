@@ -11,13 +11,13 @@ import {
   sanitizeTerminalBehavior,
   terminalBehaviorOptionPatch,
   type TerminalBehaviorSettings,
-} from "../../../features/terminal/lib/terminalBehavior";
+} from "../../../features/terminal/lib/appearance/terminalBehavior";
 import {
   loadTerminalHotkeys,
   persistTerminalHotkeys,
   sanitizeTerminalHotkeys,
   type TerminalHotkeyBindings,
-} from "../../../features/terminal/lib/terminalHotkeys";
+} from "../../../features/terminal/lib/behavior/terminalHotkeys";
 import type { PaneDirectionPref } from "../../../shared/lib/paneLayout";
 import type { Terminal } from "@xterm/xterm";
 

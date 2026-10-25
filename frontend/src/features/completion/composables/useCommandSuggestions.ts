@@ -3,7 +3,7 @@ import type { QuickCommand } from "../../quick-commands/lib/quickCommands";
 import { ref, type Ref } from "vue";
 import { searchCommands, commandSuggestionQueryAcceptable, resolveSuggestionTabKey, type CommandSuggestion } from "../lib/commandSuggestions";
 import { addToSuggestionBlocklist, loadSuggestionBlocklist } from "../lib/suggestionBlocklist";
-import { pickGhostMatch } from "../../terminal/lib/terminalGhostSuggest";
+import { pickGhostMatch } from "../../terminal/lib/decorations/terminalGhostSuggest";
 import { canShowSuggestions, createSuggestionGuardState, type SuggestionGuardState } from "../lib/suggestionGuard";
 import { useCompletionOverlay } from "./useCompletionOverlay";
 import { useShellSniff } from "./useShellSniff";

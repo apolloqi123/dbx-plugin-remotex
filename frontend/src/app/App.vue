@@ -64,10 +64,10 @@ import {
 import {
   detectTrzszAnnounceFromBytes,
   resolveTerminalInputRoute,
-} from "../features/terminal/lib/terminalTrzsz";
-import { Osc7DirectoryParser } from "../features/terminal/lib/terminalDirectoryTracking";
-import { PromptNewlineTransformer } from "../features/terminal/lib/terminalPromptNewline";
-import { handleOsc52ClipboardWrite } from "../features/terminal/lib/terminalOsc";
+} from "../features/terminal/lib/transfer/terminalTrzsz";
+import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
+import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
+import { handleOsc52ClipboardWrite } from "../features/terminal/lib/emulator/terminalOsc";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
 import { subscribeHostEnvironment } from "../../../shared/frontend/hostThemeRuntime";
 import {
@@ -76,7 +76,7 @@ import {
   parseOsc777Notify,
   parseOsc9Notification,
   shouldOsc7FollowOverrideUserVarCwd,
-} from "../features/terminal/lib/terminalOscChannels";
+} from "../features/terminal/lib/emulator/terminalOscChannels";
 import {
   createTerminalCopyCache,
   resolveTerminalPasteText,
@@ -84,14 +84,14 @@ import {
   normalizeDropTargetDir,
   resolveDropTargetDir,
   transferBusyPaneClass,
-} from "../features/terminal/lib/terminalInteraction";
-import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../features/terminal/lib/terminalWriteThrottle";
-import { createOutputGate } from "../features/terminal/lib/terminalBackpressure";
-import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutError } from "../features/terminal/lib/terminalInputQueue";
+} from "../features/terminal/lib/behavior/terminalInteraction";
+import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../features/terminal/lib/emulator/terminalWriteThrottle";
+import { createOutputGate } from "../features/terminal/lib/emulator/terminalBackpressure";
+import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutError } from "../features/terminal/lib/emulator/terminalInputQueue";
 import { SERIAL_STREAM_STDIN, isKnownStreamTag, supportsBinaryInput } from "../features/serial/lib/serialTerminalFrames";
-import { describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS } from "../features/terminal/lib/terminalReconnect";
-import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/useTerminalTransportWatch";
-import { useTerminalAiSearch } from "../features/terminal/composables/useTerminalAiSearch";
+import { describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS } from "../features/terminal/lib/behavior/terminalReconnect";
+import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
+import { useTerminalAiSearch } from "../features/terminal/composables/ui/useTerminalAiSearch";
 import { classifyConnectError, connectErrorKey } from "../features/connections/lib/connectError";
 import { decideConnectRetry, isDuplicatedTransportUnavailableError } from "../features/connections/lib/connectRetry";
 import { reopenHostConnection } from "../features/connections/lib/hostReopen";
@@ -104,7 +104,7 @@ import {
 } from "../features/connections/lib/sessionTransportReuse";
 import { createConnectLog } from "../features/connections/lib/connectLog";
 import { pickModalFocusTarget } from "../shared/lib/modalFocus";
-import { buildPasteConfirmation, type PasteConfirmation } from "../features/terminal/lib/dangerousCommands";
+import { buildPasteConfirmation, type PasteConfirmation } from "../features/terminal/lib/behavior/dangerousCommands";
 import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../shared/lib/clipboardBridge";
 import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { isCountdownActive } from "../features/recording/lib/recordingCountdown";
@@ -117,8 +117,8 @@ import {
   persistMcpSettingsMirror,
 } from "../features/settings/lib/settingsModel";
 import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
-import { EnterLineTracker, acceptCommandWithContinuation, canCaptureEnterLine, echoConfirmsLine, extractDesyncedCommand, extractEchoedCommand } from "../features/terminal/lib/terminalEnterCapture";
-import { applyLineEditControlChar } from "../features/terminal/lib/terminalLineModel";
+import { EnterLineTracker, acceptCommandWithContinuation, canCaptureEnterLine, echoConfirmsLine, extractDesyncedCommand, extractEchoedCommand } from "../features/terminal/lib/behavior/terminalEnterCapture";
+import { applyLineEditControlChar } from "../features/terminal/lib/emulator/terminalLineModel";
 import { loadGhostTabAccept, matchesGhostFullAccept, matchesGhostWordAccept, resolveCtrlFRoute, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
 import { readWorkbenchUiMirror, writeWorkbenchUiMirror } from "./lib/workbenchUiMirror";
 import { createPersistThrottle } from "./lib/persistThrottle";
@@ -127,8 +127,8 @@ import { settingsPreferences } from "../features/settings/lib/settingsPreference
 // 终端交互提示守卫（issue #150 及其反馈扩展）：远端询问输入/要求选择（MFA/
 // 验证码/密码待输入、选择菜单、y/n 确认）时，↑/↓ 留给远端交互，不唤起历史
 // 面板；键入应答不开建议/ghost 浮层。
-import { cursorAbsoluteRow } from "../features/terminal/lib/terminalAnchor";
-import { evaluateGhost } from "../features/terminal/lib/terminalGhostSuggest";
+import { cursorAbsoluteRow } from "../features/terminal/lib/emulator/terminalAnchor";
+import { evaluateGhost } from "../features/terminal/lib/decorations/terminalGhostSuggest";
 import { ARBITER_PRIORITIES, resolveKeyOwners, type ArbiterClaim, type ClaimKey, type KeyOwners, type OverlayId } from "../shared/lib/overlayArbiter";
 // AI 助手（Warp AI 对齐批）：宿主 AI 通道封装与失败修复已收口
 // composables/useAiAssistant；`#` 命令搜索状态机在 useTerminalAiSearch。
@@ -143,18 +143,18 @@ import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type Tr
 import { registerWatch } from "../features/sftp/lib/watchEdits";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
-import { clampFontSize } from "../features/terminal/lib/terminalZoom";
+import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
 import { loadLastConnectParams } from "../features/connections/lib/connectLastParams";
 import { pluginStore } from "../shared/lib/pluginStore";
-import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/terminalFont";
+import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
 import type { DownloadConflictPolicy } from "../features/sftp/lib/downloadPrefs";
-import { commandMarkerTooltip, formatCommandDuration, Osc633CommandParser, runningCommandElapsedMs, type Osc633StreamUpdates } from "../features/terminal/lib/terminalCommandMarkers";
+import { commandMarkerTooltip, formatCommandDuration, Osc633CommandParser, runningCommandElapsedMs, type Osc633StreamUpdates } from "../features/terminal/lib/panels/terminalCommandMarkers";
 import { batchProgressPercent, type BatchProgressState } from "../features/transfers/lib/sftpBatchProgress";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
-import { sanitizeCommandOutput } from "../features/terminal/lib/terminalOutputText";
-import { normalizeTerminalInputBytes } from "../features/terminal/lib/terminalInput";
-import { type TerminalSyncOutput } from "../features/terminal/lib/terminalModeQueries";
-import { installMacWebkitInputFallback } from "../features/terminal/lib/terminalWebkitInput";
+import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
+import { normalizeTerminalInputBytes } from "../features/terminal/lib/emulator/terminalInput";
+import { type TerminalSyncOutput } from "../features/terminal/lib/emulator/terminalModeQueries";
+import { installMacWebkitInputFallback } from "../features/terminal/lib/emulator/terminalWebkitInput";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
@@ -165,18 +165,18 @@ import {
   matchesInLine,
   shouldRebuildHighlightRow,
   toAbsoluteRowRange,
-} from "../features/terminal/lib/keywordHighlight";
+} from "../features/terminal/lib/decorations/keywordHighlight";
 // 动作链接（P1-2，默认关闭）+ 行号/时间戳 gutter（P1-3，默认关闭）。
-import { createActionLinkProvider } from "../features/terminal/lib/actionLinksAddon";
+import { createActionLinkProvider } from "../features/terminal/lib/decorations/actionLinksAddon";
 import {
   matchActionLinks,
   sanitizeActionLinksSettings,
   type ActionLinkMatch,
   type ActionLinkMatcherToggles,
   type ActionLinksSettings,
-} from "../features/terminal/lib/actionLinksMatcher";
+} from "../features/terminal/lib/decorations/actionLinksMatcher";
 // 命中是文本下标，装饰要的是单元格列号：宽字符行（CJK）不换算就会整段左移。
-import { lineColumnTable, matchToColumns } from "../features/terminal/lib/terminalLineColumns";
+import { lineColumnTable, matchToColumns } from "../features/terminal/lib/emulator/terminalLineColumns";
 import {
   computeGutterRows,
   getRenderCellHeight,
@@ -185,7 +185,7 @@ import {
   GUTTER_TIMESTAMP_RETENTION_ROWS,
   type GutterRow,
   type GutterSettings,
-} from "../features/terminal/lib/terminalGutter";
+} from "../features/terminal/lib/appearance/terminalGutter";
 import { transferPausable } from "../features/transfers/lib/transferResume";
 import { auditKindLabel, auditKindOptions, auditOutcomeLabel } from "../features/security/lib/auditLog";
 import { useAuditLogViewer } from "../features/security/composables/useAuditLogViewer";
@@ -232,17 +232,17 @@ import { useSftpSelectionClipboard } from "../features/sftp/composables/useSftpS
 import { useSftpNavigation } from "../features/sftp/composables/useSftpNavigation";
 import OtpPanel from "../features/security/components/OtpPanel.vue";
 import ImportWizard from "../features/connections/components/ImportWizard.vue";
-import { useTerminalAppearance } from "../features/terminal/composables/useTerminalAppearance";
-import { useTerminalBell } from "../features/terminal/composables/useTerminalBell";
-import { useTerminalFontZoom } from "../features/terminal/composables/useTerminalFontZoom";
+import { useTerminalAppearance } from "../features/terminal/composables/ui/useTerminalAppearance";
+import { useTerminalBell } from "../features/terminal/composables/ui/useTerminalBell";
+import { useTerminalFontZoom } from "../features/terminal/composables/ui/useTerminalFontZoom";
 import { useAppearanceCrossSurfaceSync } from "./workbench/composables/useAppearanceCrossSurfaceSync";
-import { useTerminalMouse } from "../features/terminal/composables/useTerminalMouse";
+import { useTerminalMouse } from "../features/terminal/composables/ui/useTerminalMouse";
 import { useTransferQueue } from "../features/transfers/composables/useTransferQueue";
 import { useCommandSuggestions } from "../features/completion/composables/useCommandSuggestions";
 import { useGhostSuggest } from "../features/completion/composables/useGhostSuggest";
-import { useQuickSelect } from "../features/terminal/composables/useQuickSelect";
-import { useHistoryPanel } from "../features/terminal/composables/useHistoryPanel";
-import { useCommandHistory } from "../features/terminal/composables/useCommandHistory";
+import { useQuickSelect } from "../features/terminal/composables/ui/useQuickSelect";
+import { useHistoryPanel } from "../features/terminal/composables/ui/useHistoryPanel";
+import { useCommandHistory } from "../features/terminal/composables/ui/useCommandHistory";
 import { useSftpRename } from "../features/sftp/composables/useSftpRename";
 import { useEditorTabs } from "../features/sftp/composables/useEditorTabs";
 import EditorPane from "../features/sftp/components/EditorPane.vue";
@@ -251,20 +251,20 @@ import {
   findTerminalPane,
   hasTerminalSplit,
   shouldFollowTabCwd,
-} from "../features/terminal/lib/terminalLayout";
+} from "../features/terminal/lib/appearance/terminalLayout";
 import { useSftpCreateDirectory } from "../features/sftp/composables/useSftpCreateDirectory";
 import { useConnectionInfo } from "../features/connections/composables/useConnectionInfo";
 import { useSftpArchive } from "../features/sftp/composables/useSftpArchive";
 import { useSftpPathHistory } from "../features/sftp/composables/useSftpPathHistory";
 import { useSymlink } from "../features/sftp/composables/useSymlink";
-import { useZmodem } from "../features/terminal/composables/useZmodem";
-import { useCommandDialog } from "../features/terminal/composables/useCommandDialog";
+import { useZmodem } from "../features/terminal/composables/ui/useZmodem";
+import { useCommandDialog } from "../features/terminal/composables/ui/useCommandDialog";
 import { useExternalEdits } from "../features/sftp/composables/useExternalEdits";
-import { useBatchSend } from "../features/terminal/composables/useBatchSend";
+import { useBatchSend } from "../features/terminal/composables/ui/useBatchSend";
 import { useMetricsPanel, type ServerMetrics } from "../features/metrics/composables/useMetricsPanel";
-import { useTrzsz } from "../features/terminal/composables/useTrzsz";
+import { useTrzsz } from "../features/terminal/composables/ui/useTrzsz";
 import { useRecording } from "../features/recording/composables/useRecording";
-import { useHighlightRules } from "../features/terminal/composables/useHighlightRules";
+import { useHighlightRules } from "../features/terminal/composables/ui/useHighlightRules";
 import { useQuickCommands } from "../features/quick-commands/composables/useQuickCommands";
 import { useAgentTerminalMode } from "../features/agent/composables/useAgentTerminalMode";
 import { useAlertTriage } from "../features/security/composables/useAlertTriage";
@@ -287,21 +287,21 @@ import {
   folderUploadPercent,
 } from "../features/sftp/lib/folderUpload";
 import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "./workbench/lib/appearanceSync";
-import { attachWebglRenderer, syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../features/terminal/lib/terminalWebgl";
+import { attachWebglRenderer, syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../features/terminal/lib/appearance/terminalWebgl";
 import {
   activeProfileId,
   loadTerminalAppearance,
   terminalOptionPatch,
   type TerminalAppearanceState,
-} from "../features/terminal/lib/terminalAppearance";
+} from "../features/terminal/lib/appearance/terminalAppearance";
 import {
   terminalBehaviorOptionPatch,
   transformPasteText,
-} from "../features/terminal/lib/terminalBehavior";
+} from "../features/terminal/lib/appearance/terminalBehavior";
 import {
   keyComboFromEvent,
   matchTerminalHotkey,
-} from "../features/terminal/lib/terminalHotkeys";
+} from "../features/terminal/lib/behavior/terminalHotkeys";
 import { bridgeBinaryBytes } from "../../../shared/frontend/binaryEvent";
 import {
   applyFileTreeChildren,
@@ -341,7 +341,7 @@ import TerminalHistoryPanel from "../features/terminal/components/TerminalHistor
 import TerminalPromptHints from "../features/terminal/components/TerminalPromptHints.vue";
 import {
   commandHistoryHotkeyPassthrough,
-} from "../features/terminal/lib/historyPanel";
+} from "../features/terminal/lib/panels/historyPanel";
 import TerminalGutter from "../features/terminal/components/TerminalGutter.vue";
 import CommandSuggestions from "../features/completion/components/CommandSuggestions.vue";
 import CompletionMenu from "../features/completion/components/CompletionMenu.vue";

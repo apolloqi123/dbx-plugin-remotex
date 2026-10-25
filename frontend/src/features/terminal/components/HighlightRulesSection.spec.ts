@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import HighlightRulesSection from "./HighlightRulesSection.vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import type { HighlightDisplayMode, HighlightRuleView } from "../lib/keywordHighlight";
+import type { HighlightDisplayMode, HighlightRuleView } from "../lib/decorations/keywordHighlight";
 
 const t = (key: string, values?: Record<string, string | number>) => workbenchMessage("zh-CN", key, values);
 

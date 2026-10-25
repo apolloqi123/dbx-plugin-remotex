@@ -8,7 +8,7 @@ import {
   SETTINGS_PREFERENCE_KEYS,
   type SettingsPreferenceStorage,
 } from "./settingsPreferences";
-import { COMMAND_HISTORY_LIMIT, sanitizeCommandHistoryBuckets } from "../../terminal/lib/commandHistory";
+import { COMMAND_HISTORY_LIMIT, sanitizeCommandHistoryBuckets } from "../../terminal/lib/panels/commandHistory";
 
 class MemoryStorage implements SettingsPreferenceStorage {
   readonly data = new Map<string, string>();

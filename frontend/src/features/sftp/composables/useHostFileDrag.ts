@@ -1,7 +1,7 @@
 import { type Ref } from "vue";
 import { collectDropRootEntries, scanDroppedEntries, type DropRootEntry } from "../lib/dropEntries";
 import { planHostFileDrop } from "../lib/hostFileDrop";
-import { canAcceptTerminalDrop, canAcceptFileDrop, dragLeftPane } from "../../terminal/lib/terminalInteraction";
+import { canAcceptTerminalDrop, canAcceptFileDrop, dragLeftPane } from "../../terminal/lib/behavior/terminalInteraction";
 import { rpcAvailable, RpcUnavailableError } from "../../../shared/lib/rpc";
 
 /** 文件夹管线条目（与 useFolderUpload 的入参结构同构）。 */

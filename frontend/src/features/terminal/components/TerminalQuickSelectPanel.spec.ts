@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { mount } from "@vue/test-utils";
 import TerminalQuickSelectPanel from "./TerminalQuickSelectPanel.vue";
-import type { QuickSelectHit } from "../lib/quickSelect";
+import type { QuickSelectHit } from "../lib/decorations/quickSelect";
 
 const hits: QuickSelectHit[] = [
   { kind: "url", text: "https://example.com/a", row: 0, col: 4 },

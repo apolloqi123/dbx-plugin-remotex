@@ -2,8 +2,8 @@ import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { writeClipboardText } from "../../../shared/lib/clipboardBridge";
 import { resolveWorkbenchId } from "../../../shared/lib/pluginContext";
 import { normalizeConnectionText } from "../../connections/lib/connectionInfo";
-import { createTerminalInputQueue } from "../../terminal/lib/terminalInputQueue";
-import { normalizeTerminalInputBytes } from "../../terminal/lib/terminalInput";
+import { createTerminalInputQueue } from "../../terminal/lib/emulator/terminalInputQueue";
+import { normalizeTerminalInputBytes } from "../../terminal/lib/emulator/terminalInput";
 import {
   parseGenerateResponse,
   parseOtpBindings,

@@ -7,7 +7,7 @@ import {
   TERMINAL_SEARCH_OPTIONS_KEY,
   terminalSearchSeedFromSelection,
   type TerminalSearchOptions,
-} from "../../lib/terminalInteraction";
+} from "../../lib/behavior/terminalInteraction";
 
 export type TerminalSearchMatchState = "idle" | "match" | "no-match";
 

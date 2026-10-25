@@ -7,7 +7,7 @@
 // 与设置弹窗其余表单无耦合。
 import { computed, ref } from "vue";
 import { Search } from "@lucide/vue";
-import { filterTerminalSchemes, schemeTone, type TerminalColorScheme } from "../lib/terminalScheme";
+import { filterTerminalSchemes, schemeTone, type TerminalColorScheme } from "../lib/appearance/terminalScheme";
 
 const props = defineProps<{
   darkSchemeId: string | null;

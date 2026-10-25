@@ -1,9 +1,9 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { createRequestEpoch } from "../../../shared/lib/requestEpoch";
 import { buildTimeline, eventIndexAtTime, replayDuration, type RecordingSummary, type ReplayEvent } from "../lib/replayScheduler";
-import { terminalOptionPatch, type TerminalAppearanceState } from "../../terminal/lib/terminalAppearance";
-import { resolveTerminalFont, type TerminalFontOverride } from "../../terminal/lib/terminalFont";
-import { type TerminalThemeLike } from "../../terminal/lib/terminalScheme";
+import { terminalOptionPatch, type TerminalAppearanceState } from "../../terminal/lib/appearance/terminalAppearance";
+import { resolveTerminalFont, type TerminalFontOverride } from "../../terminal/lib/appearance/terminalFont";
+import { type TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
 

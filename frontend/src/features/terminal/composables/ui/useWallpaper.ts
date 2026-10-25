@@ -1,6 +1,6 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
-import { syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../../lib/terminalWebgl";
+import { syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../../lib/appearance/terminalWebgl";
 
 /**
  * 背景图（对标 NyaTerm；MVP 简化）：图源权威态在 sidecar

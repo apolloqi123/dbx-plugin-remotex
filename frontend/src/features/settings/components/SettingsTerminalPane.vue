@@ -7,10 +7,10 @@
 // 布局方向、动作链接、gutter、在线搜索与 X11/RDP/自动录制，DOM 顺序不变。
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../shared/ui/select/index";
 import { Switch } from "../../../shared/ui/switch/index";
-import { type TerminalBehaviorSettings } from "../../terminal/lib/terminalBehavior";
+import { type TerminalBehaviorSettings } from "../../terminal/lib/appearance/terminalBehavior";
 import type { PaneDirectionPref } from "../../../shared/lib/paneLayout";
-import { type ActionLinkMatcherToggles, type ActionLinksSettings } from "../../terminal/lib/actionLinksMatcher";
-import { GUTTER_TIMESTAMP_DEFAULT_FORMAT, type GutterSettings } from "../../terminal/lib/terminalGutter";
+import { type ActionLinkMatcherToggles, type ActionLinksSettings } from "../../terminal/lib/decorations/actionLinksMatcher";
+import { GUTTER_TIMESTAMP_DEFAULT_FORMAT, type GutterSettings } from "../../terminal/lib/appearance/terminalGutter";
 import type { ConnectionSettingsController } from "../composables/useConnectionSettings";
 import SettingsTerminalRenderingSection from "./SettingsTerminalRenderingSection.vue";
 import SettingsTerminalLocalShellSection from "./SettingsTerminalLocalShellSection.vue";
