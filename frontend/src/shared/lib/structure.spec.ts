@@ -17,7 +17,7 @@ const LINE_ALLOWLIST: Record<string, number> = {
   "../../features/sftp/components/SftpTreePane.spec.ts": 1323,
 };
 
-/** 迁移期方向白名单；W1 结束后必须为空。 */
+/** 迁移期方向白名单；W1 结束后必须为空，且每个条目都必须仍然违规。 */
 const DIRECTION_ALLOWLIST: string[] = [
   "../composables/useAppearanceCrossSurfaceSync.ts",
   "./pluginContext.ts",
@@ -54,6 +54,29 @@ export function lineViolations(
 
 const IMPORT_SPECIFIER = /\b(?:from\s*|import\s*\(\s*|^import\s+)["']([^"']+)["']/gm;
 
+function layerOf(key: string): "shared" | "feature" | null {
+  if (key.startsWith("./") || (key.startsWith("../") && !key.startsWith("../../"))) {
+    return "shared";
+  }
+  if (key.startsWith("../../features/")) return "feature";
+  return null;
+}
+
+export function isUpwardImport(layer: "shared" | "feature", spec: string): boolean {
+  return layer === "shared" ? /\/(?:features|app)\//.test(spec) : /\/app\//.test(spec);
+}
+
+/** `<file> -> <spec>` for every upward import in `text`; empty for unguarded files. */
+export function upwardImports(key: string, text: string): string[] {
+  const layer = layerOf(key);
+  if (!layer) return [];
+  const out: string[] = [];
+  for (const match of text.matchAll(IMPORT_SPECIFIER)) {
+    if (isUpwardImport(layer, match[1])) out.push(`${key} -> ${match[1]}`);
+  }
+  return out;
+}
+
 export function directionViolations(
   sources: Record<string, string>,
   allow: string[],
@@ -61,16 +84,20 @@ export function directionViolations(
   const out: string[] = [];
   for (const [key, text] of Object.entries(sources)) {
     if (allow.includes(key)) continue;
-    const shared = key.startsWith("./") || (key.startsWith("../") && !key.startsWith("../../"));
-    const feature = key.startsWith("../../features/");
-    if (!shared && !feature) continue;
-    for (const match of text.matchAll(IMPORT_SPECIFIER)) {
-      const spec = match[1];
-      if (shared && /\/(?:features|app)\//.test(spec)) out.push(`${key} -> ${spec}`);
-      if (feature && /\/app\//.test(spec)) out.push(`${key} -> ${spec}`);
-    }
+    out.push(...upwardImports(key, text));
   }
   return out;
+}
+
+/** Allowlist keys that are gone from `sources` or no longer import upward. */
+export function deadDirectionEntries(
+  sources: Record<string, string>,
+  allow: string[],
+): string[] {
+  return allow.filter((key) => {
+    const text = sources[key];
+    return text === undefined || upwardImports(key, text).length === 0;
+  });
 }
 
 export function locationViolations(sources: Record<string, string>): string[] {
@@ -78,7 +105,6 @@ export function locationViolations(sources: Record<string, string>): string[] {
   for (const key of Object.keys(sources)) {
     if (!key.startsWith("../../features/")) continue;
     const parts = key.slice("../../features/".length).split("/");
-    if (parts.length < 2) continue;
     if (!["components", "composables", "lib"].includes(parts[1])) out.push(key);
   }
   return out;
@@ -101,23 +127,44 @@ describe("source structure guards", () => {
     expect(report, `upward imports:\n${report.join("\n")}`).toEqual([]);
   });
 
+  it("keeps every direction allowlist entry live", () => {
+    const dead = deadDirectionEntries(SOURCES, DIRECTION_ALLOWLIST);
+    expect(dead, `dead direction allowlist entries:\n${dead.join("\n")}`).toEqual([]);
+  });
+
   it("keeps feature files inside components/composables/lib", () => {
     const report = locationViolations(SOURCES);
     expect(report, `misplaced feature files:\n${report.join("\n")}`).toEqual([]);
   });
 
   it("detects synthetic violations instead of passing vacuously", () => {
+    // 用 join 拼接 specifier，避免本文件被扫描时出现字面量的向上导入。
+    const FEATURES_IMPORT = ["..", "features", "sftp", "lib", "a"].join("/");
+    const APP_IMPORT = ["..", "..", "..", "app", "App.vue"].join("/");
     expect(
-      directionViolations({ "./x.ts": 'import { a } from "../features/sftp/lib/a";' }, []),
-    ).toEqual(["./x.ts -> ../features/sftp/lib/a"]);
+      directionViolations({ "./x.ts": `import { a } from "${FEATURES_IMPORT}";` }, []),
+    ).toEqual([`./x.ts -> ${FEATURES_IMPORT}`]);
     expect(
       directionViolations(
-        { "../../features/sftp/lib/x.ts": 'import App from "../../../app/App.vue";' },
+        { "../../features/sftp/lib/x.ts": `import App from "${APP_IMPORT}";` },
         [],
       ),
-    ).toEqual(["../../features/sftp/lib/x.ts -> ../../../app/App.vue"]);
+    ).toEqual([`../../features/sftp/lib/x.ts -> ${APP_IMPORT}`]);
     expect(
       lineViolations({ "./x.ts": `${"x\n".repeat(601)}` }, {}),
     ).toEqual(["./x.ts: 601 > 600"]);
+    expect(lineViolations({ "./x.ts": "a\n" }, { "./x.ts": 10 })).toEqual([
+      "./x.ts: allowlist entry is stale (1 <= 600)",
+    ]);
+    expect(locationViolations({ "../../features/stray.ts": "" })).toEqual([
+      "../../features/stray.ts",
+    ]);
+    expect(locationViolations({ "../../features/sftp/lib/x.ts": "" })).toEqual([]);
+    expect(
+      deadDirectionEntries(
+        { "./x.ts": 'import { a } from "./y";' },
+        ["./x.ts", "./missing.ts"],
+      ),
+    ).toEqual(["./x.ts", "./missing.ts"]);
   });
 });
