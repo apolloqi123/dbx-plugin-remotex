@@ -869,11 +869,29 @@ function templateGuardRefs(classMarker: string): string[] {
   return [...refs];
 }
 
-/** 脚本中 startMarker 起到 endMarker 止的代码块内出现过的 `.value` 状态名。 */
+/** 脚本中 startMarker 起到 endMarker 止的代码块内出现过的 `.value` 状态名。
+ *  App.vue 持续模块化：状态/处理器迁入 composables/ 后联合源扫描，防止
+ *  "迁走即失守"（与上方 composablesScript 同口径）；迁入后块体缩进两层、
+ *  endMarker 可能不再出现，此时按花括号配平收口。 */
 function scriptBlockRefs(startMarker: string, endMarker: string): Set<string> {
-  const start = appScript.indexOf(startMarker);
-  const body = start >= 0 ? appScript.slice(start, appScript.indexOf(endMarker, start)) : "";
+  const haystack = `${appScript}\n${composablesScript}`;
+  const start = haystack.indexOf(startMarker);
+  if (start < 0) return new Set();
+  const found = haystack.indexOf(endMarker, start);
+  const body = haystack.slice(start, found >= 0 ? found : blockEnd(haystack, start));
   return new Set([...body.matchAll(/([A-Za-z_$][\w$]*)\.value/g)].map((match) => match[1]));
+}
+
+/** startMarker 处块体的配对右花括号之后（无花括号时到末尾）。 */
+function blockEnd(text: string, start: number): number {
+  const open = text.indexOf("{", start);
+  if (open < 0) return text.length;
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}" && --depth === 0) return i + 1;
+  }
+  return text.length;
 }
 
 describe("App.vue popover/modal wiring structural guard", () => {
