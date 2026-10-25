@@ -79,7 +79,6 @@ import {
 } from "../features/terminal/lib/emulator/terminalOscChannels";
 import {
   createTerminalCopyCache,
-  resolveTerminalPasteText,
   isApplePlatform,
   normalizeDropTargetDir,
   resolveDropTargetDir,
@@ -91,6 +90,8 @@ import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutErr
 import { SERIAL_STREAM_STDIN, isKnownStreamTag, supportsBinaryInput } from "../features/serial/lib/serialTerminalFrames";
 import { describeReconnectRestoredNotice, isConnectionInactiveError, isSessionGoneError, shouldReattachTerminal, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS } from "../features/terminal/lib/behavior/terminalReconnect";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
+import { useCommandMarker } from "../features/terminal/composables/session/useCommandMarker";
+import { useTerminalClipboard } from "../features/terminal/composables/io/useTerminalClipboard";
 import { useTerminalAiSearch } from "../features/terminal/composables/ui/useTerminalAiSearch";
 import { classifyConnectError, connectErrorKey } from "../features/connections/lib/connectError";
 import { decideConnectRetry, isDuplicatedTransportUnavailableError } from "../features/connections/lib/connectRetry";
@@ -104,8 +105,7 @@ import {
 } from "../features/connections/lib/sessionTransportReuse";
 import { createConnectLog } from "../features/connections/lib/connectLog";
 import { pickModalFocusTarget } from "../shared/lib/modalFocus";
-import { buildPasteConfirmation, type PasteConfirmation } from "../features/terminal/lib/behavior/dangerousCommands";
-import { readClipboardText, writeClipboardText, type ClipboardDeps } from "../shared/lib/clipboardBridge";
+import { writeClipboardText } from "../shared/lib/clipboardBridge";
 import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, sanitizePaneDirection, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { isCountdownActive } from "../features/recording/lib/recordingCountdown";
 import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilters";
@@ -148,7 +148,7 @@ import { loadLastConnectParams } from "../features/connections/lib/connectLastPa
 import { pluginStore } from "../shared/lib/pluginStore";
 import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
 import type { DownloadConflictPolicy } from "../features/sftp/lib/transfer/downloadPrefs";
-import { commandMarkerTooltip, formatCommandDuration, Osc633CommandParser, runningCommandElapsedMs, type Osc633StreamUpdates } from "../features/terminal/lib/panels/terminalCommandMarkers";
+import { formatCommandDuration, Osc633CommandParser } from "../features/terminal/lib/panels/terminalCommandMarkers";
 import { batchProgressPercent, type BatchProgressState } from "../features/transfers/lib/sftpBatchProgress";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
@@ -274,7 +274,6 @@ import {
 } from "../features/terminal/lib/appearance/terminalAppearance";
 import {
   terminalBehaviorOptionPatch,
-  transformPasteText,
 } from "../features/terminal/lib/appearance/terminalBehavior";
 import {
   keyComboFromEvent,
@@ -1140,7 +1139,6 @@ const {
   closeSuggestions,
   dismissPromptHints,
 });
-const pasteConfirm = ref<PasteConfirmation>();
 // 终端拖入文件的落点询问：null 表示取消；"cwd" 用解析后的 shell/SFTP 当前
 // 目录（resolveDropTargetDir：终端 cwd 跟随 → SFTP home → 面板当前目录），
 // 弹窗展示解析结果；{ dir } 是用户输入的目标目录（文件原名落其下）。
@@ -1306,19 +1304,6 @@ function webglRecoveryOptions(): WebglRecoveryOptions<WebglRendererLike> {
 }
 // True while attachSession sits inside its bounded backoff loop; turns the
 // status pill and overlay into the dedicated "reconnecting" phase.
-const commandMarker = reactive({
-  installed: false,
-  active: false,
-  command: "",
-  exitCode: null as number | null,
-  durationMs: null as number | null,
-  cwd: "",
-  // Start timestamp of the currently running command; drives the 1s tick that
-  // keeps the marker strip duration live while a command is in flight.
-  startedAt: null as number | null,
-});
-// Live elapsed milliseconds for the running marker (null when idle or finished).
-const commandMarkerElapsed = ref<number | null>(null);
 const sftpSearch = ref("");
 const sftpTypeFilter = ref<SftpTypeFilter>("all");
 /** 默认隐藏以 "." 开头的 Unix 隐藏文件、__pycache__ 等系统缓存条目；
@@ -1403,7 +1388,6 @@ let terminalWheelHandler: ((event: WheelEvent) => void) | undefined;
 // 点击定位光标（iTerm2 风格）：按下位置记忆 + 松开时判定“原地点击”。
 let terminalMouseDownHandler: ((event: MouseEvent) => void) | undefined;
 let terminalMouseUpHandler: ((event: MouseEvent) => void) | undefined;
-let pasteConfirmResolver: ((accepted: boolean) => void) | undefined;
 // 通用应用内确认弹窗（SSH-H1）：原语在 lib/confirmDialog（SettingsDialog/
 // QuickCommandsSection 等子组件共用），此处只挂宿主渲染；模板/关框/Esc/
 // teardown 统一经 resolvePendingConfirmDialog 结算。
@@ -1433,7 +1417,6 @@ let replayInFlight = false;
 // closes cannot self-heal by retrying — after a few attempts the drain must
 // resync past the hole instead of spinning the replay loop forever.
 let replayNoProgress = 0;
-let commandMarkerTimer = 0;
 let pendingTerminalInput = "";
 let activeTerminalSessionId = "";
 const pendingTerminalFrames = new Map<number, { stream: number; data: Uint8Array }>();
@@ -1716,6 +1699,74 @@ watch(locale, (value) => { document.title = workbenchMessage(value, "pluginName"
 // html lang 同步跟随 locale：屏幕阅读器/拼写检查按它选语言，滞留 zh-CN 会让
 // 其他语种读错音（i18n 走查实录：locale=ja 时翻译已切换而 lang 仍为 zh-CN）。
 watch(locale, (value) => { document.documentElement.lang = value; }, { immediate: true });
+
+// 命令标记条（OSC 633）：状态/计时/帧消费收口在
+// composables/session/useCommandMarker；后段声明的会话态一律经 getter/回调惰性接入。
+const {
+  commandMarker,
+  commandMarkerElapsed,
+  commandMarkerDetails,
+  resetCommandMarker,
+  startCommandMarkerTick,
+  stopCommandMarkerTick,
+  applyCommandMarker,
+} = useCommandMarker({
+  t,
+  commandMarkerParser,
+  promptNewline,
+  aiSearch,
+  setUserVarCwdEvent: (event) => { userVarCwdEvent = event; },
+  resetSuggestionsForSession,
+  closeSuggestions,
+  closeHistoryPanel,
+  resetGhostSuggestion: () => resetGhostSuggestion(),
+  resetPromptHintsQuiet: () => resetPromptHintsQuiet(),
+  resetAiFixForSession,
+  beginAiCommand,
+  lastTerminalCommand,
+  localRecentCommands,
+  terminalCwd,
+  localLastCwd,
+  isLocalMode,
+  pushTerminalCommandHistory,
+  recordCommandExecutionMeta,
+});
+
+// 剪贴板/粘贴链（复制、右键粘贴、危险命令确认、全选/清屏）收口在
+// composables/io/useTerminalClipboard；OSC 52 写剪贴板仍留在 createTerminal。
+const {
+  pasteConfirm,
+  copyTextToClipboard,
+  clipboardDeps,
+  copyTerminalSelection,
+  pasteTerminal,
+  interceptTerminalPaste,
+  sendConfirmedPaste,
+  confirmRiskyPaste,
+  resolvePasteConfirm,
+  selectAllTerminal,
+  clearTerminal,
+} = useTerminalClipboard({
+  t,
+  terminal: () => terminal,
+  terminalCopyCache,
+  terminalMenuOpen,
+  menuSelectionSnapshot,
+  terminalBehavior,
+  terminalTransferBusy: () => terminalTransferBusy.value,
+  session,
+  localSession,
+  telnetSession,
+  serialSession,
+  isDisposed: () => disposed,
+  closeHistoryPanel,
+  resetGutterTimestamps: () => resetGutterTimestamps(),
+  hideGhostSuggestion: () => hideGhostSuggestion(),
+  showNotice,
+  showError,
+  trackPendingInput,
+  sendTerminalBytes,
+});
 const connectionId = computed(() => normalizeConnectionText(hostContext.value.connectionId));
 // Host API 1.1 provides a stable workbenchId in the host context; on 1.0 a
 // locally generated id keeps session scoping per workbench instance (A4 W1
@@ -1952,23 +2003,6 @@ const terminalErrorFriendly = computed(() => {
 // Reconnect countdown lifecycle: while the backoff loop is pending a 250ms
 // tick recomputes the pure countdown; any exit from "reconnecting" stops it.
 const commandOutputText = computed(() => (commandResult.value ? sanitizeCommandOutput(commandResult.value.output) : ""));
-// Hover tooltip for the terminal command marker strip: full command, exit
-// code, duration and working directory (localized, multi-line).
-const commandMarkerDetails = computed(() => commandMarkerTooltip(
-  {
-    command: commandMarker.command,
-    exitCode: commandMarker.exitCode,
-    durationMs: commandMarker.durationMs,
-    elapsedMs: commandMarkerElapsed.value,
-    cwd: commandMarker.cwd,
-  },
-  {
-    command: t("terminalCommand.tooltipCommand"),
-    exitCode: t("terminalCommand.tooltipExitCode"),
-    duration: t("terminalCommand.tooltipDuration"),
-    directory: t("terminalCommand.tooltipDirectory"),
-  },
-));
 const connectionIdentity = computed(() => {
   // Connectionless local-terminal tab (including the restored shell): there is no connection identity to show.
   if (localUiMode.value && !connectionId.value) {
@@ -3169,110 +3203,6 @@ function terminalCursorPosition(): { cursorRow: number; cursorCol: number } {
   const buffer = terminal?.buffer.active;
   if (!buffer) return { cursorRow: 1, cursorCol: 1 };
   return { cursorRow: buffer.cursorY + 1, cursorCol: buffer.cursorX + 1 };
-}
-
-function stopCommandMarkerTick() {
-  if (commandMarkerTimer) {
-    window.clearInterval(commandMarkerTimer);
-    commandMarkerTimer = 0;
-  }
-  commandMarkerElapsed.value = null;
-}
-
-function startCommandMarkerTick(startedAt: number) {
-  stopCommandMarkerTick();
-  commandMarkerTimer = window.setInterval(() => {
-    commandMarkerElapsed.value = runningCommandElapsedMs(startedAt, Date.now());
-  }, 1000);
-  commandMarkerElapsed.value = runningCommandElapsedMs(startedAt, Date.now());
-}
-
-function resetCommandMarker() {
-  commandMarkerParser.reset();
-  // 提示符换行状态同属会话流：不把上一会话的行首游标与不完整序列带进新流。
-  promptNewline.reset();
-  stopCommandMarkerTick();
-  // 会话切换/断开连带复位 SetUserVar cwd 优先通道：不把上一会话的目录裁决
-  // 带进新会话（OSC 7 回落立即恢复权威）。
-  userVarCwdEvent = null;
-  commandMarker.installed = false;
-  commandMarker.active = false;
-  commandMarker.command = "";
-  commandMarker.exitCode = null;
-  commandMarker.durationMs = null;
-  commandMarker.cwd = "";
-  commandMarker.startedAt = null;
-  // 会话切换/断开：建议浮层与抑制门锁存一并复位（P1-1）；ghost 门同步复位。
-  resetSuggestionsForSession();
-  closeHistoryPanel();
-  resetGhostSuggestion();
-  // AI 助手状态随会话复位（Warp AI 对齐批）：# 模式/修复条/推荐卡/输出采集
-  // 缓冲（解码器重建，避免跨会话的多字节残态）。
-  aiSearch.reset();
-  resetPromptHintsQuiet();
-  resetAiFixForSession();
-}
-
-function applyCommandMarker(updates: Osc633StreamUpdates) {
-  if (updates.shellIntegrationInstalled !== undefined) commandMarker.installed = updates.shellIntegrationInstalled;
-  if (updates.commandActive !== undefined) commandMarker.active = updates.commandActive;
-  if (updates.command !== undefined) commandMarker.command = updates.command;
-  // A fresh "E" frame starts a new command: clear the previous result so the
-  // strip flips to the running state. The "A" frame's lastExitCode=null reset
-  // is ignored on purpose — the finished result stays visible at the prompt
-  // until the next command starts.
-  // 最近命令收集：仅 E 帧写 updates.command，故以其存在为准——不能挂在
-  // commandActive 上，E 与 D 常在同一段输出里（命令快进快出时合并后的终值
-  // 是 false），挂在 phase 上会漏采（与 D/A 退出码覆写同源的合并陷阱）。
-  if (updates.command !== undefined && updates.command.trim()) {
-    const command = updates.command.trim();
-    lastTerminalCommand.value = command;
-    // 命令历史采集（P1-1）：shell integration 会话（本地 + SSH）把 E 帧命令行
-    // 写入 commandHistory 环形；持久化沿用 SECRET_LIKE/长度过滤，命令执行中
-    // 顺带收起浮层。与 onData 回车行采集去重由 pushCommandHistory 保证。
-    pushTerminalCommandHistory(command);
-    if (isLocalMode.value && command !== localRecentCommands.value[0]) {
-      localRecentCommands.value = [command, ...localRecentCommands.value.filter((c) => c !== command)].slice(0, 20);
-    }
-    closeSuggestions();
-    // 命令开始执行：history 面板一并收起（面板开启时 ↑↓/Enter 均被吞键，
-    // 正常到不了这里；E 帧旁路（粘贴多行/快速命令）执行时兜底关闭）。
-    closeHistoryPanel();
-    // AI 修复（Warp AI 对齐批）：E 帧 = 新命令边界——快进快出命令的
-    // commandActive 合并终值是 false（E/C/D 同 chunk），清零不能挂在它上。
-    // 采集缓冲清零 + 旧修复条让位 + 推荐卡撤下。
-    beginAiCommand();
-  }
-  if (updates.commandActive === true) {
-    commandMarker.exitCode = null;
-    commandMarker.durationMs = null;
-    // A fresh "E" frame also starts the 1s tick so the marker strip shows a
-    // live duration while the command runs; the final durationMs from the
-    // "D" frame takes over once the tick stops.
-    commandMarker.startedAt = Date.now();
-    startCommandMarkerTick(commandMarker.startedAt);
-  } else if (updates.commandActive === false) {
-    stopCommandMarkerTick();
-  }
-  if (updates.lastExitCode !== undefined && updates.lastExitCode !== null) commandMarker.exitCode = updates.lastExitCode;
-  if (updates.lastCommandDuration !== undefined) commandMarker.durationMs = updates.lastCommandDuration;
-  // 富元数据采集（批 4d）：D 帧的退出码/时长归档到命令 → 元数据映射（Warp
-  // command search 的时长/退出码列）；合并写（两值分帧到达），随时间映射同款
-  // 存续集淘汰 + 持久化。
-  if ((updates.lastExitCode !== undefined && updates.lastExitCode !== null) || updates.lastCommandDuration !== undefined) {
-    const command = commandMarker.command;
-    if (command) {
-      recordCommandExecutionMeta(command, {
-        exitCode: updates.lastExitCode !== undefined && updates.lastExitCode !== null ? updates.lastExitCode : undefined,
-        durationMs: updates.lastCommandDuration ?? undefined,
-      });
-    }
-  }
-  if (updates.cwd !== undefined) {
-    commandMarker.cwd = updates.cwd;
-    if (updates.cwd) terminalCwd.value = updates.cwd;
-    if (isLocalMode.value) localLastCwd.value = updates.cwd;
-  }
 }
 
 function writeTerminalOutput(data: Uint8Array) {
@@ -4760,13 +4690,6 @@ const {
   showError: (cause) => showError(cause),
 });
 
-/** 通用剪贴板写入 + 已复制提示（行菜单/侧栏菜单共用；失败走 sftp 错误条）。 */
-function copyTextToClipboard(value: string, noticeKey: string, values?: Record<string, string | number>) {
-  void writeClipboardText(value, clipboardDeps())
-    .then(() => showNotice(t(noticeKey, values)))
-    .catch((cause) => showError(cause instanceof Error ? cause : new Error(String(cause))));
-}
-
 // R3-P1-3：目录列表加载的单调请求序号。慢链路下"先发 A 后发 B、A 晚到"
 // 会把列表/路径/历史整体回跳；只有最新请求允许落地，过期响应整体丢弃。
 // SFTP 目录导航：loadDirectory 枢纽/sudo/路径跳转收口在 composables/useSftpNavigation。
@@ -5264,70 +5187,6 @@ function onSftpTreeDrop(node: SftpFileTreeNode, event: DragEvent) {
   onDrop(event, node.kind === "directory" ? node.path : currentPath.value);
 }
 
-// 沙箱 iframe 的剪贴板依赖注入：宿主桥是 optional 且现网宿主未提供，
-// 缺失/拒绝时由 clipboardBridge 逐级降级（见 lib/clipboardBridge.ts）。
-function clipboardDeps(): ClipboardDeps {
-  return {
-    bridge: window.dbxPlugin.clipboard ?? null,
-    nativeClipboard: typeof navigator !== "undefined" ? (navigator as Navigator & { clipboard?: ClipboardDeps["nativeClipboard"] }).clipboard ?? null : null,
-  };
-}
-
-async function copyTerminalSelection() {
-  // 选区以菜单打开瞬间的快照优先：弹层接管焦点后实时 getSelection() 可能
-  // 已被清空（clipboard 档直通路径不受影响，仍取实时选区）。
-  const text = menuSelectionSnapshot.value || terminal?.getSelection() || "";
-  menuSelectionSnapshot.value = "";
-  // 无论成败都关菜单：静默早退会让菜单挂着，看起来像"复制无效"。
-  terminalMenuOpen.value = false;
-  if (!text) {
-    showError(new Error(t("terminalCopyNoSelection")), "terminal");
-    terminal?.focus();
-    return;
-  }
-  terminalCopyCache.set(text);
-  try {
-    await writeClipboardText(text, clipboardDeps());
-    showNotice(t("terminalCopied"));
-  } catch {
-    showError(new Error(t("terminalCopyUnavailable")), "terminal");
-  }
-  terminal?.focus();
-}
-
-async function pasteTerminal() {
-  terminalMenuOpen.value = false;
-  let clipboardText: string | null = null;
-  let clipboardReadBlocked = false;
-  try {
-    clipboardText = await readClipboardText(clipboardDeps());
-  } catch {
-    // 宿主桥缺失 + 沙箱拒绝读：降级到插件视图内的复制副本（选中复制、
-    // 菜单复制、远端 OSC 52 都会写入），XShell 式「选中→右键」因此闭环。
-    clipboardReadBlocked = true;
-  }
-  const text = clipboardReadBlocked
-    ? resolveTerminalPasteText({ cachedText: terminalCopyCache.get(), selectionText: terminal?.getSelection() || null })
-    : clipboardText || null;
-  if (!text) {
-    // 无任何可用来源：引导走原生 paste 快捷键（Ctrl+V 走 paste 事件，不依赖读权限）。
-    showError(new Error(t("terminalPasteUseShortcut")), "terminal");
-    terminal?.focus();
-    return;
-  }
-  await sendConfirmedPaste(text);
-}
-
-function interceptTerminalPaste(event: ClipboardEvent) {
-  event.preventDefault();
-  event.stopPropagation();
-  // 粘贴路径不出 ghost：立即消除（onData 不经手粘贴正文，下一次可打印键入重算）。
-  hideGhostSuggestion();
-  const text = event.clipboardData?.getData("text/plain") || "";
-  if (!text) return;
-  void sendConfirmedPaste(text);
-}
-
 // —— 右键菜单「在线搜索」：引擎表/搜索动作收口在 composables/useOnlineSearch ——
 const {
   ctxSearchEnginesText,
@@ -5343,71 +5202,6 @@ const {
 });
 
 // —— 背景图：状态/持久化/WebGL 渲染器联动收口在 composables/useWallpaper ——
-
-async function sendConfirmedPaste(text: string) {
-  // 粘贴文本变换的唯一收口：所有粘贴路径（原生 Ctrl+V、右键/菜单粘贴、中键粘贴）
-  // 都经这里，保证「去首尾空白 / 换行折空格」只实现一次、不会分叉。
-  // 默认两开关均为关闭，因此这里的默认行为与改动前逐字节一致。
-  const payload = transformPasteText(text, terminalBehavior.value);
-  if (!payload) return;
-  const accepted = await confirmRiskyPaste(payload);
-  if (!accepted) {
-    terminal?.focus();
-    return;
-  }
-  // 会话门按活动传输判定（sendTerminalBytes 已分派 SSH/本地/Telnet/串口）：
-  // 只看 SSH session 会让本地 Shell（及 Telnet/串口）的粘贴静默无效果——
-  // 确认弹窗照出、字节却永不落终端（用户感知为「右键粘贴没动静」）。
-  if (terminalTransferBusy.value) return;
-  if (!session.value && !localSession.value && !telnetSession.value && !serialSession.value) return;
-  trackPendingInput(payload);
-  sendTerminalBytes(new TextEncoder().encode(payload));
-  terminal?.focus();
-}
-
-let pasteConfirmAskChain: Promise<unknown> = Promise.resolve();
-
-function confirmRiskyPaste(text: string): Promise<boolean> {
-  // 多行/超长粘贴警告可关（对标 Tabby「Clipboard → Warn on multi-line paste」）；
-  // 危险命令（rm -rf 等）的确认是安全兜底，不受该开关约束，永远要确认。
-  const confirmation = buildPasteConfirmation(text, { warnOnMultiline: terminalBehavior.value.warnOnMultilinePaste });
-  if (!confirmation.required) return Promise.resolve(true);
-  const asked = pasteConfirmAskChain.then(
-    () =>
-      new Promise<boolean>((resolve) => {
-        // 工作台已卸载：排队中的询问直接拒绝，不留孤儿弹窗态。
-        if (disposed) {
-          resolve(false);
-          return;
-        }
-        pasteConfirmResolver = resolve;
-        pasteConfirm.value = confirmation;
-      }),
-  );
-  pasteConfirmAskChain = asked.catch(() => undefined);
-  return asked;
-}
-
-function resolvePasteConfirm(accepted: boolean) {
-  pasteConfirm.value = undefined;
-  const resolve = pasteConfirmResolver;
-  pasteConfirmResolver = undefined;
-  resolve?.(accepted);
-}
-
-function selectAllTerminal() {
-  terminal?.selectAll();
-  terminalMenuOpen.value = false;
-  terminal?.focus();
-}
-
-function clearTerminal() {
-  terminal?.clear();
-  closeHistoryPanel();
-  resetGutterTimestamps();
-  terminalMenuOpen.value = false;
-  terminal?.focus();
-}
 
 function chooseZmodem() {
   terminalMenuOpen.value = false;
