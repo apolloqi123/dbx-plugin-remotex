@@ -77,7 +77,7 @@ type DiskUsage = {
 };
 type SftpClipboardState = { mode: "copy" | "cut"; paths: string[]; connectionId: string };
 type SftpFileMenu = { entry: SftpSanitizedEntry; selection: string[] };
-type TreePaneApi = { scrollPathToTop(path: string): Promise<boolean>; markDropTargetAt(point: { x: number; y: number }): string };
+type TreePaneApi = { scrollPathToTop(path: string): Promise<boolean>; markDropTargetAt(point: { x: number; y: number }): string; resetHostDragCalibration(): void };
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;

@@ -64,6 +64,7 @@ interface PaneProps {
   emptyText: string;
   loadDetails?: (entry: SftpSanitizedEntry) => Promise<SftpDetailInfo | null>;
   externalDragActive?: boolean;
+  hostDragYOffset?: number;
   followPadding?: boolean;
 }
 
@@ -938,6 +939,63 @@ describe("SftpTreePane drag and drop targeting", () => {
     } finally {
       rectBSpy.mockRestore();
       rectASpy.mockRestore();
+      pointSpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
+  it("calibrates one-row host offsets from the initial hover row", async () => {
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const folderC = makeNode("/c", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB), row(folderC)], { externalDragActive: true, hostDragYOffset: 28 });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const originalQuerySelector = document.querySelector.bind(document);
+    const querySpy = vi.spyOn(document, "querySelector").mockImplementation((selector: string) => {
+      if (selector === ".sftp-tree-row:hover") return rowB;
+      return originalQuerySelector(selector);
+    });
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((_x: number, y: number) => (y < 28 ? rowA : rowB));
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      // 宿主点落在 A（真实指针在 B）：校准出 +1 行偏移，首个目标就是 B。
+      expect(api.markDropTargetAt({ x: 30, y: 10 })).toBe("/b");
+      await nextTick();
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+
+      // 真实指针移到 C（宿主点落在 B）：沿用 +1 行偏移，目标为 C。
+      expect(api.markDropTargetAt({ x: 30, y: 40 })).toBe("/c");
+      await nextTick();
+      expect(rowEls[2].classes()).toContain("is-drop-target");
+      expect(rowEls[1].classes()).not.toContain("is-drop-target");
+    } finally {
+      pointSpy.mockRestore();
+      querySpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
+  it("applies the platform y offset when no hover row can calibrate", async () => {
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true, hostDragYOffset: 28 });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((_x: number, y: number) => (y < 28 ? rowA : rowB));
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      expect(api.markDropTargetAt({ x: 30, y: 10 })).toBe("/b");
+      await nextTick();
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+    } finally {
       pointSpy.mockRestore();
       wrapper.unmount();
     }

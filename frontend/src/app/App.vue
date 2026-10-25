@@ -709,12 +709,14 @@ const sftpPane = ref<HTMLElement>();
 const sftpTreePane = ref<{
   scrollPathToTop(path: string): Promise<boolean>;
   markDropTargetAt(point: { x: number; y: number }): string;
+  resetHostDragCalibration(): void;
 } | null>(null);
 /** SftpWorkspacePanel 把内部树实例回填到上面的 ref，保持目录跟随与宿主拖拽落点。
  *  markDropTargetAt 接宿主转发的 iframe 内坐标，命中目录行并返回目标路径。 */
 function bindSftpWorkspaceTreePane(api: {
   scrollPathToTop(path: string): Promise<boolean>;
   markDropTargetAt(point: { x: number; y: number }): string;
+  resetHostDragCalibration(): void;
 } | null) {
   sftpTreePane.value = api;
 }
@@ -6565,8 +6567,11 @@ async function waitForHostApi(timeoutMs = 8000) {
  *  原始通道兜底旧版/缓存的注入 SDK（只把 active 传给监听器），只要宿主消息
  *  里带 position，仍能按坐标命中目录行；重复事件对高亮/计时器是幂等的。 */
 function applyHostDragState(active: boolean, position?: { x: number; y: number }) {
+  const wasActive = dragActive.value;
   dragActive.value = active;
   if (!active) return;
+  // 新一次拖拽的第一条坐标：重新校准 y 偏移；同一拖拽内的后续坐标沿用。
+  if (!wasActive) sftpTreePane.value?.resetHostDragCalibration();
   sftpDragDropTarget.value = "";
   if (position) sftpTreePane.value?.markDropTargetAt(position);
 }

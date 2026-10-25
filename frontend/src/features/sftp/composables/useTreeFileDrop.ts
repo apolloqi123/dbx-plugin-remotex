@@ -14,6 +14,9 @@ export interface TreeDragPoint {
 export function useTreeFileDrop(options: {
   rows: () => SftpTreeRow[];
   externalDragActive: () => boolean;
+  /** 宿主未提供真实指针时的 y 兼容偏移（macOS Tauri 约 28 CSS px；
+   *  0 表示当前环境不需要修正）。 */
+  hostDragYOffset?: () => number;
   emit: {
     toggle: (node: SftpFileTreeNode) => void;
     dropOn: (node: SftpFileTreeNode, dragEvent: DragEvent) => void;
@@ -32,6 +35,11 @@ export function useTreeFileDrop(options: {
   let hoverPollTimer: ReturnType<typeof setInterval> | undefined;
   // 宿主已开始转发原生拖拽坐标：坐标命中优先于 DOM 事件与 :hover 兜底。
   let hostPositioned = false;
+  // 宿主坐标可能带固定 y 偏移（macOS Tauri）。首次坐标用 :hover 的初始行
+  // 校准行偏移；拿不到 hover 时退回平台兼容偏移。一次拖拽内只校准一次。
+  let calibrationDone = false;
+  let hostRowDelta = 0;
+  let hostOffsetY = 0;
   // 冻结的 :hover 会一直返回拖入时的行。仅当轮询看到「与上次不同的行」时才认为
   // 指针真的移动了（live hover），用它兜底；同一行的重复上报一律忽略，避免
   // 把 pointer/dragover 已命中的新目标（A 展开后拖到 B）覆盖回旧行。
@@ -83,11 +91,49 @@ export function useTreeFileDrop(options: {
     return undefined;
   }
 
+  /** 首次宿主坐标校准：:hover 是原生拖拽起点的真实行；用它和宿主命中行
+   *  的索引差抵消固定 y 偏移。无 hover 时退回平台兼容偏移。 */
+  function calibrateHostTarget(point: TreeDragPoint) {
+    calibrationDone = true;
+    hostRowDelta = 0;
+    hostOffsetY = Math.max(0, options.hostDragYOffset?.() ?? 0);
+    if (!hostOffsetY || typeof document === "undefined") return;
+    const host = targetAtPoint(point);
+    const hoverEl = document.querySelector<HTMLElement>(".sftp-tree-row:hover");
+    if (!host || !hoverEl) return;
+    const hoverIndex = Number(hoverEl.dataset.treeIndex);
+    if (!rows()[hoverIndex]) return;
+    const delta = hoverIndex - host.index;
+    // 相邻 2 行内的偏差才像固定偏移；更大的差异更像旧 hover 脏值。
+    if (Math.abs(delta) > 2) return;
+    hostRowDelta = delta;
+    hostOffsetY = 0;
+  }
+
+  function hostTargetAt(point: TreeDragPoint): { node: SftpFileTreeNode; index: number } | undefined {
+    if (!calibrationDone) calibrateHostTarget(point);
+    if (hostRowDelta !== 0) {
+      const host = targetAtPoint(point);
+      if (!host) return undefined;
+      const index = host.index + hostRowDelta;
+      const row = rows()[index];
+      return row && row.node.kind === "directory" ? { node: row.node, index } : undefined;
+    }
+    if (hostOffsetY !== 0) return targetAtPoint({ x: point.x, y: point.y + hostOffsetY });
+    return targetAtPoint(point);
+  }
+
+  function resetHostDragCalibration() {
+    calibrationDone = false;
+    hostRowDelta = 0;
+    hostOffsetY = 0;
+  }
+
   /** 宿主拖拽坐标入口（dragstate.position）：命中即高亮/计时，返回目标路径。 */
   function markDropTargetAt(point: TreeDragPoint): string {
     hostPositioned = true;
     stopPointerTracking();
-    const target = targetAtPoint(point);
+    const target = hostTargetAt(point);
     if (!target) {
       clearDragTarget();
       return "";
@@ -173,6 +219,7 @@ export function useTreeFileDrop(options: {
    *  否则冻结的 :hover 会在下一次轮询重新生效。 */
   function endDragSession() {
     hostPositioned = false;
+    resetHostDragCalibration();
     clearDragTarget();
     lastHoverUri = "";
   }
@@ -262,6 +309,7 @@ export function useTreeFileDrop(options: {
     onRowDragLeave,
     onRowDrop,
     markDropTargetAt,
+    resetHostDragCalibration,
     clearDragTarget,
   };
 }

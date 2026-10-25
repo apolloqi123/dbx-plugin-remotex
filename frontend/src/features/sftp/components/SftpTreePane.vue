@@ -35,6 +35,8 @@ const props = withDefaults(
     /** 宿主桥已判定文件拖拽进行中：部分宿主会剥离 dataTransfer.types，
      *  行级 dragover 不能只依赖 DOM types，否则高亮/悬停展开失效。 */
     externalDragActive?: boolean;
+    /** 仅测试/兼容用：宿主拖拽坐标的平台 y 偏移；缺省按 iframe + macOS 推断。 */
+    hostDragYOffset?: number;
     /** 目录跟随开启：列表底部留一屏滚动余量，让跟随目录可以真正贴顶显示
      *  （否则靠近末尾的目录会被 max scroll 钳在视口中部）。 */
     followPadding?: boolean;
@@ -95,9 +97,16 @@ const {
   onScrollHook: hideDetails,
 });
 
-const { dragOverUri, onTreeDragOver, onRowDragOver, onRowDragLeave, onRowDrop, markDropTargetAt } = useTreeFileDrop({
+const { dragOverUri, onTreeDragOver, onRowDragOver, onRowDragLeave, onRowDrop, markDropTargetAt, resetHostDragCalibration } = useTreeFileDrop({
   rows: () => props.rows,
   externalDragActive: () => props.externalDragActive,
+  hostDragYOffset: () => {
+    if (props.hostDragYOffset !== undefined) return props.hostDragYOffset;
+    // macOS Tauri 的拖拽点比真实指针高约一个拖拽图标（tauri#10744）；
+    // 插件在宿主 iframe 内运行时才需要补偿，构建/单测页面保持 0。
+    if (typeof window === "undefined") return 0;
+    return window.parent !== window && /Mac/i.test(navigator.platform) ? 28 : 0;
+  },
   emit: {
     toggle: (node) => emit("toggle", node),
     dropOn: (node, dragEvent) => emit("drop-on", node, dragEvent),
@@ -187,7 +196,7 @@ function onRowContext(node: SftpFileTreeNode, mouseEvent: MouseEvent) {
   emit("context", node, mouseEvent);
 }
 
-defineExpose({ scrollPathToTop, markDropTargetAt });
+defineExpose({ scrollPathToTop, markDropTargetAt, resetHostDragCalibration });
 
 function moveRowFocus(node: SftpFileTreeNode, offset: number): boolean {
   const index = rowIndexOf(node);
