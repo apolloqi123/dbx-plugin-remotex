@@ -159,33 +159,11 @@ import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
 import { AGENT_MODES } from "../features/agent/lib/agentTerminal";
-import {
-  highlightFillStyle,
-  highlightTextStyle,
-  matchesInLine,
-  shouldRebuildHighlightRow,
-  toAbsoluteRowRange,
-} from "../features/terminal/lib/decorations/keywordHighlight";
-// 动作链接（P1-2，默认关闭）+ 行号/时间戳 gutter（P1-3，默认关闭）。
-import { createActionLinkProvider } from "../features/terminal/lib/decorations/actionLinksAddon";
-import {
-  matchActionLinks,
-  sanitizeActionLinksSettings,
-  type ActionLinkMatch,
-  type ActionLinkMatcherToggles,
-  type ActionLinksSettings,
-} from "../features/terminal/lib/decorations/actionLinksMatcher";
-// 命中是文本下标，装饰要的是单元格列号：宽字符行（CJK）不换算就会整段左移。
-import { lineColumnTable, matchToColumns } from "../features/terminal/lib/emulator/terminalLineColumns";
-import {
-  computeGutterRows,
-  getRenderCellHeight,
-  sanitizeGutterSettings,
-  trimTimestampMap,
-  GUTTER_TIMESTAMP_RETENTION_ROWS,
-  type GutterRow,
-  type GutterSettings,
-} from "../features/terminal/lib/appearance/terminalGutter";
+// 关键词高亮 / 动作链接 / 行号时间戳 gutter 三类 decoration 引擎收口在
+// features/terminal/composables/ui/useTerminal{Highlight,ActionLinks,Gutter}。
+import { useTerminalHighlight } from "../features/terminal/composables/ui/useTerminalHighlight";
+import { useTerminalActionLinks } from "../features/terminal/composables/ui/useTerminalActionLinks";
+import { useTerminalGutter } from "../features/terminal/composables/ui/useTerminalGutter";
 import { transferPausable } from "../features/transfers/lib/transferResume";
 import { auditKindLabel, auditKindOptions, auditOutcomeLabel } from "../features/security/lib/auditLog";
 import { useAuditLogViewer } from "../features/security/composables/useAuditLogViewer";
@@ -698,10 +676,6 @@ const {
 // Apple 平台判定（Cmd 为主修饰键）：既有的全选语义与新增的快捷键默认键位都要用，
 // 因此在此单点声明，供后面的偏好初始值与终端选项复用。
 const applePlatform = isApplePlatform();
-// decoration 引擎护栏：全局在档 decoration 上限（超限停止本帧注册）。
-const HIGHLIGHT_DECORATION_LIMIT = 400;
-// rAF 节流目标：≤30fps（约 33ms 一帧）。
-const HIGHLIGHT_SCAN_MIN_INTERVAL_MS = 33;
 
 const terminalHost = ref<HTMLElement>();
 const sftpPane = ref<HTMLElement>();
@@ -3650,7 +3624,8 @@ const { connectCardState, connectLogEntries, reconnect, cancelConnect, startConn
   connectCancelled, connectSucceeded, connectLog,
   reconnectPending, reconnectAttempt, reconnectTimer,
   getTerminal: () => terminal,
-  resetGutterTimestamps,
+  // gutter 引擎在本文件后段装配（Task 8 抽取）：这里只登记回调，调用发生在连接建立后。
+  resetGutterTimestamps: () => resetGutterTimestamps(),
   requestHostReopenConnection,
   openSession,
   closeSession,
@@ -4615,162 +4590,14 @@ const {
   setHighlightDisplayMode,
 } = useHighlightRules({ showError });
 
-// 「字体颜色」= 把规则色交给 decoration 的 foregroundColor，由渲染器写进该格字形：
-// DOM 渲染器落到单元格 span 的 color（DomRendererRowFactory），WebGL 渲染器在
-// CellColorResolver 里把 foregroundColorRGB 折进该格 fg 属性（glyph atlas 以 fg
-// 为键、会自动重新光栅化）——两条渲染路径都生效，故无需回退 DOM、GPU 照常。
-const keywordTextColorActive = computed(() => highlightDisplayMode.value === "text");
-
-// ---- decoration 引擎 ----
-// onRender({start,end}) 给的是"本帧实际重绘的行区间"（输入时常常只有光标一行），
-// 不是整个视口：合并进 pending 区间，经 setTimeout 节流（≤30fps）后统一扫描；
-// 扫描时装饰去留按 buffer.viewportY 的真实视口判定（见 scanHighlightRange）。
-// alt buffer 与 normal buffer 走同一路径（buffer.active 直接扫描）。
-let highlightRenderDisposable: { dispose(): void } | undefined;
-// 每行一个组（marker + decorations + 该行登记时的文本）；行滚出视口整组 dispose。
-// text 用于"文本未变则整组保留"：xterm 在装饰 dispose/注册后自身会再触发整幅
-// 重绘（实测 30fps 持续循环），无脑拆建会让空闲终端陷入"重绘→扫描→拆建→重绘"
-// 的自激回路，高亮层反复摘挂即是用户看到的闪烁。
-const highlightDecorationsByRow = new Map<number, { text: string; dispose(): void }>();
-let highlightDecorationCount = 0;
-let highlightScanScheduled = false;
-let highlightLastScanAt = 0;
-let highlightPendingRange: { start: number; end: number } | undefined;
-
-function clearHighlightDecorations() {
-  for (const entry of highlightDecorationsByRow.values()) entry.dispose();
-  highlightDecorationsByRow.clear();
-  highlightDecorationCount = 0;
-}
-
-function attachHighlightRender() {
-  if (!terminal || highlightRenderDisposable || !highlightEnabled.value) return;
-  highlightRenderDisposable = terminal.onRender(({ start, end }) => scheduleHighlightScan(start, end));
-  rescanHighlightViewport();
-}
-
-function detachHighlightRender() {
-  highlightRenderDisposable?.dispose();
-  highlightRenderDisposable = undefined;
-  clearHighlightDecorations();
-}
-
-function rescanHighlightViewport() {
-  if (!terminal || !highlightEnabled.value) return;
-  scheduleHighlightScan(0, terminal.rows - 1);
-}
-
-function scheduleHighlightScan(start: number, end: number) {
-  if (!terminal || !highlightEnabled.value || !compiledHighlightRules.value.length) return;
-  // 大输出保护生效期挂起扫描，恢复时由 onOutputGateRelease 补扫视口。
-  if (outputGate.mode === "strained") return;
-  highlightPendingRange = highlightPendingRange
-    ? { start: Math.min(highlightPendingRange.start, start), end: Math.max(highlightPendingRange.end, end) }
-    : { start, end };
-  if (highlightScanScheduled) return;
-  highlightScanScheduled = true;
-  const wait = Math.max(0, HIGHLIGHT_SCAN_MIN_INTERVAL_MS - (performance.now() - highlightLastScanAt));
-  window.setTimeout(runHighlightScan, wait);
-}
-
-function runHighlightScan() {
-  highlightScanScheduled = false;
-  highlightLastScanAt = performance.now();
-  const range = highlightPendingRange;
-  highlightPendingRange = undefined;
-  if (!range || !terminal || !highlightEnabled.value) return;
-  scanHighlightRange(range.start, range.end);
-}
-
-function scanHighlightRange(start: number, end: number) {
-  const term = terminal;
-  if (!term) return;
-  const buffer = term.buffer.active;
-  // onRender 的 start/end 是视口相对行号，这里的 row / viewportY 是缓冲绝对行号
-  // （换算与裁剪见 toAbsoluteRowRange：漏了这步，滚过一屏后脏行判定永不命中）。
-  const dirty = toAbsoluteRowRange(start, end, buffer.viewportY, buffer.length);
-  // onRender 给的是"本帧重绘的行"（输入时常常只有光标行），不是视口——装饰的
-  // 去留必须按视口判定，否则每次击键都把整屏高亮 dispose 掉再异步补回（可见闪烁）。
-  const vpFrom = Math.max(0, Math.min(buffer.viewportY, buffer.length - 1));
-  const vpTo = Math.min(buffer.length - 1, vpFrom + term.rows - 1);
-  for (const [row, entry] of highlightDecorationsByRow) {
-    // 拆组条件（视口外 / 本帧重绘且文本变了）见 shouldRebuildHighlightRow；
-    // "重绘但文本没变就保留"是掐断"拆建→重绘"自激回路的关键。
-    const dirtyRow = row >= dirty.from && row <= dirty.to;
-    const currentText = dirtyRow ? buffer.getLine(row)?.translateToString(true) ?? "" : entry.text;
-    if (!shouldRebuildHighlightRow({ row, viewportFrom: vpFrom, viewportTo: vpTo, dirty: dirtyRow, previousText: entry.text, currentText })) continue;
-    entry.dispose();
-    highlightDecorationsByRow.delete(row);
-  }
-  const compiled = compiledHighlightRules.value;
-  if (!compiled.length) return;
-  // registerMarker 的 offset 相对光标绝对行（baseY + cursorY）；marker dispose 时
-  // xterm 会连带 dispose 挂在其上的 decoration。
-  const base = buffer.baseY + buffer.cursorY;
-  for (let row = vpFrom; row <= vpTo; row++) {
-    if (highlightDecorationsByRow.has(row)) continue;
-    if (highlightDecorationCount >= HIGHLIGHT_DECORATION_LIMIT) return;
-    const bufferLine = buffer.getLine(row);
-    const lineText = bufferLine?.translateToString(true) ?? "";
-    if (!lineText) continue;
-    const matches = matchesInLine(lineText, compiled);
-    if (!matches.length) continue;
-    // 命中是文本下标，decoration 的 x/width 是单元格列号：宽字符（CJK、全角标点）在文本里
-    // 占 1 个单元、在终端里占 2 列，直接用下标会让整段高亮左移——前面有几个宽字符就少几列
-    // （中文行里越靠右的命中越歪，IP/时间戳会整段露白）。只有真有命中的行才补一次列号表，
-    // 其余行继续走 translateToString 的内部缓存。
-    const columns = bufferLine ? lineColumnTable(bufferLine, lineText.length) : undefined;
-    const marker = term.registerMarker(row - base);
-    if (!marker) continue;
-    const disposables: Array<{ dispose(): void }> = [marker];
-    const entry = {
-      text: lineText,
-      decorations: 0,
-      dispose() {
-        for (const disposable of disposables.splice(0)) disposable.dispose();
-        // 计数只增不减会顶到全局上限、高亮逐渐不再出现（看起来像闪烁后消失）。
-        highlightDecorationCount -= entry.decorations;
-        entry.decorations = 0;
-      },
-    };
-    for (const match of matches) {
-      if (highlightDecorationCount >= HIGHLIGHT_DECORATION_LIMIT) break;
-      // 「字体颜色」模式：把规则色交给 decoration 的 foregroundColor——无覆盖层、
-      // 无需逐帧重放（渲染器每次重绘都会重新查询 decoration），也不与配色方案/主题
-      // 的调色板打架。DOM 与 WebGL 两条渲染路径都消费该字段。
-      const { x, width } = matchToColumns(columns, match.start, match.end);
-      const decoration = term.registerDecoration(
-        keywordTextColorActive.value
-          ? { marker, x, width, foregroundColor: highlightTextStyle(match.color) }
-          : { marker, x, width },
-      );
-      if (decoration) {
-        if (!keywordTextColorActive.value) {
-          // 背景色块模式保持原样：xterm 6 的 DOM renderer 仍不把 registerDecoration
-          // 的 backgroundColor 选项应用到 cell（且 CM_RGB 路径会丢 alpha，实心色会
-          // 盖字形），着色继续走 onRender 在 overlay 元素上半透明自绘。注意 overlay
-          // 元素由 BufferDecorationRenderer 在渲染刷新帧里创建：窗口被遮挡/rAF 冻结
-          // 期间注册的高亮要等下一次刷新帧才显色（可见后一帧内自愈，属显示时序而非
-          // 逻辑缺陷——逐字符 span 是 cell 层 run 拆分，不代表 decoration 丢失）。
-          decoration.onRender((element) => {
-            element.style.backgroundColor = highlightFillStyle(match.color);
-          });
-        }
-        disposables.push(decoration);
-        entry.decorations++;
-        highlightDecorationCount++;
-      }
-    }
-    highlightDecorationsByRow.set(row, entry);
-  }
-}
-
-// 规则表/显示方式变化：全量清理后重扫当前视口（即时生效语义）。显示方式切换必须
-// 重建 decoration——背景色块画在 overlay 元素上、字体颜色是 registerDecoration 的
-// foregroundColor 选项，两者无法就地改样式互转。
-watch([compiledHighlightRules, highlightDisplayMode], () => {
-  clearHighlightDecorations();
-  rescanHighlightViewport();
+// 关键词高亮的 decoration 渲染引擎收口在 useTerminalHighlight（规则表 CRUD 仍在
+// useHighlightRules）；终端实例经 getter 注入，跟随终端重建。
+const { attachHighlightRender, detachHighlightRender, rescanHighlightViewport } = useTerminalHighlight({
+  terminal: () => terminal,
+  highlightEnabled,
+  compiledHighlightRules,
+  highlightDisplayMode,
+  outputGate,
 });
 
 // ---------------------------------------------------------------------------
@@ -4788,373 +4615,56 @@ async function persistTerminalFeaturePrefs(patch: Record<string, unknown>) {
   }
 }
 
-// ---- 动作链接（P1-2）----
-const actionLinksSettings = ref<ActionLinksSettings>(sanitizeActionLinksSettings(undefined));
-const actionLinksEnabled = computed(() => actionLinksSettings.value.enabled);
-// 与关键词高亮同帧率上限 / 同量级装饰总数护栏。
-const ACTION_LINK_SCAN_MIN_INTERVAL_MS = 33;
-const ACTION_LINK_DECORATION_LIMIT = 400;
-let actionLinkProviderDisposable: { dispose(): void } | undefined;
-let actionLinkRenderDisposable: { dispose(): void } | undefined;
-let actionLinkScanScheduled = false;
-let actionLinkLastScanAt = 0;
-let actionLinkPendingRange: { start: number; end: number } | undefined;
-// 每行一组（marker + 虚线 decorations + 登记文本）；去留条件复用关键词高亮的
-// shouldRebuildHighlightRow——"本帧重绘且文本未变则整组保留"是防自激回路的
-// 关键（xterm 在装饰注册/销毁后会再触发整幅重绘）。
-const actionLinkDecorationsByRow = new Map<number, { text: string; dispose(): void }>();
-let actionLinkDecorationCount = 0;
-// 悬停 / Alt+点击的命令预览浮签（terminal-pane 内绝对定位，pointer-events 关）。
-const actionLinkHint = ref<{ x: number; y: number; text: string } | null>(null);
-
-function clearActionLinkDecorations() {
-  for (const entry of actionLinkDecorationsByRow.values()) entry.dispose();
-  actionLinkDecorationsByRow.clear();
-  actionLinkDecorationCount = 0;
-}
-
-function attachActionLinks() {
-  if (!terminal || actionLinkProviderDisposable || !actionLinksEnabled.value) return;
-  actionLinkProviderDisposable = terminal.registerLinkProvider(
-    createActionLinkProvider(terminal, {
-      matchers: actionLinksSettings.value.matchers,
-      callbacks: {
-        onActivate: handleActionLinkActivate,
-        onHover: showActionLinkHintAt,
-        onLeave: hideActionLinkHint,
-      },
-    }),
-  );
-  actionLinkRenderDisposable = terminal.onRender(({ start, end }) => scheduleActionLinkScan(start, end));
-  scheduleActionLinkScan(0, terminal.rows - 1);
-}
-
-function detachActionLinks() {
-  actionLinkProviderDisposable?.dispose();
-  actionLinkProviderDisposable = undefined;
-  actionLinkRenderDisposable?.dispose();
-  actionLinkRenderDisposable = undefined;
-  clearActionLinkDecorations();
-  hideActionLinkHint();
-}
-
-// 点击 = 把建议命令送进现有 PTY 输入通路（不含换行：shell 输入行停在原地，
-// 用户可补改后再回车执行）。Alt+点击 = 仅预览命令文本，不向 PTY 写入。
-function handleActionLinkActivate(match: ActionLinkMatch, event: MouseEvent) {
-  if (event.altKey) {
-    showActionLinkHintAt(match, event);
-    return;
-  }
-  const sessionId = localSession.value?.sessionId ?? session.value?.sessionId;
-  if (!sessionId) return;
-  sendTerminalBytes(new TextEncoder().encode(match.command));
-  terminal?.focus();
-}
-
-// ---- Docker 面板「在终端打开」（M3 遗留 6）----
-// DockerPanel 挂在终端区右上浮层内，面板经 window 自定义事件把命令字符串直达
-// 这里；走与建议浮层同款的「填入输入行不回车」
-// 通道（replaceTerminalLineWith）：命令落在 shell 输入行原地，用户确认后自行回车。
-// 无终端会话时 toast 提示先连接，不静默丢弃。
-function handleDockerOpenInTerminal(event: Event) {
-  const command = (event as CustomEvent<{ command?: string }>).detail?.command ?? "";
-  if (!command) return;
-  const hasTerminalSession = Boolean(
-    localSession.value ?? session.value ?? serialSession.value ?? telnetSession.value,
-  );
-  if (!terminal || !hasTerminalSession) {
-    showNotice(t("docker.terminalNeedSession"));
-    return;
-  }
-  replaceTerminalLineWith(command, false);
-  terminal.focus();
-}
-
-function showActionLinkHintAt(match: ActionLinkMatch, event: MouseEvent) {
-  const host = terminalHost.value;
-  if (!host) return;
-  const bounds = host.getBoundingClientRect();
-  actionLinkHint.value = {
-    x: Math.min(Math.max(event.clientX - bounds.left + 10, 4), Math.max(4, bounds.width - 280)),
-    y: Math.max(4, event.clientY - bounds.top - 34),
-    text: match.command,
-  };
-}
-
-function hideActionLinkHint() {
-  actionLinkHint.value = null;
-}
-
-function scheduleActionLinkScan(start: number, end: number) {
-  if (!terminal || !actionLinksEnabled.value) return;
-  // 大输出保护生效期挂起扫描，恢复时由 onOutputGateRelease 补扫视口。
-  if (outputGate.mode === "strained") return;
-  actionLinkPendingRange = actionLinkPendingRange
-    ? { start: Math.min(actionLinkPendingRange.start, start), end: Math.max(actionLinkPendingRange.end, end) }
-    : { start, end };
-  if (actionLinkScanScheduled) return;
-  actionLinkScanScheduled = true;
-  const wait = Math.max(0, ACTION_LINK_SCAN_MIN_INTERVAL_MS - (performance.now() - actionLinkLastScanAt));
-  window.setTimeout(runActionLinkScan, wait);
-}
-
-function runActionLinkScan() {
-  actionLinkScanScheduled = false;
-  actionLinkLastScanAt = performance.now();
-  const range = actionLinkPendingRange;
-  actionLinkPendingRange = undefined;
-  if (!range || !terminal || !actionLinksEnabled.value) return;
-  scanActionLinkRange(range.start, range.end);
-}
-
-function scanActionLinkRange(start: number, end: number) {
-  const term = terminal;
-  if (!term) return;
-  const buffer = term.buffer.active;
-  // onRender 的视口相对行号 → 缓冲绝对行号 + 视口判定，与关键词高亮同款换算。
-  const dirty = toAbsoluteRowRange(start, end, buffer.viewportY, buffer.length);
-  const vpFrom = Math.max(0, Math.min(buffer.viewportY, buffer.length - 1));
-  const vpTo = Math.min(buffer.length - 1, vpFrom + term.rows - 1);
-  for (const [row, entry] of actionLinkDecorationsByRow) {
-    // 防自激：仅"滚出视口"或"本帧重绘且文本确实变化"才拆组重建。
-    const dirtyRow = row >= dirty.from && row <= dirty.to;
-    const currentText = dirtyRow ? buffer.getLine(row)?.translateToString(true) ?? "" : entry.text;
-    if (!shouldRebuildHighlightRow({ row, viewportFrom: vpFrom, viewportTo: vpTo, dirty: dirtyRow, previousText: entry.text, currentText })) continue;
-    entry.dispose();
-    actionLinkDecorationsByRow.delete(row);
-  }
-  const matchers = actionLinksSettings.value.matchers;
-  const keywordRules = compiledHighlightRules.value;
-  const base = buffer.baseY + buffer.cursorY;
-  for (let row = vpFrom; row <= vpTo; row++) {
-    if (actionLinkDecorationsByRow.has(row)) continue;
-    if (actionLinkDecorationCount >= ACTION_LINK_DECORATION_LIMIT) return;
-    const bufferLine = buffer.getLine(row);
-    const lineText = bufferLine?.translateToString(true) ?? "";
-    if (!lineText) continue;
-    const matches = matchActionLinks(lineText, matchers);
-    if (!matches.length) continue;
-    // 让位：与用户关键词高亮同段命中的范围跳过（高亮是用户显式配置的规则）。
-    const keywordSpans = keywordRules.length ? matchesInLine(lineText, keywordRules) : [];
-    const visible = keywordSpans.length
-      ? matches.filter((match) => !keywordSpans.some((span) => match.start < span.end && match.end > span.start))
-      : matches;
-    if (!visible.length) continue;
-    // 常驻虚线同样按单元格列号绘制（理由见关键词高亮处）；让位过滤仍在下标空间做，
-    // 只比较命中区间的重叠关系，不需要换算。
-    const columns = bufferLine ? lineColumnTable(bufferLine, lineText.length) : undefined;
-    const marker = term.registerMarker(row - base);
-    if (!marker) continue;
-    const disposables: Array<{ dispose(): void }> = [marker];
-    const entry = {
-      text: lineText,
-      decorations: 0,
-      dispose() {
-        for (const disposable of disposables.splice(0)) disposable.dispose();
-        actionLinkDecorationCount -= entry.decorations;
-        entry.decorations = 0;
-      },
-    };
-    for (const match of visible) {
-      if (actionLinkDecorationCount >= ACTION_LINK_DECORATION_LIMIT) break;
-      const { x, width } = matchToColumns(columns, match.start, match.end);
-      const decoration = term.registerDecoration({ marker, x, width });
-      if (!decoration) continue;
-      // 虚线下划线画在装饰元素下缘（装饰层在文字层上方，无填充不遮字形）。
-      decoration.onRender((element) => {
-        element.style.borderBottom = "1px dashed var(--primary)";
-      });
-      disposables.push(decoration);
-      entry.decorations++;
-      actionLinkDecorationCount++;
-    }
-    actionLinkDecorationsByRow.set(row, entry);
-  }
-}
-
-// 设置变化（总开关或三类匹配器）：即时生效——provider 构造时快照 matchers，
-// 任何变化都重建；关闭时零挂钩子（摘 provider + 清 decoration）。
-watch(actionLinksSettings, (next) => {
-  if (!terminal) return;
-  if (next.enabled) {
-    actionLinkProviderDisposable?.dispose();
-    actionLinkProviderDisposable = undefined;
-    clearActionLinkDecorations();
-    attachActionLinks();
-  } else {
-    detachActionLinks();
-  }
-}, { deep: true });
-
-// ---- 行号 / 时间戳 gutter（P1-3）----
-const gutterSettings = ref<GutterSettings>(sanitizeGutterSettings(undefined));
-const gutterRows = ref<GutterRow[]>([]);
-const gutterCellHeight = ref<number | null>(null);
-// 大输出写入期挂起重算（terminalWriteThrottle 积压 > 256KiB 即跳帧，落定后由
-// 下一次 onRender/onScroll 事件跟上），避免 gutter 追帧放大 strained 场景开销。
-const GUTTER_SUSPEND_PENDING_BYTES = 256 * 1024;
-let gutterRafId = 0;
-let gutterScreenOffsetTop = 0;
-// 逻辑行首绝对行号 → 写入时刻。裁剪保留视口顶端前 3000 行。
-const gutterTimestamps = new Map<number, number>();
-let gutterLastStampedRow = -1;
-let gutterRenderDisposable: { dispose(): void } | undefined;
-let gutterScrollDisposable: { dispose(): void } | undefined;
-let gutterResizeDisposable: { dispose(): void } | undefined;
-let gutterEnterDisposable: { dispose(): void } | undefined;
-
-const gutterPaneVisible = computed(() => gutterSettings.value.showLineNumbers || gutterSettings.value.showTimestamps);
-// gutter 只占终端左 padding 环带：两种开关组合给固定宽度（行号 5 位 + 余量）。
-const gutterWidth = computed(() => {
-  if (!gutterPaneVisible.value) return 0;
-  if (gutterSettings.value.showLineNumbers && gutterSettings.value.showTimestamps) return 132;
-  return gutterSettings.value.showLineNumbers ? 56 : 88;
+// 动作链接（P1-2，默认关闭）：provider / 虚线装饰 / 预览浮签收口在
+// useTerminalActionLinks；偏好权威态与 update* 增量上抛也由它持有。
+const {
+  actionLinksSettings,
+  actionLinksEnabled,
+  actionLinkHint,
+  attachActionLinks,
+  detachActionLinks,
+  scheduleActionLinkScan,
+  handleDockerOpenInTerminal,
+  updateActionLinksSettings,
+} = useTerminalActionLinks({
+  terminal: () => terminal,
+  terminalHost,
+  compiledHighlightRules,
+  outputGate,
+  t,
+  showNotice,
+  session,
+  localSession,
+  serialSession,
+  telnetSession,
+  sendTerminalBytes,
+  replaceTerminalLineWith,
+  persistPrefs: persistTerminalFeaturePrefs,
 });
-// 渲染尺寸读不到（渲染器未就绪/WebGL 恢复中）时整体隐藏降级，不报错。
-const gutterVisible = computed(() => gutterPaneVisible.value && gutterCellHeight.value !== null && gutterRows.value.length > 0);
-const gutterPaneStyle = computed(() => ({ "--dbx-gutter-width": `${gutterWidth.value}px` }));
 
-function isGutterActive() {
-  return gutterPaneVisible.value;
-}
-
-function attachGutterListeners() {
-  if (!terminal || gutterRenderDisposable || !isGutterActive()) return;
-  gutterRenderDisposable = terminal.onRender(() => scheduleGutterRecompute());
-  gutterScrollDisposable = terminal.onScroll(() => scheduleGutterRecompute());
-  gutterResizeDisposable = terminal.onResize(() => scheduleGutterRecompute());
-  // 回车重盖光标逻辑行：独立 onData 挂子（routeTerminalData 输入路由不动）。
-  gutterEnterDisposable = terminal.onData((data) => {
-    if (!gutterSettings.value.showTimestamps) return;
-    if (!data.includes("\r") && !data.includes("\n")) return;
-    if (!terminal) return;
-    const buffer = terminal.buffer.active;
-    stampLogicalLineContaining(buffer.baseY + buffer.cursorY, Date.now());
-    scheduleGutterRecompute();
-  });
-  scheduleGutterRecompute();
-}
-
-function detachGutterListeners() {
-  gutterRenderDisposable?.dispose();
-  gutterRenderDisposable = undefined;
-  gutterScrollDisposable?.dispose();
-  gutterScrollDisposable = undefined;
-  gutterResizeDisposable?.dispose();
-  gutterResizeDisposable = undefined;
-  gutterEnterDisposable?.dispose();
-  gutterEnterDisposable = undefined;
-  if (gutterRafId) {
-    cancelAnimationFrame(gutterRafId);
-    gutterRafId = 0;
-  }
-  gutterRows.value = [];
-  gutterCellHeight.value = null;
-}
-
-function scheduleGutterRecompute() {
-  if (!isGutterActive()) return;
-  // 大输出保护生效期挂起重算（与下方积压跳帧同一目标，口径更早介入）。
-  if (outputGate.mode === "strained") return;
-  if (gutterRafId) return;
-  gutterRafId = window.requestAnimationFrame(runGutterRecompute);
-}
-
-function runGutterRecompute() {
-  gutterRafId = 0;
-  const term = terminal;
-  if (!term || !isGutterActive()) return;
-  if (terminalWriteThrottle.pendingBytes > GUTTER_SUSPEND_PENDING_BYTES) return;
-  if (outputGate.mode === "strained") return;
-  gutterCellHeight.value = getRenderCellHeight(term);
-  const buffer = term.buffer.active;
-  // 首视口行的像素起点 = xterm 元素的 padding-top（gutter 文本与画布行对齐）。
-  const paddingTop = term.element ? Number.parseFloat(window.getComputedStyle(term.element).paddingTop) : Number.NaN;
-  gutterScreenOffsetTop = Number.isFinite(paddingTop) ? paddingTop : 0;
-  gutterRows.value = computeGutterRows({
-    cellHeight: gutterCellHeight.value,
-    screenOffsetTop: gutterScreenOffsetTop,
-    scrollTop: buffer.viewportY,
-    buffer: { type: buffer.type, length: buffer.length, getLine: (y) => buffer.getLine(y) },
-    rows: term.rows,
-    timestamps: gutterTimestamps,
-    showLineNumbers: gutterSettings.value.showLineNumbers,
-    showTimestamps: gutterSettings.value.showTimestamps,
-    timestampFormat: gutterSettings.value.timestampFormat,
-  });
-  trimTimestampMap(gutterTimestamps, Math.max(0, buffer.viewportY - GUTTER_TIMESTAMP_RETENTION_ROWS));
-}
-
-// 时间戳采集挂点：写入节流 sink 的 terminal.write 完成回调（xterm 解析完这批
-// 合并字节后触发）。对新写入的逻辑行首盖 Date.now()；原地重写（进度条）只重盖
-// 底行；buffer 变短（clear/重连）时整表重置。
-function stampGutterWrittenRows() {
-  if (!gutterSettings.value.showTimestamps) return;
-  if (!terminal) return;
-  const buffer = terminal.buffer.active;
-  if (buffer.type === "alternate") return;
-  const last = buffer.length - 1;
-  if (last < 0) return;
-  if (last < gutterLastStampedRow) resetGutterTimestamps();
-  const now = Date.now();
-  const from = Math.max(0, gutterLastStampedRow);
-  for (let row = from; row <= last; row++) {
-    if (buffer.getLine(row)?.isWrapped) continue;
-    gutterTimestamps.set(row, now);
-  }
-  gutterLastStampedRow = last;
-}
-
-// 回车重盖：光标所在逻辑行（含 wrapped 向上回溯）整体盖为回车时刻。
-function stampLogicalLineContaining(absoluteRow: number, atMs: number) {
-  if (!terminal) return;
-  const buffer = terminal.buffer.active;
-  if (buffer.type === "alternate") return;
-  let row = Math.max(0, Math.min(absoluteRow, buffer.length - 1));
-  let scanned = 0;
-  while (row > 0 && scanned < 2048 && buffer.getLine(row)?.isWrapped) {
-    row -= 1;
-    scanned += 1;
-  }
-  gutterTimestamps.set(row, atMs);
-}
-
-function resetGutterTimestamps() {
-  gutterTimestamps.clear();
-  gutterLastStampedRow = -1;
-}
-
-// gutter 设置变化：挂/摘挂子 + 宽度变化后重算终端列宽（xterm 左 padding 随
-// --dbx-gutter-width 变化，FitAddon 需要重新 fit）。
-watch(gutterSettings, () => {
-  if (terminal && isGutterActive()) attachGutterListeners();
-  else detachGutterListeners();
-  scheduleGutterRecompute();
-  scheduleFit();
-}, { deep: true });
-
-// 设置页增量上抛：归一化 → sidecar 持久化（watcher 即时挂/摘）。
-function updateActionLinksSettings(patch: { enabled?: boolean; matchers?: Partial<ActionLinkMatcherToggles> }) {
-  const next = sanitizeActionLinksSettings({
-    enabled: patch.enabled ?? actionLinksSettings.value.enabled,
-    matchers: { ...actionLinksSettings.value.matchers, ...(patch.matchers ?? {}) },
-  });
-  actionLinksSettings.value = next;
-  void persistTerminalFeaturePrefs({
-    action_links_enabled: next.enabled,
-    action_links_matchers: { ipv4: next.matchers.ipv4, host_port: next.matchers.hostPort, archive: next.matchers.archive },
-  });
-}
-
-function updateGutterSettings(patch: { showLineNumbers?: boolean; showTimestamps?: boolean; timestampFormat?: string }) {
-  const next = sanitizeGutterSettings({ ...gutterSettings.value, ...patch });
-  gutterSettings.value = next;
-  void persistTerminalFeaturePrefs({
-    terminal_show_line_numbers: next.showLineNumbers,
-    terminal_show_timestamps: next.showTimestamps,
-    terminal_timestamp_format: next.timestampFormat,
-  });
-}
+// 行号 / 时间戳 gutter（P1-3，默认关闭）：挂子、rAF 重算与行模型收口在
+// useTerminalGutter；写入时刻采集仍挂在 write 完成回调（stampGutterWrittenRows）。
+const {
+  gutterSettings,
+  gutterRows,
+  gutterPaneVisible,
+  gutterWidth,
+  gutterVisible,
+  gutterPaneStyle,
+  isGutterActive,
+  attachGutterListeners,
+  detachGutterListeners,
+  scheduleGutterRecompute,
+  resetGutterTimestamps,
+  stampGutterWrittenRows,
+  updateGutterSettings,
+} = useTerminalGutter({
+  terminal: () => terminal,
+  outputGate,
+  terminalWriteThrottle,
+  scheduleFit,
+  persistPrefs: persistTerminalFeaturePrefs,
+});
 
 
 watch(() => session.value?.sessionId, (next, previous) => {
