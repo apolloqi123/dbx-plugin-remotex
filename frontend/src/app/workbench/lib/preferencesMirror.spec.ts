@@ -3,7 +3,7 @@
 // 坏档自愈、收敛等值。pluginStore 走 node 内存档；顺序依赖：首个"未播种"
 // 断言在首个写入之前。
 import { describe, expect, it } from "vitest";
-import { pluginStore } from "./pluginStore";
+import { pluginStore } from "../../../shared/lib/pluginStore";
 import {
   clampSuggestionMaxChars,
   clampSuggestionMinChars,

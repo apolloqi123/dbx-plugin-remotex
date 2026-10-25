@@ -10,7 +10,7 @@ import {
   sanitizeTransferCompressMode,
   sanitizeTransferCompressThresholdMib,
   type SftpCompressMode,
-} from "../../../shared/lib/preferencesMirror";
+} from "../lib/preferencesMirror";
 import { clampTransferConcurrency, clampTransferDownloadLimit, clampTransferMaxActive, sanitizeTransferDuplicatePolicy, type TransferDuplicatePolicy } from "../../../features/transfers/lib/transferQueue";
 import { sanitizeNameEncoding, type SftpNameEncoding } from "../../../features/sftp/lib/sftpName";
 import type { DownloadConflictPolicy } from "../../../features/sftp/lib/downloadPrefs";

@@ -18,14 +18,7 @@ const LINE_ALLOWLIST: Record<string, number> = {
 };
 
 /** 迁移期方向白名单；W1 结束后必须为空，且每个条目都必须仍然违规。 */
-const DIRECTION_ALLOWLIST: string[] = [
-  "../composables/useAppearanceCrossSurfaceSync.ts",
-  "./pluginContext.ts",
-  "./promptCorpus.spec.ts",
-  "./preferencesMirror.ts",
-  "./appearanceSync.ts",
-  "./appearanceSync.spec.ts",
-];
+const DIRECTION_ALLOWLIST: string[] = [];
 
 function countLines(text: string): number {
   return text.replace(/\n$/, "").split("\n").length;

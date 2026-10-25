@@ -2,17 +2,10 @@
 // 认证方式名称来自 ssh/sessions/list 的 authMethod（仅方法名，无凭据）。
 // 这里只负责格式化，纯函数。
 
-/**
- * Normalize host-provided display text. DBX connection metadata can contain
- * actual nulls as well as serialized values such as `"null"`/`"undefined"`.
- * Treat those and whitespace-only values as missing so they never leak into
- * the toolbar or connection-info popover.
- */
-export function normalizeConnectionText(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim();
-  return normalized && normalized.toLowerCase() !== "null" && normalized.toLowerCase() !== "undefined" ? normalized : "";
-}
+// 实现已下沉到 shared（纯函数，见 shared/lib/connectionText.ts）；这里 re-export
+// 以保持既有调用点（App.vue / useOtpCodes）不变。
+export { normalizeConnectionText } from "../../../shared/lib/connectionText";
+import { normalizeConnectionText } from "../../../shared/lib/connectionText";
 
 /** Normalize a host-provided SSH port; invalid/empty values remain absent. */
 export function normalizeConnectionPort(value: unknown): number | undefined {

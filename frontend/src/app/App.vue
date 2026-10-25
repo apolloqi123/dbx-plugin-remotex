@@ -116,7 +116,7 @@ import {
   mcpSettingsMirrorEquals,
   persistMcpSettingsMirror,
 } from "../features/settings/lib/settingsModel";
-import type { SftpCompressMode } from "../shared/lib/preferencesMirror";
+import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
 import { EnterLineTracker, acceptCommandWithContinuation, canCaptureEnterLine, echoConfirmsLine, extractDesyncedCommand, extractEchoedCommand } from "../features/terminal/lib/terminalEnterCapture";
 import { applyLineEditControlChar } from "../features/terminal/lib/terminalLineModel";
 import { loadGhostTabAccept, matchesGhostFullAccept, matchesGhostWordAccept, resolveCtrlFRoute, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
@@ -235,7 +235,7 @@ import ImportWizard from "../features/connections/components/ImportWizard.vue";
 import { useTerminalAppearance } from "../features/terminal/composables/useTerminalAppearance";
 import { useTerminalBell } from "../features/terminal/composables/useTerminalBell";
 import { useTerminalFontZoom } from "../features/terminal/composables/useTerminalFontZoom";
-import { useAppearanceCrossSurfaceSync } from "../shared/composables/useAppearanceCrossSurfaceSync";
+import { useAppearanceCrossSurfaceSync } from "./workbench/composables/useAppearanceCrossSurfaceSync";
 import { useTerminalMouse } from "../features/terminal/composables/useTerminalMouse";
 import { useTransferQueue } from "../features/transfers/composables/useTransferQueue";
 import { useCommandSuggestions } from "../features/completion/composables/useCommandSuggestions";
@@ -286,7 +286,7 @@ import {
 import {
   folderUploadPercent,
 } from "../features/sftp/lib/folderUpload";
-import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "../shared/lib/appearanceSync";
+import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "./workbench/lib/appearanceSync";
 import { attachWebglRenderer, syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../features/terminal/lib/terminalWebgl";
 import {
   activeProfileId,
@@ -619,7 +619,7 @@ const {
   },
 });
 
-// 存储迁移批 3：传输/下载/建议偏好消毒器已下沉 lib/preferencesMirror
+// 存储迁移批 3：传输/下载/建议偏好消毒器已下沉 workbench/lib/preferencesMirror
 // （镜像 schema 同处、可单测），App 统一从那里导入。
 // —— AI 助手（Warp AI 对齐批，IMPL_PLAN_WARP_AI_TERMINAL）——
 // 设置权威值/修复条/执行期输出采集/推荐位收口在 composables/useAiAssistant；

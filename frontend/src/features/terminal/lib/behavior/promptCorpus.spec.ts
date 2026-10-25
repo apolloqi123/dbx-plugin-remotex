@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import corpus from "../../../../shared/prompt-corpus.json";
+import corpus from "../../../../../../shared/prompt-corpus.json";
 import {
   isAuthChallengeLine,
   isSelectionPromptLine,
-} from "../../features/terminal/lib/interactivePromptGuard";
-import { isPasswordPromptLine } from "../../features/terminal/lib/terminalPromptHints";
+} from "../interactivePromptGuard";
+import { isPasswordPromptLine } from "../terminalPromptHints";
 
 // shared/prompt-corpus.json 是前后端提示词词表的统一语料（backend/src/exec.rs
 // 的 cargo test 加载同一份）：改任一侧词表必须同步语料文件，否则两侧之一在此

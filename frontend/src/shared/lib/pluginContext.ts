@@ -3,7 +3,7 @@
 // fields are injected by the host into the final context and must never be forged by the plugin. Local-terminal
 // `plugin.mode === "local-terminal"` — the legacy top-level `{ localTerminal: true }`
 // shape was removed with the host A1 contract (hard switch on both read and write sides in-repo, no dual-read compat). Pure functions.
-import { normalizeConnectionText } from "../../features/connections/lib/connectionInfo";
+import { normalizeConnectionText } from "./connectionText";
 
 /**
  * Reads `context.plugin.mode`; missing/non-object/array payloads or a non-string mode return
