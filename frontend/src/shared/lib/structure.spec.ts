@@ -11,7 +11,7 @@ const MAX_SPEC_LINES = 1_200;
 
 /** 迁移期白名单：值 = 当前允许的行数；清零后删除。 */
 const LINE_ALLOWLIST: Record<string, number> = {
-  "../../app/App.vue": 5790,
+  "../../app/App.vue": 5468,
   "../../features/settings/components/SettingsDialog.vue": 929,
   "../../features/completion/lib/completion/fig/figSourceCore.ts": 737,
   "../../features/sftp/components/SftpTreePane.spec.ts": 1323,

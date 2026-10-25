@@ -59,7 +59,6 @@ import {
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
-import { subscribeHostEnvironment } from "../../../shared/frontend/hostThemeRuntime";
 import {
   createTerminalCopyCache,
   isApplePlatform,
@@ -80,12 +79,6 @@ import { createConnectLog } from "../features/connections/lib/connectLog";
 import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilters";
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/paths/sftpBookmarks";
-import {
-  extractMcpSettingsMirror,
-  loadMcpSettingsMirror,
-  mcpSettingsMirrorEquals,
-  persistMcpSettingsMirror,
-} from "../features/settings/lib/settingsModel";
 import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
 import { loadGhostTabAccept, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
 import { createPreviewAsyncComponent } from "../shared/lib/asyncPreview";
@@ -105,7 +98,7 @@ import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type Tr
 } from "../features/transfers/lib/transferQueue";
 import { registerWatch } from "../features/sftp/lib/editor/watchEdits";
 import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
-import { readPluginMode, readPluginShell, resolveWorkbenchId } from "../shared/lib/pluginContext";
+import { resolveWorkbenchId } from "../shared/lib/pluginContext";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
 import { pluginStore } from "../shared/lib/pluginStore";
 import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
@@ -116,7 +109,6 @@ import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
-import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
 import { AGENT_MODES } from "../features/agent/lib/agentTerminal";
 // 关键词高亮 / 动作链接 / 行号时间戳 gutter 三类 decoration 引擎收口在
 // features/terminal/composables/ui/useTerminal{Highlight,ActionLinks,Gutter}。
@@ -160,6 +152,8 @@ import { useWorkbenchViewPrefs } from "./workbench/composables/useWorkbenchViewP
 import { useWorkbenchSpawnTabs } from "./workbench/composables/useWorkbenchSpawnTabs";
 import { useWorkbenchToolbar } from "./workbench/composables/useWorkbenchToolbar";
 import { useWorkbenchModals } from "./workbench/composables/useWorkbenchModals";
+import { useWorkbenchBootstrap } from "./workbench/composables/useWorkbenchBootstrap";
+import { useHostDragBridge } from "./workbench/composables/useHostDragBridge";
 import { useTerminalSearch } from "../features/terminal/composables/ui/useTerminalSearch";
 import { useTerminalTooltip } from "../features/terminal/composables/ui/useTerminalTooltip";
 import { useRdpSession } from "../features/remote-desktop/composables/useRdpSession";
@@ -213,7 +207,6 @@ import { useAgentTerminalMode } from "../features/agent/composables/useAgentTerm
 import { useAlertTriage } from "../features/security/composables/useAlertTriage";
 import { useTransferHistory } from "../features/transfers/composables/useTransferHistory";
 import { shouldLazyLoadSftpListing, type SshWorkbenchPaneOrder } from "./lib/workbenchLayout";
-import { pickLiveSessionForReattach, pickProtocolSessionForReattach, type SessionSummary } from "../features/connections/lib/sessionRestore";
 import { toolbarTintStyle } from "../shared/lib/toolbarTint";
 import {
   DEFAULT_COLUMN_WIDTHS,
@@ -1414,14 +1407,7 @@ let userVarCwdEvent: { path: string; at: number } | null = null;
 // teardown 统一经 resolvePendingConfirmDialog 结算。
 const { pendingConfirmDialog, resolveConfirmDialog: resolvePendingConfirmDialog } = useConfirmDialogHost();
 /** 响铃视觉提示的短暂高亮（xterm 6.x 无 bellStyle，须自行实现）。 */
-let unsubscribeEvent: (() => void) | undefined;
-let unsubscribeBinary: (() => void) | undefined;
-// 宿主 fileTransfer 桥拖放事件（宿主 1.1 optional）注销句柄：OS 级拖入上传
-// 与终端/SFTP 面板共享同一道门禁，见 handleHostFileDrop。
-let unsubscribeFileDrag: (() => void) | undefined;
-let unsubscribeFileDrop: (() => void) | undefined;
-// X-P2/P3/P4 收敛：宿主环境订阅聚合句柄（shared/frontend/hostThemeRuntime）。
-let unsubscribeEnvironment: (() => void) | undefined;
+// 宿主订阅/拖放注销句柄随工作台启动桥迁入 useWorkbenchBootstrap。
 let disposed = false;
 let lastSequence = 0;
 let replayInFlight = false;
@@ -3740,254 +3726,44 @@ function writeU64(bytes: Uint8Array, offset: number, value: number) {
   new DataView(bytes.buffer, bytes.byteOffset + offset, 8).setBigUint64(0, BigInt(value), false);
 }
 
-async function waitForHostApi(timeoutMs = 8000) {
-  const deadline = Date.now() + timeoutMs;
-  while (!window.dbxPlugin && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
-  if (!window.dbxPlugin) throw new Error(t("hostApiUnavailable"));
-  return window.dbxPlugin;
-}
+// 宿主拖拽桥：SDK 监听与原始 postMessage 双通道共用同一份高亮/落点逻辑，
+// 收口在 workbench/composables/useHostDragBridge；高亮态与树实例仍是 App 权威态。
+const hostDrag = useHostDragBridge({ dragActive, sftpDragDropTarget, sftpTreePane });
 
-/** 宿主拖拽状态入口：SDK 监听与原始 postMessage 双通道共用同一份逻辑。
- *  原始通道兜底旧版/缓存的注入 SDK（只把 active 传给监听器），只要宿主消息
- *  里带 position，仍能按坐标命中目录行；重复事件对高亮/计时器是幂等的。 */
-function applyHostDragState(active: boolean, position?: { x: number; y: number }) {
-  const wasActive = dragActive.value;
-  dragActive.value = active;
-  if (!active) return;
-  // 新一次拖拽的第一条坐标：重新校准 y 偏移；同一拖拽内的后续坐标沿用。
-  if (!wasActive) sftpTreePane.value?.resetHostDragCalibration();
-  sftpDragDropTarget.value = "";
-  if (position) sftpTreePane.value?.markDropTargetAt(position);
-}
-
-function onHostDragMessage(event: MessageEvent) {
-  const data = event.data as {
-    source?: unknown;
-    type?: unknown;
-    active?: unknown;
-    position?: { x?: unknown; y?: unknown };
-  } | null;
-  if (!data || data.source !== "dbx-host" || data.type !== "dragstate" || typeof data.active !== "boolean") return;
-  const position = data.position && typeof data.position.x === "number" && typeof data.position.y === "number"
-    ? { x: data.position.x, y: data.position.y }
-    : undefined;
-  applyHostDragState(data.active, position);
-}
-
-async function initialize() {
-  const api = await waitForHostApi();
-  hostContext.value = await Promise.any([
-    api.ready,
-    api.request<Record<string, unknown>>("host.getContext"),
-  ]);
-  resetTransportReuseState(hostContext.value);
-  locale.value = api.locale || "zh-CN";
-  // UI 状态恢复必须等 pluginStore 水合（宿主 storage 白名单键异步灌入）：
-  // 否则 workbenchUi 镜像与 setup 期的 sftp-pane-open 等键全部读到空档，
-  // 布局偏好整组"不持久"（issue #178 的半个根因，另一半是宿主缺桥）。
-  await pluginStore.ready.catch(() => undefined);
-  restoreUiState();
-  const appearanceAppliedAtBoot = Boolean(api.appearance || api.theme);
-  // 外观偏好的 CSS 部分（终端内边距变量）与宿主是否推送 appearance 无关，
-  // 开机先落一次，否则用户设了内边距要等下次主题推送才生效。
-  applyTerminalPaddingVars();
-  // FIG wave-1：legacy 动态 fs provider 随 legacy spec 目录整体退役；
-  // generator 动态候选在批次 2 经 completion/execute 目标机执行接线
-  // （前端不直连 shell）。
-  if (api.appearance) applyAppearance(api.appearance);
-  else if (isDbxPluginTheme(api.theme)) applyAppearance(themeToAppearance(api.theme));
-  // 宿主可能在 init 前先应答 host.getContext（如重推连接期间 init 被延迟）：
-  // 此时 api.locale/appearance 仍是 bootstrap 默认值。init 落地后重读一次，
-  // 否则会话会停在默认英文/默认主题。ready 已解决时 then 立即执行，是幂等重读。
-  void api.ready.then(() => {
-    if (api.locale) locale.value = api.locale;
-    if (!appearanceAppliedAtBoot) {
-      if (api.appearance) applyAppearance(api.appearance);
-      else if (isDbxPluginTheme(api.theme)) applyAppearance(themeToAppearance(api.theme));
-    }
-  });
-  // X-P2/P3/P4 收敛：env（locale/theme）+ context + appearance 订阅统一走
-  // shared/frontend/hostThemeRuntime 单点（真桥无 onLocaleChange/onContextChange
-  // 幽灵 API；onContext 旧桥回退 onContextChange；appearance 契约缺失时经
-  // theme 通道兜底，两套不同时挂）。
-  unsubscribeEnvironment = subscribeHostEnvironment<DbxPluginAppearance, DbxPluginTheme>(api, {
-    onLocale: (nextLocale) => (locale.value = nextLocale || "zh-CN"),
-    onContext: (context) => {
-      hostContext.value = context;
-    },
-    onAppearance: applyAppearance,
-    onTheme: (theme) => applyAppearance(themeToAppearance(theme)),
-  }, { themeChannel: onHostThemeChange });
-  unsubscribeEvent = api.onEvent(handleEvent);
-  unsubscribeBinary = api.onBinary(handleBinary);
-  unsubscribeFileDrag = api.fileTransfer?.onDragState((active, position) => {
-    applyHostDragState(active, position);
-  });
-  unsubscribeFileDrop = api.fileTransfer?.onDrop((files, drop) => {
-    // 宿主目录展开撞上限（如单文件夹 2000 文件）只交付前缀：明确提示而不是
-    // 静默丢文件；完整上传指引工具栏「上传文件夹」选择器（浏览器枚举，无此限）。
-    if (drop?.truncated) showNotice(t("hostDrop.truncated"));
-    // 新宿主附带落点坐标：以落点命中的目录行为准（空白/文件 = 当前目录）；
-    // 旧宿主没有坐标时回落到拖拽期间记录的目标。
-    const pointed = drop?.position ? sftpTreePane.value?.markDropTargetAt(drop.position) : "";
-    const target = drop?.position ? (pointed || undefined) : (sftpDragDropTarget.value || undefined);
-    sftpDragDropTarget.value = "";
-    void handleHostFileDrop(files, target);
-  });
-  // 原始 dragstate 通道：宿主消息本身带 position；即使注入 SDK 是旧版/缓存版，
-  // 也能拿到坐标。与上面的 SDK 监听重复消费是幂等的。
-  window.addEventListener("message", onHostDragMessage);
-  // 分屏 PTY 不随 workbenchState 恢复。webview 重载后旧分屏会话仍在 sidecar
-  // 中，先按独立 workbenchId 后缀清掉，避免孤儿 PTY 泄漏（主会话不受影响）。
-  void closeOrphanSplitSessions();
-  // §8.3 面板加载生命周期：探活与终端创建并行。探活只是一次 sidecar 往返，
-  // 串行执行会把真正耗时的 openSession 压到整个引导的最后。
-  const reattachLookup = readPluginMode(hostContext.value) !== "local-terminal" && connectionId.value && workbenchId.value && !restored.value
-    ? findReattachSession()
-    : Promise.resolve("");
-  await nextTick();
-  createTerminal();
-  // P0 connectionless local-terminal passthrough (HOST_PLUGIN_UI_SPEC §4/§7.1): when the host opens this workbench with
-  // the workbench is opened with the command context (plugin.mode="local-terminal") (command
-  // panel / toolbar entry / self-open bridge), the SSH connection flow is skipped and the local terminal opens directly.
-  if (readPluginMode(hostContext.value) === "local-terminal") {
-    if (!workbenchId.value) throw new Error(t("errors.hostBridgeMissing"));
-    await hydratePrefs();
-    // Bottom dock / webview rebuild reopen: first reattach the live shell still bound to this workbenchId in the
-    // live shell (reopening never leaks a new PTY; spec §10 leaves no PTY behind on close).
-    if (await reattachLocalSession()) return;
-    // A4 restore semantics (spec §7.6/§8.4): restoring is not re-running the command — a restored tab
-    // no automatic shell — just the exit shell until the user explicitly hits "Reopen".
-    if (restored.value) {
-      localSession.value = null;
-      localState.value = "exited";
-      localShellRestored.value = true;
-      return;
-    }
-    // Dock "+" creates with the selected shell type (context.plugin.shell); when unset the preference applies.
-    await startLocalTerminal(readPluginShell(hostContext.value) || undefined);
-    return;
-  }
-  if (!connectionId.value || !workbenchId.value) throw new Error(t("errors.hostBridgeMissing"));
-  const state = initialState();
-  if (restored.value) {
-    terminalState.value = "disconnected";
-    terminalError.value = t("restartDisconnected");
-    return;
-  }
-  // Webview 重建必须先按 workbenchId 接回所有非 SSH 协议会话；这些会话不
-  // 写 SSH workbench state，若先走 openSession 会重新创建 Telnet/VNC/RDP/Serial。
-  if (await reattachProtocolSession()) return;
-  if (typeof state.sessionId === "string" && state.sessionId) await attachSession(state.sessionId);
-  else {
-    // 宿主切 tab / 左侧菜单重开可能整体重建工作台 webview。只恢复
-    // 同一 workbench 的 live session；不能按 connectionId 复用任意会话，
-    // 否则打开同一连接的新 Tab 会接管已有 Tab 的 PTY。
-    const reattach = await reattachLookup;
-    if (reattach) await attachSession(reattach, reattach);
-    // 上一轮本地终端还活着（webview 重建但 sidecar 未退出）：接回并补发，
-    // 避免孤儿 shell 挂在 sidecar 里。
-    else if (await reattachLocalSession()) {
-      // 本地模式接管终端。
-    }
-    // 上来直接连（§8.3 面板加载生命周期）：宿主已在点击创建条目时
-    // ensureConnected 预拨（connectionPreconnected 旗标），这里跳过 force
-    // 重开（force 会复位共享连接），直接 openSession——拨号未完成时由
-    // preconnect 短间隔轮询自愈（250ms 固定节奏，不再是 2s 退避梯子），
-    // 拨号失败/永久错误走既有分类报错。
-    // 旧宿主无旗标：保留原有 force 重开路径。
-    else {
-      if (panelSurface.value && !hostContext.value.connectionPreconnected) await requestHostReopenConnection();
-      await openSession(false, true);
-    }
-  }
-}
-
-/**
- * Asks the sidecar for the live session bound to this workbench and connection
- * (sidecar `ssh/sessions/list`); "" when none — caller dials a fresh session.
- * Failures degrade to a fresh open instead of blocking the workbench.
- */
-async function findReattachSession(): Promise<string> {
-  try {
-    const result = await window.dbxPlugin.invoke<{ sessions?: SessionSummary[] }>("ssh/sessions/list", {}, { timeoutMs: 10_000 });
-    return pickLiveSessionForReattach(result?.sessions, { connectionId: connectionId.value, workbenchId: workbenchId.value });
-  } catch {
-    return "";
-  }
-}
-
-/** 清理 webview 重载遗留的分屏 PTY（workbenchId 带 #split 后缀）。 */
-async function closeOrphanSplitSessions(): Promise<void> {
-  if (!workbenchId.value) return;
-  const splitWorkbenchId = `${workbenchId.value}#split`;
-  try {
-    const result = await window.dbxPlugin.invoke<{ sessions?: Array<{ sessionId?: string; workbenchId?: string }> }>("ssh/sessions/list", {}, { timeoutMs: 10_000 });
-    const orphans = (result?.sessions ?? []).filter((entry) => entry.workbenchId === splitWorkbenchId && entry.sessionId);
-    await Promise.allSettled(orphans.map((entry) => window.dbxPlugin.invoke("ssh/session/close", { sessionId: entry.sessionId })));
-  } catch {
-    // 旧 sidecar / 无会话列表时静默；没有分屏就没有孤儿。
-  }
-}
-
-type ProtocolSessionKind = "telnet" | "vnc" | "rdp" | "serial";
-interface ProtocolSessionSummary extends SessionSummary {
-  host?: string;
-  port?: number;
-  baudRate?: number;
-  binaryInput?: boolean;
-}
-
-async function reattachProtocolSession(): Promise<boolean> {
-  const lists: Array<{ kind: ProtocolSessionKind; method: string }> = [
-    { kind: "telnet", method: "telnet/list" },
-    { kind: "vnc", method: "vnc/list" },
-    { kind: "rdp", method: "rdp/list" },
-    { kind: "serial", method: "serial/list" },
-  ];
-  const candidates = await Promise.all(lists.map(async ({ kind, method }) => {
-    try {
-      const result = await window.dbxPlugin.invoke<{ sessions?: ProtocolSessionSummary[] }>(method, {}, { timeoutMs: 10_000 });
-      const sessionId = pickProtocolSessionForReattach(result?.sessions, workbenchId.value);
-      const session = result?.sessions?.find((entry) => entry?.sessionId === sessionId);
-      return session ? { kind, session } : null;
-    } catch {
-      return null;
-    }
-  }));
-  const live = candidates
-    .filter((candidate): candidate is { kind: ProtocolSessionKind; session: ProtocolSessionSummary } => candidate !== null)
-    .sort((left, right) => (right.session.createdAt ?? 0) - (left.session.createdAt ?? 0))[0];
-  if (!live) return false;
-
-  if (live.kind === "telnet") {
-    telnetSession.value = { sessionId: live.session.sessionId, host: live.session.host || "", port: live.session.port || 23 };
-    telnetState.value = "running";
-    telnetLastSequence.value = 0;
-    telnetPendingFrames.clear();
-    await window.dbxPlugin.invoke<ReplayResult>("telnet/replay", { sessionId: live.session.sessionId, afterSequence: 0 });
-  } else if (live.kind === "vnc") {
-    await reattachVncSession(live.session);
-  } else if (live.kind === "rdp") {
-    rdpSession.value = { sessionId: live.session.sessionId, host: live.session.host || "", port: live.session.port || 3389 };
-    rdpState.value = { state: "running", error: "", errorKind: "", attempt: 0, maxAttempts: 0 };
-    await window.dbxPlugin.invoke("rdp/replay", { sessionId: live.session.sessionId });
-  } else {
-    serialSession.value = {
-      sessionId: live.session.sessionId,
-      port: live.session.port ? String(live.session.port) : "",
-      baudRate: live.session.baudRate || 115_200,
-    };
-    serialState.value = "running";
-    serialLastSequence.value = 0;
-    serialPendingFrames.clear();
-    serialBinaryInput.value = live.session.binaryInput !== false;
-    await window.dbxPlugin.invoke<ReplayResult>("serial/replay", { sessionId: live.session.sessionId, afterSequence: 0 });
-  }
-  await nextTick();
-  scheduleFit();
-  return true;
-}
+// 工作台启动桥：宿主握手 → UI 水合 → 会话接回/新开 → 事件订阅的启动顺序，
+// 后端事件分派入口、MCP 设置镜像与挂载/卸载的监听器/资源收口整体收口在
+// workbench/composables/useWorkbenchBootstrap；mount/unmount 由下方生命周期钩子调用。
+const { mount, unmount } = useWorkbenchBootstrap({
+  t,
+  hostContext, locale, terminalState, terminalError, panelSurface, connectionId, workbenchId, restored,
+  sftpDragDropTarget, sftpTreePane,
+  applyHostDragState: hostDrag.applyHostDragState,
+  onHostDragMessage: hostDrag.onHostDragMessage,
+  openSession, attachSession, requestHostReopenConnection, resetTransportReuseState,
+  localSession, localState, localShellRestored, startLocalTerminal, reattachLocalSession,
+  telnetSession, telnetState, telnetLastSequence, telnetPendingFrames,
+  reattachVncSession, rdpSession, rdpState,
+  serialSession, serialState, serialLastSequence, serialPendingFrames, serialBinaryInput,
+  terminalHost, createTerminal, scheduleFit, detachTerminalHost, disposeTerminalInstance,
+  handleBinary, disposeOutputPipeline,
+  initialState, restoreUiState, writeWorkbenchState, persistThrottle, hydratePrefs,
+  applyTerminalPaddingVars, applyAppearance, hostFontObserver,
+  hydrateQuickCommands, hydrateHighlightRules,
+  showNotice, showError,
+  hideTooltip, onTooltipOver, onTooltipOut, onTooltipFocusIn, onTooltipFocusOut,
+  onDocumentClickCapture, onDocumentMouseDownCapture, onDocumentKeydown, trackStableFocus,
+  onDocumentClickCloseMenus, resolvePasteConfirm, resolvePendingConfirmDialog,
+  handleDockerOpenInTerminal, detachHighlightRender, detachActionLinks, detachGutterListeners,
+  stopCommandMarkerTick, stopAgentPromptTimer, cancelReconnect,
+  // usePromptHints 在 setup 尾部才声明：卸载时才求值，getter 避开 TDZ。
+  disposePromptHints: () => disposePromptHints(),
+  handleHostFileDrop, uploadAckWaiters, downloadChunkWaiters,
+  handlePluginEvent,
+  aiBridgeReady, aiBridgeOk, folderUploadSupported, resetDragHighlightOnWindowLeave,
+  // 卸载标志与终端诊断计时器是 App 的 `let` 本体，经回调写穿。
+  markDisposed: () => { disposed = true; },
+  clearTerminalDiagTimer: () => window.clearInterval(terminalDiagTimer),
+});
 
 watch([splitRatio, paneOrder, paneDirection, sftpPaneOpen, followDirectory, sudoMode, visibleColumns, sftpShowHidden, sort], persistState, { deep: true });
 
@@ -4004,117 +3780,19 @@ watch(sftpPaneOpen, (open) => {
 });
 
 // ---------------------------------------------------------------------------
-// MCP 设置镜像（存储迁移批 1，IMPL_PLAN_STORAGE_SYNC）：sidecar 在 MCP serve
-// 时直接消费 mcp-settings.json，pluginStore 里只存「云同步载荷」。启动时：
-// store 缺失 → 从 sidecar persisted 值播种；存在但与 sidecar 不一致（云同步
-// 恢复后）→ 把 store 推回 sidecar。set 是部分更新，localTransferRoot 由
-// sidecar 保留，不进镜像。保存侧的双写在 SettingsDialog.saveMcpSettings。
+// MCP 设置镜像（存储迁移批 1，IMPL_PLAN_STORAGE_SYNC）：随工作台启动桥迁入
+// workbench/composables/useWorkbenchBootstrap.syncMcpSettingsMirror（启动时
+// 播种/回推，保存侧双写仍在 SettingsDialog.saveMcpSettings）。
 // ---------------------------------------------------------------------------
 
-async function syncMcpSettingsMirror() {
-  const stored = loadMcpSettingsMirror();
-  try {
-    const remote = extractMcpSettingsMirror(await window.dbxPlugin.invoke<unknown>("mcp/settings/get", {}));
-    if (stored === null) {
-      persistMcpSettingsMirror(remote);
-      return;
-    }
-    if (!mcpSettingsMirrorEquals(stored, remote)) {
-      await window.dbxPlugin.invoke("mcp/settings/set", {
-        maxReadBytes: stored.maxReadBytes,
-        maxUploadBytes: stored.maxUploadBytes,
-        maxDownloadBytes: stored.maxDownloadBytes,
-        execPermissionMode: stored.execPermissionMode,
-        connectionScope: stored.connectionScope,
-      });
-    }
-  } catch {
-    // sidecar 不可用（旧版/降级）：跳过，下次启动重试。
-  }
-}
-
 onMounted(() => {
-  document.addEventListener("click", onDocumentClickCloseMenus);
-  // AI 桥能力位（Warp AI 对齐批）：桥 bootstrap 与 UI 挂载同批完成，挂载后
-  // 探一次供设置页横幅展示；运行时调用点各做新鲜探测（aiBridgeOk）。
-  aiBridgeReady.value = aiBridgeOk();
-  // 文件夹上传能力探测（issue #78）：webkitdirectory 非标准属性，缺失环境
-  // （老 webview）隐藏入口，文件级上传不受影响。
-  const folderProbe = document.createElement("input");
-  folderProbe.type = "file";
-  folderUploadSupported.value = "webkitdirectory" in folderProbe;
-  document.addEventListener("click", onDocumentClickCapture, true);
-  document.addEventListener("mousedown", onDocumentMouseDownCapture, true);
-  document.addEventListener("keydown", onDocumentKeydown);
-  document.addEventListener("focusin", trackStableFocus);
-  document.addEventListener("mouseover", onTooltipOver);
-  document.addEventListener("mouseout", onTooltipOut);
-  document.addEventListener("focusin", onTooltipFocusIn);
-  document.addEventListener("focusout", onTooltipFocusOut);
-  document.addEventListener("pointerdown", hideTooltip, true);
-  document.addEventListener("wheel", hideTooltip, true);
-  window.addEventListener("dbx:docker-open-in-terminal", handleDockerOpenInTerminal);
-  window.addEventListener("dragleave", resetDragHighlightOnWindowLeave);
-  hostFontObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-  void hydrateQuickCommands();
-  void hydrateHighlightRules();
-  void syncMcpSettingsMirror();
-  void hydratePrefs();
-  void initialize().catch((cause) => {
-    terminalState.value = "error";
-    showError(cause, "terminal");
-  });
+  mount();
 });
 
 onBeforeUnmount(() => {
-  disposed = true;
-  window.removeEventListener("dbx:docker-open-in-terminal", handleDockerOpenInTerminal);
-  window.removeEventListener("dragleave", resetDragHighlightOnWindowLeave);
-  document.removeEventListener("mouseover", onTooltipOver);
-  document.removeEventListener("mouseout", onTooltipOut);
-  document.removeEventListener("focusin", onTooltipFocusIn);
-  document.removeEventListener("focusout", onTooltipFocusOut);
-  document.removeEventListener("pointerdown", hideTooltip, true);
-  document.removeEventListener("wheel", hideTooltip, true);
-  hostFontObserver.disconnect();
-  hideTooltip();
-  persistThrottle.cancel(); // 卸载兜底：丢弃挂起定时器后直接落盘（保留既有语义）
-  void writeWorkbenchState();
-  cancelReconnect();
-  window.clearInterval(terminalDiagTimer);
-  disposePromptHints();
-  stopCommandMarkerTick();
-  stopAgentPromptTimer();
-  resolvePasteConfirm(false);
-  resolvePendingConfirmDialog(false);
-  if (terminalHost.value) detachTerminalHost(terminalHost.value);
-  document.removeEventListener("click", onDocumentClickCloseMenus);
-  document.removeEventListener("click", onDocumentClickCapture, true);
-  document.removeEventListener("mousedown", onDocumentMouseDownCapture, true);
-  document.removeEventListener("keydown", onDocumentKeydown);
-  document.removeEventListener("focusin", trackStableFocus);
-  unsubscribeEvent?.();
-  unsubscribeBinary?.();
-  unsubscribeEnvironment?.();
-  unsubscribeFileDrag?.();
-  unsubscribeFileDrop?.();
-  window.removeEventListener("message", onHostDragMessage);
-  // 输出管线（写节流 flush + 在途写入作废 + 背压门复位）按原语义一次收口。
-  disposeOutputPipeline();
-  detachHighlightRender();
-  detachActionLinks();
-  detachGutterListeners();
-  // 实例持有的 timer/observer/parser/输入与铃铛 handler 连同终端本体一起释放。
-  disposeTerminalInstance();
-  for (const waiter of uploadAckWaiters.values()) {
-    window.clearTimeout(waiter.timer);
-    waiter.reject(new Error(t("errors.workbenchDetached")));
-  }
-  for (const waiter of downloadChunkWaiters.values()) {
-    window.clearTimeout(waiter.timer);
-    waiter.reject(new Error(t("errors.workbenchDetached")));
-  }
+  unmount();
 });
+
 
 // 空提示符快捷键引导条（TerminalPromptHints）：状态/显隐门/消散收口在
 // composables/usePromptHints；声明位置收在 setup 尾部（依赖链上有后段才
