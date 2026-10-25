@@ -1,7 +1,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { SftpFileTreeNode, SftpTreeRow } from "../lib/sftpFileTree";
 
-const DROP_EXPAND_DELAY = 2_000;
+const DROP_EXPAND_DELAY = 1_000;
 
 export interface TreeDragPoint {
   x: number;
@@ -9,7 +9,7 @@ export interface TreeDragPoint {
 }
 
 /** 文件拖放到目录行：只有宿主文件拖拽（dataTransfer.types 含 "Files" 或宿主
- *  dragActive）才高亮；折叠目录悬停 2s 后 toggle 由父级懒加载展开。drop 必须
+ *  dragActive）才高亮；折叠目录悬停 1s 后 toggle 由父级懒加载展开。drop 必须
  *  同步上抛原始 DragEvent，父级要在同一 tick 里读取 dataTransfer.items。 */
 export function useTreeFileDrop(options: {
   rows: () => SftpTreeRow[];
@@ -176,7 +176,7 @@ export function useTreeFileDrop(options: {
     return list.includes("Files") || list.length === 0;
   }
 
-  /** 行级落点标记：dragover 事件与宿主拖拽的指针兜底共用同一套高亮/2s 展开。 */
+  /** 行级落点标记：dragover 事件与宿主拖拽的指针兜底共用同一套高亮/1s 展开。 */
   function markRowDragTarget(node: SftpFileTreeNode) {
     dragOverUri.value = node.entry.uri;
     dragOverPath.value = node.path;
@@ -184,7 +184,7 @@ export function useTreeFileDrop(options: {
       clearDropExpandTimer();
       return;
     }
-    // 同一行的重复 dragover 不重启 2s 计时器；触发过一次后直到 dragleave/drop
+    // 同一行的重复 dragover 不重启 1s 计时器；触发过一次后直到 dragleave/drop
     // 前不再重复 toggle（原生 dragover 在父级异步展开前仍会持续触发）。
     if (dropExpandFiredUri === node.entry.uri) return;
     if (dropExpandTimer !== undefined && dropExpandUri === node.entry.uri) return;

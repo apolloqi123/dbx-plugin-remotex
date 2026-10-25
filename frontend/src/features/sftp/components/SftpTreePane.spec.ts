@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // SftpTreePane 组件测试：文件夹/文件单击语义、caret 阻断、双击打开、右键、
 // 键盘（Enter/Space/方向键/roving focus）、改名提交/取消、选中/当前态与空态；
-// 以及 Info 详情卡（250ms 悬停/聚焦、懒加载缓存）与拖放目标（高亮、2s 悬停
+// 以及 Info 详情卡（250ms 悬停/聚焦、懒加载缓存）与拖放目标（高亮、1s 悬停
 // 展开、drop-on 同步上抛）。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
@@ -743,7 +743,7 @@ describe("SftpTreePane drag and drop targeting", () => {
 
       await wrapper.setProps({ externalDragActive: true });
       dispatchDrag(rowEl.element, "dragover", { types: [] });
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
     } finally {
       wrapper.unmount();
@@ -790,7 +790,7 @@ describe("SftpTreePane drag and drop targeting", () => {
     expect(rowEl.classes()).not.toContain("is-drop-target");
   });
 
-  it("emits toggle once after hovering a collapsed folder for 2000ms", async () => {
+  it("emits toggle once after hovering a collapsed folder for 1000ms", async () => {
     vi.useFakeTimers();
     const folder = makeNode("/var", "directory");
     const wrapper = mountPane([row(folder)]);
@@ -801,19 +801,19 @@ describe("SftpTreePane drag and drop targeting", () => {
       dispatchDrag(rowEl.element, "dragover", { types: ["Files"] });
       await nextTick();
 
-      await vi.advanceTimersByTimeAsync(1_999);
+      await vi.advanceTimersByTimeAsync(999);
       expect(wrapper.emitted("toggle")).toBeUndefined();
 
       await vi.advanceTimersByTimeAsync(1);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
       expect(wrapper.emitted("toggle")?.[0]).toEqual([folder]);
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
 
       // 父级异步展开前原生 dragover 仍会持续触发：不得重复 toggle。
       dispatchDrag(rowEl.element, "dragover", { types: ["Files"] });
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
     } finally {
       wrapper.unmount();
@@ -832,7 +832,7 @@ describe("SftpTreePane drag and drop targeting", () => {
       await nextTick();
       expect(rows[0].classes()).toContain("is-drop-target");
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toBeUndefined();
 
       dispatchDrag(rows[1].element, "dragover", { types: ["Files"] });
@@ -840,7 +840,7 @@ describe("SftpTreePane drag and drop targeting", () => {
       expect(rows[1].classes()).toContain("is-drop-target");
       expect(rows[0].classes()).not.toContain("is-drop-target");
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toBeUndefined();
     } finally {
       wrapper.unmount();
@@ -855,14 +855,47 @@ describe("SftpTreePane drag and drop targeting", () => {
 
     try {
       dispatchDrag(rowEl.element, "dragover", { types: ["Files"] });
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(900);
       dispatchDrag(rowEl.element, "dragleave", { relatedTarget: document.body });
       await nextTick();
       expect(rowEl.classes()).not.toContain("is-drop-target");
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toBeUndefined();
     } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("expands the next folder after 1s when the drag moves on", async () => {
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(rowA);
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      api.markDropTargetAt({ x: 20, y: 10 });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(wrapper.emitted("toggle")).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wrapper.emitted("toggle")?.[0]).toEqual([folderA]);
+
+      // 不放手，移动到另一个折叠目录：重新计时并在 1s 后展开它。
+      folderA.expanded = true;
+      pointSpy.mockReturnValue(rowB);
+      api.markDropTargetAt({ x: 20, y: 50 });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(wrapper.emitted("toggle")).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wrapper.emitted("toggle")?.[1]).toEqual([folderB]);
+      expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
+    } finally {
+      pointSpy.mockRestore();
       wrapper.unmount();
     }
   });
@@ -1010,7 +1043,7 @@ describe("SftpTreePane drag and drop targeting", () => {
     try {
       dispatchDrag(rowA, "dragover", { types: [] });
       await nextTick();
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
       expect(wrapper.emitted("toggle")?.[0]).toEqual([folderA]);
 
@@ -1022,8 +1055,9 @@ describe("SftpTreePane drag and drop targeting", () => {
       expect(rowEls[1].classes()).toContain("is-drop-target");
       expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
 
-      // 冻结的 :hover 轮询继续跑：目标必须保持 B，B 的 2s 展开计时不能被清掉。
-      await vi.advanceTimersByTimeAsync(1_500);
+      // 冻结的 :hover 轮询继续跑：目标必须保持 B，B 的 1s 展开计时不能被清掉。
+      await vi.advanceTimersByTimeAsync(500);
+      expect(wrapper.emitted("toggle")).toHaveLength(1);
       expect(rowEls[1].classes()).toContain("is-drop-target");
       expect(rowEls[0].classes()).not.toContain("is-drop-target");
       expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
@@ -1058,12 +1092,12 @@ describe("SftpTreePane drag and drop targeting", () => {
       await vi.advanceTimersByTimeAsync(300);
       dispatchDrag(rowA, "dragover", { types: [] });
       await nextTick();
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")?.[0]).toEqual([folderA]);
 
       folderA.expanded = true;
       hoverRow = rowB;
-      await vi.advanceTimersByTimeAsync(2_200);
+      await vi.advanceTimersByTimeAsync(1_100);
 
       expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/b"]);
       expect(wrapper.emitted("toggle")?.at(-1)).toEqual([folderB]);
@@ -1090,7 +1124,7 @@ describe("SftpTreePane drag and drop targeting", () => {
       expect(wrapper.find(".sftp-tree-row").classes()).toContain("is-drop-target");
       expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual(["/var"]);
 
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(wrapper.emitted("toggle")).toHaveLength(1);
     } finally {
       querySpy.mockRestore();
@@ -1106,7 +1140,7 @@ describe("SftpTreePane drag and drop targeting", () => {
 
     dispatchDrag(rowEl.element, "dragover", { types: ["Files"] });
     wrapper.unmount();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1_000);
 
     expect(wrapper.emitted("toggle")).toBeUndefined();
   });

@@ -3,7 +3,7 @@
 // 节点状态、懒加载与过滤由父级通过 sftpFileTree.ts 维护。虚拟滚动沿用
 // 文件列表的 computeWindow（28px 行高 + overscan），测试可关掉窗口化。
 // Info 详情卡用 Teleport 挂在 body 上（fixed + pointer-events:none），不进入
-// 虚拟列表布局；目录行同时是宿主文件拖放目标（高亮 + 悬停 2s 懒展开）。
+// 虚拟列表布局；目录行同时是宿主文件拖放目标（高亮 + 悬停 1s 懒展开）。
 // 虚拟滚动/详情卡/文件拖放分别下沉到 useTreeVirtualScroll / useTreeDetailsCard /
 // useTreeFileDrop，单行 DOM 与行内样式在 SftpTreeRow.vue。
 import { computed, ref, watch } from "vue";

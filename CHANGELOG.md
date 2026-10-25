@@ -13,6 +13,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 - **定时任务支持本地 Shell 目标与脚本文件**。调度任务编辑器新增两处能力：任务连接可选「本地 Shell」（新连接类型 `io.dbx.sshx.local`——表单只有连接名与可选 Shell 绝对路径，无网络端点、无凭据），让定时/常驻命令直接运行在 DBX 所在机器上（进程级应用环境变量与工作目录，流式日志、取消、超时与 SSH 同契约；取消/超时按进程组 TERM→SIGKILL 清理，本地路径忽略 PTY 选项）；两个触发器均新增可选「脚本文件」字段（带本机文件选择器），与「命令」互斥、至少填一个——SSH 连接把脚本上传到远端 `mktemp` 临时文件以 bash（无则 sh）执行、run 结束必删临时文件，本地 Shell 直接执行该文件。本地化覆盖全部既有语言。
   **Scheduled tasks gain a local shell target and script files.** The task editor adds two capabilities: task connections may bind a "Local shell" target (new connection type `io.dbx.sshx.local` — the form carries only a display name and an optional absolute shell path, no network endpoint and no credentials) so scheduled and resident commands run on the machine running DBX itself (environment and working directory apply at the process level; streaming logs, cancel and timeout follow the same contract as SSH, with cancel/timeout tearing down the whole process group TERM→SIGKILL; the PTY field is ignored on local targets); and both triggers gain an optional "Script file" field (with a native file picker), mutually exclusive with "Command" and at least one required — SSH targets upload the script to a remote `mktemp` temp file, run it with bash (falling back to sh) and always remove the temp file afterwards, while local-shell targets execute the file directly. Localizations cover every shipped language.
 
+## [0.7.9-beta.25] — 2026-10-25
+
+- **拖拽悬停目录 1 秒自动展开**。系统文件拖入 SFTP 面板时，悬停折叠目录 1 秒即展开；未松手继续移动到另一个目录会重新计时并在 1 秒后展开该目录，落点跟随当前悬停目录，直到松手完成上传。原 2 秒延迟与“首个目录锁存”行为已移除。
+  **Hovering a folder during an OS file drag expands it after one second.** When dragging OS files into the SFTP panel, holding over a collapsed folder for one second expands it; moving on to another folder without dropping restarts the timer and expands that folder after one second, with the drop target following the hovered folder until release. The previous two-second delay is gone.
+
 ## [0.7.9-beta.24] — 2026-10-25
 
 - **修复系统文件拖入 SFTP 面板时悬停目标不跟随**。DBX 宿主现在把原生拖拽坐标转发进插件 iframe；插件按 iframe 内坐标命中当前目录行，悬停高亮、2s 自动展开和最终 drop 落点都随光标移动，不再被冻结的 `:hover` 或首个目标锁住。旧宿主不带坐标时仍走原有 DOM/指针兜底，行为不变。
