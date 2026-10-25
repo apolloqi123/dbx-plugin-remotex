@@ -27,3 +27,8 @@
 2. 同子域内的文件可自由相互引用（含相对路径与 `index.ts`）。
 3. 依赖方向：`components` → `composables` → `lib` → `shared`。任何反向引用都是违规。
 4. spec 与被测模块同目录，文件名 `<module>.spec.ts`；纯逻辑单测不得挂到 `components/`。
+
+## 已知例外
+
+`composables/ui/useOnlineSearch.ts` 目前仍从 `components/TerminalContextMenu.vue` 导入纯函数
+（`buildSearchUrl` 等），属于规则 3 的既存例外；这些 helper 需先抽到 `lib/`，规则才能完全落地。
