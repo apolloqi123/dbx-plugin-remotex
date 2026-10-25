@@ -7,6 +7,9 @@ mod filesystem;
 mod platform;
 mod sessions;
 
+#[cfg(test)]
+mod structure_tests;
+
 fn main() -> std::io::Result<()> {
     app::run()
 }
