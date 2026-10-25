@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { ImageAddon } from "@xterm/addon-image";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { SearchAddon } from "@xterm/addon-search";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import {
   ArrowLeft,
   ChevronDown,
@@ -67,14 +62,9 @@ import {
 } from "../features/terminal/lib/transfer/terminalTrzsz";
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
-import { handleOsc52ClipboardWrite } from "../features/terminal/lib/emulator/terminalOsc";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
 import { subscribeHostEnvironment } from "../../../shared/frontend/hostThemeRuntime";
 import {
-  cwdFromUserVar,
-  parseOsc1337SetUserVar,
-  parseOsc777Notify,
-  parseOsc9Notification,
   shouldOsc7FollowOverrideUserVarCwd,
 } from "../features/terminal/lib/emulator/terminalOscChannels";
 import {
@@ -96,7 +86,6 @@ import { classifyConnectError, connectErrorKey } from "../features/connections/l
 import { useSshConnection, type ReplayResult, type SessionInfo } from "../features/connections/composables/useSshConnection";
 import { workbenchCloseTargets } from "./lib/workbenchCloseSessions";
 import { createConnectLog } from "../features/connections/lib/connectLog";
-import { writeClipboardText } from "../shared/lib/clipboardBridge";
 import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, terminalFlexBasis } from "../shared/lib/paneLayout";
 import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilters";
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/paths/sftpBookmarks";
@@ -141,7 +130,6 @@ import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
 import { normalizeTerminalInputBytes } from "../features/terminal/lib/emulator/terminalInput";
 import { type TerminalSyncOutput } from "../features/terminal/lib/emulator/terminalModeQueries";
-import { installMacWebkitInputFallback } from "../features/terminal/lib/emulator/terminalWebkitInput";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
@@ -178,6 +166,7 @@ import { useWorkbenchPanels } from "./workbench/composables/useWorkbenchPanels";
 import { useWorkbenchPersistence } from "./workbench/composables/useWorkbenchPersistence";
 import { useLocalShellPreferences } from "../features/terminal/composables/session/useLocalShellPreferences";
 import { useLocalShellSession } from "../features/terminal/composables/session/useLocalShellSession";
+import { useTerminalInstance } from "../features/terminal/composables/session/useTerminalInstance";
 import { useShellTabs } from "../features/terminal/composables/ui/useShellTabs";
 import { useTerminalMenus } from "../features/terminal/composables/ui/useTerminalMenus";
 import { useQuickCommandPanel } from "../features/quick-commands/composables/useQuickCommandPanel";
@@ -251,16 +240,11 @@ import {
   folderUploadPercent,
 } from "../features/sftp/lib/transfer/folderUpload";
 import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "./workbench/lib/appearanceSync";
-import { attachWebglRenderer, syncWebglRenderer, type WebglRecoveryOptions, type WebglRendererLike } from "../features/terminal/lib/appearance/terminalWebgl";
 import {
   activeProfileId,
   loadTerminalAppearance,
-  terminalOptionPatch,
   type TerminalAppearanceState,
 } from "../features/terminal/lib/appearance/terminalAppearance";
-import {
-  terminalBehaviorOptionPatch,
-} from "../features/terminal/lib/appearance/terminalBehavior";
 import {
   keyComboFromEvent,
   matchTerminalHotkey,
@@ -510,7 +494,7 @@ const {
   runTerminalSearch,
 } = useTerminalSearch({
   terminal: () => terminal,
-  searchAddon: () => searchAddon,
+  searchAddon: () => searchAddon(),
   closeMenu: () => {
     terminalMenuOpen.value = false;
   },
@@ -685,6 +669,105 @@ const terminalCopyCache = createTerminalCopyCache();
 // 都记录）：终端拖拽上传的「当前目录」落点解析靠它，避免误用 SFTP 面板的
 // 浏览目录（初始值 "/"，拼根路径会被服务器以权限拒绝）。
 const terminalCwd = ref("");
+// —— xterm 实例：创建/addons/宿主编排/尺寸 fit/WebGL 开关与销毁收口在
+// features/terminal/composables/session/useTerminalInstance。实例由它持有并
+// 在创建时回填下面的别名（既有大量调用点与模板绑定直接读 terminal）；
+// 跨模块依赖一律经 getter/回调注入——本段之后的 composable 才有实现。
+let terminal: Terminal | undefined;
+
+// 主终端键入路由（传输占用/`#` AI 搜索/行快照与建议刷新）：实例只做 onData
+// 接线，路由规则留在 App（Task 17 收口到 useTerminalInput）。
+// Named handler: main's WKWebView input-loss fallback shares this route.
+// Gate is local-terminal aware (a4): no SSH session AND no local shell means
+// there is no PTY to receive input.
+function routeTerminalData(data: string) {
+  if (!session.value && !localSession.value) return;
+  // 文件传输占用路由：trzsz 持有流时，传输中的输入进 filter（Ctrl+C 停传输、
+  // 其余吞掉），等待协商期直接吞掉（防止杂散键入干扰 trz 握手）；zmodem 持有
+  // 流时输入保持阻塞，否则走普通 PTY 键盘写入（8 字节序号前缀已封装）。
+  const route = resolveTerminalInputRoute({ zmodemBusy: zmodemBusy.value, trzszBusy: trzszBusy.value });
+  if (route === "trzsz") {
+    feedTrzszTerminalInput(data);
+    terminalDiag.swallowed += 1;
+    return;
+  }
+  if (route === "blocked") {
+    terminalDiag.swallowed += 1;
+    return;
+  }
+  // `#` AI 命令搜索（Warp AI Command Search 同位）：等待冻结、模式内编辑与
+  // 空行激活统一由共享 composable 判定；消费的字节不进 PTY。
+  if (aiSearch.handleData(data)) {
+    terminalDiag.swallowed += 1;
+    return;
+  }
+  // 首帧优化：键入字节先发送，输入记录随后同步完成，bookkeeping 不阻塞发送路径。
+  // 命令建议（P1-1）：行快照先于 trackPendingInput 取（\r 会清空行缓冲），
+  // 之后按输入事件推进抑制门并刷新浮层。快速命令/粘贴/自动应答不走路由，
+  // 天然不会触发浮层，也不会进入采集。
+  sendTerminalBytes(new TextEncoder().encode(data));
+  const lineBeforeInput = pendingTerminalInput;
+  trackPendingInput(data);
+  refreshSuggestionsAfterInput(data, lineBeforeInput);
+  refreshGhostAfterInput(data);
+  terminalDiag.keys += 1;
+}
+
+const {
+  searchAddon,
+  webglRenderer,
+  createTerminal,
+  detachTerminalHost,
+  scheduleFit,
+  fitTerminalDimensions,
+  settledTerminalDimensions,
+  terminalCursorPosition,
+  setWebglEnabled,
+  webglRecoveryOptions,
+  disposeTerminalInstance,
+} = useTerminalInstance({
+  terminalHost,
+  terminalCwd,
+  terminalCopyCache,
+  t: (key) => t(key),
+  showNotice,
+  clipboardDeps: () => clipboardDeps(),
+  getHostFont: () => ({
+    fontFamily: hostTerminalFontFamily(appearance.value),
+    fontSize: appearance.value.terminal.fontSize,
+  }),
+  getFontOverride: () => terminalFontOverride.value,
+  setFontSize: (size) => { terminalFontSize.value = size; },
+  getTerminalAppearance: () => terminalAppearance.value,
+  getTerminalBehavior: () => terminalBehavior.value,
+  getTerminalTheme: () => terminalTheme(),
+  registerOscColorQueryHandlers: () => registerOscColorQueryHandlers(),
+  setUserVarCwdEvent: (event) => { userVarCwdEvent = event; },
+  getKeyHandler: () => handleTerminalKey,
+  getSearchResultsHandler: () => handleSearchResults,
+  getOpenTerminalLink: () => openTerminalLink,
+  getPasteHandler: () => interceptTerminalPaste,
+  getWheelHandler: () => handleTerminalWheel,
+  getMouseDownHandler: () => handleTerminalMouseDown,
+  getMouseUpHandler: () => handleTerminalMouseUp,
+  getBellHandler: () => handleTerminalBell,
+  routeTerminalData,
+  isTerminalMenuOpen: () => terminalMenuOpen.value,
+  isSelectCopyEnabled: () => termSelectCopy.value,
+  getSshSessionId: () => activeTerminalSessionId || session.value?.sessionId,
+  getTelnetSessionId: () => telnetSession.value?.sessionId,
+  getLocalSessionId: () => localSession.value?.sessionId,
+  setTrzszTerminalColumns: (cols) => setTrzszTerminalColumns(cols),
+  syncSuggestionAnchorsOnSettle: () => syncSuggestionAnchorsOnSettle(),
+  syncGhostAnchorOnSettle: () => syncGhostAnchorOnSettle(),
+  isWallpaperActive: () => wallpaperActive.value,
+  onReady: () => {
+    if (highlightEnabled.value) attachHighlightRender();
+    if (actionLinksEnabled.value) attachActionLinks();
+    if (isGutterActive()) attachGutterListeners();
+  },
+  onTerminalCreated: (created) => { terminal = created; },
+});
 const directoryTrackingSupported = ref<boolean | undefined>();
 const visibleColumns = ref<SftpColumn[]>([...DEFAULT_VISIBLE_COLUMNS]);
 /** 每列当前宽度（px）。 */
@@ -1320,17 +1403,6 @@ const {
   webglRecoveryOptions,
   persistPrefs: (patch) => persistTerminalFeaturePrefs(patch),
 });
-const webglRenderer = ref<WebglRendererLike | null>(null);
-// GPU 重置/驱动切换后有限次重建 renderer（Tabby 同款策略）：成功经
-// onRecovered 回填引用，偏好已关闭则放弃重建，预算耗尽静默留在 DOM 渲染。
-function webglRecoveryOptions(): WebglRecoveryOptions<WebglRendererLike> {
-  return {
-    onRecovered: (addon) => {
-      webglRenderer.value = addon;
-    },
-    enabled: () => webglEnabled.value,
-  };
-}
 // True while attachSession sits inside its bounded backoff loop; turns the
 // status pill and overlay into the dedicated "reconnecting" phase.
 const sftpSearch = ref("");
@@ -1354,31 +1426,13 @@ const importPanelOpen = ref(false);
 // null while no batch is in flight.
 const batchProgress = ref<BatchProgressState | null>(null);
 
-let terminal: Terminal | undefined;
-let fitAddon: FitAddon | undefined;
-let searchAddon: SearchAddon | undefined;
-let osc52Disposable: { dispose(): void } | undefined;
-// WT-2：OSC 通知/SetUserVar 白名单通道（OSC 9 / 777 / 1337）的 disposable：
-// createTerminal 挂一次，终端销毁统一释放。解析与防御上限在 lib/terminalOscChannels.ts。
-let oscFeedDisposables: { dispose(): void }[] = [];
 // SetUserVar cwd 元数据（优先通道）的最新上报；null 表示通道未启用，OSC 7
 // 提示符通道照旧跟随（回落语义不变）。裁决规则见 shouldOsc7FollowOverrideUserVarCwd。
 let userVarCwdEvent: { path: string; at: number } | null = null;
-// 主题色解析失败时颜色查询的兜底应答（深色系常规值，仅在宿主下发非法颜色时触达）。
-let terminalPasteHandler: ((event: ClipboardEvent) => void) | undefined;
-let terminalWheelHandler: ((event: WheelEvent) => void) | undefined;
-// 点击定位光标（iTerm2 风格）：按下位置记忆 + 松开时判定“原地点击”。
-let terminalMouseDownHandler: ((event: MouseEvent) => void) | undefined;
-let terminalMouseUpHandler: ((event: MouseEvent) => void) | undefined;
 // 通用应用内确认弹窗（SSH-H1）：原语在 lib/confirmDialog（SettingsDialog/
 // QuickCommandsSection 等子组件共用），此处只挂宿主渲染；模板/关框/Esc/
 // teardown 统一经 resolvePendingConfirmDialog 结算。
 const { pendingConfirmDialog, resolveConfirmDialog: resolvePendingConfirmDialog } = useConfirmDialogHost();
-let resizeObserver: ResizeObserver | undefined;
-let disposeInput: { dispose(): void } | undefined;
-let disposeWebkitInputFallback: (() => void) | undefined;
-let disposeSelectionCopy: { dispose(): void } | undefined;
-let disposeTerminalBell: { dispose(): void } | undefined;
 /** 响铃视觉提示的短暂高亮（xterm 6.x 无 bellStyle，须自行实现）。 */
 let unsubscribeEvent: (() => void) | undefined;
 let unsubscribeBinary: (() => void) | undefined;
@@ -1388,7 +1442,6 @@ let unsubscribeFileDrag: (() => void) | undefined;
 let unsubscribeFileDrop: (() => void) | undefined;
 // X-P2/P3/P4 收敛：宿主环境订阅聚合句柄（shared/frontend/hostThemeRuntime）。
 let unsubscribeEnvironment: (() => void) | undefined;
-let resizeTimer = 0;
 let disposed = false;
 let lastSequence = 0;
 let replayInFlight = false;
@@ -2169,238 +2222,6 @@ const {
 // deep watcher 在主页面每次重渲染时都重设主题并重排；computed 按依赖缓存。
 const splitTerminalTheme = computed(() => terminalTheme());
 
-/** 主终端宿主级监听：分屏/收起分屏会重建 #main 插槽 DOM，绑定必须随宿主迁移。 */
-function attachTerminalHost(host: HTMLElement) {
-  if (terminalPasteHandler) host.addEventListener("paste", terminalPasteHandler, true);
-  if (terminalWheelHandler) host.addEventListener("wheel", terminalWheelHandler, { passive: false, capture: true });
-  if (terminalMouseDownHandler) host.addEventListener("mousedown", terminalMouseDownHandler);
-  if (terminalMouseUpHandler) host.addEventListener("mouseup", terminalMouseUpHandler);
-  ensureTerminalResizeObserver().observe(host);
-}
-
-function detachTerminalHost(host: HTMLElement) {
-  if (terminalPasteHandler) host.removeEventListener("paste", terminalPasteHandler, true);
-  if (terminalWheelHandler) host.removeEventListener("wheel", terminalWheelHandler, true);
-  if (terminalMouseDownHandler) host.removeEventListener("mousedown", terminalMouseDownHandler);
-  if (terminalMouseUpHandler) host.removeEventListener("mouseup", terminalMouseUpHandler);
-  resizeObserver?.unobserve(host);
-}
-
-// 终端宿主尺寸变化（窗口缩放/命令条让位/分屏）时：fit 重排行数之外，还要
-// 重读建议浮层锚点——光标行/列的像素位置随行高与滚动变化，浮层开着时
-// 停在旧位置会错位或越过新边界（review 第二批：resize 主动重定位）。
-function ensureTerminalResizeObserver(): ResizeObserver {
-  resizeObserver ??= new ResizeObserver(() => {
-    scheduleFit();
-    syncSuggestionAnchorsOnSettle();
-    syncGhostAnchorOnSettle();
-  });
-  return resizeObserver;
-}
-
-function createTerminal() {
-  if (!terminalHost.value || terminal) return;
-  // 用户设置优先、未设置跟随宿主（issue #31）：合成一次，字号/字体族同步生效；
-  // 重连/新开终端都经此路径拿到最终值。
-  const font = resolveTerminalFont(terminalFontOverride.value, {
-    fontFamily: hostTerminalFontFamily(appearance.value),
-    fontSize: appearance.value.terminal.fontSize,
-  });
-  const optionPatch = terminalOptionPatch(terminalAppearance.value.settings);
-  terminalFontSize.value = font.fontSize;
-  const behaviorPatch = terminalBehaviorOptionPatch(terminalBehavior.value);
-  terminal = new Terminal({
-    convertEol: false,
-    cursorBlink: optionPatch.cursorBlink,
-    // 默认细竖线（bar）：块状光标在宽字距下显得笨重，竖线更接近常规输入框观感。
-    // 具体形态由外观设置覆盖（样式/闪烁/失焦态三档）。
-    cursorStyle: optionPatch.cursorStyle,
-    cursorInactiveStyle: optionPatch.cursorInactiveStyle,
-    fontFamily: font.fontFamily,
-    fontSize: font.fontSize,
-    fontWeight: optionPatch.fontWeight,
-    fontWeightBold: optionPatch.fontWeightBold,
-    lineHeight: optionPatch.lineHeight,
-    letterSpacing: optionPatch.letterSpacing,
-    drawBoldTextInBrightColors: optionPatch.drawBoldTextInBrightColors,
-    minimumContrastRatio: optionPatch.minimumContrastRatio,
-    // 行为类选项（对标 Tabby「Terminal」页）：回滚行数默认与既有硬编码一致。
-    scrollback: behaviorPatch.scrollback,
-    scrollOnUserInput: behaviorPatch.scrollOnUserInput,
-    wordSeparator: behaviorPatch.wordSeparator,
-    ignoreBracketedPasteMode: behaviorPatch.ignoreBracketedPasteMode,
-    macOptionIsMeta: behaviorPatch.macOptionIsMeta,
-    // SearchAddon 的 highlight decorations 走 proposed API，缺这一项会在
-    // findNext/registerDecoration 时直接抛 "allowProposedApi option"。
-    allowProposedApi: true,
-    theme: terminalTheme(),
-  });
-  fitAddon = new FitAddon();
-  searchAddon = new SearchAddon();
-  terminal.loadAddon(fitAddon);
-  terminal.loadAddon(searchAddon);
-  // 链接点击处理器自持：既做「需按住修饰键才可点」的门禁，也复刻 addon 默认的
-  // 反制反向标签劫持（开空白窗 → 清 opener → 导航），不给安全打折扣。
-  terminal.loadAddon(new WebLinksAddon(openTerminalLink));
-  terminal.open(terminalHost.value);
-  // 对标 electerm 的终端体验增强（须在 open 之后挂载）：
-  // - Unicode 11 宽度表：emoji/新版 CJK 符号按两列计宽，旧宽度表会错位对齐；
-  // - 内联图像（sixel + iTerm2 OSC 1337）：imgcat/chafa/htop 图表可渲染，
-  //   像素上限与 electerm 同款 32MiB。
-  // 连字 addon（@xterm/addon-ligatures）暂不引入：其 opentype.js 依赖走 Node
-  // 内置模块，Electron（electerm）可用，本插件的沙箱 iframe 模块求值即崩，
-  // 上游尚无浏览器安全构建。
-  terminal.loadAddon(new Unicode11Addon());
-  terminal.unicode.activeVersion = "11";
-  terminal.loadAddon(new ImageAddon({ pixelLimit: 33_554_432 }));
-  registerOscColorQueryHandlers();
-  osc52Disposable = terminal.parser.registerOscHandler(52, (data) =>
-    handleOsc52ClipboardWrite(data, (text) => {
-      // 远端主动写剪贴板同样进插件视图副本，供沙箱宿主的右键粘贴降级。
-      terminalCopyCache.set(text);
-      return writeClipboardText(text, clipboardDeps());
-    }),
-  );
-  // WT-2（WezTerm 对标）：OSC 通知与 SetUserVar 白名单通道。xterm 内核对未知
-  // OSC 静默吞掉不渲染不回显（terminalProtocolMatrix.spec.ts 实测锚点），要
-  // 消费必须在 parser 层挂 handler。xterm 6 对同一 OSC id 的多 handler 按
-  // 「后注册先执行」派发、true 即截停：本组 handler 只对白名单 payload 返回
-  // true，其余返回 false 落回 ImageAddon（OSC 1337 内联图像）等既有通道。
-  const showTerminalOscNotice = (title: string, body: string) => {
-    // 通知来自远端会话，正文原样透出（已截断/压行）；无标题时补七语来源标题，
-    // 与 SFTP/下载等同面通知区分开。
-    showNotice(`${title || t("terminalOsc.defaultTitle")}: ${body}`);
-  };
-  oscFeedDisposables = [
-    // OSC 9（iTerm2 growl 风格）：payload 即正文。
-    terminal.parser.registerOscHandler(9, (data) => {
-      const notice = parseOsc9Notification(data);
-      if (notice) showTerminalOscNotice(notice.title, notice.body);
-      return notice !== null;
-    }),
-    // OSC 777：仅消费 `notify;TITLE;BODY` 类（kitty/urxvt 约定），其余种类不认识
-    // 不消费（白名单语义）。
-    terminal.parser.registerOscHandler(777, (data) => {
-      const notice = parseOsc777Notify(data);
-      if (notice) showTerminalOscNotice(notice.title, notice.body);
-      return notice !== null;
-    }),
-    // OSC 1337 SetUserVar（iTerm2 shell 集成）：cwd 元数据走目录跟随优先通道，
-    // cd 即刻跟随、不等提示符时刻的 OSC 7；其余 user-var 只确认消费不动作
-    // （WezTerm user-var-changed 事件的等价消费面，后续可在此扩展）。
-    terminal.parser.registerOscHandler(1337, (data) => {
-      const userVar = parseOsc1337SetUserVar(data);
-      if (!userVar) return false;
-      const cwd = cwdFromUserVar(userVar.name, userVar.value);
-      if (cwd) {
-        userVarCwdEvent = { path: cwd, at: Date.now() };
-        terminalCwd.value = cwd;
-      }
-      return true;
-    }),
-  ];
-  terminal.attachCustomKeyEventHandler(handleTerminalKey);
-  searchAddon.onDidChangeResults(handleSearchResults);
-  // Named handler: main's WKWebView input-loss fallback shares this route.
-  // Gate is local-terminal aware (a4): no SSH session AND no local shell means
-  // there is no PTY to receive input.
-  const routeTerminalData = (data: string) => {
-    if (!session.value && !localSession.value) return;
-    // 文件传输占用路由：trzsz 持有流时，传输中的输入进 filter（Ctrl+C 停传输、
-    // 其余吞掉），等待协商期直接吞掉（防止杂散键入干扰 trz 握手）；zmodem 持有
-    // 流时输入保持阻塞，否则走普通 PTY 键盘写入（8 字节序号前缀已封装）。
-    const route = resolveTerminalInputRoute({ zmodemBusy: zmodemBusy.value, trzszBusy: trzszBusy.value });
-    if (route === "trzsz") {
-      feedTrzszTerminalInput(data);
-      terminalDiag.swallowed += 1;
-      return;
-    }
-    if (route === "blocked") {
-      terminalDiag.swallowed += 1;
-      return;
-    }
-    // `#` AI 命令搜索（Warp AI Command Search 同位）：等待冻结、模式内编辑与
-    // 空行激活统一由共享 composable 判定；消费的字节不进 PTY。
-    if (aiSearch.handleData(data)) {
-      terminalDiag.swallowed += 1;
-      return;
-    }
-    // 首帧优化：键入字节先发送，输入记录随后同步完成，bookkeeping 不阻塞发送路径。
-    // 命令建议（P1-1）：行快照先于 trackPendingInput 取（\r 会清空行缓冲），
-    // 之后按输入事件推进抑制门并刷新浮层。快速命令/粘贴/自动应答不走路由，
-    // 天然不会触发浮层，也不会进入采集。
-    sendTerminalBytes(new TextEncoder().encode(data));
-    const lineBeforeInput = pendingTerminalInput;
-    trackPendingInput(data);
-    refreshSuggestionsAfterInput(data, lineBeforeInput);
-    refreshGhostAfterInput(data);
-    terminalDiag.keys += 1;
-  };
-  disposeInput = terminal.onData(routeTerminalData);
-  // xterm.js 6.1 still drops rapid direct commits on macOS WKWebView when an
-  // IME reports printable keys as keyCode=229 (#5887/#6045/#6144 upstream).
-  // The adapter runs before xterm's hidden textarea listeners and routes only
-  // single-byte text outside real composition through the same PTY path.
-  // 右键菜单打开时暂停直写捕获（P2-8）：菜单操作不该漏进 PTY。
-  disposeWebkitInputFallback = installMacWebkitInputFallback({ terminal, onData: (data) => {
-    if (terminalMenuOpen.value) return;
-    routeTerminalData(data);
-  } });
-  // 选中复制（可在设置里关闭）：选择一变化即静默写入剪贴板，不弹提示。
-  // 系统剪贴板写链可能整体失败（沙箱 iframe），插件视图副本必须照记——
-  // 右键粘贴在宿主读链断掉时靠它兜底。
-  disposeSelectionCopy = terminal.onSelectionChange(() => {
-    if (!termSelectCopy.value || !terminal?.hasSelection()) return;
-    const selection = terminal.getSelection();
-    terminalCopyCache.set(selection);
-    void writeClipboardText(selection, clipboardDeps()).catch(() => undefined);
-  });
-  // 终端响铃（对标 Tabby「Terminal → Sound」）：xterm 6.x 移除了 bellStyle，
-  // 只在每次响铃时抛 onBell，因此「关闭 / 视觉 / 听觉」三态只能由这里自行实现。
-  disposeTerminalBell = terminal.onBell(handleTerminalBell);
-  // 捕获阶段的 paste 监听：拦截 Ctrl+V 之外的所有粘贴路径（浏览器右键菜单等），
-  // 统一走风险确认后再写入终端。
-  terminalPasteHandler = (event) => interceptTerminalPaste(event);
-  terminalWheelHandler = (event) => handleTerminalWheel(event);
-  terminalMouseDownHandler = (event) => handleTerminalMouseDown(event);
-  terminalMouseUpHandler = (event) => handleTerminalMouseUp(event);
-  attachTerminalHost(terminalHost.value);
-  if (webglEnabled.value && !wallpaperActive.value) {
-    webglRenderer.value = attachWebglRenderer(terminal, () => new WebglAddon(), webglRecoveryOptions());
-  }
-  if (highlightEnabled.value) attachHighlightRender();
-  if (actionLinksEnabled.value) attachActionLinks();
-  if (isGutterActive()) attachGutterListeners();
-  scheduleFit();
-}
-
-// 布局树结构变化（首次分屏/嵌套分屏/收起分屏/重置）时 #main 插槽会被 Vue
-// 重建：已打开的 xterm 根节点留在被移除的旧宿主里，新宿主是空的——主窗格
-// （上/左）因此空白且无法输入。把终端节点迁到新宿主，重挂宿主级监听并重新
-// fit；分屏页签由各自的 SplitTerminalPane 自行创建，不受影响。
-watch(
-  terminalHost,
-  (host, previous) => {
-    if (previous && previous !== host) detachTerminalHost(previous);
-    if (!host || !terminal?.element) return;
-    if (terminal.element.parentElement !== host) host.appendChild(terminal.element);
-    if (host === previous) return;
-    attachTerminalHost(host);
-    // 迁 DOM 后 WebGL/Canvas 画布不会自行重绘；刷新一次再交给 fit 校正行长。
-    if (terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
-    scheduleFit();
-  },
-  { flush: "post" },
-);
-
-// 设置开关即时生效：开=挂 renderer（失败静默回退 DOM），关=dispose。
-// 偏好写入统一走 settingsPreferences（唯一落盘点；弹窗共享同一 ref）。
-function setWebglEnabled(next: boolean) {
-  settingsPreferences.setWebglEnabled(next);
-  if (!terminal) return;
-  webglRenderer.value = syncWebglRenderer(terminal, next, webglRenderer.value, () => new WebglAddon(), webglRecoveryOptions());
-}
-
 /**
  * 终端快捷键派发（对标 Tabby「Hotkeys」页）：先由 lib 侧把事件折算成规范组合串
  * （基于 event.code，Shift 恒保留为修饰键，故 Ctrl+= 与 Ctrl+Shift+= 不会塌成一个），
@@ -2998,104 +2819,6 @@ function sendTerminalBytes(data: Uint8Array) {
   const sessionId = localSession.value?.sessionId ?? session.value?.sessionId;
   if (!sessionId) return;
   terminalInputQueue.enqueue(sessionId, normalizeTerminalInputBytes(data));
-}
-
-function scheduleFit() {
-  window.clearTimeout(resizeTimer);
-  resizeTimer = window.setTimeout(() => {
-    if (!terminal || !fitAddon || !terminalHost.value?.clientWidth || !terminalHost.value.clientHeight) return;
-    try {
-      fitAddon.fit();
-      // trzsz 进度条按终端列宽渲染（filter 内部文本进度条虽未启用，列宽保持同步）。
-      setTrzszTerminalColumns(terminal.cols);
-      const sshSessionId = activeTerminalSessionId || session.value?.sessionId;
-      if (telnetSession.value) {
-        // Telnet NAWS：sidecar 发 SB NAWS 子协商，尽力而为。
-        void window.dbxPlugin.notify("telnet/resize", { sessionId: telnetSession.value.sessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
-      } else if (localSession.value) {
-        void window.dbxPlugin.notify("local/terminal/resize", { sessionId: localSession.value.sessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
-      } else if (sshSessionId) {
-        void window.dbxPlugin.notify("ssh/terminal/resize", { sessionId: sshSessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
-      }
-    } catch {
-      // The iframe can briefly be detached while DBX switches tabs.
-    }
-  }, 20);
-}
-
-/** Synchronous fit for spawn-time sizing: returns the real panel cols/rows.
- * Sessions MUST be spawned at this size — spawning at xterm's 80×24 default
- * and fitting right after makes ConPTY/PSReadLine repaint the prompt at the
- * new geometry (a second prompt line with a blank gap), which users read as
- * broken rendering. fit() throws when the iframe is detached mid-tab-switch;
- * fall back to the current terminal dims in that case. */
-function fitTerminalDimensions(): { cols: number; rows: number } {
-  if (!terminal || !fitAddon) return { cols: 120, rows: 32 };
-  try {
-    if (!terminalHost.value?.clientWidth || !terminalHost.value.clientHeight) {
-      return { cols: terminal.cols, rows: terminal.rows };
-    }
-    fitAddon.fit();
-    setTrzszTerminalColumns(terminal.cols);
-  } catch {
-    // The iframe can briefly be detached while DBX switches tabs.
-  }
-  return { cols: terminal.cols, rows: terminal.rows };
-}
-
-function nextAnimationFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
-/** Spawn-size gate for local shells. ConPTY repaints the whole screen buffer
- * on every changed resize, and one racing the shell's opening output renders
- * as a duplicated prompt/banner. On a dock "+" fresh tab the webview can
- * still be settling when the start request fires — zero-size host (fit then
- * falls back to xterm's default 80×24) or a pending web font swap (changes
- * cell metrics) — so the spawn size would differ from the panel's steady
- * state and the later real fit becomes a cross-geometry repaint. Poll frames
- * until two consecutive fits agree on a laid-out host; after maxWaitMs give
- * up with the last sample (never blocks boot indefinitely). */
-async function settledTerminalDimensions(maxWaitMs = 1500): Promise<{ cols: number; rows: number }> {
-  const deadline = Date.now() + maxWaitMs;
-  try {
-    // Wait out the font swap with half the budget so the sample loop below
-    // keeps its share; document.fonts can be missing in older webviews.
-    await Promise.race([
-      document.fonts?.ready ?? Promise.resolve(),
-      new Promise((resolve) => window.setTimeout(resolve, maxWaitMs / 2)),
-    ]);
-  } catch {
-    // Font readiness is best-effort; the consecutive-fit samples still guard.
-  }
-  let last: { cols: number; rows: number } | null = null;
-  while (Date.now() < deadline) {
-    await nextAnimationFrame();
-    const host = terminalHost.value;
-    if (!host?.clientWidth || !host.clientHeight) {
-      // Not laid out yet — a fit here would silently measure nothing.
-      last = null;
-      continue;
-    }
-    const dims = fitTerminalDimensions();
-    if (last && dims.cols === last.cols && dims.rows === last.rows) return dims;
-    last = dims;
-  }
-  return last ?? fitTerminalDimensions();
-}
-
-/** The terminal's on-screen cursor (1-based) at spawn time. ConPTY's opening
- * CSI 6n asks where the cursor is and starts the shell there
- * (PSEUDOCONSOLE_INHERIT_CURSOR), so the sidecar must answer with this — and
- * the answer decides where the banner/prompt is drawn: the viewport size (what
- * the sidecar used to send) inherits the last row and re-serializes the screen
- * mid-banner, which is the stray first glyph users see. cursorY is
- * viewport-relative (0 = the row at baseY) and cursorX is the column, so both
- * need the +1 to become the 1-based position conhost expects. */
-function terminalCursorPosition(): { cursorRow: number; cursorCol: number } {
-  const buffer = terminal?.buffer.active;
-  if (!buffer) return { cursorRow: 1, cursorCol: 1 };
-  return { cursorRow: buffer.cursorY + 1, cursorCol: buffer.cursorX + 1 };
 }
 
 function writeTerminalOutput(data: Uint8Array) {
@@ -4982,7 +4705,6 @@ onBeforeUnmount(() => {
   hideTooltip();
   persistThrottle.cancel(); // 卸载兜底：丢弃挂起定时器后直接落盘（保留既有语义）
   void writeWorkbenchState();
-  window.clearTimeout(resizeTimer);
   window.clearTimeout(reconnectTimer.value);
   window.clearInterval(reconnectCountdownTimer.value);
   window.clearInterval(terminalDiagTimer);
@@ -5003,17 +4725,6 @@ onBeforeUnmount(() => {
   unsubscribeFileDrag?.();
   unsubscribeFileDrop?.();
   window.removeEventListener("message", onHostDragMessage);
-  resizeObserver?.disconnect();
-  osc52Disposable?.dispose();
-  osc52Disposable = undefined;
-  for (const disposable of oscFeedDisposables) disposable.dispose();
-  oscFeedDisposables = [];
-  disposeInput?.dispose();
-  disposeWebkitInputFallback?.();
-  disposeWebkitInputFallback = undefined;
-  disposeSelectionCopy?.dispose();
-  disposeTerminalBell?.dispose();
-  disposeTerminalBell = undefined;
   terminalWriteThrottle.dispose();
   // 终端重建/会话关闭：在途写入回调整体作废，保护态复位，避免旧积压误判。
   outputInFlightBytes = 0;
@@ -5021,7 +4732,8 @@ onBeforeUnmount(() => {
   detachHighlightRender();
   detachActionLinks();
   detachGutterListeners();
-  terminal?.dispose();
+  // 实例持有的 timer/observer/parser/输入与铃铛 handler 连同终端本体一起释放。
+  disposeTerminalInstance();
   for (const waiter of uploadAckWaiters.values()) {
     window.clearTimeout(waiter.timer);
     waiter.reject(new Error(t("errors.workbenchDetached")));
