@@ -1,5 +1,5 @@
 import { computed, ref, type Ref } from "vue";
-import { defaultPatternFor, newCustomEditorId, resolveEditorForFile, sanitizeEditorConfig, type CustomEditor, type EditorConfig, type KnownEditor } from "../../features/sftp/lib/editorRules";
+import { defaultPatternFor, newCustomEditorId, resolveEditorForFile, sanitizeEditorConfig, type CustomEditor, type EditorConfig, type KnownEditor } from "../../lib/editorRules";
 
 /** 打开方式子菜单的条目类型（App.vue 的局部接口，按消费字段收敛）。 */
 interface EntryLike {

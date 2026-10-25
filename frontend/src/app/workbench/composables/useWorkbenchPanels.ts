@@ -1,5 +1,5 @@
 import { nextTick, type Ref } from "vue";
-import type { SshWorkbenchPaneOrder } from "../lib/workbenchLayout";
+import type { SshWorkbenchPaneOrder } from "../../lib/workbenchLayout";
 
 type RightPanelView = "sftp" | "metrics" | "docker";
 

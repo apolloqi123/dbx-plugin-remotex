@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
-import { initialSerialUploadState, type SerialUploadUiState } from "../../features/serial/lib/serialUpload";
+import { initialSerialUploadState, type SerialUploadUiState } from "../../../features/serial/lib/serialUpload";
 import { usePluginEvents } from "./usePluginEvents";
 
 /** issue #193a 回归锁：会话生命周期事件按 sessionId 严格隔离。关闭/断开某个

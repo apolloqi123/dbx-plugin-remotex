@@ -816,8 +816,10 @@ const appScript = appVueSource.slice(appVueSource.indexOf("<script"), appVueSour
 
 // App.vue 持续模块化（状态/接线迁 composables/）：结构守卫的扫描范围相应
 // 演进为 App.vue + composables 联合源，防止"迁走即失守"。
+// 用 `**/*.ts` 递归匹配 composables 子目录（session/io/ui/listing/actions/…），
+// 否则按子域分组的 composable 会静默掉出扫描（`**/` 也匹配零层，平铺文件照收）。
 const composablesScript = Object.values(
-  import.meta.glob("../**/composables/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
+  import.meta.glob("../**/composables/**/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
 ).join("\n");
 
 // 模板域同口径：App.vue 的弹层持续抽到 ./components/*.vue（单写者模板拆分）。

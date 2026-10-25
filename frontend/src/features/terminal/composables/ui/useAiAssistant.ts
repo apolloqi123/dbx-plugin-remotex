@@ -10,15 +10,15 @@ import {
   openAiConversation,
   pickDefaultAiModel,
   setAiRecommendations,
-} from "../../features/agent/lib/aiBridge";
-import { TailCapture } from "../../features/agent/lib/aiCapture";
-import { parseAiResultText } from "../../features/agent/lib/aiResultParse";
-import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest } from "../../features/agent/lib/aiRequests";
-import { loadAiSettings, saveAiSettings, sanitizeAiSettings, type AiSettings } from "../../features/agent/lib/aiSettings";
-import { shouldOfferAiFix } from "../../features/agent/lib/aiFix";
-import type { Osc633StreamUpdates } from "../../features/terminal/lib/terminalCommandMarkers";
-import { prepareAiOutputSnapshot, stripAnsiEscapes } from "../../shared/lib/outputRedaction";
-import { confirmDialog } from "../../shared/lib/confirmDialog";
+} from "../../../agent/lib/aiBridge";
+import { TailCapture } from "../../../agent/lib/aiCapture";
+import { parseAiResultText } from "../../../agent/lib/aiResultParse";
+import { buildAiAssistRequest, buildAiFixPrompt, buildAiFixRequest } from "../../../agent/lib/aiRequests";
+import { loadAiSettings, saveAiSettings, sanitizeAiSettings, type AiSettings } from "../../../agent/lib/aiSettings";
+import { shouldOfferAiFix } from "../../../agent/lib/aiFix";
+import type { Osc633StreamUpdates } from "../../lib/terminalCommandMarkers";
+import { prepareAiOutputSnapshot, stripAnsiEscapes } from "../../../../shared/lib/outputRedaction";
+import { confirmDialog } from "../../../../shared/lib/confirmDialog";
 
 export interface AiFixBarState {
   command: string;

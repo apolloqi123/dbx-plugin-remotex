@@ -10,12 +10,12 @@ import {
   sanitizeTransferCompressMode,
   sanitizeTransferCompressThresholdMib,
   type SftpCompressMode,
-} from "../../shared/lib/preferencesMirror";
-import { clampTransferConcurrency, clampTransferDownloadLimit, clampTransferMaxActive, sanitizeTransferDuplicatePolicy, type TransferDuplicatePolicy } from "../../features/transfers/lib/transferQueue";
-import { sanitizeNameEncoding, type SftpNameEncoding } from "../../features/sftp/lib/sftpName";
-import type { DownloadConflictPolicy } from "../../features/sftp/lib/downloadPrefs";
-import { sanitizeActionLinksSettings, type ActionLinksSettings } from "../../features/terminal/lib/actionLinksMatcher";
-import { sanitizeGutterSettings, type GutterSettings } from "../../features/terminal/lib/terminalGutter";
+} from "../../../shared/lib/preferencesMirror";
+import { clampTransferConcurrency, clampTransferDownloadLimit, clampTransferMaxActive, sanitizeTransferDuplicatePolicy, type TransferDuplicatePolicy } from "../../../features/transfers/lib/transferQueue";
+import { sanitizeNameEncoding, type SftpNameEncoding } from "../../../features/sftp/lib/sftpName";
+import type { DownloadConflictPolicy } from "../../../features/sftp/lib/downloadPrefs";
+import { sanitizeActionLinksSettings, type ActionLinksSettings } from "../../../features/terminal/lib/actionLinksMatcher";
+import { sanitizeGutterSettings, type GutterSettings } from "../../../features/terminal/lib/terminalGutter";
 
 // 偏好 localStorage 键（sidecar preferences.json 为权威；localStorage 仅作
 // web 浏览器直连场景的同步缓存）。

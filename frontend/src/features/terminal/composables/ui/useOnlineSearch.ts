@@ -5,7 +5,7 @@ import {
   DEFAULT_CTX_SEARCH_ENGINES_TEXT,
   parseCtxSearchEnginesText,
   type CtxSearchEngine,
-} from "../../features/terminal/components/TerminalContextMenu.vue";
+} from "../../components/TerminalContextMenu.vue";
 
 /**
  * 右键菜单「在线搜索」：引擎表以原始文本持久化（sidecar preferences，

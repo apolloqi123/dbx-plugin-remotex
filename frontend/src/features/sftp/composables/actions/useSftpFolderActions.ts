@@ -1,7 +1,7 @@
 import { type Ref } from "vue";
-import { findFileTreeNode, applyFileTreeChildren, markCollapsedTreeNodesStale, type SftpFileTreeNode } from "../../features/sftp/lib/sftpFileTree";
-import type { SftpSanitizedEntry } from "../../features/sftp/lib/sftpEntries";
-import { normalizeRemotePath, pathFromUri } from "./sftpRemotePaths";
+import { findFileTreeNode, applyFileTreeChildren, markCollapsedTreeNodesStale, type SftpFileTreeNode } from "../../lib/sftpFileTree";
+import type { SftpSanitizedEntry } from "../../lib/sftpEntries";
+import { normalizeRemotePath, pathFromUri } from "../../lib/paths/sftpRemotePaths";
 
 type FolderMenuEntry = { uri: string };
 

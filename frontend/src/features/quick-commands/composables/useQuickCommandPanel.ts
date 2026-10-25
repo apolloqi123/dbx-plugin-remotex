@@ -5,7 +5,7 @@ import {
   quickCommandGroupCount,
   type QuickCommand,
   type QuickCommandGroupView,
-} from "../../features/quick-commands/lib/quickCommands";
+} from "../lib/quickCommands";
 
 /**
  * 快速命令弹层（工具条 Zap 按钮）的纯视图状态：搜索过滤 / 卡片展开 /

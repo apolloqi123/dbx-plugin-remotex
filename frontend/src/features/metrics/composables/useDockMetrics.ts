@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, watch, type Ref } from "vue";
-import type { ServerMetrics } from "../../features/metrics/composables/useMetricsPanel";
+import type { ServerMetrics } from "./useMetricsPanel";
 
 /**
  * dock 面板左上角系统信息（CPU/内存/网速）：复用 ssh/metrics 既有链路。

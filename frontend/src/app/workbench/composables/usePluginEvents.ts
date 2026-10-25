@@ -3,16 +3,16 @@ import {
   enqueueAcceptedAgentPrompt,
   type AgentNoticePayload,
   type AgentPromptPayload,
-} from "../../features/agent/lib/agentTerminal";
-import { reduceSerialUpload, type SerialUploadUiState } from "../../features/serial/lib/serialUpload";
+} from "../../../features/agent/lib/agentTerminal";
+import { reduceSerialUpload, type SerialUploadUiState } from "../../../features/serial/lib/serialUpload";
 import {
   isRdpCertificateChallenge,
   reduceRdpSessionState,
   type RdpPointerEvent,
   type RdpSessionStateView,
-} from "../../features/remote-desktop/lib/rdpFrame";
-import type { RdpCertPromptView } from "../../features/remote-desktop/composables/useRdpSession";
-import type { ConnectLog } from "../../features/connections/lib/connectLog";
+} from "../../../features/remote-desktop/lib/rdpFrame";
+import type { RdpCertPromptView } from "../../../features/remote-desktop/composables/useRdpSession";
+import type { ConnectLog } from "../../../features/connections/lib/connectLog";
 import {
   decodeAgentFinishPayload,
   decodeAgentNoticePayload,
@@ -20,7 +20,7 @@ import {
   decodeRdpPointerEvent,
   decodeSerialUploadProgress,
   decodeTriggerEvent,
-} from "../lib/pluginEventDecoders";
+} from "../../lib/pluginEventDecoders";
 
 /** 后端事件分派枢纽：sidecar/宿主 method 事件的全部分支整体收口。
  * method 键全局互斥，分支体逐字迁移、命中即 return，与原 if 链语义一致；

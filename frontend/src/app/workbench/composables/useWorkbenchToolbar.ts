@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
-import { pluginStore } from "../../shared/lib/pluginStore";
-import { BUILTIN_TERMINAL_SCHEMES, schemeTone } from "../../features/terminal/lib/terminalScheme";
-import type { TerminalAppearanceSettings, TerminalAppearanceState } from "../../features/terminal/lib/terminalAppearance";
+import { pluginStore } from "../../../shared/lib/pluginStore";
+import { BUILTIN_TERMINAL_SCHEMES, schemeTone } from "../../../features/terminal/lib/terminalScheme";
+import type { TerminalAppearanceSettings, TerminalAppearanceState } from "../../../features/terminal/lib/terminalAppearance";
 
 /**
  * dock 面板表面底部工具条的本地 UI 态：工具条隐藏偏好（pluginStore 单键，

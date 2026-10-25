@@ -6,7 +6,7 @@ import {
   streamSerialUploadFile,
   type SerialUploadProtocol,
   type SerialUploadUiState,
-} from "../../features/serial/lib/serialUpload";
+} from "../lib/serialUpload";
 
 /**
  * 串口文件上传（NyaTerm 对齐 P0-3）：弹窗 + overlay 状态机。起点是

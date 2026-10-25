@@ -1,24 +1,24 @@
 import { computed, ref } from "vue";
-import { pluginStore } from "../../shared/lib/pluginStore";
+import { pluginStore } from "../../../shared/lib/pluginStore";
 import {
   sanitizeDirectoryFollowPref,
   sanitizeSftpAutoConnectPref,
   sanitizeSftpPaneDefaultOpen,
-} from "../lib/workbenchLayout";
+} from "../../lib/workbenchLayout";
 import {
   loadTerminalBehavior,
   persistTerminalBehavior,
   sanitizeTerminalBehavior,
   terminalBehaviorOptionPatch,
   type TerminalBehaviorSettings,
-} from "../../features/terminal/lib/terminalBehavior";
+} from "../../../features/terminal/lib/terminalBehavior";
 import {
   loadTerminalHotkeys,
   persistTerminalHotkeys,
   sanitizeTerminalHotkeys,
   type TerminalHotkeyBindings,
-} from "../../features/terminal/lib/terminalHotkeys";
-import type { PaneDirectionPref } from "../../shared/lib/paneLayout";
+} from "../../../features/terminal/lib/terminalHotkeys";
+import type { PaneDirectionPref } from "../../../shared/lib/paneLayout";
 import type { Terminal } from "@xterm/xterm";
 
 // 偏好键（pluginStore 全局持久化）。

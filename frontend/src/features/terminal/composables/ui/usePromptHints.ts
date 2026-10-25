@@ -1,9 +1,9 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
-import type { SuggestionAnchor } from "../../shared/lib/overlayPlacement";
-import { formatHotkeyDisplay, type TerminalHotkeyActionId, type TerminalHotkeyBindings } from "../../features/terminal/lib/terminalHotkeys";
-import { isPasswordPromptLine, loadPromptHintsDismissed, loadPromptHintsEnabled, savePromptHintsDismissed, savePromptHintsEnabled, shouldShowPromptHints } from "../../features/terminal/lib/terminalPromptHints";
-import { interactivePromptNearCursor, isInteractivePromptPending } from "../../features/terminal/lib/interactivePromptGuard";
+import type { SuggestionAnchor } from "../../../../shared/lib/overlayPlacement";
+import { formatHotkeyDisplay, type TerminalHotkeyActionId, type TerminalHotkeyBindings } from "../../lib/terminalHotkeys";
+import { isPasswordPromptLine, loadPromptHintsDismissed, loadPromptHintsEnabled, savePromptHintsDismissed, savePromptHintsEnabled, shouldShowPromptHints } from "../../lib/terminalPromptHints";
+import { interactivePromptNearCursor, isInteractivePromptPending } from "../../lib/interactivePromptGuard";
 
 /**
  * 空提示符快捷键引导条（TerminalPromptHints）：引导 Warp 对齐批次的键位

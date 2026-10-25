@@ -1,10 +1,10 @@
 import { ref, watch, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
-import type { TerminalBehaviorSettings } from "../../features/terminal/lib/terminalBehavior";
-import { resolveRightClickBehavior } from "../../features/terminal/lib/terminalBehavior";
-import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
-import { filterSelectableSftpUris, resolveSftpContextMenuSelection } from "../../features/sftp/lib/sftpContextMenu";
-import { pathFromUri } from "./sftpRemotePaths";
+import type { TerminalBehaviorSettings } from "../../lib/terminalBehavior";
+import { resolveRightClickBehavior } from "../../lib/terminalBehavior";
+import type { TransferHistoryEntry } from "../../../transfers/lib/transferHistory";
+import { filterSelectableSftpUris, resolveSftpContextMenuSelection } from "../../../sftp/lib/sftpContextMenu";
+import { pathFromUri } from "../../../sftp/lib/paths/sftpRemotePaths";
 
 /** 右键菜单/工具条弹层的受控开关：外部状态由 App 或各业务 composable 持有。 */
 export interface PopoverBinding {

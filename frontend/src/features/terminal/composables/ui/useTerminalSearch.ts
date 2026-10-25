@@ -1,13 +1,13 @@
 import { ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
 import type { SearchAddon, ISearchOptions } from "@xterm/addon-search";
-import { pluginStore } from "../../shared/lib/pluginStore";
+import { pluginStore } from "../../../../shared/lib/pluginStore";
 import {
   sanitizeSearchOptions,
   TERMINAL_SEARCH_OPTIONS_KEY,
   terminalSearchSeedFromSelection,
   type TerminalSearchOptions,
-} from "../../features/terminal/lib/terminalInteraction";
+} from "../../lib/terminalInteraction";
 
 export type TerminalSearchMatchState = "idle" | "match" | "no-match";
 

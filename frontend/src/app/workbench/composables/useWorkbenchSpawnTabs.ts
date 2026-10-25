@@ -1,6 +1,6 @@
 import { ref, type Ref } from "vue";
-import { WORKBENCH_ID } from "../../shared/lib/pluginIds";
-import { randomUUID } from "../../shared/lib/uuid";
+import { WORKBENCH_ID } from "../../../shared/lib/pluginIds";
+import { randomUUID } from "../../../shared/lib/uuid";
 
 /**
  * 宿主 openWorkbench 的「同工作台 spawn 新 tab」入口（新建/复制/命令会话）。

@@ -1,6 +1,6 @@
 import { computed, ref, type Ref } from "vue";
-import { isSelectableSftpEntry, filterSelectableSftpUris } from "../../features/sftp/lib/sftpContextMenu";
-import { decideFileRowAction } from "../../features/sftp/lib/fileRowKeydown";
+import { isSelectableSftpEntry, filterSelectableSftpUris } from "../../lib/sftpContextMenu";
+import { decideFileRowAction } from "../../lib/fileRowKeydown";
 
 interface EntryLike {
   uri: string;

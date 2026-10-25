@@ -1,5 +1,5 @@
 import { nextTick, watch, type Ref } from "vue";
-import { sanitizeSftpEntries, type SftpSanitizedEntry } from "../../features/sftp/lib/sftpEntries";
+import { sanitizeSftpEntries, type SftpSanitizedEntry } from "../../lib/sftpEntries";
 import {
   applyFileTreeChildren,
   createFileTreeRoot,
@@ -8,9 +8,9 @@ import {
   markCollapsedTreeNodesStale,
   markFileTreeStale,
   type SftpFileTreeNode,
-} from "../../features/sftp/lib/sftpFileTree";
-import { mergeSftpDetail, type SftpDetailInfo } from "../../features/sftp/lib/sftpDetails";
-import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "./sftpRemotePaths";
+} from "../../lib/sftpFileTree";
+import { mergeSftpDetail, type SftpDetailInfo } from "../../lib/sftpDetails";
+import { joinRemote, normalizeRemotePath, parentPath, pathFromUri } from "../../lib/paths/sftpRemotePaths";
 
 /**
  * SFTP 单栏文件树：懒加载 / 祖先路径揭示 / 目录跟随 / 显示隐藏切换。

@@ -14,8 +14,8 @@ import {
   terminalTabs,
   type TerminalLayoutOrientation,
   type TerminalLayoutNode,
-} from "../../features/terminal/lib/terminalLayout";
-import { randomUUID } from "../../shared/lib/uuid";
+} from "../../lib/terminalLayout";
+import { randomUUID } from "../../../../shared/lib/uuid";
 
 /**
  * 终端分屏/页签的布局树状态与窗格操作。

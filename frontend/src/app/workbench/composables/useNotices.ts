@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { friendlySftpError } from "../../features/sftp/lib/sftpErrors";
+import { friendlySftpError } from "../../../features/sftp/lib/sftpErrors";
 
 export interface BannerAction {
   label: string;

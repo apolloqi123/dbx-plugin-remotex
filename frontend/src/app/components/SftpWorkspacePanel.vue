@@ -60,7 +60,7 @@ import type { SftpSoftError } from "../../features/sftp/composables/useSftpNavig
 import { batchProgressPercent, type BatchProgressState } from "../../features/transfers/lib/sftpBatchProgress";
 import type { RemotePathSegment } from "../../features/sftp/lib/remotePathInput";
 import { formatBytes } from "../../shared/lib/format";
-import { pathFromUri } from "../composables/sftpRemotePaths";
+import { pathFromUri } from "../../features/sftp/lib/paths/sftpRemotePaths";
 
 /** 右侧 SFTP 工作区面板：路径工具栏（返回/主目录/刷新/跟随/sudo/OTP/导入/
  *  收藏与历史弹层）、面包屑导航、过滤/批量条、单栏文件树与右键菜单、底栏

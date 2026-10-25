@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import appSource from "./App.vue?raw";
 // 事件分派收口在 composables/usePluginEvents 后，挑战路由断言扫描两个源。
-import eventsSource from "./composables/usePluginEvents.ts?raw";
+import eventsSource from "./workbench/composables/usePluginEvents.ts?raw";
 
 describe("SSH host-key challenge protocol", () => {
   it("routes plugin challenges through the sidecar resolver payload", () => {

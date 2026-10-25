@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { pathFromUri } from "./sftpRemotePaths";
+import { pathFromUri } from "../../lib/paths/sftpRemotePaths";
 
 type ChmodEntry = { uri: string; permissions?: string };
 

@@ -1,5 +1,5 @@
 import { computed, ref } from "vue";
-import { WORKBENCH_ID } from "../../shared/lib/pluginIds";
+import { WORKBENCH_ID } from "../../../../shared/lib/pluginIds";
 
 type LocalShell = { program: string; name: string; isDefault: boolean; isUserShell: boolean; injectable?: boolean };
 type DockConnection = { id: string; name: string; providerId: string; connectionType?: string; readOnly?: boolean };
