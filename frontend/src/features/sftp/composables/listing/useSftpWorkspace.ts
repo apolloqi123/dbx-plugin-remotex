@@ -45,6 +45,7 @@ export function useSftpWorkspace(options: {
   joinRemote: (parent: string, name: string) => string;
   /** 晚于本模块声明的权威态（惰性 getter/setter，规避声明顺序）。 */
   getSudoMode: () => boolean;
+  setSudoMode: (value: boolean) => void;
   getConnected: () => boolean;
   getCanWrite: () => boolean;
   getIsRdpConnection: () => boolean;
@@ -119,7 +120,7 @@ export function useSftpWorkspace(options: {
     ),
   );
 
-  const sudoMode = bindRef(options.getSudoMode);
+  const sudoMode = bindRef(options.getSudoMode, options.setSudoMode);
   const connected = bindRef(options.getConnected);
   const canWrite = bindRef(options.getCanWrite);
   const followDirectory = bindRef(options.getFollowDirectory, options.setFollowDirectory);

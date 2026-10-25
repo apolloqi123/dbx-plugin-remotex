@@ -794,6 +794,7 @@ const {
   deleteTarget,
   joinRemote,
   getSudoMode: () => sudoMode.value,
+  setSudoMode: (value) => { sudoMode.value = value; },
   getConnected: () => connected.value,
   getCanWrite: () => canWrite.value,
   getIsRdpConnection: () => isRdpConnection.value,
