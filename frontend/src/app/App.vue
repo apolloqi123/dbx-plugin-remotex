@@ -56,27 +56,19 @@ import {
   X,
   Zap,
 } from "@lucide/vue";
-import {
-  detectTrzszAnnounceFromBytes,
-  resolveTerminalInputRoute,
-} from "../features/terminal/lib/transfer/terminalTrzsz";
+import { resolveTerminalInputRoute } from "../features/terminal/lib/transfer/terminalTrzsz";
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
 import { subscribeHostEnvironment } from "../../../shared/frontend/hostThemeRuntime";
-import {
-  shouldOsc7FollowOverrideUserVarCwd,
-} from "../features/terminal/lib/emulator/terminalOscChannels";
 import {
   createTerminalCopyCache,
   isApplePlatform,
   normalizeDropTargetDir,
   transferBusyPaneClass,
 } from "../features/terminal/lib/behavior/terminalInteraction";
-import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../features/terminal/lib/emulator/terminalWriteThrottle";
-import { createOutputGate } from "../features/terminal/lib/emulator/terminalBackpressure";
 import { createTerminalInputQueue, terminalInputChannel, TerminalInputTimeoutError } from "../features/terminal/lib/emulator/terminalInputQueue";
-import { SERIAL_STREAM_STDIN, isKnownStreamTag } from "../features/serial/lib/serialTerminalFrames";
+import { SERIAL_STREAM_STDIN } from "../features/serial/lib/serialTerminalFrames";
 import { isSessionGoneError } from "../features/terminal/lib/behavior/terminalReconnect";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS, useTerminalTransportWatch } from "../features/terminal/composables/session/useTerminalTransportWatch";
 import { useCommandMarker } from "../features/terminal/composables/session/useCommandMarker";
@@ -129,7 +121,6 @@ import { batchProgressPercent, type BatchProgressState } from "../features/trans
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
 import { normalizeTerminalInputBytes } from "../features/terminal/lib/emulator/terminalInput";
-import { type TerminalSyncOutput } from "../features/terminal/lib/emulator/terminalModeQueries";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { resolveAppearance } from "../shared/lib/appearance";
 import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../shared/lib/hostTheme";
@@ -167,6 +158,7 @@ import { useWorkbenchPersistence } from "./workbench/composables/useWorkbenchPer
 import { useLocalShellPreferences } from "../features/terminal/composables/session/useLocalShellPreferences";
 import { useLocalShellSession } from "../features/terminal/composables/session/useLocalShellSession";
 import { useTerminalInstance } from "../features/terminal/composables/session/useTerminalInstance";
+import { useTerminalWriter } from "../features/terminal/composables/session/useTerminalWriter";
 import { useShellTabs } from "../features/terminal/composables/ui/useShellTabs";
 import { useTerminalMenus } from "../features/terminal/composables/ui/useTerminalMenus";
 import { useQuickCommandPanel } from "../features/quick-commands/composables/useQuickCommandPanel";
@@ -249,7 +241,6 @@ import {
   keyComboFromEvent,
   matchTerminalHotkey,
 } from "../features/terminal/lib/behavior/terminalHotkeys";
-import { bridgeBinaryBytes } from "../../../shared/frontend/binaryEvent";
 import { workbenchMessage } from "../shared/lib/i18n";
 import { randomUUID } from "../shared/lib/uuid";
 // 预览面板按需加载（含 CodeMirror + language-data，数百 KB）：定义异步组件
@@ -410,9 +401,6 @@ type SftpSortColumn = "name" | "size" | "modified";
 // 粘贴防护：内容含换行或达到该字符数时先确认（对齐 tiny-rdm TerminalPane 阈值）。
 const PASTE_CONFIRM_CHAR_THRESHOLD = 200;
 // SFTP 路径历史：每连接最多保留 10 条，存 pluginStore（宿主 host.storage；对齐 tiny-rdm pathHistory）。
-// Upper bound for out-of-order terminal frames held while waiting for the
-// missing sequence; the replay path re-delivers anything dropped beyond it.
-const TERMINAL_PENDING_FRAME_LIMIT = 1024;
 // 命令历史 / 终端字号：pluginStore 持久化（敏感命令不入持久层；快速命令已迁 sidecar，见 QUICK_COMMANDS_KEY）。
 const COMMAND_HISTORY_KEY = "ssh-command-history";
 // 执行时间并行映射（Warp 式 history 面板的右侧相对时间）：command → 最近一次
@@ -1626,57 +1614,93 @@ const {
   updateAppearance: (patch) => updateTerminalAppearance(patch),
 });
 
-// Large-output rendering throttle: coalesce consecutive PTY frames into one
-// merged xterm write per animation frame (capped, order preserving). The sink
-// reads `terminal` lazily so it also works across terminal recreation. The
-// write completion callback is the gutter timestamp capture point (P1-3): it
-// stamps the logical rows each merged batch actually produced.
-//
-// 大输出保护（IMPL_PLAN Task P2-7）：积压口径 = 已交给 xterm 但 write 回调尚未
-// 触发（还没解析完）的字节数。≥128KiB 进入 strained：合并批次按 32KiB 分帧写、
-// 挂起 gutter/关键词高亮/动作链接扫描；回落到 64KiB 以下自动恢复并补扫一次。
-const outputGate = createOutputGate();
-let outputInFlightBytes = 0;
-function settleOutputChunk(chunk: Uint8Array) {
-  outputInFlightBytes = Math.max(0, outputInFlightBytes - chunk.byteLength);
-  // 写入完成回调同时是模式复评点；恢复时挂起的扫描由 onOutputGateRelease 补上。
-  if (outputGate.feed(outputInFlightBytes) && outputGate.mode === "normal") onOutputGateRelease();
-  stampGutterWrittenRows();
-  syncSuggestionAnchorsOnSettle();
-  syncGhostAnchorOnSettle();
-}
-function onOutputGateRelease() {
-  showNotice(t("backpressure.released"));
-  rescanHighlightViewport();
-  if (actionLinksEnabled.value && terminal) scheduleActionLinkScan(0, terminal.rows - 1);
-  scheduleGutterRecompute();
-}
-const terminalWriteThrottle: TerminalWriteThrottle = createTerminalWriteThrottle({
-  sink: (data) => {
-    if (!terminal) return;
-    outputInFlightBytes += data.byteLength;
-    if (outputGate.feed(outputInFlightBytes) && outputGate.mode === "strained") {
-      showNotice(t("backpressure.engaged"));
-      scheduleGutterRecompute();
-    }
-    if (outputGate.mode === "strained") {
-      for (const frame of outputGate.write(data)) terminal.write(frame, () => settleOutputChunk(frame));
-    } else {
-      terminal.write(data, () => settleOutputChunk(data));
-    }
+// —— 输出管线：大输出背压门/合帧写节流、OSC 7/633 解析链、AI 修复输出采集、
+// 提示符换行修复、zmodem/trzsz 流分派、SSH 帧重组与宿主二进制事件分派收口在
+// features/terminal/composables/session/useTerminalWriter。装饰引擎与传输占用/
+// 断线梯子在本段之后装配，一律经 getter 惰性接入；SSH 帧序号与 pending 缓存
+// 仍归 App（useSshConnection/持久化/transport watch 同源读写），经 frameStream
+// 的 getter/setter 存取。
+const {
+  outputGate,
+  terminalWriteThrottle,
+  terminalSyncOutput,
+  writeTerminalOutput,
+  dispatchTerminalOutput,
+  handleBinary,
+  disposeOutputPipeline,
+} = useTerminalWriter({
+  t: (key) => t(key),
+  showNotice,
+  showError,
+  terminal: () => terminal,
+  isTransferBusy: () => terminalTransferBusy.value,
+  frameStream: {
+    pendingFrames: pendingTerminalFrames,
+    get lastSequence() { return lastSequence; },
+    set lastSequence(value: number) { lastSequence = value; },
+    get replayNoProgress() { return replayNoProgress; },
+    set replayNoProgress(value: number) { replayNoProgress = value; },
+    get activeSessionId() { return activeTerminalSessionId; },
+    set activeSessionId(value: string) { activeTerminalSessionId = value; },
   },
+  session,
+  terminalState,
+  terminalError,
+  terminalCwd,
+  followDirectory,
+  directoryTrackingSupported,
+  directoryParser,
+  promptNewline,
+  commandMarkerParser,
+  getUserVarCwdEvent: () => userVarCwdEvent,
+  commandMarker: () => commandMarker,
+  // 命令标记/AI 采集/prompt hints 均由本段之后的 composable 装配，惰性转发。
+  applyCommandMarker: (updates) => applyCommandMarker(updates),
+  captureOutputChunk,
+  maybeOfferAiFix,
+  markTerminalOutputActive: () => markTerminalOutputActive(),
+  // 装饰引擎（gutter/高亮/动作链接）同样装配在后段。
+  actionLinksEnabled: () => actionLinksEnabled.value,
+  stampGutterWrittenRows: () => stampGutterWrittenRows(),
+  syncSuggestionAnchorsOnSettle: () => syncSuggestionAnchorsOnSettle(),
+  syncGhostAnchorOnSettle: () => syncGhostAnchorOnSettle(),
+  rescanHighlightViewport: () => rescanHighlightViewport(),
+  scheduleActionLinkScan: (start, end) => scheduleActionLinkScan(start, end),
+  scheduleGutterRecompute: () => scheduleGutterRecompute(),
+  // 传输占用与断线梯子（useZmodem/useTrzsz/useSessionReconnect/transport watch）。
+  zmodemBusy: () => zmodemBusy.value,
+  handleTrzszAnnounce: (announce) => handleTrzszAnnounce(announce),
+  ensureTrzszFilter: () => ensureTrzszFilter(),
+  consumeFrameViaZmodem: (data) => consumeFrameViaZmodem(data),
+  terminalTransportWatch: () => terminalTransportWatch,
+  isReconnectPending: () => reconnectPending.value,
+  scheduleSessionReconnect: () => scheduleSessionReconnect(),
+  isDisposed: () => disposed,
+  persistState: () => persistState(),
+  // 其余二进制通道的会话/帧流由各自 composable 持有（useProtocolFrameBuffers 等）。
+  localFrames: () => ({
+    session: localSession,
+    lastSequence: localLastSequence,
+    pendingFrames: localPendingFrames,
+    drain: drainLocalTerminalFrames,
+  }),
+  telnetFrames: () => ({
+    session: telnetSession,
+    lastSequence: telnetLastSequence,
+    pendingFrames: telnetPendingFrames,
+    drain: drainTelnetFrames,
+  }),
+  serialFrames: () => ({
+    session: serialSession,
+    lastSequence: serialLastSequence,
+    pendingFrames: serialPendingFrames,
+    unknownStreamFrames: serialUnknownStreamFrames,
+    drain: drainSerialFrames,
+  }),
+  vncFrames: () => ({ session: vncSession, handleFrame: handleVncFrame }),
+  rdpFrames: () => ({ session: rdpSession, state: rdpState, surface: rdpSurface }),
+  getDownloadChunkWaiters: () => downloadChunkWaiters,
 });
-// DECSET 2026 同步渲染（WT-1，对标 WezTerm 帧合并）：`CSI ? 2026 h` 期间挂起
-// 合帧通道的定时提交、写入持续入队，`CSI ? 2026 l` 把积压整批合并一次提交——
-// vim 重绘 / cat 大文件在同步窗内的中间帧不再逐帧上屏，撕裂闪烁随之收敛。
-// 积压受合帧通道 1MiB 字节上限约束；hold 另有 100ms 截止时限：PTY 读边界把
-// 同步窗切成两帧时（codex 30fps 小帧流下必然发生），release 自身被 hold 挡在
-// 队列里，不定时放行会一直积到字节帽才渲染——表现为终端长时间"卡死"。
-// 防卡死优先于帧完整，异常驻留同步态时按 deadline 强制放行。
-const terminalSyncOutput: TerminalSyncOutput = {
-  begin: () => terminalWriteThrottle.setHold(true),
-  end: () => terminalWriteThrottle.setHold(false),
-};
 // #33/#71 快速输入丢字母的分层计数：keys(onData 实际路由到 PTY 的按键)、
 // sends(提交给宿主桥的帧)、acks(sidecar 确认收到的帧)、errors(桥拒绝)、
 // swallowed(被 zmodem/trzsz 路由吞掉的按键)。宿主开启 localStorage 的
@@ -2821,49 +2845,8 @@ function sendTerminalBytes(data: Uint8Array) {
   terminalInputQueue.enqueue(sessionId, normalizeTerminalInputBytes(data));
 }
 
-function writeTerminalOutput(data: Uint8Array) {
-  const now = Date.now();
-  for (const path of directoryParser.push(data)) {
-    // WT-2：SetUserVar cwd 优先通道在位且刚更新时，提示符 OSC 7 的旧值不回踩
-    // （裁决见 shouldOsc7FollowOverrideUserVarCwd；无该通道时行为与从前一致）。
-    if (!shouldOsc7FollowOverrideUserVarCwd(userVarCwdEvent, path, now)) continue;
-    terminalCwd.value = path;
-  }
-  // AI 修复输出采集（Warp AI 对齐批）：解码与 OSC 解析同流，命令执行期
-  // （active）的输出文本进尾部环形缓冲；快进快出的命令（E/C/D 同一 chunk）
-  // 由 D 帧判定一并采集——wasActive 覆盖长输出的中间 chunk，D 帧 chunk 覆盖
-  // 尾段正文。剥 ANSI 后入缓冲——633 帧噪声不进 AI 快照。
-  markTerminalOutputActive();
-  const aiChunkWasActive = commandMarker.active;
-  const aiChunkUpdates = commandMarkerParser.push(data);
-  applyCommandMarker(aiChunkUpdates);
-  // AI 修复输出采集（Warp AI 对齐批）：解析（E 帧清零缓冲）之后的同 chunk
-  // 正文照采——执行期 chunk 靠 active 判定，快进快出命令靠 D 帧 chunk 判定。
-  captureOutputChunk(data, aiChunkWasActive || commandMarker.active || aiChunkUpdates.lastExitCode != null);
-  maybeOfferAiFix(aiChunkUpdates);
-  // 提示符换行修复（t8y2/dbx#10750）：OSC 7 帧前按需补 CRLF。备用屏
-  // （vim/top 绝对定位重绘）与 zmodem/trzsz 传输期间只跟踪不插入——二进制
-  // 显示流与全屏应用的画面不容忍多余换行。directoryParser/采集链仍吃原始
-  // 字节：变换器只做插入，帧本身原样保留。
-  const suppressPromptNewline = terminalTransferBusy.value || terminal?.buffer.active.type === "alternate";
-  terminalWriteThrottle.write(promptNewline.push(data, { suppressInsert: suppressPromptNewline }));
-}
-
-/**
- * Terminal output dispatch: ZMODEM owns the stream while busy; otherwise the
- * frame feeds the trzsz filter, which passes it through to the terminal and
- * watches for the remote `::TRZSZ:TRANSFER:` announce to take over exactly
- * one transfer. Plain frames thus reach the terminal untouched.
- */
-function dispatchTerminalOutput(data: Uint8Array) {
-  if (zmodemBusy.value) {
-    writeTerminalOutput(data);
-    return;
-  }
-  const announce = detectTrzszAnnounceFromBytes(data);
-  if (announce) handleTrzszAnnounce(announce);
-  ensureTrzszFilter().processServerOutput(data);
-}
+// 输出写入/dispatch 已迁至 useTerminalWriter（writeTerminalOutput /
+// dispatchTerminalOutput 由上方解构）；ZMODEM 占用期与 trzsz 过滤链顺序不变。
 
 // ZMODEM 上传/下载：sentry/检测/进度/落盘/收尾收口在 composables/useZmodem。
 const {
@@ -2961,173 +2944,8 @@ const {
   serialSession, serialState, serialError,
 });
 
-function handleBinary(event: DbxPluginBinaryEvent) {
-  if (event.channel.startsWith("local/terminal/out/")) {
-    const localId = event.channel.slice("local/terminal/out/".length);
-    if (!localSession.value || localId !== localSession.value.sessionId) return;
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    if (payload.length < 9) return;
-    const sequence = readU64(payload, 1);
-    if (sequence <= localLastSequence.value) return;
-    localPendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
-    drainLocalTerminalFrames();
-    return;
-  }
-  if (event.channel.startsWith("telnet/terminal/out/")) {
-    // Telnet 输出帧与 local/SSH 同形（9 字节 TerminalFrame 前缀），独立
-    // sequence/pending 状态避免与 SSH/本地流互染。
-    const telnetId = event.channel.slice("telnet/terminal/out/".length);
-    if (!telnetSession.value || telnetId !== telnetSession.value.sessionId) return;
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    if (payload.length < 9) return;
-    const sequence = readU64(payload, 1);
-    if (sequence <= telnetLastSequence.value) return;
-    telnetPendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
-    drainTelnetFrames();
-    return;
-  }
-  if (event.channel.startsWith("serial/terminal/out/")) {
-    // 串口输出帧与 local/SSH/Telnet 同形（9 字节 TerminalFrame 前缀，stream
-    // 恒为 Stdout），独立 sequence/pending 状态避免与其它会话流互染。
-    const serialId = event.channel.slice("serial/terminal/out/".length);
-    if (!serialSession.value || serialId !== serialSession.value.sessionId) return;
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    if (payload.length < 9) return;
-    // B1 解码契约：未知流标签（> Stdin=3）一律静默丢帧并计数，不断连。
-    if (!isKnownStreamTag(payload[0])) {
-      serialUnknownStreamFrames.value += 1;
-      return;
-    }
-    const sequence = readU64(payload, 1);
-    if (sequence <= serialLastSequence.value) return;
-    serialPendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
-    drainSerialFrames();
-    return;
-  }
-  if (event.channel.startsWith("vnc/frame/")) {
-    // VNC 帧补丁（44 字节头 + RGBA payload，sidecar 单调递增 sequence）：
-    // 会话隔离后交给 useVncSession 的帧入口，由 VncSurface 解码 + rAF 合帧；
-    // 乱序帧在组件内丢弃。
-    const vncId = event.channel.slice("vnc/frame/".length);
-    if (!vncSession.value || vncId !== vncSession.value.sessionId) return;
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    handleVncFrame(vncId, payload);
-    return;
-  }
-  if (event.channel.startsWith("rdp/frame/")) {
-    // RDP 帧补丁：与 vnc/frame 同一 44 字节 patch 头 + RGBA（解码复用
-    // vncFrame），sequence 跨重连单调。首个桌面帧同时把状态推到 running。
-    const rdpId = event.channel.slice("rdp/frame/".length);
-    if (!rdpSession.value || rdpId !== rdpSession.value.sessionId) return;
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    if (rdpState.value.state !== "running") rdpState.value = { ...rdpState.value, state: "running" };
-    rdpSurface.value?.acceptFrame(payload);
-    return;
-  }
-  const sessionId = activeTerminalSessionId || session.value?.sessionId;
-  if (sessionId && event.channel === `ssh/terminal/out/${sessionId}`) {
-    const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-    if (payload.length < 9) return;
-    const sequence = readU64(payload, 1);
-    if (sequence <= lastSequence) return;
-    pendingTerminalFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
-    drainTerminalFrames();
-    return;
-  }
-  const taskId = event.channel.startsWith("sftp/download/") ? event.channel.slice("sftp/download/".length) : "";
-  const waiter = downloadChunkWaiters.get(taskId);
-  if (!waiter) return;
-  const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
-  if (payload.length < 8 || readU64(payload, 0) !== waiter.offset) return;
-  window.clearTimeout(waiter.timer);
-  downloadChunkWaiters.delete(taskId);
-  waiter.resolve(payload.slice(8));
-}
-
-function drainTerminalFrames() {
-  let frame = pendingTerminalFrames.get(lastSequence + 1);
-  while (frame) {
-    pendingTerminalFrames.delete(lastSequence + 1);
-    lastSequence += 1;
-    if (frame.stream === 2) {
-      const state = new TextDecoder().decode(frame.data);
-      if (state === "directory-tracking-unavailable") {
-        followDirectory.value = false;
-        directoryTrackingSupported.value = false;
-        showNotice(t("directoryTrackingUnavailable"));
-      } else {
-        terminalState.value = "disconnected";
-        terminalError.value = state === "ssh-transport-disconnected" ? t("transportDisconnected") : state || t("disconnected");
-        if (state === "ssh-transport-disconnected" && session.value?.sessionId) {
-          terminalTransportWatch.reportUnavailable(session.value.sessionId);
-        }
-      }
-    } else {
-      consumeFrameViaZmodem(frame.data);
-    }
-    frame = pendingTerminalFrames.get(lastSequence + 1);
-  }
-  persistState();
-  // A stalled gap must not grow the pending map without bound: once the
-  // buffer overshoots, drop it and let the replay re-deliver everything
-  // after the last in-order sequence.
-  if (pendingTerminalFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
-    pendingTerminalFrames.clear();
-  }
-  const firstPending = Math.min(...pendingTerminalFrames.keys());
-  if (Number.isFinite(firstPending) && firstPending > lastSequence + 1 && !replayInFlight && session.value) {
-    const holeAt = lastSequence;
-    replayInFlight = true;
-    // A session-gone replay failure must resync and reconnect: the hole can
-    // never be filled (the session object is gone server-side), so the
-    // ssh-transport-disconnected state frame stuck behind it would otherwise
-    // freeze the drain forever and the tab keeps claiming "connected".
-    let sessionGone = false;
-    void window.dbxPlugin.invoke<ReplayResult>("ssh/terminal/replay", { sessionId: session.value.sessionId, afterSequence: lastSequence })
-      .then((result) => {
-        if (!result.complete) {
-          terminalState.value = "error";
-          terminalError.value = t("sessionUnrecoverable");
-          return;
-        }
-        // The replay returned healthy but the hole below firstPending is still
-        // there: those frames are gone for good (e.g. sequence numbering
-        // restarted across a reconnect). Retry once more, then resync the
-        // cursor past the hole — dropping the missing prefix beats spinning
-        // this replay loop forever and freezing the workbench.
-        if (lastSequence === holeAt) {
-          replayNoProgress += 1;
-          if (replayNoProgress >= 3) {
-            lastSequence = firstPending - 1;
-            replayNoProgress = 0;
-          }
-        } else {
-          replayNoProgress = 0;
-        }
-      })
-      .catch((cause) => {
-        if (isSessionGoneError(cause) && firstPending > lastSequence) {
-          sessionGone = true;
-          lastSequence = firstPending - 1;
-          replayNoProgress = 0;
-          return;
-        }
-        showError(cause, "terminal");
-      })
-      .finally(() => {
-        replayInFlight = false;
-        drainTerminalFrames();
-        // Run after the resync drain above delivered the buffered disconnect
-        // state frame (it flips the state off "connected"); the ladder then
-        // picks the reconnect up unless one is already pending.
-        if (sessionGone && !reconnectPending.value && !disposed) scheduleSessionReconnect();
-      });
-  }
-}
-
-// 本地终端输出与 SSH 同一帧协议（stream + u64 sequence），复用乱序重组与
-// 空洞补发；State 帧到来即落退出态。补发不完整只 resync 到缓冲尾部——
-// 环形缓冲淘汰不可恢复，但活会话不能被误判成已退出。
+// 宿主二进制事件（local/telnet/serial/vnc/rdp/ssh 输出 + sftp 下载）与 SSH 帧
+// 重组/空洞回放已随输出管线迁入 useTerminalWriter（handleBinary 由上方解构）。
 
 // SSH 会话主干：协议路由查询、open/attach/关闭、重试退避、传输复用/降级、
 // 宿主重开与 host-key 应答收口在 composables/useSshConnection。重连梯子、
@@ -4357,10 +4175,6 @@ function formatModified(value?: number) {
 }
 
 
-function readU64(bytes: Uint8Array, offset: number) {
-  return Number(new DataView(bytes.buffer, bytes.byteOffset + offset, 8).getBigUint64(0, false));
-}
-
 function writeU64(bytes: Uint8Array, offset: number, value: number) {
   new DataView(bytes.buffer, bytes.byteOffset + offset, 8).setBigUint64(0, BigInt(value), false);
 }
@@ -4725,10 +4539,8 @@ onBeforeUnmount(() => {
   unsubscribeFileDrag?.();
   unsubscribeFileDrop?.();
   window.removeEventListener("message", onHostDragMessage);
-  terminalWriteThrottle.dispose();
-  // 终端重建/会话关闭：在途写入回调整体作废，保护态复位，避免旧积压误判。
-  outputInFlightBytes = 0;
-  outputGate.reset();
+  // 输出管线（写节流 flush + 在途写入作废 + 背压门复位）按原语义一次收口。
+  disposeOutputPipeline();
   detachHighlightRender();
   detachActionLinks();
   detachGutterListeners();
