@@ -10,6 +10,7 @@ import SftpTreePane from "./SftpTreePane.vue";
 import type { SftpEntryKind, SftpSanitizedEntry } from "../lib/sftpEntries";
 import type { SftpFileTreeNode, SftpTreeRow } from "../lib/sftpFileTree";
 import type { SftpDetailInfo } from "../lib/sftpDetails";
+import type { HostPointerSample } from "../../../shared/lib/hostPointer";
 
 const t = (key: string, values?: Record<string, string | number>) => {
   if (key === "sftpSide.root") return "ROOT";
@@ -64,7 +65,7 @@ interface PaneProps {
   emptyText: string;
   loadDetails?: (entry: SftpSanitizedEntry) => Promise<SftpDetailInfo | null>;
   externalDragActive?: boolean;
-  hostDragYOffset?: number;
+  pointerSampler?: () => Promise<HostPointerSample | null>;
   followPadding?: boolean;
 }
 
@@ -944,54 +945,128 @@ describe("SftpTreePane drag and drop targeting", () => {
     }
   });
 
-  it("calibrates one-row host offsets from the initial hover row", async () => {
+  // DBX 0.6.x 宿主：宿主点 = (真实点 + iframe 偏移) / devicePixelRatio − 偏移。
+  // 直接使用会让落点缩到文件树左侧；sidecar 探针给出真实光标后可反解偏移。
+  it("recovers the iframe offset from the real cursor and follows folder rows", async () => {
     vi.useFakeTimers();
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
     const folderA = makeNode("/a", "directory");
     const folderB = makeNode("/b", "directory");
     const folderC = makeNode("/c", "directory");
-    const wrapper = mountPane([row(folderA), row(folderB), row(folderC)], { externalDragActive: true, hostDragYOffset: 28 });
-    const rowEls = wrapper.findAll(".sftp-tree-row");
-    const rowA = rowEls[0].element;
-    const rowB = rowEls[1].element;
-    const originalQuerySelector = document.querySelector.bind(document);
-    const querySpy = vi.spyOn(document, "querySelector").mockImplementation((selector: string) => {
-      if (selector === ".sftp-tree-row:hover") return rowB;
-      return originalQuerySelector(selector);
+    const offset = { x: 240, y: 40 };
+    let truePoint = { x: 20, y: 40 };
+    const hostPoint = (point: { x: number; y: number }) => ({
+      x: (point.x + offset.x) / 2 - offset.x,
+      y: (point.y + offset.y) / 2 - offset.y,
     });
-    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((_x: number, y: number) => (y < 28 ? rowA : rowB));
+    const sampler = vi.fn(async (): Promise<HostPointerSample> => ({
+      platform: "macos",
+      cursor: { x: offset.x + truePoint.x, y: offset.y + truePoint.y },
+      window: { x: 0, y: 0, width: 1000, height: 800 },
+    }));
+    const wrapper = mountPane([row(folderA), row(folderB), row(folderC)], { externalDragActive: true, pointerSampler: sampler });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((x: number, y: number) => {
+      if (x < 0) return null;
+      if (y < 28) return rowEls[0].element;
+      return y < 56 ? rowEls[1].element : rowEls[2].element;
+    });
 
     try {
       const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
-      // 宿主点落在 A（真实指针在 B）：校准出 +1 行偏移，首个目标就是 B。
-      expect(api.markDropTargetAt({ x: 30, y: 10 })).toBe("/b");
+      // 宿主点同比缩小并左移，直接命中会落到树外（x < 0）。
+      expect(api.markDropTargetAt(hostPoint(truePoint))).toBe("");
+      await flushMicrotasks();
+      expect(sampler).toHaveBeenCalledTimes(1);
       await nextTick();
+      // 反解出偏移后，真实光标所在的 B 立即成为目标。
       expect(rowEls[1].classes()).toContain("is-drop-target");
 
-      // 真实指针移到 C（宿主点落在 B）：沿用 +1 行偏移，目标为 C。
-      expect(api.markDropTargetAt({ x: 30, y: 40 })).toBe("/c");
+      // 移动到 C：同样被缩放的宿主点换算后仍跟随真实光标。
+      truePoint = { x: 20, y: 70 };
+      expect(api.markDropTargetAt(hostPoint(truePoint))).toBe("/c");
       await nextTick();
       expect(rowEls[2].classes()).toContain("is-drop-target");
       expect(rowEls[1].classes()).not.toContain("is-drop-target");
+
+      // 悬停 1s 展开当前真实目标。
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(wrapper.emitted("toggle")?.[0]).toEqual([folderC]);
     } finally {
       pointSpy.mockRestore();
-      querySpy.mockRestore();
       wrapper.unmount();
+      Object.defineProperty(window, "devicePixelRatio", { value: originalDpr, configurable: true });
     }
   });
 
-  it("applies the platform y offset when no hover row can calibrate", async () => {
+  it("clears the folder target when the calibrated pointer lands on a file row", async () => {
     vi.useFakeTimers();
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
     const folderA = makeNode("/a", "directory");
-    const folderB = makeNode("/b", "directory");
-    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true, hostDragYOffset: 28 });
+    const plainFile = makeNode("/f", "file");
+    const folderC = makeNode("/c", "directory");
+    const offset = { x: 240, y: 40 };
+    let truePoint = { x: 20, y: 10 };
+    const hostPoint = (point: { x: number; y: number }) => ({
+      x: (point.x + offset.x) / 2 - offset.x,
+      y: (point.y + offset.y) / 2 - offset.y,
+    });
+    const sampler = vi.fn(async (): Promise<HostPointerSample> => ({
+      platform: "macos",
+      cursor: { x: offset.x + truePoint.x, y: offset.y + truePoint.y },
+      window: { x: 0, y: 0, width: 1000, height: 800 },
+    }));
+    const wrapper = mountPane([row(folderA), row(plainFile), row(folderC)], { externalDragActive: true, pointerSampler: sampler });
     const rowEls = wrapper.findAll(".sftp-tree-row");
-    const rowA = rowEls[0].element;
-    const rowB = rowEls[1].element;
-    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((_x: number, y: number) => (y < 28 ? rowA : rowB));
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((x: number, y: number) => {
+      if (x < 0) return null;
+      if (y < 28) return rowEls[0].element;
+      return y < 56 ? rowEls[1].element : rowEls[2].element;
+    });
 
     try {
       const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
-      expect(api.markDropTargetAt({ x: 30, y: 10 })).toBe("/b");
+      expect(api.markDropTargetAt(hostPoint(truePoint))).toBe("");
+      await flushMicrotasks();
+      await nextTick();
+      expect(rowEls[0].classes()).toContain("is-drop-target");
+
+      // 真实光标落在文件行：已校准的坐标不再“猜”相邻目录，目标必须清空。
+      truePoint = { x: 20, y: 40 };
+      expect(api.markDropTargetAt(hostPoint(truePoint))).toBe("");
+      await nextTick();
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+      expect(rowEls[1].classes()).not.toContain("is-drop-target");
+      expect(wrapper.emitted("drop-target-change")?.at(-1)).toEqual([""]);
+
+      // 再移到目录：目标恢复。
+      truePoint = { x: 20, y: 70 };
+      expect(api.markDropTargetAt(hostPoint(truePoint))).toBe("/c");
+      await nextTick();
+      expect(rowEls[2].classes()).toContain("is-drop-target");
+    } finally {
+      pointSpy.mockRestore();
+      wrapper.unmount();
+      Object.defineProperty(window, "devicePixelRatio", { value: originalDpr, configurable: true });
+    }
+  });
+
+  it("keeps raw host coordinates when the pointer probe returns nothing", async () => {
+    // 旧宿主/探针被禁用（非 macOS、sidecar 忙碌）：不校准，仍按宿主点命中。
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const sampler = vi.fn(async () => null);
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true, pointerSampler: sampler });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockImplementation((_x: number, y: number) => (y < 28 ? rowEls[0].element : rowEls[1].element));
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      expect(api.markDropTargetAt({ x: 30, y: 40 })).toBe("/b");
+      await flushMicrotasks();
       await nextTick();
       expect(rowEls[1].classes()).toContain("is-drop-target");
       expect(rowEls[0].classes()).not.toContain("is-drop-target");

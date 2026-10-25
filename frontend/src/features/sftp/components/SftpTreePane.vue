@@ -14,6 +14,7 @@ import SftpTreeRow from "./SftpTreeRow.vue";
 import { useTreeDetailsCard } from "../composables/useTreeDetailsCard";
 import { useTreeFileDrop } from "../composables/useTreeFileDrop";
 import { useTreeVirtualScroll } from "../composables/useTreeVirtualScroll";
+import { sampleHostPointer, type HostPointerSample } from "../../../shared/lib/hostPointer";
 
 const props = withDefaults(
   defineProps<{
@@ -35,8 +36,8 @@ const props = withDefaults(
     /** 宿主桥已判定文件拖拽进行中：部分宿主会剥离 dataTransfer.types，
      *  行级 dragover 不能只依赖 DOM types，否则高亮/悬停展开失效。 */
     externalDragActive?: boolean;
-    /** 仅测试/兼容用：宿主拖拽坐标的平台 y 偏移；缺省按 iframe + macOS 推断。 */
-    hostDragYOffset?: number;
+    /** 仅测试注入：真实光标/窗口探针；缺省走 sidecar 的 local/pointer/sample。 */
+    pointerSampler?: () => Promise<HostPointerSample | null>;
     /** 目录跟随开启：列表底部留一屏滚动余量，让跟随目录可以真正贴顶显示
      *  （否则靠近末尾的目录会被 max scroll 钳在视口中部）。 */
     followPadding?: boolean;
@@ -100,13 +101,9 @@ const {
 const { dragOverUri, onTreeDragOver, onRowDragOver, onRowDragLeave, onRowDrop, markDropTargetAt, resetHostDragCalibration } = useTreeFileDrop({
   rows: () => props.rows,
   externalDragActive: () => props.externalDragActive,
-  hostDragYOffset: () => {
-    if (props.hostDragYOffset !== undefined) return props.hostDragYOffset;
-    // macOS Tauri 的拖拽点比真实指针高约一个拖拽图标（tauri#10744）；
-    // 插件在宿主 iframe 内运行时才需要补偿，构建/单测页面保持 0。
-    if (typeof window === "undefined") return 0;
-    return window.parent !== window && /Mac/i.test(navigator.platform) ? 28 : 0;
-  },
+  // 真实光标探针（sidecar，仅 macOS 有值）：宿主把坐标多除了一次缩放比例，
+  // 用它反解 iframe 偏移；探针不可用时保持原始点 + :hover 兜底。
+  samplePointer: props.pointerSampler ?? sampleHostPointer,
   emit: {
     toggle: (node) => emit("toggle", node),
     dropOn: (node, dragEvent) => emit("drop-on", node, dragEvent),

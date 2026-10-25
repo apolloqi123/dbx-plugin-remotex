@@ -196,6 +196,22 @@ impl Plugin {
                 )?;
                 Ok(json!({ "success": true }))
             }
+            // 原生拖拽指针探针（SFTP 拖放落点校准）：只返回光标与宿主窗口
+            // 几何；宿主转发坐标被多除了一次缩放比例，插件用同一时刻的
+            // 真实光标反解 iframe 偏移。非 macOS 返回空样本。
+            "local/pointer/sample" => {
+                let sample = crate::platform::pointer::sample();
+                Ok(json!({
+                    "platform": sample.platform,
+                    "cursor": sample.cursor.map(|point| json!({ "x": point.x, "y": point.y })),
+                    "window": sample.window.map(|rect| json!({
+                        "x": rect.x,
+                        "y": rect.y,
+                        "width": rect.width,
+                        "height": rect.height,
+                    })),
+                }))
+            }
             _ => Err(format!("Method not found: {method}")),
         }
     }

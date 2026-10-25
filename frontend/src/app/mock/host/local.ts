@@ -53,6 +53,23 @@ export function exitLocalSession(): void {
   emitHostEvent({ method: "local/session/state", params: { sessionId, state: "exited", exitCode: 127 } });
 }
 
+// ---- 原生拖拽指针探针（local/pointer/sample）----
+// 默认与旧宿主一致：没有光标样本，前端不做坐标反解、按原始宿主点命中。
+// 夹具用 __dbxMockPointerSample 注入真实光标 + 窗口几何，走查宿主把坐标
+// 多除一次缩放比例时的反解路径（见 features/sftp/lib/hostDragMapping.ts）。
+export interface MockPointerSampleState {
+  platform: string;
+  cursor: { x: number; y: number } | null;
+  window: { x: number; y: number; width: number; height: number } | null;
+}
+
+const EMPTY_POINTER_SAMPLE: MockPointerSampleState = { platform: "mock", cursor: null, window: null };
+let pointerSampleState: MockPointerSampleState = EMPTY_POINTER_SAMPLE;
+
+export function setMockPointerSample(state: MockPointerSampleState | null): void {
+  pointerSampleState = state ?? EMPTY_POINTER_SAMPLE;
+}
+
 // 插件级 UI 偏好（local/preferences/get|set）：镜像 sidecar preferences.json 的合并语义。
 const localPrefsState = {
   downloadDir: "",
@@ -114,6 +131,7 @@ export async function handleLocalInvoke(method: string, params: unknown): Promis
     };
   }
   if (method === "local/capabilities") return { canSaveLocal: false, downloadsDir: "" };
+  if (method === "local/pointer/sample") return { ...pointerSampleState };
   if (method === "local/saveFile") {
     // 通用本机落盘（录制 GIF/transcript、trzsz/zmodem 导出）：镜像 sidecar 的
     // 必填校验与 {localPath,name} 返回形状；夹具不写真实磁盘，只合成下载路径。

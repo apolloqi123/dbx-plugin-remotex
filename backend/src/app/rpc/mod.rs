@@ -66,7 +66,7 @@ impl Plugin {
                 "metrics" => self.handle_metrics(method, params, emitter),
                 "preferences" => self.handle_settings(method, params, emitter),
                 "terminal" | "session" | "recording" | "shells" | "capabilities" | "saveFile"
-                | "wallpaper" | "fs" | "reveal" | "open" | "open-with" | "editors" => {
+                | "wallpaper" | "fs" | "reveal" | "open" | "open-with" | "editors" | "pointer" => {
                     self.handle_local(method, params, emitter)
                 }
                 _ => Err(format!("Method not found: {method}")),

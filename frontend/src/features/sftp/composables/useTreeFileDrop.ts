@@ -1,7 +1,25 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { SftpFileTreeNode, SftpTreeRow } from "../lib/sftpFileTree";
+import {
+  cursorInWindow,
+  dragPointSpread,
+  estimateHostScale,
+  mapHostDragPoint,
+  medianDragPoint,
+  offsetFromSample,
+  sanitizeDragScale,
+  type DragMappingPoint,
+  type DragPair,
+} from "../lib/hostDragMapping";
+import type { HostPointerSample } from "../../../shared/lib/hostPointer";
 
 const DROP_EXPAND_DELAY = 1_000;
+/** 同一拖拽内两次探针的最小间隔：光标停住后 3-4 个样本即可收敛。 */
+const POINTER_SAMPLE_INTERVAL = 90;
+const POINTER_SAMPLE_LIMIT = 20;
+/** 偏移样本收敛阈值（px）；超过截止时间就退回中位数，避免拖拽结束后一直采样。 */
+const OFFSET_STABLE_SPREAD = 6;
+const OFFSET_SETTLE_TIMEOUT = 1_500;
 
 export interface TreeDragPoint {
   x: number;
@@ -10,13 +28,19 @@ export interface TreeDragPoint {
 
 /** 文件拖放到目录行：只有宿主文件拖拽（dataTransfer.types 含 "Files" 或宿主
  *  dragActive）才高亮；折叠目录悬停 1s 后 toggle 由父级懒加载展开。drop 必须
- *  同步上抛原始 DragEvent，父级要在同一 tick 里读取 dataTransfer.items。 */
+ *  同步上抛原始 DragEvent，父级要在同一 tick 里读取 dataTransfer.items。
+ *
+ *  宿主转发的原生拖拽坐标在 macOS DBX 上被多除了一次 devicePixelRatio
+ *  （见 hostDragMapping.ts）：用 sidecar 的光标探针解出 iframe 偏移后，
+ *  后续宿主点即可精确换回 iframe 坐标；探针不可用时退回原始点 + :hover
+ *  兜底，行为不劣于旧宿主。 */
 export function useTreeFileDrop(options: {
   rows: () => SftpTreeRow[];
   externalDragActive: () => boolean;
-  /** 宿主未提供真实指针时的 y 兼容偏移（macOS Tauri 约 28 CSS px；
-   *  0 表示当前环境不需要修正）。 */
-  hostDragYOffset?: () => number;
+  /** 真实光标 + 宿主窗口几何（macOS sidecar 探针）；缺省/失败时不校准。 */
+  samplePointer?: () => Promise<HostPointerSample | null>;
+  /** 显示缩放比例；缺省取 iframe 的 devicePixelRatio（与宿主同屏一致）。 */
+  deviceScale?: () => number;
   emit: {
     toggle: (node: SftpFileTreeNode) => void;
     dropOn: (node: SftpFileTreeNode, dragEvent: DragEvent) => void;
@@ -33,13 +57,25 @@ export function useTreeFileDrop(options: {
   let pointerTracking = false;
   let lastPointerTrackAt = 0;
   let hoverPollTimer: ReturnType<typeof setInterval> | undefined;
-  // 宿主已开始转发原生拖拽坐标：坐标命中优先于 DOM 事件与 :hover 兜底。
+  // 宿主已开始转发原生拖拽坐标：坐标是活的，:hover 在原生拖拽期会冻结在
+  // 拖入行，不能再让它覆盖宿主目标。校准与否都不影响这个优先级。
   let hostPositioned = false;
-  // 宿主坐标可能带固定 y 偏移（macOS Tauri）。首次坐标用 :hover 的初始行
-  // 校准行偏移；拿不到 hover 时退回平台兼容偏移。一次拖拽内只校准一次。
-  let calibrationDone = false;
-  let hostRowDelta = 0;
-  let hostOffsetY = 0;
+  // 已校准的 iframe 偏移（宿主 CSS 坐标）：跨拖拽缓存，同一布局直接可用，
+  // 新拖拽再用探针校正。null = 尚未校准。
+  let hostOffset: DragMappingPoint | null = null;
+  // 宿主把逻辑点缩小了多少（DBX 0.6.x = devicePixelRatio，修好后 = 1）。
+  // null 表示还没测出来，先按默认缩放换算。
+  let hostScale: number | null = null;
+  let offsetSamples: DragMappingPoint[] = [];
+  let dragPairs: DragPair[] = [];
+  let calibrationStartedAt = 0;
+  let lastSampleAt = 0;
+  let samplingDone = false;
+  let sampleSequence = 0;
+  let sampleInFlight = 0;
+  let sampleTimer: ReturnType<typeof setTimeout> | undefined;
+  let dragSession = 0;
+  let lastHostPoint: DragMappingPoint | null = null;
   // 冻结的 :hover 会一直返回拖入时的行。仅当轮询看到「与上次不同的行」时才认为
   // 指针真的移动了（live hover），用它兜底；同一行的重复上报一律忽略，避免
   // 把 pointer/dragover 已命中的新目标（A 展开后拖到 B）覆盖回旧行。
@@ -54,18 +90,31 @@ export function useTreeFileDrop(options: {
     () => externalDragActive(),
     (active) => {
       if (active) {
-        // 宿主坐标可能先于 active prop 到达：已由坐标接管时不要重启兜底。
+        // 宿主坐标可能先于 active prop 到达：坐标已接管就不要重启兜底，
+        // 但迟到的那一帧仍要补一次校准采样。
         if (!hostPositioned) startPointerTracking();
+        if (lastHostPoint) void requestPointerSample();
       } else {
         hostPositioned = false;
         stopPointerTracking();
+        resetCalibrationSession();
         clearDragVisuals();
       }
     },
     { immediate: true },
   );
 
-  /** 坐标命中目录行：宿主转发的是 iframe 内 CSS 像素，与 elementFromPoint 同域。 */
+  function defaultDragScale(): number {
+    const raw = options.deviceScale?.() ?? (typeof window === "undefined" ? 1 : window.devicePixelRatio);
+    return sanitizeDragScale(raw);
+  }
+
+  /** 当前换算用的缩放：优先用样本测出的宿主行为，测不出时按显示缩放。 */
+  function dragScale(): number {
+    return hostScale ?? defaultDragScale();
+  }
+
+  /** 坐标命中目录行：换算后的点是 iframe CSS 像素，与 elementFromPoint 同域。 */
   function targetFromRow(rowEl: HTMLElement): { node: SftpFileTreeNode; index: number } | undefined {
     const index = Number(rowEl.dataset.treeIndex);
     const target = rows()[index];
@@ -91,61 +140,136 @@ export function useTreeFileDrop(options: {
     return undefined;
   }
 
-  /** 首次宿主坐标校准：:hover 是原生拖拽起点的真实行；用它和宿主命中行
-   *  的索引差抵消固定 y 偏移。无 hover 时退回平台兼容偏移。 */
-  function calibrateHostTarget(point: TreeDragPoint) {
-    calibrationDone = true;
-    hostRowDelta = 0;
-    hostOffsetY = Math.max(0, options.hostDragYOffset?.() ?? 0);
-    if (!hostOffsetY || typeof document === "undefined") return;
-    const host = targetAtPoint(point);
-    const hoverEl = document.querySelector<HTMLElement>(".sftp-tree-row:hover");
-    if (!host || !hoverEl) return;
-    const hoverIndex = Number(hoverEl.dataset.treeIndex);
-    if (!rows()[hoverIndex]) return;
-    const delta = hoverIndex - host.index;
-    // 相邻 2 行内的偏差才像固定偏移；更大的差异更像旧 hover 脏值。
-    if (Math.abs(delta) > 2) return;
-    hostRowDelta = delta;
-    hostOffsetY = 0;
+  /** 宿主坐标 → iframe 坐标；未校准时退回原始点（旧宿主/探针不可用）。 */
+  function resolveHostPoint(point: DragMappingPoint): DragMappingPoint {
+    if (!hostOffset) return point;
+    return mapHostDragPoint({ host: point, offset: hostOffset, scale: dragScale() });
   }
 
-  function hostTargetAt(point: TreeDragPoint): { node: SftpFileTreeNode; index: number } | undefined {
-    if (!calibrationDone) calibrateHostTarget(point);
-    if (hostRowDelta !== 0) {
-      const host = targetAtPoint(point);
-      if (!host) return undefined;
-      const index = host.index + hostRowDelta;
-      const row = rows()[index];
-      return row && row.node.kind === "directory" ? { node: row.node, index } : undefined;
-    }
-    if (hostOffsetY !== 0) return targetAtPoint({ x: point.x, y: point.y + hostOffsetY });
-    return targetAtPoint(point);
-  }
-
-  function resetHostDragCalibration() {
-    calibrationDone = false;
-    hostRowDelta = 0;
-    hostOffsetY = 0;
-  }
-
-  /** 宿主拖拽坐标入口（dragstate.position）：命中即高亮/计时，返回目标路径。 */
-  function markDropTargetAt(point: TreeDragPoint): string {
-    hostPositioned = true;
-    stopPointerTracking();
-    const target = hostTargetAt(point);
+  function markPointAt(point: DragMappingPoint): string {
+    const target = targetAtPoint(point);
     if (!target) {
-      clearDragTarget();
-      return "";
+      // 已校准的坐标可信：落在文件行/空白区就是没有目标，必须撤掉上一行的
+      // 高亮与 1s 计时器；未校准时点本来就可能偏，保留上一次命中更稳。
+      if (hostOffset) clearDragTarget();
+      return dragOverPath.value;
     }
     markRowDragTarget(target.node);
     return target.node.path;
   }
 
+  async function requestPointerSample() {
+    const sampler = options.samplePointer;
+    if (!sampler || sampleInFlight || samplingDone || !externalDragActive()) return;
+    const now = performance.now();
+    if (lastSampleAt && now - lastSampleAt < POINTER_SAMPLE_INTERVAL) return;
+    lastSampleAt = now;
+    if (!calibrationStartedAt) calibrationStartedAt = now;
+    const token = ++sampleSequence;
+    const session = dragSession;
+    sampleInFlight = token;
+    let sample: HostPointerSample | null = null;
+    try {
+      sample = await sampler();
+    } catch {
+      sample = null;
+    } finally {
+      if (sampleInFlight === token) sampleInFlight = 0;
+    }
+    if (!sample || token !== sampleSequence || session !== dragSession) return;
+    // drop 已结束（宿主先发 false 再发 filedrop）时，迟到的样本不能再改落点。
+    if (!externalDragActive()) return;
+    applyPointerSample(sample);
+  }
+
+  function applyPointerSample(sample: HostPointerSample) {
+    const host = lastHostPoint;
+    if (!sample.cursor || !sample.window || !host) return;
+    const cursorWindow = cursorInWindow({ cursor: sample.cursor, window: sample.window });
+    if (!cursorWindow) return;
+    dragPairs.push({ cursorWindow, host });
+    if (dragPairs.length > 10) dragPairs.shift();
+    // 宿主若不再多除一次缩放（未来 DBX 修复），位移比会收敛到 1：及时改判，
+    // 并把按旧 scale 学到的偏移作废，避免继续用错误换算。
+    const estimatedScale = estimateHostScale(dragPairs, defaultDragScale(), dragScale());
+    if (estimatedScale !== dragScale()) {
+      hostScale = estimatedScale;
+      offsetSamples = [];
+      hostOffset = null;
+    }
+    const scale = dragScale();
+    const offset = offsetFromSample({ cursorWindow, host, scale, window: sample.window });
+    if (!offset) return;
+    offsetSamples.push(offset);
+    if (offsetSamples.length > 8) offsetSamples.shift();
+    const median = medianDragPoint(offsetSamples);
+    if (!median) return;
+    const spread = dragPointSpread(offsetSamples.slice(-4));
+    const confident = spread <= 12;
+    // 有缓存但新样本还没收敛时，先信缓存；首次校准（无缓存）立刻接管高亮。
+    if (!hostOffset || confident) hostOffset = median;
+    stopPointerTracking();
+    // 立即按同一份样本落点，不必等下一次 dragstate。
+    const activeOffset = hostOffset;
+    markPointAt({ x: cursorWindow.x - activeOffset.x, y: cursorWindow.y - activeOffset.y });
+    if (confident && spread <= OFFSET_STABLE_SPREAD) samplingDone = true;
+    if (offsetSamples.length >= POINTER_SAMPLE_LIMIT) samplingDone = true;
+    if (!samplingDone && performance.now() - calibrationStartedAt > OFFSET_SETTLE_TIMEOUT) {
+      samplingDone = true;
+    }
+    // 指针停住时宿主不再发 dragstate；靠定时器把剩余样本跑完，否则首个
+    // 样本若有事件/RPC 时间差就会一直用错误的偏移。
+    if (!samplingDone) schedulePointerSample();
+  }
+
+  function schedulePointerSample() {
+    if (sampleTimer !== undefined || samplingDone || !hostPositioned) return;
+    sampleTimer = setTimeout(() => {
+      sampleTimer = undefined;
+      if (samplingDone || !externalDragActive()) return;
+      void requestPointerSample();
+    }, POINTER_SAMPLE_INTERVAL);
+  }
+
+  function stopSampling() {
+    samplingDone = true;
+    if (sampleTimer !== undefined) {
+      clearTimeout(sampleTimer);
+      sampleTimer = undefined;
+    }
+  }
+
+  function resetCalibrationSession() {
+    hostPositioned = false;
+    dragSession += 1;
+    sampleSequence += 1;
+    sampleInFlight = 0;
+    stopSampling();
+    samplingDone = false;
+    offsetSamples = [];
+    dragPairs = [];
+    calibrationStartedAt = 0;
+    lastSampleAt = 0;
+    lastHostPoint = null;
+    // hostOffset 保留：同一布局的下一次拖拽首帧就能命中，再靠探针收敛。
+  }
+
+  /** 宿主拖拽坐标入口（dragstate.position）：命中即高亮/计时，返回目标路径。 */
+  function markDropTargetAt(point: TreeDragPoint): string {
+    hostPositioned = true;
+    lastHostPoint = point;
+    // 宿主坐标是活的：停掉 :hover/指针兜底，避免冻结的悬停行把目标拉回去。
+    stopPointerTracking();
+    // 已校准也抽样一次：窗口/布局变了时下一帧就能自愈（拖拽中只会跑完
+    // 一轮收敛样本，成本是一次本地 RPC）。
+    void requestPointerSample();
+    return markPointAt(resolveHostPoint(point));
+  }
+
   // 宿主桥只给 dragActive 布尔值（旧宿主），不保证把 dragover 派发到行元素。
   // 用全局指针位置做兜底：拖拽期间按 elementFromPoint 找到行，复用同一套标记。
   function trackPointer(event: MouseEvent) {
-    if (!externalDragActive() || hostPositioned) return;
+    if (!externalDragActive() || hostPositioned || hostOffset) return;
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
     if (!event.clientX && !event.clientY) return;
     const now = performance.now();
@@ -160,7 +284,7 @@ export function useTreeFileDrop(options: {
   }
 
   function startPointerTracking() {
-    if (hostPositioned || pointerTracking || typeof document === "undefined") return;
+    if (hostPositioned || hostOffset || pointerTracking || typeof document === "undefined") return;
     pointerTracking = true;
     lastHoverUri = "";
     document.addEventListener("mousemove", trackPointer, true);
@@ -170,7 +294,7 @@ export function useTreeFileDrop(options: {
     // CSS :hover 仍会随指针更新。轮询命中的行，不命中时保持现状（避免把
     // 已由 dragover/指针事件标记的目标误清）。
     hoverPollTimer = setInterval(() => {
-      if (hostPositioned || !externalDragActive()) return;
+      if (hostPositioned || hostOffset || !externalDragActive()) return;
       const rowEl = document.querySelector<HTMLElement>(".sftp-tree-row:hover");
       if (!rowEl) return;
       const index = Number(rowEl.dataset.treeIndex);
@@ -219,7 +343,8 @@ export function useTreeFileDrop(options: {
    *  否则冻结的 :hover 会在下一次轮询重新生效。 */
   function endDragSession() {
     hostPositioned = false;
-    resetHostDragCalibration();
+    stopPointerTracking();
+    resetCalibrationSession();
     clearDragTarget();
     lastHoverUri = "";
   }
@@ -298,6 +423,9 @@ export function useTreeFileDrop(options: {
 
   onBeforeUnmount(() => {
     window.removeEventListener("dragend", endDragSession);
+    dragSession += 1;
+    sampleSequence += 1;
+    stopSampling();
     stopPointerTracking();
     clearDragTarget();
   });
@@ -309,7 +437,8 @@ export function useTreeFileDrop(options: {
     onRowDragLeave,
     onRowDrop,
     markDropTargetAt,
-    resetHostDragCalibration,
+    /** 新拖拽开始：清掉上一轮的样本与在途探针，保留已学到的偏移。 */
+    resetHostDragCalibration: resetCalibrationSession,
     clearDragTarget,
   };
 }

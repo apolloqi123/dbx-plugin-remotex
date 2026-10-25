@@ -51,7 +51,7 @@ import {
 } from "./mock/host/fixture";
 import { handleSessionInvoke } from "./mock/host/session";
 import { emitTerminal, handleSshTerminalInput, handleTerminalInvoke } from "./mock/host/terminal";
-import { exitLocalSession, handleLocalInvoke, handleLocalTerminalInput } from "./mock/host/local";
+import { exitLocalSession, handleLocalInvoke, handleLocalTerminalInput, setMockPointerSample, type MockPointerSampleState } from "./mock/host/local";
 import { handleSftpInvoke } from "./mock/host/sftpFiles";
 import { handleSftpUploadBinary, handleTransfersInvoke } from "./mock/host/transfers";
 import { handleTunnelsInvoke } from "./mock/host/tunnels";
@@ -260,6 +260,10 @@ queueMicrotask(() => document.dispatchEvent(new CustomEvent("dbx-plugin-init", {
 (window as unknown as { __dbxMockDragState?: (active: boolean, position?: { x: number; y: number }) => void }).__dbxMockDragState = (active, position) => {
   fileDragStateListeners.forEach((listener) => listener(active, position));
 };
+
+// mock 专有调试入口：宿主转发坐标前的「真实光标」样本。夹具注入后，
+// SFTP 拖放会用本机光标反解 iframe 偏移（模拟 DBX 0.6.x 的缩放误差）。
+(window as unknown as { __dbxMockPointerSample?: (state: MockPointerSampleState | null) => void }).__dbxMockPointerSample = setMockPointerSample;
 
 // mock 专有调试入口：向 SSH 可视会话注入一段终端输出（issue #150 交互提示
 // 守卫走查用——在页面里摆出 MFA/验证码/选择菜单等远端提示行，验证 ↑/↓ 与
