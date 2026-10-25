@@ -757,11 +757,15 @@ pnpm --dir frontend test
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 ```
 
-- [ ] **Step 4: 写子域边界说明**
+- [ ] **Step 4: 递归化结构守卫的 composable 扫描**
+
+`frontend/src/app/workbench.spec.ts` 的 `import.meta.glob("../**/composables/*.ts", ...)` 改为 `"../**/composables/**/*.ts"`，否则子域分组后终端 composable 会从弹层结构守卫中静默消失。同步检查 `scripts/refactor/move-file.mjs` 打印的 glob 审计清单。
+
+- [ ] **Step 5: 写子域边界说明**
 
 新建 `frontend/src/features/terminal/README.md`，用一张表列出 `lib/emulator|appearance|decorations|panels|transfer|behavior` 与 `composables/session|io|ui` 的职责，并写明：跨子域只能经 `lib` 的具名导出，不得直接引用其他子域的内部文件。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/src
