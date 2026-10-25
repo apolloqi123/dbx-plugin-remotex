@@ -58,16 +58,29 @@ export function useTreeFileDrop(options: {
   );
 
   /** 坐标命中目录行：宿主转发的是 iframe 内 CSS 像素，与 elementFromPoint 同域。 */
-  function targetAtPoint(point: TreeDragPoint): { node: SftpFileTreeNode; index: number } | undefined {
-    if (typeof document === "undefined" || typeof document.elementFromPoint !== "function") return undefined;
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return undefined;
-    const element = document.elementFromPoint(point.x, point.y) as HTMLElement | null;
-    const rowEl = element?.closest<HTMLElement>(".sftp-tree-row");
-    if (!rowEl) return undefined;
+  function targetFromRow(rowEl: HTMLElement): { node: SftpFileTreeNode; index: number } | undefined {
     const index = Number(rowEl.dataset.treeIndex);
     const target = rows()[index];
     if (!target || target.node.kind !== "directory") return undefined;
     return { node: target.node, index };
+  }
+
+  function targetAtPoint(point: TreeDragPoint): { node: SftpFileTreeNode; index: number } | undefined {
+    if (typeof document === "undefined") return undefined;
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return undefined;
+    // 原生拖拽期 WKWebView 的 elementFromPoint 可能返回 null/拖拽遮罩：
+    // 先按命中元素，再按渲染行几何兜底（两者都用同一份 iframe 坐标）。
+    if (typeof document.elementFromPoint === "function") {
+      const element = document.elementFromPoint(point.x, point.y) as HTMLElement | null;
+      const rowEl = element?.closest<HTMLElement>(".sftp-tree-row");
+      if (rowEl) return targetFromRow(rowEl);
+    }
+    for (const rowEl of document.querySelectorAll<HTMLElement>(".sftp-tree-row")) {
+      const rect = rowEl.getBoundingClientRect();
+      if (point.x < rect.left || point.x > rect.right || point.y < rect.top || point.y > rect.bottom) continue;
+      return targetFromRow(rowEl);
+    }
+    return undefined;
   }
 
   /** 宿主拖拽坐标入口（dragstate.position）：命中即高亮/计时，返回目标路径。 */

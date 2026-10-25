@@ -6561,6 +6561,30 @@ async function waitForHostApi(timeoutMs = 8000) {
   return window.dbxPlugin;
 }
 
+/** 宿主拖拽状态入口：SDK 监听与原始 postMessage 双通道共用同一份逻辑。
+ *  原始通道兜底旧版/缓存的注入 SDK（只把 active 传给监听器），只要宿主消息
+ *  里带 position，仍能按坐标命中目录行；重复事件对高亮/计时器是幂等的。 */
+function applyHostDragState(active: boolean, position?: { x: number; y: number }) {
+  dragActive.value = active;
+  if (!active) return;
+  sftpDragDropTarget.value = "";
+  if (position) sftpTreePane.value?.markDropTargetAt(position);
+}
+
+function onHostDragMessage(event: MessageEvent) {
+  const data = event.data as {
+    source?: unknown;
+    type?: unknown;
+    active?: unknown;
+    position?: { x?: unknown; y?: unknown };
+  } | null;
+  if (!data || data.source !== "dbx-host" || data.type !== "dragstate" || typeof data.active !== "boolean") return;
+  const position = data.position && typeof data.position.x === "number" && typeof data.position.y === "number"
+    ? { x: data.position.x, y: data.position.y }
+    : undefined;
+  applyHostDragState(data.active, position);
+}
+
 async function initialize() {
   const api = await waitForHostApi();
   hostContext.value = await Promise.any([
@@ -6608,14 +6632,7 @@ async function initialize() {
   unsubscribeEvent = api.onEvent(handleEvent);
   unsubscribeBinary = api.onBinary(handleBinary);
   unsubscribeFileDrag = api.fileTransfer?.onDragState((active, position) => {
-    dragActive.value = active;
-    // 新一次拖拽从“无目标”开始；结束事件不能清目标——部分宿主先发
-    // active=false，再回调 onDrop，提前清掉会让上传落回当前目录。
-    if (!active) return;
-    sftpDragDropTarget.value = "";
-    // 宿主转发的原生拖拽坐标（iframe CSS 像素）直接命中当前悬停行：
-    // 不再依赖冻结的 :hover 或缺失的 dragover。
-    if (position) sftpTreePane.value?.markDropTargetAt(position);
+    applyHostDragState(active, position);
   });
   unsubscribeFileDrop = api.fileTransfer?.onDrop((files, drop) => {
     // 宿主目录展开撞上限（如单文件夹 2000 文件）只交付前缀：明确提示而不是
@@ -6628,6 +6645,9 @@ async function initialize() {
     sftpDragDropTarget.value = "";
     void handleHostFileDrop(files, target);
   });
+  // 原始 dragstate 通道：宿主消息本身带 position；即使注入 SDK 是旧版/缓存版，
+  // 也能拿到坐标。与上面的 SDK 监听重复消费是幂等的。
+  window.addEventListener("message", onHostDragMessage);
   // 分屏 PTY 不随 workbenchState 恢复。webview 重载后旧分屏会话仍在 sidecar
   // 中，先按独立 workbenchId 后缀清掉，避免孤儿 PTY 泄漏（主会话不受影响）。
   void closeOrphanSplitSessions();
@@ -6889,6 +6909,9 @@ onBeforeUnmount(() => {
   unsubscribeEvent?.();
   unsubscribeBinary?.();
   unsubscribeEnvironment?.();
+  unsubscribeFileDrag?.();
+  unsubscribeFileDrop?.();
+  window.removeEventListener("message", onHostDragMessage);
   resizeObserver?.disconnect();
   osc52Disposable?.dispose();
   osc52Disposable = undefined;

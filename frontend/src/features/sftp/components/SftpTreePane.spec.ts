@@ -900,6 +900,49 @@ describe("SftpTreePane drag and drop targeting", () => {
     }
   });
 
+  it("falls back to row geometry when elementFromPoint is unavailable", async () => {
+    // WKWebView 原生拖拽期 elementFromPoint 可能返回 null（或拖拽遮罩）：
+    // 宿主坐标仍然有效，按渲染行的 getBoundingClientRect 命中。
+    vi.useFakeTimers();
+    const folderA = makeNode("/a", "directory");
+    const folderB = makeNode("/b", "directory");
+    const wrapper = mountPane([row(folderA), row(folderB)], { externalDragActive: true });
+    const rowEls = wrapper.findAll(".sftp-tree-row");
+    const rowA = rowEls[0].element;
+    const rowB = rowEls[1].element;
+    const pointSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
+    const rect = (top: number) => ({
+      left: 0,
+      top,
+      right: 200,
+      bottom: top + 28,
+      width: 200,
+      height: 28,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+    const rectASpy = vi.spyOn(rowA, "getBoundingClientRect").mockReturnValue(rect(0));
+    const rectBSpy = vi.spyOn(rowB, "getBoundingClientRect").mockReturnValue(rect(28));
+
+    try {
+      const api = wrapper.vm as unknown as { markDropTargetAt(point: { x: number; y: number }): string | undefined };
+      expect(api.markDropTargetAt({ x: 30, y: 40 })).toBe("/b");
+      await nextTick();
+      expect(rowEls[1].classes()).toContain("is-drop-target");
+      expect(rowEls[0].classes()).not.toContain("is-drop-target");
+
+      expect(api.markDropTargetAt({ x: 30, y: 10 })).toBe("/a");
+      await nextTick();
+      expect(rowEls[0].classes()).toContain("is-drop-target");
+    } finally {
+      rectBSpy.mockRestore();
+      rectASpy.mockRestore();
+      pointSpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
   it("uses forwarded host drag positions even when :hover is frozen", async () => {
     // DBX 宿主现在把原生拖拽坐标转发进 iframe：坐标命中优先于 DOM 事件与
     // :hover 兜底，A 展开后移动到 B 必须立刻换目标。
