@@ -6,6 +6,7 @@
 // 切到文件/终端页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
 // Wave 2 在页内填充实现，props 契约不变。
 import { FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
+import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
@@ -20,6 +21,11 @@ defineProps<{
   sessionId?: string;
   connectionId?: string;
   canWrite?: boolean;
+  /** 工作台终端主题/字体（可选，容器终端缺省用内置回退）。 */
+  theme?: Record<string, unknown>;
+  fontFamily?: string;
+  fontSize?: number;
+  terminalStateEvents?: (handler: (event: ContainerTerminalStateEvent) => void) => () => void;
 }>();
 
 const emit = defineEmits<{
@@ -107,6 +113,11 @@ const emit = defineEmits<{
       :session-id="sessionId"
       :connection-id="connectionId"
       :can-write="canWrite"
+      :visible="activeTab === 'terminal'"
+      :theme="theme"
+      :font-family="fontFamily"
+      :font-size="fontSize"
+      :terminal-state-events="terminalStateEvents"
     />
   </section>
 </template>

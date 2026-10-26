@@ -12,6 +12,40 @@ import ContainerDetailPane from "./ContainerDetailPane.vue";
 import { DOCKER_ENGINE_STORE_KEY } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 
+// 详情页挂载着终端页签：happy-dom 无 canvas/测量 API，xterm 的 DOM 渲染器会在
+// open() 时抛错。用最小桩替换 xterm 模块，本文件只关心分栏/选中语义。
+vi.mock("@xterm/xterm", () => ({
+  Terminal: class {
+    cols = 80;
+    rows = 24;
+    options: Record<string, unknown> = {};
+    unicode = { activeVersion: "" };
+    loadAddon(): void {}
+    open(): void {}
+    write(): void {}
+    onData(): { dispose(): void } {
+      return { dispose() {} };
+    }
+    onResize(): { dispose(): void } {
+      return { dispose() {} };
+    }
+    dispose(): void {}
+    focus(): void {}
+    reset(): void {}
+    hasSelection(): boolean {
+      return false;
+    }
+  },
+}));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit(): void {}
+    dispose(): void {}
+  },
+}));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class { dispose(): void {} } }));
+vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class { dispose(): void {} } }));
+
 type Row = { id: string; name: string; state: string; image?: string; status?: string; ports?: string };
 
 afterEach(() => {

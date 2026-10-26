@@ -79,6 +79,21 @@ function bindSidePanel(el: Element | ComponentPublicInstance | null) {
 onBeforeUnmount(() => {
   stopSidePanelSync?.();
 });
+
+/** 容器终端状态事件订阅：工作台没有按 method 过滤的通用 hook，直接挂宿主
+ *  事件总线；旧宿主无 onEvent 时返回空退订函数。 */
+function dockerTerminalStateEvents(
+  handler: (event: { terminalId?: string; state?: string; exitCode?: number; error?: string }) => void,
+): () => void {
+  const api = window.dbxPlugin;
+  const onEvent = api?.onEvent;
+  if (typeof onEvent !== "function") return () => undefined;
+  const off = onEvent.call(api, (event) => {
+    if (!("method" in event) || event.method !== "docker/terminal/state") return;
+    handler(event.params as never);
+  });
+  return () => off?.();
+}
 </script>
 
 <template>
@@ -265,6 +280,10 @@ onBeforeUnmount(() => {
           :session-id="session?.sessionId"
           :connection-id="connectionId || undefined"
           :can-write="canWrite"
+          :theme="splitTerminalTheme"
+          :font-family="splitTerminalFont.fontFamily"
+          :font-size="splitTerminalFont.fontSize"
+          :terminal-state-events="dockerTerminalStateEvents"
           @close="closeDockerPane"
         />
       </template>

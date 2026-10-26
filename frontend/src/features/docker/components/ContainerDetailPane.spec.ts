@@ -1,11 +1,45 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+// happy-dom 没有 canvas/测量 API：终端页签挂载时 xterm 会尝试创建 DOM 渲染器，
+// 这里用最小桩替换 xterm 模块，只验证页签挂载/显隐与 props 下传。
+import { describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import ContainerDetailPane from "./ContainerDetailPane.vue";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
 import ContainerTerminalTab from "./ContainerTerminalTab.vue";
 import type { DockerContainer } from "../lib/dockerPanelModel";
+
+vi.mock("@xterm/xterm", () => ({
+  Terminal: class {
+    cols = 80;
+    rows = 24;
+    options: Record<string, unknown> = {};
+    unicode = { activeVersion: "" };
+    loadAddon(): void {}
+    open(): void {}
+    write(): void {}
+    onData(): { dispose(): void } {
+      return { dispose() {} };
+    }
+    onResize(): { dispose(): void } {
+      return { dispose() {} };
+    }
+    dispose(): void {}
+    focus(): void {}
+    reset(): void {}
+    hasSelection(): boolean {
+      return false;
+    }
+  },
+}));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit(): void {}
+    dispose(): void {}
+  },
+}));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class { dispose(): void {} } }));
+vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class { dispose(): void {} } }));
 
 const t = (key: string) => key;
 const container: DockerContainer = {

@@ -1,282 +1,346 @@
 // @vitest-environment happy-dom
-// 容器终端页：每条命令一次独立 docker/exec（65s 客户端超时，后端 60s 封顶）、
-// 命令回显 + 输出 + 退出码、↑/↓ 历史（上限 50）、清空、只读拦截、容器切换清空、
-// 错误内联与忙碌期防重复提交、旧容器请求在新容器运行中返回时不抢忙碌态/焦点。
+// 容器终端页（PTY）：页签可见且容器运行/可写时才建立 PTY；隐藏期间保持连接；
+// 容器切换复位 xterm 并重开；PTY 字节写入 xterm、按键经输入通道下发；
+// state 事件驱动结束/错误覆盖层与重连；卸载关闭 PTY 并销毁 xterm。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import ContainerTerminalTab from "./ContainerTerminalTab.vue";
+import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import type { DockerContainer } from "../lib/dockerPanelModel";
-import { DOCKER_ENGINE_STORE_KEY } from "../lib/dockerEngine";
-import { pluginStore } from "../../../shared/lib/pluginStore";
+
+const TERMINAL_ID = "term-12345678";
+
+const { MockTerminal } = vi.hoisted(() => {
+  class MockTerminal {
+    cols = 80;
+    rows = 24;
+    options: Record<string, unknown>;
+    unicode = { activeVersion: "" };
+    writes: Uint8Array[] = [];
+    dataHandler?: (data: string) => void;
+    resizeHandler?: (size: { cols: number; rows: number }) => void;
+    resets = 0;
+    focused = 0;
+    disposed = false;
+    static instances: MockTerminal[] = [];
+
+    constructor(options: Record<string, unknown>) {
+      this.options = { ...options };
+      MockTerminal.instances.push(this);
+    }
+
+    loadAddon(): void {}
+
+    open(host: HTMLElement): void {
+      host.dataset.xterm = "ready";
+    }
+
+    write(data: Uint8Array): void {
+      this.writes.push(data);
+    }
+
+    onData(handler: (data: string) => void): { dispose(): void } {
+      this.dataHandler = handler;
+      return { dispose() {} };
+    }
+
+    onResize(handler: (size: { cols: number; rows: number }) => void): { dispose(): void } {
+      this.resizeHandler = handler;
+      return { dispose() {} };
+    }
+
+    attachCustomKeyEventHandler(): void {}
+
+    dispose(): void {
+      this.disposed = true;
+    }
+
+    focus(): void {
+      this.focused += 1;
+    }
+
+    reset(): void {
+      this.resets += 1;
+    }
+
+    hasSelection(): boolean {
+      return false;
+    }
+
+    static latest(): MockTerminal | undefined {
+      return MockTerminal.instances.at(-1);
+    }
+
+    static reset(): void {
+      MockTerminal.instances.length = 0;
+    }
+  }
+  return { MockTerminal };
+});
+
+vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit(): void {}
+    proposeDimensions(): { cols: number; rows: number } {
+      return { cols: 80, rows: 24 };
+    }
+    dispose(): void {}
+  },
+}));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class { dispose(): void {} } }));
+vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: class { dispose(): void {} } }));
+
+interface BinaryEvent {
+  channel: string;
+  data?: Uint8Array;
+  dataBase64?: string;
+}
+
+interface HostHarness {
+  invoke: ReturnType<typeof vi.fn>;
+  notify: ReturnType<typeof vi.fn>;
+  sendBinary: ReturnType<typeof vi.fn>;
+  binaryListeners: Array<(event: BinaryEvent) => void>;
+  emitOutput(terminalId: string, text: string): void;
+}
+
+function installHost(
+  openResult: () => Promise<unknown> = async () => ({ terminalId: TERMINAL_ID }),
+): HostHarness {
+  const harness: HostHarness = {
+    invoke: vi.fn(async (method: string) => {
+      if (method === "docker/terminal/open") return openResult();
+      if (method === "docker/terminal/close") return { stopped: true };
+      return {};
+    }),
+    notify: vi.fn(async () => undefined),
+    sendBinary: vi.fn(async () => undefined),
+    binaryListeners: [],
+    emitOutput(terminalId: string, text: string) {
+      for (const listener of this.binaryListeners) {
+        listener({ channel: `docker/terminal/out/${terminalId}`, data: new TextEncoder().encode(text) });
+      }
+    },
+  };
+  vi.stubGlobal("dbxPlugin", {
+    invoke: harness.invoke,
+    notify: harness.notify,
+    sendBinary: harness.sendBinary,
+    onBinary: (listener: (event: BinaryEvent) => void) => {
+      harness.binaryListeners.push(listener);
+      return () => {
+        const index = harness.binaryListeners.indexOf(listener);
+        if (index >= 0) harness.binaryListeners.splice(index, 1);
+      };
+    },
+    decodeBase64: (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0)),
+  });
+  return harness;
+}
 
 const t = (key: string, values?: Record<string, string | number>) =>
   values ? `${key} ${Object.values(values).join(" ")}` : key;
 
-type Call = { method: string; params: Record<string, unknown>; options?: { timeoutMs?: number } };
-type MountedTab = ReturnType<typeof mount>;
-
-const wrappers: MountedTab[] = [];
-
 function container(overrides: Partial<DockerContainer> = {}): DockerContainer {
   return {
-    id: "abc123def456",
-    name: "web-nginx",
-    image: "nginx:1.27",
+    id: "d4a7c9f1e2b3",
+    name: "web",
+    image: "nginx:latest",
     state: "running",
-    status: "Up 3 minutes",
-    ports: "8080->80/tcp",
+    status: "Up 2 hours",
+    ports: "0.0.0.0:80->80/tcp",
     createdAt: "2026-10-26T00:00:00Z",
     ...overrides,
   };
 }
 
-function stubHost(handler: (params: Record<string, unknown>) => unknown): Call[] {
-  const calls: Call[] = [];
-  vi.stubGlobal("dbxPlugin", {
-    invoke: async (method: string, params: Record<string, unknown>, options?: { timeoutMs?: number }) => {
-      calls.push({ method, params, options });
-      return handler(params);
+type MountedTab = ReturnType<typeof mount>;
+
+const wrappers: MountedTab[] = [];
+
+function mountTab(overrides: Record<string, unknown> = {}): MountedTab {
+  const wrapper = mount(ContainerTerminalTab, {
+    attachTo: document.body,
+    props: {
+      t,
+      container: container(),
+      sessionId: "session-1",
+      connectionId: "conn-1",
+      canWrite: true,
+      visible: true,
+      theme: { background: "#000000" },
+      fontFamily: "Menlo",
+      fontSize: 13,
+      terminalStateEvents: () => () => undefined,
+      ...overrides,
     },
   });
-  return calls;
-}
-
-function mountTab(
-  options: { container?: DockerContainer; canWrite?: boolean; sessionId?: string | null; connectionId?: string } = {},
-) {
-  const props = {
-    t,
-    container: options.container ?? container(),
-    canWrite: options.canWrite,
-    connectionId: options.connectionId,
-    // null = 显式不传 sessionId（走本机 daemon 目标）。
-    ...(options.sessionId !== null ? { sessionId: options.sessionId ?? "sess-1" } : {}),
-  };
-  const wrapper = mount(ContainerTerminalTab, { attachTo: document.body, props });
   wrappers.push(wrapper);
   return wrapper;
 }
 
-async function submit(wrapper: MountedTab, command: string): Promise<void> {
-  const input = wrapper.get("[data-exec-input]");
-  await input.setValue(command);
-  await input.trigger("keydown", { key: "Enter" });
-  await flushPromises();
-  await nextTick();
+function openCalls(harness: HostHarness): Array<Record<string, unknown>> {
+  return harness.invoke.mock.calls
+    .filter((call) => call[0] === "docker/terminal/open")
+    .map((call) => call[1] as Record<string, unknown>);
+}
+
+function terminal(): InstanceType<typeof MockTerminal> | undefined {
+  return MockTerminal.latest();
 }
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()?.unmount();
-  pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
+  MockTerminal.reset();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
 
 describe("ContainerTerminalTab", () => {
-  it("runs one exec, echoes the command, and prints output with the exit code", async () => {
-    const calls = stubHost(() => ({ success: true, output: "Linux web 6.1\n", exitCode: 0 }));
+  it("opens only when visible and renders a connected xterm with the workbench appearance", async () => {
+    const harness = installHost();
     const wrapper = mountTab();
-    await submit(wrapper, "uname -a");
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("docker/exec");
-    expect(calls[0].params).toEqual({
-      sessionId: "sess-1",
-      containerId: "abc123def456",
-      command: "uname -a",
-    });
-    expect(calls[0].options).toEqual({ timeoutMs: 65_000 });
-
-    const output = wrapper.get("[data-exec-output]").text();
-    expect(output).toContain("$ uname -a");
-    expect(output).toContain("Linux web 6.1");
-    expect(output).toContain("docker.execExitCode 0");
-    expect((wrapper.get("[data-exec-input]").element as HTMLInputElement).value).toBe("");
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
-    expect(document.activeElement).toBe(wrapper.get("[data-exec-input]").element);
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+    expect(openCalls(harness)[0]).toMatchObject({ containerId: "d4a7c9f1e2b3", cols: 80, rows: 24 });
+    expect(wrapper.find("[data-xterm-host]").attributes("data-xterm")).toBe("ready");
+    expect(terminal()?.options.fontFamily).toBe("Menlo");
+    expect(terminal()?.options.fontSize).toBe(13);
+    expect(terminal()?.options.theme).toMatchObject({ background: "#000000" });
+    expect(terminal()?.options.scrollback).toBe(5_000);
+    expect(wrapper.find("[data-terminal-overlay]").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("docker.terminalConnecting");
   });
 
-  it("targets the local daemon without a session and forwards engine params", async () => {
-    pluginStore.setItem(
-      DOCKER_ENGINE_STORE_KEY,
-      JSON.stringify({ "conn-1": { cli: "podman", socket: "", host: "tcp://127.0.0.1:2375" } }),
-    );
-    const calls = stubHost(() => ({ success: true, output: "", exitCode: 0 }));
-    const wrapper = mountTab({ sessionId: null, connectionId: "conn-1" });
-    await submit(wrapper, "id");
-
-    expect(calls[0].params).toEqual({
-      target: "local",
-      containerId: "abc123def456",
-      command: "id",
-      cli: "podman",
-      host: "tcp://127.0.0.1:2375",
-    });
-  });
-
-  it("navigates command history with ArrowUp/ArrowDown and restores the draft", async () => {
-    stubHost((params) => ({ success: true, output: `${String(params.command)}\n`, exitCode: 0 }));
-    const wrapper = mountTab();
-    await submit(wrapper, "first");
-    await submit(wrapper, "second");
-
-    const input = wrapper.get("[data-exec-input]");
-    await input.trigger("keydown", { key: "ArrowUp" });
-    expect((input.element as HTMLInputElement).value).toBe("second");
-    await input.trigger("keydown", { key: "ArrowUp" });
-    expect((input.element as HTMLInputElement).value).toBe("first");
-    await input.trigger("keydown", { key: "ArrowDown" });
-    expect((input.element as HTMLInputElement).value).toBe("second");
-    await input.trigger("keydown", { key: "ArrowDown" });
-    expect((input.element as HTMLInputElement).value).toBe("");
-  });
-
-  it("keeps at most 50 commands in history", async () => {
-    stubHost(() => ({ success: true, output: "ok\n", exitCode: 0 }));
-    const wrapper = mountTab();
-    for (let index = 0; index < 55; index += 1) {
-      await submit(wrapper, `cmd-${index}`);
-    }
-
-    const input = wrapper.get("[data-exec-input]");
-    for (let step = 0; step < 50; step += 1) {
-      await input.trigger("keydown", { key: "ArrowUp" });
-    }
-    // 保留最近 50 条：cmd-5 .. cmd-54；再按 ↑ 仍停在最旧一条。
-    expect((input.element as HTMLInputElement).value).toBe("cmd-5");
-    await input.trigger("keydown", { key: "ArrowUp" });
-    expect((input.element as HTMLInputElement).value).toBe("cmd-5");
-  });
-
-  it("clears the output without clearing the command history", async () => {
-    stubHost(() => ({ success: true, output: "hello\n", exitCode: 0 }));
-    const wrapper = mountTab();
-    await submit(wrapper, "echo hello");
-    expect(wrapper.get("[data-exec-output]").text()).toContain("hello");
-
-    await wrapper.get('[data-action="exec-clear"]').trigger("click");
-    expect(wrapper.get("[data-exec-output]").text()).toBe("");
-    expect(wrapper.find("[data-exec-empty]").exists()).toBe(true);
-
-    const input = wrapper.get("[data-exec-input]");
-    await input.trigger("keydown", { key: "ArrowUp" });
-    expect((input.element as HTMLInputElement).value).toBe("echo hello");
-  });
-
-  it("ignores empty commands and blocks execution when the connection is read-only", async () => {
-    const calls = stubHost(() => ({ success: true, output: "", exitCode: 0 }));
-    const wrapper = mountTab();
-    await submit(wrapper, "   ");
-    expect(calls).toEqual([]);
-
-    const readOnly = mountTab({ canWrite: false });
-    expect(readOnly.get("[data-exec-readonly]").text()).toBe("docker.execReadOnly");
-    expect((readOnly.get("[data-exec-input]").element as HTMLInputElement).disabled).toBe(true);
-    await submit(readOnly, "rm -rf /tmp/x");
-    expect(calls).toEqual([]);
-  });
-
-  it("clears output, input and history when the container changes", async () => {
-    stubHost(() => ({ success: true, output: "old container\n", exitCode: 0 }));
-    const wrapper = mountTab();
-    await submit(wrapper, "hostname");
-    expect(wrapper.get("[data-exec-output]").text()).toContain("old container");
-
-    await wrapper.setProps({ container: container({ id: "def456abc789", name: "db" }) });
+  it("does not open while hidden and keeps the PTY alive when the tab is hidden", async () => {
+    const harness = installHost();
+    const wrapper = mountTab({ visible: false });
+    await flushPromises();
     await nextTick();
-    expect(wrapper.get("[data-exec-output]").text()).toBe("");
-    expect((wrapper.get("[data-exec-input]").element as HTMLInputElement).value).toBe("");
+    expect(harness.invoke).not.toHaveBeenCalled();
 
-    const input = wrapper.get("[data-exec-input]");
-    await input.trigger("keydown", { key: "ArrowUp" });
-    expect((input.element as HTMLInputElement).value).toBe("");
+    await wrapper.setProps({ visible: true });
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+
+    await wrapper.setProps({ visible: false });
+    await flushPromises();
+    await wrapper.setProps({ visible: true });
+    await flushPromises();
+    expect(openCalls(harness)).toHaveLength(1);
+    expect(harness.invoke.mock.calls.filter((call) => call[0] === "docker/terminal/close")).toHaveLength(0);
   });
 
-  it("shows RPC errors inline and stays usable afterwards", async () => {
-    stubHost(() => {
-      throw new Error("permission denied while trying to connect to the Docker daemon socket");
-    });
-    const wrapper = mountTab();
-    await submit(wrapper, "ps aux");
+  it("shows a read-only message without opening a PTY", async () => {
+    const harness = installHost();
+    const wrapper = mountTab({ canWrite: false });
 
-    expect(wrapper.get("[data-exec-output]").text()).toContain("$ ps aux");
-    expect(wrapper.get("[data-exec-error]").text()).toContain("docker.execFailed");
-    expect(wrapper.get("[data-exec-error]").text()).toContain("permission denied");
-    expect((wrapper.get("[data-exec-input]").element as HTMLInputElement).disabled).toBe(false);
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+    await vi.waitFor(() => expect(wrapper.text()).toContain("docker.terminalReadOnly"));
+    expect(wrapper.find("[data-terminal-retry]").exists()).toBe(false);
+    expect(harness.invoke).not.toHaveBeenCalled();
   });
 
-  it("prevents a second submission while the first command is still running", async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const calls: Array<Record<string, unknown>> = [];
-    vi.stubGlobal("dbxPlugin", {
-      invoke: async (_method: string, params: Record<string, unknown>) => {
-        calls.push(params);
-        await gate;
-        return { success: true, output: "slow done\n", exitCode: 0 };
+  it("shows a stopped-container message without opening a PTY", async () => {
+    const harness = installHost();
+    const wrapper = mountTab({ container: container({ state: "exited", status: "Exited (0)" }) });
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain("docker.terminalNotRunning"));
+    expect(wrapper.find("[data-terminal-retry]").exists()).toBe(false);
+    expect(harness.invoke).not.toHaveBeenCalled();
+  });
+
+  it("writes PTY output bytes into xterm", async () => {
+    const harness = installHost();
+    mountTab();
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+
+    harness.emitOutput(TERMINAL_ID, "hello");
+    await vi.waitFor(() => expect(terminal()?.writes).toHaveLength(1));
+    expect(new TextDecoder().decode(terminal()?.writes[0])).toBe("hello");
+  });
+
+  it("forwards xterm input and resize to the PTY channels", async () => {
+    const harness = installHost();
+    mountTab();
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+
+    terminal()?.dataHandler?.("ls\r");
+    await vi.waitFor(() => expect(harness.sendBinary).toHaveBeenCalled());
+    const [channel, payload] = harness.sendBinary.mock.calls[0] as [string, Uint8Array];
+    expect(channel).toBe(`docker/terminal/in/${TERMINAL_ID}`);
+    expect(new TextDecoder().decode(payload.slice(8))).toBe("ls\r");
+
+    terminal()?.resizeHandler?.({ cols: 100, rows: 30 });
+    await vi.waitFor(() =>
+      expect(harness.notify).toHaveBeenCalledWith("docker/terminal/resize", {
+        terminalId: TERMINAL_ID,
+        cols: 100,
+        rows: 30,
+      }),
+    );
+  });
+
+  it("shows the exited state and reconnects from the retry button", async () => {
+    const harness = installHost();
+    let stateHandler: ((event: ContainerTerminalStateEvent) => void) | undefined;
+    const terminalStateEvents = (handler: (event: ContainerTerminalStateEvent) => void) => {
+      stateHandler = handler;
+      return () => {
+        stateHandler = undefined;
+      };
+    };
+    const wrapper = mountTab({ terminalStateEvents });
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+
+    stateHandler?.({ terminalId: TERMINAL_ID, state: "exited", exitCode: 137 });
+    await nextTick();
+    expect(wrapper.text()).toContain("docker.terminalExited");
+    expect(wrapper.text()).toContain("137");
+
+    await wrapper.get("[data-terminal-retry]").trigger("click");
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(2));
+  });
+
+  it("shows a transport error with a retry button", async () => {
+    const harness = installHost();
+    let stateHandler: ((event: ContainerTerminalStateEvent) => void) | undefined;
+    const wrapper = mountTab({
+      terminalStateEvents: (handler: (event: ContainerTerminalStateEvent) => void) => {
+        stateHandler = handler;
+        return () => undefined;
       },
     });
-    const wrapper = mountTab();
-    const input = wrapper.get("[data-exec-input]");
-    await input.setValue("sleep 5");
-    await input.trigger("keydown", { key: "Enter" });
-    await nextTick();
-    expect(calls).toHaveLength(1);
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
 
-    await input.setValue("second");
-    await input.trigger("keydown", { key: "Enter" });
+    stateHandler?.({ terminalId: TERMINAL_ID, state: "error", error: "session lost" });
     await nextTick();
-    expect(calls).toHaveLength(1);
-
-    release();
-    await flushPromises();
-    expect(calls).toHaveLength(1);
-    expect(wrapper.get("[data-exec-output]").text()).toContain("slow done");
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+    expect(wrapper.get("[data-terminal-overlay]").text()).toContain("session lost");
+    expect(wrapper.find("[data-terminal-retry]").exists()).toBe(true);
   });
 
-  it("does not clear the new container's busy state when the old command settles", async () => {
-    const pending: Array<{ resolve: (value: unknown) => void }> = [];
-    vi.stubGlobal("dbxPlugin", {
-      invoke: (_method: string, params: Record<string, unknown>) =>
-        new Promise((resolve) => {
-          pending.push({ resolve });
-        }),
-    });
+  it("resets xterm, closes the old shell and reopens when the container changes", async () => {
+    const harness = installHost();
     const wrapper = mountTab();
-    await submit(wrapper, "old-command");
-    expect(pending).toHaveLength(1);
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+    const first = terminal();
 
-    // 切容器时 watcher 清 busy，允许在新容器里继续执行。
     await wrapper.setProps({ container: container({ id: "def456abc789", name: "db" }) });
-    await nextTick();
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(2));
+    expect(openCalls(harness)[1]).toMatchObject({ containerId: "def456abc789" });
+    expect(first?.resets).toBeGreaterThan(0);
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID });
+  });
 
-    await submit(wrapper, "new-command");
-    expect(pending).toHaveLength(2);
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+  it("closes the PTY and disposes xterm on unmount", async () => {
+    const harness = installHost();
+    const wrapper = mountTab();
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+    const instance = terminal();
 
-    // 旧容器的响应在新命令仍在运行时返回：不得清 busy、不得写入新容器输出。
-    pending[0].resolve({ success: true, output: "old output\n", exitCode: 0 });
-    await flushPromises();
-    await nextTick();
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
-    const output = wrapper.get("[data-exec-output]").text();
-    expect(output).not.toContain("old output");
-    expect(output).toContain("$ new-command");
-
-    // 新命令收尾后才允许清 busy 并把焦点交回输入框。
-    pending[1].resolve({ success: true, output: "new output\n", exitCode: 0 });
-    await flushPromises();
-    await nextTick();
-    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
-    expect(wrapper.get("[data-exec-output]").text()).toContain("new output");
-    expect(document.activeElement).toBe(wrapper.get("[data-exec-input]").element);
+    wrapper.unmount();
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID });
+    expect(instance?.disposed).toBe(true);
   });
 });

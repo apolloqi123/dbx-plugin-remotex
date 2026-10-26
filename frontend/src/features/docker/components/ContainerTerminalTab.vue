@@ -1,20 +1,24 @@
 <script setup lang="ts">
-// 容器命令终端页：每条命令都是一次独立的 `docker exec <id> sh -lc <command>`
-// （无常驻 shell，cwd/env 不跨命令保留）。前端超时略长于后端 60s 上限，
-// 让后端的结构化超时/退出结果先返回；只有传输层卡死才由前端兜底中断。
-// 输出是只读文本缓冲，超过上限按头部裁剪；命令历史只在本页签内记忆
-// （↑/↓，最多 50 条）。只读连接（canWrite === false）直接禁用输入与执行；
-// undefined 表示未限制。
-import { computed, nextTick, ref, watch } from "vue";
-import { Loader2 } from "@lucide/vue";
-import { rpc } from "../../../shared/lib/rpc";
-import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
-import type { DockerContainer } from "../lib/dockerPanelModel";
+// 容器 PTY 终端页：xterm 实例与视图归本组件，协议（open/close/resize、
+// 二进制输出、state 事件）归 useContainerTerminal。
+//
+// 生命周期：只有「页签可见 + 容器 running + 可写」时才建立 PTY；隐藏页签时
+// PTY 与 xterm 都保持存活（切回只 fit/聚焦）；容器切换复位 xterm 并重开；
+// 不可写/未运行时只显示提示、不发 open；卸载关闭 PTY 并销毁 xterm。
+// 主题/字体由工作台下传（theme/fontFamily/fontSize），缺省用内置回退值。
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { Terminal as XTerm, type ITheme } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import {
+  useContainerTerminal,
+  type ContainerTerminalStateEvent,
+} from "../composables/useContainerTerminal";
+import { isDockerContainerRunning, type DockerContainer } from "../lib/dockerPanelModel";
 
-const MAX_HISTORY = 50;
-const MAX_OUTPUT_CHARS = 200_000;
-/** 后端 docker/exec 上限 60s：客户端多等 5s，让结构化超时结果优先落盘。 */
-const EXEC_TIMEOUT_MS = 65_000;
+const DEFAULT_FONT_FAMILY = "Menlo, Monaco, 'Courier New', monospace";
+const DEFAULT_FONT_SIZE = 13;
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -22,371 +26,298 @@ const props = defineProps<{
   sessionId?: string;
   connectionId?: string;
   canWrite?: boolean;
+  /** 页签可见性：不可见时不建立 PTY，但已建立的 PTY 保持存活。 */
+  visible: boolean;
+  theme?: Record<string, unknown>;
+  fontFamily?: string;
+  fontSize?: number;
+  /** 工作台事件总线上的 docker/terminal/state 订阅（可选）。 */
+  terminalStateEvents?: (handler: (event: ContainerTerminalStateEvent) => void) => () => void;
 }>();
 
-const input = ref("");
-const output = ref("");
-const busy = ref(false);
-const error = ref("");
-const history = ref<string[]>([]);
-const outputRef = ref<HTMLElement>();
-const inputRef = ref<HTMLInputElement>();
+const hostRef = ref<HTMLElement>();
+const exitCode = ref<number | undefined>();
 
-/** -1 = 正在编辑新命令；否则指向 history 下标（0 最旧）。 */
-let historyIndex = -1;
-/** 离开新命令开始浏览历史时暂存输入，ArrowDown 到底后还原。 */
-let draft = "";
+const running = computed(() => isDockerContainerRunning(props.container));
 
-const readOnly = computed(() => props.canWrite === false);
+let terminal: XTerm | undefined;
+let fitAddon: FitAddon | undefined;
+let dataDisposable: { dispose(): void } | undefined;
+let resizeDisposable: { dispose(): void } | undefined;
+let resizeObserver: ResizeObserver | undefined;
+let unsubscribeState: (() => void) | undefined;
+let fitFrame = 0;
+let starting = false;
+let disposed = false;
 
-/** 只保留末尾 MAX_OUTPUT_CHARS 个字符（头部裁剪，最新输出始终可见）。 */
-function trimHead(text: string): string {
-  return text.length > MAX_OUTPUT_CHARS ? text.slice(text.length - MAX_OUTPUT_CHARS) : text;
+function canConnect(): boolean {
+  return running.value && props.canWrite !== false;
 }
 
-function scrollToBottom(): void {
-  void nextTick(() => {
-    const element = outputRef.value;
-    if (element) element.scrollTop = element.scrollHeight;
+const { status, errorMessage, open, close, retry, sendInput, resize, handleStateEvent } =
+  useContainerTerminal({
+    containerId: () => props.container.id,
+    sessionId: () => props.sessionId,
+    connectionId: () => props.connectionId,
+    canWrite: () => props.canWrite !== false,
+    running: () => running.value,
+    t: (key, values) => props.t(key, values),
+    onData: (bytes) => terminal?.write(bytes),
+    onState: (state, detail) => {
+      if (state === "exited") exitCode.value = detail?.exitCode;
+      if (state === "connecting" || state === "connected") exitCode.value = undefined;
+    },
   });
-}
 
-function append(text: string): void {
-  if (!text) return;
-  output.value = trimHead(output.value + text);
-  scrollToBottom();
-}
-
-function focusInput(): void {
-  void nextTick(() => inputRef.value?.focus());
-}
-
-/** 响应归一：缺失/异常形状不阻断渲染，输出按空串、退出码显示 “?”。 */
-function execResult(raw: unknown): { output: string; exitCode: number | null } {
-  const record = (raw ?? {}) as Record<string, unknown>;
-  return {
-    output: typeof record.output === "string" ? record.output : "",
-    exitCode:
-      typeof record.exitCode === "number" && Number.isFinite(record.exitCode)
-        ? Math.trunc(record.exitCode)
-        : null,
-  };
-}
-
-/** 与 FilesTab 同口径：SSH 会话优先，否则本机 daemon；引擎设置按连接附带。 */
-function requestParams(command: string): Record<string, unknown> {
-  return {
-    ...(props.sessionId ? { sessionId: props.sessionId } : { target: "local" as const }),
-    containerId: props.container.id,
-    command,
-    ...dockerEngineParams(loadDockerEngineSettings(props.connectionId || "")),
-  };
-}
-
-/** 相邻重复命令不重复入历史；超出上限从最旧开始淘汰。 */
-function remember(command: string): void {
-  if (history.value[history.value.length - 1] !== command) {
-    history.value.push(command);
-    if (history.value.length > MAX_HISTORY) {
-      history.value.splice(0, history.value.length - MAX_HISTORY);
-    }
-  }
-  historyIndex = -1;
-  draft = "";
-}
-
-async function run(): Promise<void> {
-  if (readOnly.value || busy.value) return;
-  const command = input.value.trim();
-  if (!command) return;
-  const containerId = props.container.id;
-  busy.value = true;
-  error.value = "";
-  append(`$ ${command}\n`);
-  input.value = "";
-  remember(command);
+/** 仅在宿主有实际尺寸时 fit：隐藏页签/未布局时 fit 会抛错或算出 0 列。 */
+function fitNow(): void {
+  const host = hostRef.value;
+  if (!fitAddon || !terminal || !host || host.clientWidth <= 0 || host.clientHeight <= 0) return;
   try {
-    const result = execResult(
-      await rpc<unknown>("docker/exec", requestParams(command), { timeoutMs: EXEC_TIMEOUT_MS }),
-    );
-    // 切容器后旧响应丢弃，不写进新容器的输出。
-    if (props.container.id !== containerId) return;
-    if (result.output) {
-      append(result.output.endsWith("\n") ? result.output : `${result.output}\n`);
-    }
-    append(`${props.t("docker.execExitCode", { code: result.exitCode ?? "?" })}\n`);
-  } catch (cause) {
-    if (props.container.id !== containerId) return;
-    error.value = cause instanceof Error ? cause.message : String(cause);
-  } finally {
-    // 切容器后旧请求的 finally 不能清掉新容器请求的忙碌态/抢焦点：
-    // 只在自己仍是当前容器的请求时收尾（容器切换时 watcher 已清 busy）。
-    if (props.container.id === containerId) {
-      busy.value = false;
-      focusInput();
-    }
+    fitAddon.fit();
+  } catch {
+    // iframe/页签切换过程中宿主可能已脱离文档；保留 xterm 现有尺寸。
   }
 }
 
-function clear(): void {
-  output.value = "";
-  error.value = "";
-}
-
-function setInput(value: string): void {
-  input.value = value;
-  void nextTick(() => {
-    const element = inputRef.value;
-    if (!element) return;
-    element.focus();
-    const end = element.value.length;
-    element.setSelectionRange?.(end, end);
+/** ResizeObserver 回调按帧合并：拖拽分隔条时每帧最多 fit 一次。 */
+function scheduleFit(): void {
+  if (disposed) return;
+  if (typeof window.requestAnimationFrame !== "function") {
+    fitNow();
+    return;
+  }
+  if (fitFrame) return;
+  fitFrame = window.requestAnimationFrame(() => {
+    fitFrame = 0;
+    fitNow();
   });
 }
 
-function historyStep(delta: -1 | 1): void {
-  if (!history.value.length) return;
-  if (delta < 0) {
-    if (historyIndex === -1) {
-      draft = input.value;
-      historyIndex = history.value.length - 1;
-    } else if (historyIndex > 0) {
-      historyIndex -= 1;
-    }
-    setInput(history.value[historyIndex]);
-    return;
+/**
+ * 建立 PTY：只在本页可见时调用。read-only/未运行的 open 会在 composable 内
+ * 直接返回 disabled（不发 RPC），因此这两类状态也走这里拿到提示文案。
+ * exited/error 需要用户点「重新连接」，不自动重试。
+ */
+async function startIfNeeded(): Promise<void> {
+  if (disposed || !terminal || starting || !props.visible) return;
+  if (status.value !== "idle" && !(status.value === "disabled" && !canConnect())) return;
+  starting = true;
+  try {
+    await nextTick();
+    if (disposed || !props.visible) return;
+    fitNow();
+    await open(terminal.cols, terminal.rows);
+  } finally {
+    starting = false;
   }
-  if (historyIndex === -1) return;
-  if (historyIndex >= history.value.length - 1) {
-    historyIndex = -1;
-    setInput(draft);
-    return;
-  }
-  historyIndex += 1;
-  setInput(history.value[historyIndex]);
+  if (!disposed && props.visible) terminal?.focus();
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.isComposing || event.keyCode === 229) return;
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    historyStep(-1);
-  } else if (event.key === "ArrowDown") {
-    event.preventDefault();
-    historyStep(1);
-  } else if (event.key === "Enter") {
-    event.preventDefault();
-    void run();
-  }
+async function retryTerminal(): Promise<void> {
+  if (!terminal || disposed) return;
+  exitCode.value = undefined;
+  await nextTick();
+  fitNow();
+  await retry(terminal.cols, terminal.rows);
+  if (!disposed && status.value === "connected") terminal.focus();
 }
 
-// 容器切换：上一容器的输出/输入/历史都不再适用（在途响应由 run 内 id 校验丢弃）。
+function createTerminal(): void {
+  const host = hostRef.value;
+  if (!host || terminal) return;
+  terminal = new XTerm({
+    convertEol: false,
+    cursorBlink: true,
+    fontFamily: props.fontFamily || DEFAULT_FONT_FAMILY,
+    fontSize: props.fontSize || DEFAULT_FONT_SIZE,
+    scrollback: 5_000,
+    allowProposedApi: true,
+    theme: (props.theme ?? {}) as ITheme,
+  });
+  fitAddon = new FitAddon();
+  terminal.loadAddon(fitAddon);
+  terminal.open(host);
+  // Unicode11 与主终端一致：在 open() 之后加载再切换 activeVersion。
+  terminal.loadAddon(new Unicode11Addon());
+  terminal.unicode.activeVersion = "11";
+  terminal.loadAddon(new WebLinksAddon());
+  dataDisposable = terminal.onData((data) => sendInput(data));
+  resizeDisposable = terminal.onResize(({ cols, rows }) => resize(cols, rows));
+}
+
+onMounted(() => {
+  createTerminal();
+  const host = hostRef.value;
+  if (host && typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(() => scheduleFit());
+    resizeObserver.observe(host);
+  }
+  unsubscribeState = props.terminalStateEvents?.((event) => handleStateEvent(event));
+  void startIfNeeded();
+});
+
+onBeforeUnmount(() => {
+  disposed = true;
+  unsubscribeState?.();
+  unsubscribeState = undefined;
+  if (fitFrame && typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(fitFrame);
+  }
+  fitFrame = 0;
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
+  dataDisposable?.dispose();
+  dataDisposable = undefined;
+  resizeDisposable?.dispose();
+  resizeDisposable = undefined;
+  // 先关闭远端 PTY（若已打开），再销毁 xterm：销毁后不再接收输出。
+  close();
+  terminal?.dispose();
+  terminal = undefined;
+  fitAddon = undefined;
+});
+
+// 页签隐藏：PTY 保持存活，仅停止 fit/聚焦；重新可见时补一次 fit 并聚焦。
+watch(
+  () => props.visible,
+  async (visible) => {
+    if (!visible || disposed) return;
+    await nextTick();
+    fitNow();
+    terminal?.focus();
+    void startIfNeeded();
+  },
+);
+
+// 容器切换：旧 shell 不可复用，复位显示并（可见时）为新容器重开。
 watch(
   () => props.container.id,
   () => {
-    output.value = "";
-    error.value = "";
-    input.value = "";
-    history.value = [];
-    historyIndex = -1;
-    draft = "";
-    busy.value = false;
+    if (disposed) return;
+    exitCode.value = undefined;
+    terminal?.reset();
+    close();
+    void startIfNeeded();
+  },
+);
+
+// 运行状态/只读变化：变为不可连接时关闭并展示提示；恢复后重新建立。
+watch([running, () => props.canWrite], () => {
+  if (disposed || !props.visible) return;
+  if (!canConnect()) {
+    close();
+    void startIfNeeded();
+    return;
+  }
+  if (status.value === "disabled") close();
+  void startIfNeeded();
+});
+
+watch(
+  () => props.theme,
+  (theme) => {
+    if (terminal) terminal.options.theme = (theme ?? {}) as ITheme;
+  },
+  { deep: true },
+);
+
+watch(
+  () => [props.fontFamily, props.fontSize] as const,
+  ([fontFamily, fontSize]) => {
+    if (!terminal) return;
+    terminal.options.fontFamily = fontFamily || DEFAULT_FONT_FAMILY;
+    terminal.options.fontSize = fontSize || DEFAULT_FONT_SIZE;
+    scheduleFit();
   },
 );
 </script>
 
 <template>
   <div class="container-terminal-tab" data-tab-panel="terminal">
-    <p class="docker-exec-hint" data-exec-hint>{{ t("docker.execHint") }}</p>
-    <div class="docker-exec-body">
-      <pre ref="outputRef" class="docker-exec-output" data-exec-output>{{ output }}</pre>
-      <p v-if="!output" class="docker-exec-empty" data-exec-empty>{{ t("docker.execEmpty") }}</p>
-    </div>
-    <p v-if="error" class="docker-exec-error" data-exec-error role="alert">
-      {{ t("docker.execFailed", { error }) }}
-    </p>
-    <p v-if="busy" class="docker-exec-status" data-exec-busy>
-      <Loader2 class="spin" />
-      {{ t("docker.execRunning") }}
-    </p>
-    <p v-if="readOnly" class="docker-exec-readonly" data-exec-readonly>{{ t("docker.execReadOnly") }}</p>
-    <form class="docker-exec-form" @submit.prevent="void run()">
-      <span class="docker-exec-prompt" aria-hidden="true">$</span>
-      <input
-        ref="inputRef"
-        v-model="input"
-        type="text"
-        class="docker-exec-input mono"
-        data-exec-input
-        autocomplete="off"
-        spellcheck="false"
-        :placeholder="t('docker.execPlaceholder')"
-        :aria-label="t('docker.execPlaceholder')"
-        :disabled="readOnly"
-        @keydown="onKeydown"
-      />
+    <div ref="hostRef" class="container-terminal-host" data-xterm-host />
+    <div v-if="status !== 'connected'" class="container-terminal-overlay" data-terminal-overlay>
+      <p v-if="status === 'disabled'" class="container-terminal-message">{{ errorMessage }}</p>
+      <p v-else-if="status === 'exited'" class="container-terminal-message">
+        {{ t("docker.terminalExited", { code: exitCode ?? "?" }) }}
+      </p>
+      <p v-else-if="status === 'error'" class="container-terminal-message" :title="errorMessage">
+        {{ errorMessage }}
+      </p>
+      <p v-else class="container-terminal-message">{{ t("docker.terminalConnecting") }}</p>
       <button
-        type="submit"
-        class="docker-exec-run"
-        data-action="exec-run"
-        :title="t('docker.execRun')"
-        :aria-label="t('docker.execRun')"
-        :disabled="readOnly || busy"
-      >
-        {{ t("docker.execRun") }}
-      </button>
-      <button
+        v-if="status === 'exited' || status === 'error'"
         type="button"
-        class="docker-exec-clear"
-        data-action="exec-clear"
-        :title="t('docker.execClear')"
-        :aria-label="t('docker.execClear')"
-        @click="clear"
+        class="container-terminal-retry"
+        data-terminal-retry
+        @click="retryTerminal"
       >
-        {{ t("docker.execClear") }}
+        {{ t("docker.terminalRetry") }}
       </button>
-    </form>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .container-terminal-tab {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.docker-exec-hint {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  opacity: 0.7;
-}
-
-/* 终端输出固定深色底：与主题明暗无关，始终像一块终端。 */
-.docker-exec-body {
   position: relative;
   display: flex;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  background: #0b0e14;
-  color: #d5dae2;
+  overflow: hidden;
+  background: var(--background);
 }
 
-.docker-exec-output {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  padding: 6px 8px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-all;
+.container-terminal-host {
+  position: absolute;
+  inset: 0;
+  padding: 4px;
+  overflow: hidden;
 }
 
-.docker-exec-empty {
+/* xterm 自行创建 .xterm 节点：让它填满宿主内容盒（padding 之外）。 */
+.container-terminal-host :deep(.xterm) {
+  height: 100%;
+}
+
+.container-terminal-host :deep(.xterm-viewport) {
+  scrollbar-width: thin;
+}
+
+.container-terminal-overlay {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  text-align: center;
+  background: color-mix(in srgb, var(--background) 84%, transparent);
+}
+
+.container-terminal-message {
   margin: 0;
-  font-size: 11px;
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-.docker-exec-error {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 3px 8px;
-  font-size: 11px;
-  background: color-mix(in srgb, var(--destructive) 12%, transparent);
-  color: var(--destructive);
-}
-
-.docker-exec-status,
-.docker-exec-readonly {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  padding: 3px 8px;
-  font-size: 11px;
-  opacity: 0.75;
-}
-
-.docker-exec-readonly {
-  color: var(--destructive);
-  opacity: 1;
-}
-
-.docker-exec-form {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-top: 1px solid var(--border);
-}
-
-.docker-exec-prompt {
-  flex: 0 0 auto;
-  padding: 0 2px;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  max-width: 90%;
   font-size: 12px;
-  opacity: 0.7;
+  line-height: 1.5;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
 }
 
-.docker-exec-input {
-  flex: 1;
-  min-width: 0;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--background);
-  color: inherit;
-  font-size: 11px;
-}
-
-.docker-exec-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.docker-exec-run,
-.docker-exec-clear {
-  flex: 0 0 auto;
+.container-terminal-retry {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: none;
   color: inherit;
-  padding: 1px 8px;
-  font-size: 11px;
+  padding: 2px 12px;
+  font-size: 12px;
   cursor: pointer;
-  white-space: nowrap;
 }
 
-.docker-exec-run:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.spin {
-  animation: docker-exec-spin 1s linear infinite;
-}
-
-@keyframes docker-exec-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.container-terminal-retry:hover {
+  border-color: var(--primary);
 }
 </style>

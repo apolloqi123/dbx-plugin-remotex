@@ -7,10 +7,12 @@
 // 标记与分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志、文件与
 // 终端页）各自自治。
 //
-// props 契约固定：t / sessionId / connectionId / canWrite。sessionId 缺省时
-// 列表回落本机 daemon（与容器面板既有语义一致）。
+// props 契约：t / sessionId / connectionId / canWrite，以及可选的工作台终端
+// 主题/字体与 docker/terminal/state 订阅（原样下传详情页，容器终端消费）。
+// sessionId 缺省时列表回落本机 daemon（与容器面板既有语义一致）。
 import { computed, onUnmounted, ref, watch } from "vue";
 import { X } from "@lucide/vue";
+import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import type { DockerContainer } from "../lib/dockerPanelModel";
 import ContainerListPane from "./ContainerListPane.vue";
 import ContainerDetailPane from "./ContainerDetailPane.vue";
@@ -22,6 +24,11 @@ const props = defineProps<{
   connectionId?: string;
   /** 只读连接禁止上传/导入（下传给详情页签）。 */
   canWrite?: boolean;
+  /** 工作台终端主题/字体（可选，容器终端缺省用内置回退）。 */
+  theme?: Record<string, unknown>;
+  fontFamily?: string;
+  fontSize?: number;
+  terminalStateEvents?: (handler: (event: ContainerTerminalStateEvent) => void) => () => void;
 }>();
 
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -189,6 +196,10 @@ watch([() => props.sessionId, () => props.connectionId], () => {
             :session-id="sessionId"
             :connection-id="connectionId"
             :can-write="canWrite"
+            :theme="theme"
+            :font-family="fontFamily"
+            :font-size="fontSize"
+            :terminal-state-events="terminalStateEvents"
             @update:active-tab="activeTab = $event"
             @close="closeDetail"
           />
