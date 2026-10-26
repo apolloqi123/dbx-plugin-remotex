@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
   ChevronDown,
   Disc,
-  Pause,
   Play,
   ArrowLeftRight,
   ArrowUpDown,
@@ -15,18 +14,14 @@ import {
   FolderOpen,
   ImagePlay,
   History,
-  Info,
   Loader2,
   Pencil,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
-  Square,
-  Terminal as TerminalIcon,
   TextSelect,
   Trash2,
-  TriangleAlert,
   X,
 } from "@lucide/vue";
 import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
@@ -36,7 +31,6 @@ import {
   createTerminalCopyCache,
   isApplePlatform,
   normalizeDropTargetDir,
-  transferBusyPaneClass,
 } from "../features/terminal/lib/behavior/terminalInteraction";
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS } from "../features/terminal/composables/session/useTerminalTransportWatch";
 import { useTerminalReconnect } from "../features/terminal/composables/session/useTerminalReconnect";
@@ -218,13 +212,15 @@ import TerminalSearchPanel from "../features/terminal/components/TerminalSearchP
 import TerminalQuickSelectPanel from "../features/terminal/components/TerminalQuickSelectPanel.vue";
 import TerminalHistoryPanel from "../features/terminal/components/TerminalHistoryPanel.vue";
 import TerminalPromptHints from "../features/terminal/components/TerminalPromptHints.vue";
-import TerminalGutter from "../features/terminal/components/TerminalGutter.vue";
 import CommandSuggestions from "../features/completion/components/CommandSuggestions.vue";
 import CompletionMenu from "../features/completion/components/CompletionMenu.vue";
 import ConnectingCard from "../features/connections/components/ConnectingCard.vue";
 import ServerMetricsPanel, { type ServerMetricsView, type MetricsProcessSortKey } from "../features/metrics/components/ServerMetricsPanel.vue";
 import FolderPickerDialog from "../features/sftp/components/FolderPickerDialog.vue";
 import DockerPanel from "../features/docker/components/DockerPanel.vue";
+import WorkbenchStage from "./components/WorkbenchStage.vue";
+import TerminalStatusOverlays from "./components/TerminalStatusOverlays.vue";
+import TransferOverlays from "./components/TransferOverlays.vue";
 import BatchBar from "./components/BatchBar.vue";
 import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
 import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
@@ -517,7 +513,11 @@ const {
 // 因此在此单点声明，供后面的偏好初始值与终端选项复用。
 const applePlatform = isApplePlatform();
 
-const terminalHost = ref<HTMLElement>();
+/** 终端舞台组件实例：xterm 宿主 ref 由 WorkbenchStage 的 defineExpose 回传
+ *  （T20）。模板 ref 在子组件挂载后写入，computed 惰性读取，因此 composable
+ *  持有的注册表在会话打开时总能拿到真实宿主，且不产生第二个宿主元素。 */
+const stage = useTemplateRef<{ terminalHost?: HTMLElement }>("stage");
+const terminalHost = computed(() => stage.value?.terminalHost);
 const sftpPane = ref<HTMLElement>();
 // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
 const sftpTreePane = ref<{
@@ -3434,6 +3434,12 @@ const {
   probeLocalCapabilities, saveHostFile,
   closeMetrics: () => closeMetrics(),
 });
+
+/** 回放宿主元素由 TransferOverlays 内的模板 ref 上抛（T20）：播放器在弹窗
+ *  挂载后的 nextTick 里读取该 ref 并 open xterm。 */
+function bindReplayHost(el: HTMLDivElement | null) {
+  replayHost.value = el;
+}
 // 后端事件分派：收口在 composables/usePluginEvents（30 个 method 分支整体
 // 平移，method 键互斥、命中即 return，与原 if 链语义一致）。
 const { handlePluginEvent } = usePluginEvents({
@@ -4093,15 +4099,43 @@ const toolbarActions: WorkbenchToolbarActions = {
         <template #main>
       <ContextMenu :open="terminalMenuOpen" @update:open="(open) => { if (!open) terminalMenuOpen = false; }">
         <ContextMenuTrigger as-child>
-      <section class="terminal-pane" :class="{ 'drag-active': terminalDragActive, 'marker-visible': commandMarker.installed, 'gutter-visible': gutterPaneVisible, 'wallpaper-active': wallpaperActive, ...transferBusyPaneClass(terminalTransferBusy) }" :style="gutterPaneStyle" @contextmenu="showTerminalMenu">
-        <!-- P2-9 背景图层：pointer-events:none 垫底（DOM 序先于 terminal-host），
-             透明度 0.1-0.9 由设置页滑杆控制；开启期间强制 DOM 渲染器透出本层。 -->
-        <div v-if="wallpaperActive" class="terminal-wallpaper" :style="{ backgroundImage: `url(${wallpaperDataUrl})`, opacity: wallpaperOpacity / 100 }" aria-hidden="true" />
-        <!-- P1-3 行号/时间戳 gutter：绝对定位覆盖左缘 padding 环带（z-index 1，
-             低于浮层 z-index 2），xterm 左 padding 随 --dbx-gutter-width 加宽，
-             不遮文本；drop-overlay/搜索面板/诊断浮层定位不受影响。 -->
-        <TerminalGutter v-if="gutterVisible" :rows="gutterRows" :width="gutterWidth" />
-        <div ref="terminalHost" class="terminal-host" :class="{ 'bell-flash': terminalBellFlash }" @mousedown.middle="handleTerminalMiddleClick" />
+      <WorkbenchStage
+        ref="stage"
+        :t="t"
+        :terminal-drag-active="terminalDragActive"
+        :command-marker="commandMarker"
+        :gutter-pane-visible="gutterPaneVisible"
+        :wallpaper-active="wallpaperActive"
+        :terminal-transfer-busy="terminalTransferBusy"
+        :gutter-pane-style="gutterPaneStyle"
+        :wallpaper-data-url="wallpaperDataUrl"
+        :wallpaper-opacity="wallpaperOpacity"
+        :gutter-visible="gutterVisible"
+        :gutter-rows="gutterRows"
+        :gutter-width="gutterWidth"
+        :terminal-bell-flash="terminalBellFlash"
+        :action-link-hint="actionLinkHint"
+        :terminal-diag-visible="terminalDiagVisible"
+        :terminal-diag="terminalDiag"
+        :ai-fix-bar="aiFixBar"
+        :ai-fix-bar-style="aiFixBarStyle"
+        :is-rdp-connection="isRdpConnection"
+        :local-ui-mode="localUiMode"
+        :drag-active="dragActive"
+        :sftp-view-visible="sftpViewVisible"
+        :command-marker-details="commandMarkerDetails"
+        :command-marker-elapsed="commandMarkerElapsed"
+        :agent-running="agentRunning"
+        :format-command-duration="formatCommandDuration"
+        @contextmenu="showTerminalMenu"
+        @middle-click="handleTerminalMiddleClick"
+        @dismiss-diagnostics="terminalDiagVisible = false"
+        @fix-with-ai="aiFixFromBar"
+        @dismiss-fix="aiFixBar = null; clearFixRecommendation()"
+        @focus-terminal="terminal?.focus()"
+        @interrupt-agent="interruptAgentRun"
+      >
+        <template #surfaces>
         <!-- VNC 画布（nyaterm-parity P2 2d）：盖在 xterm 之上（z-index 2），
              帧从 vnc/frame/{id} 二进制通道进入；键盘/鼠标由画布采集后经
              keysym 映射发 vnc/input。连接态/退出覆盖层沿用 terminal-overlay。 -->
@@ -4112,14 +4146,8 @@ const toolbarActions: WorkbenchToolbarActions = {
              （rdp/pointer）落到画布 CSS cursor。连接态/退出覆盖层沿用
              terminal-overlay。 -->
         <RdpSurface v-if="isRdpMode" ref="rdpSurface" class="vnc-surface" :scale-mode="rdpScaleMode" @input="sendRdpInput" @clipboard-out="sendRdpClipboard" @desktop-size="(size) => (rdpDesktopSize = size)" />
-        <!-- P1-2 动作链接命令预览浮签：悬停 / Alt+点击时显示建议命令文本。 -->
-        <div v-if="actionLinkHint" class="action-link-hint mono" :style="{ left: `${actionLinkHint.x}px`, top: `${actionLinkHint.y}px` }">{{ actionLinkHint.text }}</div>
-        <!-- #33/#71 快速输入丢失诊断浮层：Ctrl/Cmd+Shift+D 切换。keys=onData
-             路由到 PTY 的按键、sends=提交宿主桥的帧、acks=sidecar 确认的帧、
-             errors=桥拒绝、swallowed=传输路由吞键。三者对不上即锁定丢失层。 -->
-        <div v-if="terminalDiagVisible" class="terminal-diag-overlay" @dblclick="terminalDiagVisible = false">
-          keys {{ terminalDiag.keys }} · sends {{ terminalDiag.sends }} · acks {{ terminalDiag.acks }} · errors {{ terminalDiag.errors }} · swallowed {{ terminalDiag.swallowed }}
-        </div>
+        </template>
+        <template #cursor>
         <!-- 空提示符快捷键引导条（引导 Warp 对齐键位）：空行静置时浮在光标行
              上方，用过任一功能或 ✗ 永久消散（lib/terminalPromptHints.ts 门）；
              定位与建议浮层同一光标锚点坐标系，底边贴光标行顶不遮输入行。 -->
@@ -4210,16 +4238,8 @@ const toolbarActions: WorkbenchToolbarActions = {
             <span class="terminal-ai-search-keys"><kbd>Enter</kbd> {{ t("aiSearch.hintSubmit") }}<span aria-hidden="true"> · </span><kbd>Esc</kbd> {{ t("aiSearch.hintCancel") }}</span>
           </template>
         </div>
-        <!-- 失败命令修复条（Warp Fix-with-AI 同位）：非弹窗不抢焦点，贴触发光标
-             行顶；新命令开始/Esc 关闭/会话切换即消失。「用 AI 修复」首次发送过
-             快照预览确认，输出已截断+脱敏（prepareAiOutputSnapshot）。 -->
-        <div v-if="aiFixBar" class="terminal-ai-fix mono" :style="aiFixBarStyle" role="status">
-          <span class="terminal-ai-fix-exit">✗ {{ aiFixBar.exitCode }}</span>
-          <span class="terminal-ai-fix-command">{{ aiFixBar.command }}</span>
-          <button type="button" class="terminal-ai-fix-btn" @click="aiFixFromBar">{{ t("aiFix.barAction") }}</button>
-          <button type="button" class="terminal-ai-fix-close" :title="t('aiFix.barClose')" :aria-label="t('aiFix.barClose')" @click="aiFixBar = null; clearFixRecommendation()">✕</button>
-        </div>
-        <div v-if="!isRdpConnection && !localUiMode && (terminalDragActive || (dragActive && !sftpViewVisible))" class="drop-overlay"><FileUp /><strong>{{ t("terminalDrop.hint") }}</strong></div>
+        </template>
+        <template #panels>
         <TerminalSearchPanel
           v-if="searchOpen"
           :locale="locale"
@@ -4263,25 +4283,49 @@ const toolbarActions: WorkbenchToolbarActions = {
           @select="selectHistoryEntry"
           @close="closeHistoryPanel"
         />
-        <div v-if="reconnectPending" class="reconnect-banner" role="status">
-          <Loader2 class="spinning" />
-          <span class="reconnect-text">{{ t("reconnectBanner.label") }}</span>
-          <span v-if="reconnectCountdown" class="reconnect-countdown mono">{{ t("sessionStatus.reconnectCountdown", { seconds: reconnectCountdown.seconds, attempt: reconnectCountdown.attempt }) }}</span>
-          <span v-if="reconnectCountdown" class="reconnect-attempt">{{ t("reconnectBanner.attempt", { attempt: reconnectCountdown.attempt }) }}</span>
-          <progress v-if="reconnectCountdown" :value="reconnectCountdown.percent" max="100" />
-          <button class="reconnect-now" @click="reconnectNow">{{ t("reconnectNow") }}</button>
-        </div>
-        <!-- 录制中悬浮控制条：底部居中，红色呼吸点 + 时长 + 停止 -->
-        <div v-if="recordingActive" class="recording-float" role="status">
-          <Disc class="recording-float-dot" />
-          <span class="recording-elapsed mono">{{ formatDuration(recordingElapsedSec) }}</span>
-          <button class="recording-stop" @click="toggleRecording"><Square />{{ t("recordingStop") }}</button>
-        </div>
-        <!-- 录制开始倒计时遮罩：大数字 3→2→1（:key 重触发放缩动画），Esc/点击取消 -->
-        <div v-if="recordCountdown !== null" class="record-countdown-overlay" role="status" @click="cancelRecordCountdown">
-          <span class="record-countdown-number" :key="recordCountdown">{{ recordCountdown }}</span>
-          <span class="record-countdown-hint">{{ t("recordingCountdownHint") }}</span>
-        </div>
+        </template>
+        <template #status>
+        <!-- 连接/本地/协议状态层：组件在 components/TerminalStatusOverlays.vue
+             （T20 迁出；插槽仅保持原 DOM 位置）。 -->
+        <TerminalStatusOverlays
+          :reconnect-pending="reconnectPending"
+          :reconnect-countdown="reconnectCountdown"
+          :recording-active="recordingActive"
+          :recording-elapsed-sec="recordingElapsedSec"
+          :record-countdown="recordCountdown"
+          :is-local-mode="isLocalMode"
+          :local-shell-restored="localShellRestored"
+          :local-state="localState"
+          :local-exit-code="localExitCode"
+          :is-telnet-mode="isTelnetMode"
+          :telnet-state="telnetState"
+          :telnet-error="telnetError"
+          :is-serial-mode="isSerialMode"
+          :serial-state="serialState"
+          :serial-error="serialError"
+          :is-vnc-mode="isVncMode"
+          :vnc-state="vncState"
+          :vnc-error="vncError"
+          :is-rdp-mode="isRdpMode"
+          :rdp-state="rdpState"
+          :rdp-closed-title="rdpClosedTitle"
+          :format-duration="formatDuration"
+          :t="t"
+          @reconnect-now="reconnectNow"
+          @toggle-recording="toggleRecording"
+          @cancel-record-countdown="cancelRecordCountdown"
+          @restart-local="restartLocalTerminal()"
+          @close-local="closeLocalTerminal()"
+          @dismiss-restored-shell="dismissRestoredLocalShell()"
+          @close-telnet="closeTelnetSession"
+          @close-serial="closeSerialSession"
+          @close-vnc="closeVncSession"
+          @rdp-reconnect="reconnectRdpSession"
+          @rdp-edit-credentials="rdpDialogOpen = true"
+          @rdp-close="closeRdpSession"
+        />
+        </template>
+        <template #connection>
         <!-- SSH 连接卡片：本地/串口/Telnet/VNC 会话占用的终端视图不再叠 SSH-only
              卡片（互斥展示）。Dock panel surface 不再显示瞬态连接遮罩（宿主
              预拨号、面板直出终端区域），但 FAILED/disconnected 是死路态——
@@ -4306,133 +4350,53 @@ const toolbarActions: WorkbenchToolbarActions = {
             @toggle-logs="connectLogsOpen = !connectLogsOpen"
           />
         </div>
-        <!-- 本地终端启动中覆盖层：spawn 正常在数百毫秒内返回；卡在 starting
-             （宿主桥丢响应、慢盘冷启动）必须有可见反馈，否则就是零信息黑屏。
-             超时/失败由 startLocalTerminal 的 catch 接管转 exited + showError。 -->
-        <div v-if="(isLocalMode || localShellRestored) && localState === 'starting'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <Loader2 class="local-exit-icon spinning" />
-            <strong>{{ t("localTerminal.starting") }}</strong>
-          </div>
-        </div>
-        <!-- 本地终端退出态覆盖层（含 A4 恢复外壳：restored tab 未起 shell 时
-             也由它承担外壳态，spec §8.4）：显示退出码（sidecar 未上报时不显
-             示），给重开与关闭两个出口（VS Code 式终端退出体验）。 -->
-        <div v-if="(isLocalMode || localShellRestored) && localState === 'exited'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <TerminalIcon class="local-exit-icon" />
-            <strong>{{ t("localTerminal.exited") }}</strong>
-            <span v-if="localExitCode !== null" class="mono local-exit-code">{{ t("localTerminal.exitCode", { code: localExitCode }) }}</span>
-            <div class="local-exit-actions">
-              <button class="primary-button" @click="restartLocalTerminal()">{{ t("localTerminal.restart") }}</button>
-              <button @click="localShellRestored ? dismissRestoredLocalShell() : closeLocalTerminal()">{{ t("localTerminal.close") }}</button>
-            </div>
-          </div>
-        </div>
-        <!-- Telnet 退出覆盖层（连接失败/对端断开）：给出关闭出口，展示
-             sidecar 带回的原因文本（明文协议告警在连接弹窗里）。 -->
-        <div v-if="isTelnetMode && telnetState === 'closed'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <TriangleAlert class="local-exit-icon" />
-            <strong>{{ t("telnet.closed") }}</strong>
-            <span v-if="telnetError" class="mono local-exit-code">{{ telnetError }}</span>
-            <div class="local-exit-actions">
-              <button @click="closeTelnetSession">{{ t("telnet.close") }}</button>
-            </div>
-          </div>
-        </div>
-        <!-- 串口退出覆盖层（读线程 IO 失败/设备拔线）：给出关闭出口，展示原因。 -->
-        <div v-if="isSerialMode && serialState === 'closed'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <TriangleAlert class="local-exit-icon" />
-            <strong>{{ t("serial.closed") }}</strong>
-            <span v-if="serialError" class="mono local-exit-code">{{ serialError }}</span>
-            <div class="local-exit-actions">
-              <button @click="closeSerialSession">{{ t("serial.close") }}</button>
-            </div>
-          </div>
-        </div>
-        <!-- VNC 退出覆盖层（认证失败/服务端强制 Tight/对端断开）：给出关闭
-             出口，展示 sidecar 带回的原因文本；明文/经典认证告警在连接弹窗。 -->
-        <div v-if="isVncMode && vncState === 'closed'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <TriangleAlert class="local-exit-icon" />
-            <strong>{{ t("vnc.closed") }}</strong>
-            <span v-if="vncError" class="mono local-exit-code">{{ vncError }}</span>
-            <div class="local-exit-actions">
-              <button @click="closeVncSession">{{ t("vnc.close") }}</button>
-            </div>
-          </div>
-        </div>
-        <!-- RDP 重连状态条（退避梯子进行中）：非阻塞展示进度，梯子跑完由
-             closed 覆盖层接管（协议：证书/认证/协商失败永不自动重试）。 -->
-        <div v-if="isRdpMode && rdpState.state === 'reconnecting'" class="zmodem-status" role="status">
-          <Loader2 class="spinning" />
-          <span>{{ rdpState.maxAttempts > 0 ? t("rdp.reconnectingAttempt", { attempt: rdpState.attempt, max: rdpState.maxAttempts }) : t("rdp.reconnecting") }}</span>
-        </div>
-        <!-- RDP 退出覆盖层（graceful close / 终态错误）：errorKind 友好文案为
-             主行、sidecar 原因文本为细节行；给出 Reconnect（rdp/reconnect）与
-             关闭双出口（协议：服务端主动断开不自动重连，由用户决定）。 -->
-        <div v-if="isRdpMode && rdpState.state === 'closed'" class="terminal-overlay">
-          <div class="local-exit-card" role="status">
-            <TriangleAlert class="local-exit-icon" />
-            <strong>{{ rdpClosedTitle }}</strong>
-            <span v-if="rdpState.error" class="mono local-exit-code">{{ rdpState.error }}</span>
-            <div class="local-exit-actions">
-              <button class="primary-button" @click="reconnectRdpSession">{{ t("rdp.reconnect") }}</button>
-              <!-- 认证失败是永久错误：重连只会用同一套凭据再撞一次（协议：
-                   认证失败永不自动重试），把用户带回可改凭据的连接对话框。 -->
-              <button v-if="rdpState.errorKind === 'authentication'" @click="rdpDialogOpen = true">{{ t("rdp.editCredentials") }}</button>
-              <button @click="closeRdpSession">{{ t("rdp.close") }}</button>
-            </div>
-          </div>
-        </div>
-        <div v-if="commandMarker.installed" class="terminal-command-marker" :class="{ active: commandMarker.active, failed: !commandMarker.active && commandMarker.exitCode !== null && commandMarker.exitCode !== 0 }" :title="commandMarkerDetails" @click="terminal?.focus()">
-          <Loader2 v-if="commandMarker.active" class="spinning" />
-          <TriangleAlert v-else-if="commandMarker.exitCode" />
-          <Info v-else />
-          <span v-if="commandMarker.active" class="marker-text">{{ t("terminalCommand.running", { command: commandMarker.command || "…" }) }}</span>
-          <span v-if="commandMarker.active && commandMarkerElapsed !== null" class="marker-elapsed mono">{{ formatCommandDuration(commandMarkerElapsed) }}</span>
-          <span v-else-if="commandMarker.exitCode !== null" class="marker-text">{{ t("terminalCommand.finished", { code: commandMarker.exitCode, duration: formatCommandDuration(commandMarker.durationMs) }) }}</span>
-          <span v-else class="marker-text">{{ t("terminalCommand.hint") }}</span>
-          <span v-if="commandMarker.cwd" class="marker-cwd mono">{{ commandMarker.cwd }}</span>
-        </div>
-        <div v-if="agentRunning" class="agent-run-banner" role="status">
-          <Loader2 class="spinning" />
-          <span class="agent-run-text">{{ t("agentRunningBanner") }}</span>
-          <code class="agent-run-command mono" :title="agentRunning.command">{{ agentRunning.command }}</code>
-          <button class="agent-interrupt" @click="interruptAgentRun">{{ t("agentInterrupt") }}</button>
-        </div>
-        <div v-if="zmodemBusy" class="zmodem-status trzsz-status" role="status">
-          <Loader2 class="spinning" />
-          <span class="trzsz-label">{{ zmodemStatusLabel }}</span>
-          <progress v-if="zmodemState === 'uploading' || zmodemState === 'receiving'" :value="zmodemPercent" max="100" />
-          <span v-if="(zmodemState === 'uploading' || zmodemState === 'receiving') && zmodemFileCount > 1" class="trzsz-count mono">{{ zmodemFileIndex }}/{{ zmodemFileCount }}</span>
-          <span v-if="zmodemSpeed">{{ formatBytes(zmodemSpeed) }}/s</span>
-          <button class="trzsz-cancel" :title="t('cancel')" :aria-label="t('cancel')" @click="cancelZmodemUpload"><X /></button>
-        </div>
-        <div v-if="trzszOverlayVisible" class="zmodem-status trzsz-status" role="status" :class="{ 'trzsz-done': trzszPhase === 'success', 'trzsz-failed': trzszPhase === 'failed' }">
-          <Loader2 v-if="trzszPhase === 'waiting' || trzszPhase === 'transferring'" class="spinning" />
-          <TriangleAlert v-else-if="trzszPhase === 'failed'" />
-          <span class="trzsz-label">{{ trzszStatusLabel }}</span>
-          <progress v-if="trzszPhase === 'transferring'" :value="trzszPercent" max="100" />
-          <span v-if="trzszPhase === 'transferring' && trzszFileCount > 1" class="trzsz-count mono">{{ trzszFileIndex }}/{{ trzszFileCount }}</span>
-          <span v-if="trzszPhase === 'transferring' && trzszSpeed" class="trzsz-speed">{{ formatBytes(trzszSpeed) }}/s</span>
-          <button v-if="trzszBusy" class="trzsz-cancel" :title="t('cancel')" :aria-label="t('cancel')" @click="cancelTrzszTransfer"><X /></button>
-        </div>
-        <!-- 串口文件上传进度（NyaTerm 对齐 P0-3）：running 吞键入 + 可取消；
-             complete/failed 保留展示，由用户点 × 收起。 -->
-        <div v-if="serialUploadOverlayVisible" class="zmodem-status trzsz-status" role="status" :class="{ 'trzsz-done': serialUpload.phase === 'complete', 'trzsz-failed': serialUpload.phase === 'failed' }">
-          <Loader2 v-if="serialUploadBusy" class="spinning" />
-          <TriangleAlert v-else-if="serialUpload.phase === 'failed'" />
-          <span class="trzsz-label">{{ serialUploadStatusLabel }}</span>
-          <progress v-if="serialUploadBusy" :value="serialUploadPercentValue" max="100" />
-          <span class="trzsz-count mono">{{ serialUpload.protocol.toUpperCase() }}</span>
-          <button v-if="serialUploadBusy" class="trzsz-cancel" :title="t('cancel')" :aria-label="t('cancel')" @click="cancelSerialUpload"><X /></button>
-          <button v-else class="trzsz-cancel" :title="t('close')" :aria-label="t('close')" @click="serialUpload = initialSerialUploadState()"><X /></button>
-        </div>
-        <!-- 录制记录浮条：列出 .cast 录制，可回放/导出/删除；
-             M14 增加名称+内容搜索（命中行摘录）与 transcript 导出。 -->
+        </template>
+        <template #transfer>
+        <!-- 传输/回放浮层：组件在 components/TransferOverlays.vue（T20 迁出；
+             zmodem/trzsz/串口上传进度 + 回放弹窗）。 -->
+        <TransferOverlays
+          :zmodem-busy="zmodemBusy"
+          :zmodem-state="zmodemState"
+          :zmodem-percent="zmodemPercent"
+          :zmodem-file-count="zmodemFileCount"
+          :zmodem-file-index="zmodemFileIndex"
+          :zmodem-speed="zmodemSpeed"
+          :zmodem-status-label="zmodemStatusLabel"
+          :trzsz-overlay-visible="trzszOverlayVisible"
+          :trzsz-phase="trzszPhase"
+          :trzsz-status-label="trzszStatusLabel"
+          :trzsz-percent="trzszPercent"
+          :trzsz-file-count="trzszFileCount"
+          :trzsz-file-index="trzszFileIndex"
+          :trzsz-speed="trzszSpeed"
+          :trzsz-busy="trzszBusy"
+          :serial-upload="serialUpload"
+          :serial-upload-busy="serialUploadBusy"
+          :serial-upload-overlay-visible="serialUploadOverlayVisible"
+          :serial-upload-status-label="serialUploadStatusLabel"
+          :serial-upload-percent-value="serialUploadPercentValue"
+          :replay-state="replayState"
+          :replay-playing="replayPlaying"
+          :replay-speed="replaySpeed"
+          :replay-playhead-ms="replayPlayheadMs"
+          :replay-duration-ms="replayDurationMs"
+          :replay-exporting="replayExporting"
+          :format-bytes="formatBytes"
+          :format-duration="formatDuration"
+          :t="t"
+          @cancel-zmodem="cancelZmodemUpload"
+          @cancel-trzsz="cancelTrzszTransfer"
+          @cancel-serial-upload="cancelSerialUpload"
+          @reset-serial-upload="serialUpload = initialSerialUploadState()"
+          @replay-close="closeReplay"
+          @replay-toggle-play="toggleReplayPlay"
+          @update:replay-speed="replaySpeed = $event"
+          @replay-seek="onReplaySeek"
+          @replay-export-gif="exportReplayGif"
+          @bind-replay-host="bindReplayHost"
+        />
+        </template>
+        <template #recordings>
         <section v-if="recordingsOpen" class="metrics-float recordings-float">
           <header>
             <h2>{{ t("recordingsTitle") }}</h2>
@@ -4468,37 +4432,8 @@ const toolbarActions: WorkbenchToolbarActions = {
             </template>
           </div>
         </section>
-        <!-- 回放弹窗：xterm 重放 + 倍速/进度/GIF 导出 -->
-        <div v-if="replayState" class="replay-overlay" @click.self="closeReplay">
-          <section class="replay-modal">
-            <header>
-              <h2>{{ t("replayTitle") }}<span class="metrics-host"> · {{ replayState.summary.host || replayState.summary.recordingId }}</span></h2>
-              <button class="icon-button" :title="t('replayClose')" :aria-label="t('replayClose')" @click="closeReplay"><X /></button>
-            </header>
-            <div class="replay-terminal-wrap">
-              <div ref="replayHost" class="replay-terminal"></div>
-              <div v-if="replayDurationMs <= 0" class="replay-empty">{{ t("replayEmpty") }}</div>
-            </div>
-            <div class="replay-controls">
-              <button class="icon-button" :title="t(replayPlaying ? 'replayPause' : 'replayPlay')" :aria-label="t(replayPlaying ? 'replayPause' : 'replayPlay')" @click="toggleReplayPlay"><Pause v-if="replayPlaying" /><Play v-else /></button>
-              <Select :model-value="String(replaySpeed)" @update:model-value="(v) => (replaySpeed = Number(v))">
-                <SelectTrigger size="xs" class="replay-speed" :title="t('replaySpeed')">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0.5">0.5×</SelectItem>
-                  <SelectItem value="1">1×</SelectItem>
-                  <SelectItem value="2">2×</SelectItem>
-                  <SelectItem value="4">4×</SelectItem>
-                </SelectContent>
-              </Select>
-              <input class="replay-seek" type="range" min="0" :max="Math.max(1, replayDurationMs)" :value="replayPlayheadMs" step="100" @input="onReplaySeek" />
-              <span class="mono replay-time">{{ formatDuration(replayPlayheadMs / 1000) }} / {{ formatDuration(replayDurationMs / 1000) }}</span>
-              <button class="link-button" :disabled="replayExporting" @click="exportReplayGif">{{ replayExporting ? t("replayExporting") : t("replayExportGif") }}</button>
-            </div>
-          </section>
-        </div>
-      </section>
+        </template>
+      </WorkbenchStage>
         </ContextMenuTrigger>
         <!-- P2-8：Copy/Paste/Search online/Close 由 TerminalContextMenu 承载；
              插件自有菜单项经默认插槽保持在原有位置。 -->

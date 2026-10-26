@@ -1,60 +1,14 @@
 /* App.vue scoped styles (split out of the SFC for maintainability). */
 
-/* 终端 MCP 执行横幅 / 审批弹窗等仍留在 App 的规则；工具条（A± 字号步进、快速
-   命令下拉、RDP 工具组/弹层、agent-mode 下拉、录制态）的专属样式已随 DOM 迁入
-   components/WorkbenchToolbar.vue、SessionMenu.vue、QuickCommandsMenu.vue、
-   RdpToolbarControls.vue 的 scoped 样式（T19）。 */
+/* 工具条/舞台/浮层的专属样式已随 DOM 迁入 components/：工具条（A± 字号步进、
+   快速命令下拉、RDP 工具组/弹层、agent-mode 下拉、录制态）→ WorkbenchToolbar.vue、
+   SessionMenu.vue、QuickCommandsMenu.vue、RdpToolbarControls.vue（T19）；
+   舞台（壁纸/gutter/AI 修复条/AI 执行横幅）、状态层（录制控制条/倒计时）、
+   传输层（回放弹窗）→ WorkbenchStage.vue、TerminalStatusOverlays.vue、
+   TransferOverlays.vue（T20）。本文件保留 App 内联弹窗与录制记录列表的规则。 */
 
-/* AI 终端同步执行：执行横幅（终端底部，避开命令标记条）+ 审批弹窗 */
-.agent-run-banner { position: absolute; z-index: 3; right: 8px; bottom: 36px; left: 8px; display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); font-size: 11px; }
-.agent-run-banner svg { width: 14px; height: 14px; flex: 0 0 14px; }
-.agent-run-text { flex: 0 0 auto; color: var(--foreground); }
-.agent-run-command { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
-.agent-interrupt { flex: 0 0 auto; height: 24px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--destructive); font-size: 11px; cursor: pointer; }
-.agent-interrupt:hover { background: var(--accent); }
 /* —— 断点续传 / 进程管理 / 会话录制（F1-F3）—— */
 /* 录制中按钮的红色态随工具条迁入 components/WorkbenchToolbar.vue 的 scoped 样式。 */
-/* 录制中：悬浮控制条（红色呼吸点 + 时长 mono 等宽不跳动 + 停止按钮）。
-   锚定视口而非终端面板：面板底边可能探出可视区（批量栏等会推高布局），
-   绝对定位会被裁掉半截；fixed 与 toast 通知同款，已验证可靠。 */
-.recording-float { position: fixed; z-index: 40; bottom: 64px; left: 50%; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--destructive) 45%, var(--border)); border-radius: 999px; padding: 5px 7px 5px 12px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); font-size: 11px; }
-.recording-float-dot { width: 12px; height: 12px; flex: 0 0 12px; color: var(--destructive); animation: record-pulse 1.6s ease-in-out infinite; }
-.recording-elapsed { color: var(--foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
-.recording-stop { display: inline-flex; align-items: center; gap: 4px; height: 24px; border: 1px solid var(--border); border-radius: 999px; padding: 0 10px; background: var(--background); color: var(--destructive); font-size: 11px; cursor: pointer; }
-.recording-stop:hover { background: var(--accent); }
-.recording-stop svg { width: 11px; height: 11px; }
-@keyframes record-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-
-/* 录制开始倒计时遮罩：终端区中央大数字逐级放缩淡入，点击/Esc 取消。 */
-.record-countdown-overlay {
-  position: absolute;
-  z-index: 5;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: color-mix(in srgb, var(--background) 62%, transparent);
-  cursor: pointer;
-  user-select: none;
-}
-.record-countdown-number {
-  color: var(--foreground);
-  font-size: 72px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  text-shadow: 0 4px 24px rgb(0 0 0 / 40%);
-  animation: record-countdown-pop 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both;
-}
-.record-countdown-hint { color: var(--muted-foreground); font-size: 11px; }
-@keyframes record-countdown-pop {
-  0% { opacity: 0; transform: scale(1.5); }
-  25% { opacity: 1; transform: scale(1); }
-  85% { opacity: 1; transform: scale(0.96); }
-  100% { opacity: 0.25; transform: scale(0.92); }
-}
 .recordings-float { width: 440px; }
 /* 录制记录列表：shadcn 式行布局——行间距归零，行间仅一条 45% 淡化的发丝线，
    行 hover 出 accent 圆角背景。旧卡片每条 border-top + body gap 会叠出
@@ -85,24 +39,6 @@
 .proc-sort-option { display: inline-flex; align-items: center; gap: 4px; }
 .proc-kill-group { display: flex; gap: 8px; justify-content: flex-end; }
 .proc-kill-force { color: var(--destructive); }
-/* 回放弹窗并入模态体系：遮罩用 --overlay、z-index 走 80 梯队、圆角同 .modal。 */
-.replay-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: 80; display: flex; align-items: center; justify-content: center; }
-.replay-modal { background: var(--popover); color: var(--foreground); border: 1px solid var(--border); border-radius: var(--radius-lg, 8px); padding: 16px; width: min(920px, 92vw); display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow-modal); }
-/* 标题行弹性布局：关闭按钮固定右上角（block 布局下按钮会掉到标题下一行）。 */
-.replay-modal header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.replay-modal header h2 { margin: 0; min-width: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-/* 不固定高度：xterm 26 行实际渲染 442px，写死 420px 会让终端溢出压住下方控制条。 */
-.replay-terminal { min-height: 44px; }
-.replay-controls { display: flex; align-items: center; gap: 10px; }
-.replay-seek { flex: 1; min-width: 0; height: 4px; accent-color: var(--primary); cursor: pointer; }
-/* 空录制（00:00/00:00）在终端区中央给提示，不再黑屏干等。 */
-.replay-terminal-wrap { position: relative; }
-.replay-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
-/* 控制行控件对齐：播放钮 24px / 倍速 26px（SelectTrigger xs）/ 导出按钮走次级按钮规范。 */
-.replay-controls .link-button { display: inline-flex; height: 24px; align-items: center; align-self: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 11px; }
-.replay-controls .link-button:hover:not(:disabled) { background: var(--accent); }
-.replay-speed { flex: 0 0 auto; width: 76px; }
-.replay-time { min-width: 110px; text-align: right; font-size: 12px; color: var(--muted-foreground); }
 /* 终端拖入上传落点询问：文件清单限高滚动，路径行对齐 radio 观感。 */
 .drop-file-list { max-height: 132px; margin: 0; overflow: auto; white-space: pre; }
 .drop-option { display: flex; align-items: center; gap: 7px; margin: 2px 0; font-size: 12px; cursor: pointer; }
@@ -156,54 +92,7 @@
 /* 拖拽过程中全局光标 */
 body.resizing-col { cursor: col-resize !important; user-select: none; }
 
-/* —— P1-3 行号/时间戳 gutter 的布局联动 ——
-   gutter 组件自身样式在 TerminalGutter.vue；这里只做两件事：
-   1) gutter 可见时把 xterm 左 padding 加宽 --dbx-gutter-width（FitAddon 读
-      element padding 算列数，列宽随之自动收窄，文本不会滑进 gutter 环带）；
-   2) 命令预览浮签（悬停 / Alt+点击动作链接时出现），z-index 高于终端宿主
-      （z 0）与 gutter（z 1），低于浮层梯队（z 2+）。 */
-.terminal-pane.gutter-visible .terminal-host :deep(.xterm) {
-  padding-left: calc(var(--dbx-gutter-width, 0px) + var(--ssh-terminal-padding-left, 10px));
-}
-/* —— P2-9 背景图（对标 NyaTerm，MVP 简化）——
-   图层垫底（DOM 序先于 terminal-host，pointer-events 关）；开启期间 pane/
-   宿主/xterm 表面底色透明化（color-mix 保留一层底色防纯黑/纯白刺眼），
-   !important 压过 xterm 6.x 内联在 .xterm-scrollable-element 的主题背景。
-   开启期间渲染器强制回退 DOM（rendererWebglEffective），否则 WebGL 画布
-   不透明会盖死本层。 */
-.terminal-wallpaper {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  pointer-events: none;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.terminal-pane.wallpaper-active { background: color-mix(in srgb, var(--ssh-terminal-background) 55%, transparent); }
-.terminal-pane.wallpaper-active .terminal-host { background: transparent; }
-.terminal-pane.wallpaper-active .terminal-host :deep(.xterm),
-.terminal-pane.wallpaper-active .terminal-host :deep(.xterm .xterm-viewport),
-.terminal-pane.wallpaper-active .terminal-host :deep(.xterm .xterm-scrollable-element),
-.terminal-pane.wallpaper-active .terminal-host :deep(.xterm .xterm-screen),
-.terminal-pane.wallpaper-active .terminal-host :deep(.xterm .xterm-rows) { background: transparent !important; }
-.action-link-hint {
-  position: absolute;
-  z-index: 3;
-  max-width: 300px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
-  background: var(--popover);
-  color: var(--foreground);
-  font-size: 11px;
-  white-space: pre;
-  text-overflow: ellipsis;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgb(0 0 0 / 0.25));
-  pointer-events: none;
-}
-/* 终端行内 ghost 自动建议（对标 Warp/fish）：灰字盖在光标格上，无交互
+（对标 Warp/fish）：灰字盖在光标格上，无交互
    （pointer-events:none），不参与选区/搜索。终端主题色在 xterm 内部渲染，
    CSS 拿不到，故用全局次级前景色 + 低透明度近似 fish 的 dim 灰。 */
 .terminal-ghost {
@@ -280,62 +169,4 @@ body.resizing-col { cursor: col-resize !important; user-select: none; }
   color: var(--muted-foreground);
   font-size: 10px;
   white-space: nowrap;
-}
-/* 失败命令修复条（Warp Fix-with-AI 同位）：单行非弹窗，贴触发光标行顶。 */
-.terminal-ai-fix {
-  position: absolute;
-  right: 8px;
-  left: 8px;
-  z-index: 8;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-  border: 1px solid var(--border, rgb(128 128 132 / 28%));
-  border-radius: var(--radius);
-  background: var(--popover);
-  box-shadow: var(--shadow-popover);
-  padding: 4px 8px;
-  font-size: 11.5px;
-}
-.terminal-ai-fix-exit {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: rgb(239 68 68 / 16%);
-  color: rgb(239 68 68 / 90%);
-  padding: 0 6px;
-  font-size: 10.5px;
-  line-height: 17px;
-}
-.terminal-ai-fix-command {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  color: var(--popover-foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.terminal-ai-fix-btn {
-  flex: 0 0 auto;
-  border: 0;
-  border-radius: 4px;
-  background: var(--accent, rgb(255 255 255 / 10%));
-  color: var(--accent-foreground, inherit);
-  cursor: pointer;
-  padding: 2px 8px;
-  font-size: 11px;
-}
-.terminal-ai-fix-btn:hover {
-  filter: brightness(1.1);
-}
-.terminal-ai-fix-close {
-  flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  padding: 0 2px;
-}
-.terminal-ai-fix-close:hover {
-  color: var(--popover-foreground);
 }
