@@ -39,14 +39,8 @@
 .proc-sort-option { display: inline-flex; align-items: center; gap: 4px; }
 .proc-kill-group { display: flex; gap: 8px; justify-content: flex-end; }
 .proc-kill-force { color: var(--destructive); }
-/* 终端拖入上传落点询问：文件清单限高滚动，路径行对齐 radio 观感。 */
-.drop-file-list { max-height: 132px; margin: 0; overflow: auto; white-space: pre; }
-.drop-option { display: flex; align-items: center; gap: 7px; margin: 2px 0; font-size: 12px; cursor: pointer; }
-.drop-option input { accent-color: var(--primary); }
-.drop-option code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 11px; }
-.drop-path-input { width: 100%; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.drop-path-input:focus { outline: none; border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
-.drop-path-input:disabled { opacity: .5; }
+/* 终端拖入上传落点询问的样式随弹窗迁入 components/WorkbenchDialogs.vue 的
+   scoped 样式（T21）。 */
 
 /* —— SFTP 列宽拖拽 —— */
 .file-header { position: relative; }
@@ -92,7 +86,7 @@
 /* 拖拽过程中全局光标 */
 body.resizing-col { cursor: col-resize !important; user-select: none; }
 
-（对标 Warp/fish）：灰字盖在光标格上，无交互
+/* 终端行内 ghost 自动建议（对标 Warp/fish）：灰字盖在光标格上，无交互
    （pointer-events:none），不参与选区/搜索。终端主题色在 xterm 内部渲染，
    CSS 拿不到，故用全局次级前景色 + 低透明度近似 fish 的 dim 灰。 */
 .terminal-ghost {

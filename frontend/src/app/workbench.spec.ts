@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appVueSource from "./App.vue?raw";
+import sidePanelSource from "./components/WorkbenchSidePanel.vue?raw";
 import sftpWorkspaceSource from "../features/sftp/composables/listing/useSftpWorkspace?raw";
 import sftpErrorsSource from "../features/sftp/lib/entries/sftpErrors?raw";
 import { Osc7DirectoryParser, parseOsc7Path } from "../features/terminal/lib/emulator/terminalDirectoryTracking";
@@ -831,13 +832,18 @@ const composablesScript = Object.values(
 // 模板域同口径：App.vue 的弹层持续抽到 ./components/*.vue（单写者模板拆分）。
 // 抽取组件内的 Popover/Dialog 根以与 App 状态同名的 prop 绑定（:open="xxxOpen"），
 // 因此把组件模板并入同一扫描源，守卫的"每个弹层都必须接入收口机制"不因迁移失守。
-const appComponentTemplates = Object.values(
+const appComponentSources = Object.values(
   import.meta.glob("./components/*.vue", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
-).map((source) => {
+);
+const appComponentTemplates = appComponentSources.map((source) => {
   const styleIndex = source.indexOf("<style");
   return source.slice(source.indexOf("<template>"), source.lastIndexOf("</template>", styleIndex < 0 ? source.length : styleIndex));
 }).join("\n");
 const appTemplateSurface = `${appTemplate}\n${appComponentTemplates}`;
+// 脚本域同口径（T21）：模板组件解析与按需加载守卫必须覆盖迁出的
+// ./components/*.vue 脚本块，否则导入漏写只会在真机静默劣化。
+const appComponentScripts = appComponentSources.map((source) => source.slice(source.indexOf("<script"), source.indexOf("</script>"))).join("\n");
+const appScriptSurface = `${appScript}\n${appComponentScripts}`;
 
 /** 模板中 class 含 marker 且由 v-if 守卫的元素 → 守卫表达式的状态 ref 基名。
  *  reka Popover 面板（Phase 5）无 v-if：内容 portal、由包裹的 <Popover :open="ref">
@@ -985,49 +991,77 @@ describe("App.vue template component resolution guard", () => {
   // 模板里用了未注册的组件标签时，Vue 把它当未知自定义元素原样输出——
   // 不报构建错误、界面静默劣化（ContextMenuSub 曾因此整个平铺失效，
   // 真机截图回归 2026-10-03）。此守卫强制模板中每个 PascalCase 标签都有
-  // 对应的 script setup 导入。
+  // 对应的 script setup 导入。T21 起弹层/侧栏迁往 ./components/*.vue，
+  // 扫描范围扩到 App.vue + components 的**逐文件**配对（联合源会互相掩盖
+  // 漏写的导入，迁出后必须按文件自证）。
   const VUE_BUILTINS = new Set(["Transition", "TransitionGroup", "KeepAlive", "Teleport", "Suspense", "TeleportStatic"]);
-  const importedNames = new Set<string>();
   const importRe = /import\s+(?:([\w$]+)\s*,?\s*)?(?:\{([^}]*)\})?\s*from\s*["']/g;
-  for (const hit of appScript.matchAll(importRe)) {
-    if (hit[1]) importedNames.add(hit[1]);
-    for (const spec of (hit[2] || "").split(",")) {
-      const alias = spec.trim().split(/\s+as\s+/).pop()?.trim();
-      if (alias) importedNames.add(alias);
+
+  /** script setup 块声明的绑定：静态 import + 异步组件工厂。 */
+  function scriptBindings(script: string): Set<string> {
+    const names = new Set<string>();
+    for (const hit of script.matchAll(importRe)) {
+      if (hit[1]) names.add(hit[1]);
+      for (const spec of (hit[2] || "").split(",")) {
+        const alias = spec.trim().split(/\s+as\s+/).pop()?.trim();
+        if (alias) names.add(alias);
+      }
     }
+    // 异步组件（defineAsyncComponent / createPreviewAsyncComponent 工厂）是
+    // 等价的脚本绑定：预览面板按需加载（CodeMirror/language-data 不参与首屏
+    // 求值），模板标签照样必须可解析。
+    for (const hit of script.matchAll(/const\s+([\w$]+)\s*=\s*(?:defineAsyncComponent|createPreviewAsyncComponent)\(/g)) {
+      names.add(hit[1]);
+    }
+    return names;
   }
-  // 异步组件（defineAsyncComponent / createPreviewAsyncComponent 工厂）是
-  // 等价的脚本绑定：预览面板按需加载（CodeMirror/language-data 不参与首屏
-  // 求值），模板标签照样必须可解析。
-  const asyncComponentNames = new Set<string>();
-  for (const hit of appScript.matchAll(/const\s+([\w$]+)\s*=\s*(?:defineAsyncComponent|createPreviewAsyncComponent)\(/g)) {
-    importedNames.add(hit[1]);
-    asyncComponentNames.add(hit[1]);
+
+  function templateTagsOf(template: string): string[] {
+    return [...template.matchAll(/<([A-Z][A-Za-z0-9]*)(?=[\s/>])/g)].map((hit) => hit[1]);
   }
-  const templateTags = new Set<string>();
-  for (const hit of appTemplate.matchAll(/<([A-Z][A-Za-z0-9]*)(?=[\s/>])/g)) {
-    templateTags.add(hit[1]);
-  }
+
+  const units = [
+    { name: "App.vue", template: appTemplate, script: appScript },
+    ...appComponentSources.map((source, index) => {
+      const styleIndex = source.indexOf("<style");
+      return {
+        name: `components/*.vue#${index}`,
+        template: source.slice(source.indexOf("<template>"), source.lastIndexOf("</template>", styleIndex < 0 ? source.length : styleIndex)),
+        script: source.slice(source.indexOf("<script"), source.indexOf("</script>")),
+      };
+    }),
+  ];
+  const importedNames = new Set(units.flatMap((unit) => [...scriptBindings(unit.script)]));
+  const asyncComponentNames = new Set([...appScriptSurface.matchAll(/const\s+([\w$]+)\s*=\s*(?:defineAsyncComponent|createPreviewAsyncComponent)\(/g)].map((hit) => hit[1]));
+  const templateTags = new Set(units.flatMap((unit) => templateTagsOf(unit.template)));
 
   it("extracts a non-empty tag inventory (guards against vacuous regex passes)", () => {
     for (const tag of ["ContextMenu", "ContextMenuItem", "Dialog", "SettingsDialog"]) {
       expect(templateTags, `模板标签提取丢失 ${tag}`).toContain(tag);
     }
     expect(importedNames.size).toBeGreaterThan(50);
+    expect(units.length).toBeGreaterThan(10);
   });
 
   it("resolves every PascalCase template tag to a script-setup import", () => {
-    const unresolved = [...templateTags].filter((tag) => !importedNames.has(tag) && !VUE_BUILTINS.has(tag));
-    expect(unresolved, `未导入的模板组件: ${unresolved.join(", ")}`).toEqual([]);
+    const unresolved: string[] = [];
+    for (const unit of units) {
+      const own = scriptBindings(unit.script);
+      for (const tag of templateTagsOf(unit.template)) {
+        if (!own.has(tag) && !VUE_BUILTINS.has(tag)) unresolved.push(`${unit.name}: ${tag}`);
+      }
+    }
+    expect([...new Set(unresolved)], `未导入的模板组件: ${unresolved.join(", ")}`).toEqual([]);
   });
 
   it("keeps the CodeMirror preview components lazy (not evaluated at startup)", () => {
     // 预览弹窗的 TextPreview/JsonPreviewPanel 静态 import 会把 CodeMirror +
-    // language-data 拉进启动求值路径；两者必须是异步组件（App 经
-    // createPreviewAsyncComponent 工厂创建，带加载/失败兜底）。
+    // language-data 拉进启动求值路径；两者必须是异步组件（T21 起由
+    // components/WorkbenchDialogs.vue 经 createPreviewAsyncComponent 工厂创建，
+    // 带加载/失败兜底）。
     expect([...asyncComponentNames]).toEqual(expect.arrayContaining(["TextPreview", "JsonPreviewPanel"]));
-    expect(appScript).not.toMatch(/import\s+TextPreview\s+from/);
-    expect(appScript).not.toMatch(/import\s+JsonPreviewPanel\s+from/);
+    expect(appScriptSurface).not.toMatch(/import\s+TextPreview\s+from/);
+    expect(appScriptSurface).not.toMatch(/import\s+JsonPreviewPanel\s+from/);
   });
 });
 
@@ -1111,8 +1145,10 @@ it("renders sudo as a text toggle button", () => {
 // 的 cwd 与窗格激活事件由布局树桥接到 App，跟随目录需要能滚动置顶。
 it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(appTemplateSurface).toContain(':ref="setTreePane"');
-  expect(appTemplateSurface).toContain(':on-tree-pane="bindSftpWorkspaceTreePane"');
-  expect(appTemplateSurface).toContain(':set-path-bar-input-el="bindSftpPathBarInput"');
+  // T21：树实例/路径输入框回调随 SFTP 工作区 props 对象下发到 WorkbenchSidePanel
+  // （原模板上的 :on-tree-pane / :set-path-bar-input-el 字面绑定），回填语义不变。
+  expect(appScriptSurface).toContain("onTreePane: bindSftpWorkspaceTreePane");
+  expect(appScriptSurface).toContain("setPathBarInputEl: bindSftpPathBarInput");
   expect(appTemplateSurface).toContain(':follow-padding="followDirectory"');
   expect(appTemplate).toContain('@cwd="onShellTabCwd"');
   expect(appTemplate).toContain('@activate-pane="onPaneActivated"');
@@ -1132,9 +1168,10 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
 // 右侧栏三视图与终端分屏：指标/容器不再以浮层覆盖终端，分屏入口在终端
 // 右键菜单，新建标签页按钮常驻工具条。
 it("hosts metrics and docker in the right panel and exposes terminal split controls", () => {
-  expect(appTemplate).toContain('rightPanelView === \'metrics\'');
-  expect(appTemplate).toContain("<ServerMetricsPanel");
-  expect(appTemplate).toContain("<DockerPanel");
+  // 右侧栏三视图外壳自 T21 起由 components/WorkbenchSidePanel.vue 承载。
+  expect(sidePanelSource).toContain('rightPanelView === \'metrics\'');
+  expect(sidePanelSource).toContain("<ServerMetricsPanel");
+  expect(sidePanelSource).toContain("<DockerPanel");
   expect(appTemplate).toContain("openTerminalSplit('row')");
   expect(appTemplate).toContain("openTerminalSplit('column')");
   // 每个窗格自带标签栏（标签 + 最后的 +）；主终端与分屏页都是布局树叶子。

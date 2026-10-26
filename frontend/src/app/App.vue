@@ -15,9 +15,6 @@ import {
   ImagePlay,
   History,
   Loader2,
-  Pencil,
-  RefreshCw,
-  Save,
   Search,
   ShieldCheck,
   TextSelect,
@@ -48,7 +45,6 @@ import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilter
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/paths/sftpBookmarks";
 import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
 import { loadGhostTabAccept, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
-import { createPreviewAsyncComponent } from "../shared/lib/asyncPreview";
 import { settingsPreferences } from "../features/settings/lib/settingsPreferences";
 // 终端交互提示守卫（issue #150 及其反馈扩展）：远端询问输入/要求选择（MFA/
 // 验证码/密码待输入、选择菜单、y/n 确认）时，↑/↓ 留给远端交互，不唤起历史
@@ -135,8 +131,6 @@ import { useSftpDownload } from "../features/sftp/composables/transfer/useSftpDo
 import { useSftpDelete } from "../features/sftp/composables/actions/useSftpDelete";
 import { useSftpListLayout } from "../features/sftp/composables/listing/useSftpListLayout";
 import { useSftpSelectionClipboard } from "../features/sftp/composables/actions/useSftpSelectionClipboard";
-import OtpPanel from "../features/security/components/OtpPanel.vue";
-import ImportWizard from "../features/connections/components/ImportWizard.vue";
 import { useTerminalAppearance } from "../features/terminal/composables/ui/useTerminalAppearance";
 import { useTerminalBell } from "../features/terminal/composables/ui/useTerminalBell";
 import { useTerminalFontZoom } from "../features/terminal/composables/ui/useTerminalFontZoom";
@@ -191,23 +185,8 @@ import {
 } from "../features/terminal/lib/appearance/terminalAppearance";
 import { workbenchMessage } from "../shared/lib/i18n";
 import { randomUUID } from "../shared/lib/uuid";
-// 预览面板按需加载（含 CodeMirror + language-data，数百 KB）：定义异步组件
-// 使模块只在首次打开预览弹窗时求值，工作台启动不再解析编辑器/语言包。
-// loading/error 兜底：动态 import 失败时渲染说明 + 重试，不再留空白正文
-// （文案闭包按当前 locale 现取；t 在 setup 后段定义，渲染时已初始化）。
-const previewAsyncLabels = () => ({
-  loading: t("loading"),
-  failed: t("previewDialog.loadFailed"),
-  retry: t("previewDialog.retry"),
-});
-const TextPreview = createPreviewAsyncComponent(
-  () => import("../features/sftp/components/TextPreview.vue"),
-  previewAsyncLabels,
-);
-const JsonPreviewPanel = createPreviewAsyncComponent(
-  () => import("../features/sftp/components/JsonPreviewPanel.vue"),
-  previewAsyncLabels,
-);
+// 预览面板（含 CodeMirror + language-data）的按需加载定义随预览弹窗迁入
+// components/WorkbenchDialogs.vue（T21）：工作台启动不再解析编辑器/语言包。
 import TerminalSearchPanel from "../features/terminal/components/TerminalSearchPanel.vue";
 import TerminalQuickSelectPanel from "../features/terminal/components/TerminalQuickSelectPanel.vue";
 import TerminalHistoryPanel from "../features/terminal/components/TerminalHistoryPanel.vue";
@@ -215,9 +194,8 @@ import TerminalPromptHints from "../features/terminal/components/TerminalPromptH
 import CommandSuggestions from "../features/completion/components/CommandSuggestions.vue";
 import CompletionMenu from "../features/completion/components/CompletionMenu.vue";
 import ConnectingCard from "../features/connections/components/ConnectingCard.vue";
-import ServerMetricsPanel, { type ServerMetricsView, type MetricsProcessSortKey } from "../features/metrics/components/ServerMetricsPanel.vue";
+import type { ServerMetricsView, MetricsProcessSortKey } from "../features/metrics/components/ServerMetricsPanel.vue";
 import FolderPickerDialog from "../features/sftp/components/FolderPickerDialog.vue";
-import DockerPanel from "../features/docker/components/DockerPanel.vue";
 import WorkbenchStage from "./components/WorkbenchStage.vue";
 import TerminalStatusOverlays from "./components/TerminalStatusOverlays.vue";
 import TransferOverlays from "./components/TransferOverlays.vue";
@@ -226,13 +204,12 @@ import WorkbenchSftpDialogs from "./components/WorkbenchSftpDialogs.vue";
 import WorkbenchSessionDialogs from "./components/WorkbenchSessionDialogs.vue";
 import WorkbenchToolbar from "./components/WorkbenchToolbar.vue";
 import type { WorkbenchToolbarActions } from "./lib/workbenchToolbarActions";
-import SftpWorkspacePanel from "./components/SftpWorkspacePanel.vue";
+import WorkbenchSidePanel from "./components/WorkbenchSidePanel.vue";
+import WorkbenchDialogs from "./components/WorkbenchDialogs.vue";
 import { Switch } from "../shared/ui/switch/index";
 import type { EditorConfig } from "../features/sftp/lib/editor/editorRules";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select/index";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../shared/ui/context-menu/index";
 import { Popover, PopoverAnchor, PopoverContent } from "../shared/ui/popover/index";
-import { Dialog, DialogContent, DialogTitle } from "../shared/ui/dialog/index";
 import SettingsDialog from "../features/settings/components/SettingsDialog.vue";
 import TerminalContextMenu from "../features/terminal/components/TerminalContextMenu.vue";
 import PortForwardDialog from "../features/forwarding/components/PortForwardDialog.vue";
@@ -518,7 +495,10 @@ const applePlatform = isApplePlatform();
  *  持有的注册表在会话打开时总能拿到真实宿主，且不产生第二个宿主元素。 */
 const stage = useTemplateRef<{ terminalHost?: HTMLElement }>("stage");
 const terminalHost = computed(() => stage.value?.terminalHost);
-const sftpPane = ref<HTMLElement>();
+/** 右侧栏根 <section> 随 T21 迁入 WorkbenchSidePanel，ref 经 defineExpose 回传
+ *  （焦点落回面板本身仍由本文件的 focusSftpPaneOnPointerDown 发起）。 */
+const sidePanel = useTemplateRef<{ sftpPane?: HTMLElement }>("sidePanel");
+const sftpPane = computed(() => sidePanel.value?.sftpPane);
 // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
 const sftpTreePane = ref<{
   scrollPathToTop(path: string): Promise<boolean>;
@@ -537,6 +517,11 @@ function bindSftpWorkspaceTreePane(api: {
 /** 路径输入框随工具栏移入子组件：回填 composable 的 ref，进入编辑态仍能聚焦。 */
 function bindSftpPathBarInput(el: HTMLInputElement | null) {
   pathBarInputEl.value = el;
+}
+/** 拖入上传落点弹窗随 T21 迁入 WorkbenchDialogs：路径输入框 ref 经回调回填
+ *  useUploadChain 持有的 ref（打开弹窗时自动聚焦的既有语义不变）。 */
+function bindDropUploadPathInputEl(el: HTMLInputElement | null) {
+  dropUploadPathInputEl.value = el ?? undefined;
 }
 const paneContainer = ref<HTMLElement>();
 const zmodemInput = ref<HTMLInputElement>();
@@ -3886,6 +3871,75 @@ const toolbarActions: WorkbenchToolbarActions = {
   togglePanelPaletteMenu,
   pickPanelScheme,
 };
+
+// 右侧栏组件的数据面（T21 侧栏拆分）：模板里原先直接读取的 SFTP / 指标 / 容器
+// 绑定在 setup 尾部一次性收敛成类型化对象，经 :shell / :sftp / :metrics / :docker
+// 下发到 WorkbenchSidePanel；可写模型（路径/编辑态/弹层开关/右键菜单负载…）仍走
+// v-model 链，动作经类型化 emit 上抛。状态权威仍在本文件，组件不 inject、不持有
+// 会话逻辑。
+const sidePanelShell = computed(() => ({
+  open: sftpPaneOpen.value,
+  isRdpConnection: isRdpConnection.value,
+  rightPanelView: rightPanelView.value,
+  localUiMode: localUiMode.value,
+  dragActive: dragActive.value,
+  sftpViewActive: sftpViewActive.value,
+}));
+
+const sidePanelMetrics = computed(() => ({
+  view: metricsView.value,
+  distroBadge: metricsDistroBadge.value,
+  hostname: metrics.value?.hostname,
+  loading: metricsLoading.value,
+}));
+
+const sidePanelSftp = computed(() => ({
+  connected: connected.value,
+  loadingFiles: loadingFiles.value,
+  panelSurface: panelSurface.value,
+  followDirectory: followDirectory.value,
+  pathCrumbs: pathCrumbs.value,
+  bookmarkSaving: bookmarkSaving.value,
+  currentPathHistory: currentPathHistory.value,
+  sftpBookmarks: sftpBookmarks.value,
+  quickPaths: SFTP_QUICK_PATHS,
+  canWrite: canWrite.value,
+  sftpClipboard: sftpClipboard.value,
+  pasteBusy: pasteBusy.value,
+  sudoMode: sudoMode.value,
+  sftpShowHidden: sftpShowHidden.value,
+  sftpFiltersActive: sftpFiltersActive.value,
+  selectedEntries: selectedEntries.value,
+  batchProgress: batchProgress.value,
+  archiveBusy: archiveBusy.value,
+  batchDeleteSubmitting: batchDeleteSubmitting.value,
+  sftpSoftError: sftpSoftError.value,
+  fileMenuProtected: fileMenuProtected.value,
+  sftpTreeRows: sftpTreeRows.value,
+  selectedUriSet: selectedUriSet.value,
+  selectedPath: selectedPath.value,
+  renameDraft: renameDraft.value,
+  renameSubmitting: renameSubmitting.value,
+  loadSftpDetails,
+  dragActive: dragActive.value,
+  sftpTreeEntries: sftpTreeEntries.value,
+  sftpTreeTotalRows: sftpTreeTotalRows.value,
+  loadedTreeEntries: loadedTreeEntries.value,
+  diskUsage: diskUsage.value,
+  folderUploadSupported: folderUploadSupported.value,
+  localCanSave: localCanSave.value,
+  availableExternalEditors: availableExternalEditors.value,
+  editorConfig: editorConfig.value,
+  isArchiveName,
+  mappedEditorIdFor,
+  setPathBarInputEl: bindSftpPathBarInput,
+  onTreePane: bindSftpWorkspaceTreePane,
+}));
+
+const sidePanelDocker = computed(() => ({
+  sessionId: session.value?.sessionId ?? "",
+  connectionId: connectionId.value,
+}));
 </script>
 
 <template>
@@ -4541,202 +4595,151 @@ const toolbarActions: WorkbenchToolbarActions = {
         @keydown="onDividerKeydown($event, nudgeSplitDivider)"
       />
 
-      <section v-if="sftpPaneOpen && !isRdpConnection && (rightPanelView === 'docker' || !localUiMode)" ref="sftpPane" class="sftp-pane right-panel" tabindex="-1" :class="{ 'drag-active': dragActive && sftpViewActive }" @pointerdown="focusSftpPaneOnPointerDown" @paste.capture="sftpViewActive && onSftpClipboardPaste($event)" @dragenter.prevent="sftpViewActive && onSftpDragEnter($event)" @dragover.prevent @dragleave="sftpViewActive && onSftpDragLeave($event)" @drop.prevent="sftpViewActive && onDrop($event)">
-        <SftpWorkspacePanel
-          v-if="rightPanelView === 'sftp'"
-          v-model:currentPath="currentPath"
-          v-model:pathBarEditing="pathBarEditing"
-          v-model:bookmarkSaveOpen="bookmarkSaveOpen"
-          v-model:bookmarkLabelDraft="bookmarkLabelDraft"
-          v-model:pathHistoryOpen="pathHistoryOpen"
-          v-model:sftpSearchDraft="sftpSearchDraft"
-          v-model:sftpTypeFilter="sftpTypeFilter"
-          :t="t"
-          :locale="locale"
-          :connected="connected"
-          :loading-files="loadingFiles"
-          :panel-surface="panelSurface"
-          :follow-directory="followDirectory"
-          :path-crumbs="pathCrumbs"
-          :bookmark-saving="bookmarkSaving"
-          :current-path-history="currentPathHistory"
-          :sftp-bookmarks="sftpBookmarks"
-          :quick-paths="SFTP_QUICK_PATHS"
-          :can-write="canWrite"
-          :sftp-clipboard="sftpClipboard"
-          :paste-busy="pasteBusy"
-          :sudo-mode="sudoMode"
-          :sftp-show-hidden="sftpShowHidden"
-          :sftp-filters-active="sftpFiltersActive"
-          :selected-entries="selectedEntries"
-          :batch-progress="batchProgress"
-          :archive-busy="archiveBusy"
-          :batch-delete-submitting="batchDeleteSubmitting"
-          :sftp-soft-error="sftpSoftError"
-          :file-menu="fileMenu"
-          :file-menu-protected="fileMenuProtected"
-          :sftp-tree-rows="sftpTreeRows"
-          :selected-uri-set="selectedUriSet"
-          :selected-path="selectedPath"
-          :renaming-path="renamingPath"
-          :rename-draft="renameDraft"
-          :rename-submitting="renameSubmitting"
-          :load-sftp-details="loadSftpDetails"
-          :drag-active="dragActive"
-          :sftp-drag-drop-target="sftpDragDropTarget"
-          :sftp-tree-entries="sftpTreeEntries"
-          :sftp-tree-total-rows="sftpTreeTotalRows"
-          :loaded-tree-entries="loadedTreeEntries"
-          :disk-usage="diskUsage"
-          :folder-upload-supported="folderUploadSupported"
-          :local-can-save="localCanSave"
-          :available-external-editors="availableExternalEditors"
-          :editor-config="editorConfig"
-          :is-archive-name="isArchiveName"
-          :mapped-editor-id-for="mappedEditorIdFor"
-          :set-path-bar-input-el="bindSftpPathBarInput"
-          :on-tree-pane="bindSftpWorkspaceTreePane"
-          @update:fileMenu="fileMenu = $event"
-          @update:batchDeleteOpen="batchDeleteOpen = true"
-          @update:deleteTarget="deleteTarget = $event"
-          @update:renamingPath="renamingPath = $event"
-          @update:sftpDragDropTarget="sftpDragDropTarget = $event"
-          @update:otpPanelOpen="otpPanelOpen = true"
-          @update:importPanelOpen="importPanelOpen = true"
-          @go-parent="goParent"
-          @load-home="loadHome"
-          @load-directory="loadDirectory()"
-          @set-directory-tracking="setDirectoryTracking"
-          @submit-path-input="submitPathInput"
-          @cancel-path-bar-edit="cancelPathBarEdit"
-          @begin-path-bar-edit="beginPathBarEdit"
-          @go-to-path="goToPath"
-          @toggle-bookmark-save="toggleBookmarkSave"
-          @confirm-bookmark-save="confirmBookmarkSave"
-          @toggle-path-history-menu="togglePathHistoryMenu"
-          @remove-bookmark="removeBookmark"
-          @paste-clipboard="pasteClipboard"
-          @toggle-sudo-mode="toggleSudoMode"
-          @clear-sftp-search="clearSftpSearch"
-          @toggle-sftp-show-hidden="toggleSftpShowHidden"
-          @batch-archive="batchArchive"
-          @clear-row-selection="clearRowSelection"
-          @batch-download="batchDownload"
-          @copy-selected-paths="copySelectedPaths"
-          @file-area-context-menu="onFileAreaContextMenu"
-          @toggle-sftp-tree-node="toggleSftpTreeNode"
-          @select-tree-entry="selectTreeEntry"
-          @open-sftp-tree-node="openSftpTreeNode"
-          @sftp-tree-drop="onSftpTreeDrop"
-          @show-file-menu="showFileMenu"
-          @commit-tree-rename="commitTreeRename"
-          @file-row-keydown="onFileRowKeydown"
-          @folder-menu-action="folderMenuAction"
-          @open-entry="openEntry"
-          @download-entry="downloadEntry"
-          @refresh-sftp-folder="refreshSftpFolder"
-          @ensure-external-editors="ensureExternalEditors"
-          @open-with-system-entry="openWithSystemEntry"
-          @open-with-known-entry="openWithKnownEntry"
-          @open-with-custom-entry="openWithCustomEntry"
-          @begin-custom-editor-command="beginCustomEditorCommand"
-          @begin-symlink-edit="beginSymlinkEdit"
-          @begin-rename="beginRename"
-          @copy-selected-entries="copySelectedEntries"
-          @copy-text-to-clipboard="copyTextToClipboard"
-          @begin-chmod="beginChmod"
-          @open-attributes="openAttributes"
-          @archive-entry="archiveEntry"
-          @extract-entry="extractEntry"
-        />
-        <template v-else-if="rightPanelView === 'metrics'">
-          <header class="side-panel-head">
-            <h2>
-              {{ t("metrics") }}
-              <span v-if="metricsDistroBadge" class="distro-badge" :style="{ backgroundColor: metricsDistroBadge.color }" :title="metricsDistroBadge.name">{{ metricsDistroBadge.label }}</span>
-              <span v-if="metrics?.hostname" class="metrics-host" :title="metrics.hostname"> · {{ metrics.hostname }}</span>
-            </h2>
-            <span class="side-panel-head-actions">
-              <button class="icon-button compact" :title="t('refresh')" :aria-label="t('refresh')" :disabled="metricsLoading" @click="refreshMetrics"><RefreshCw :class="{ spinning: metricsLoading }" /></button>
-              <button class="icon-button compact" :title="t('close')" :aria-label="t('close')" @click="closeRightPanel"><X /></button>
-            </span>
-          </header>
-          <ServerMetricsPanel
-            :view="metricsView"
-            :t="t"
-            :locale="locale"
-            @refresh="refreshMetrics"
-            @toggle-processes="toggleProcessPanel"
-            @refresh-processes="refreshProcessList"
-            @kill-process="(row, signal) => killProcessRow(row, signal)"
-            @update:sort="setMetricsProcessSort"
-          />
-        </template>
-        <template v-else>
-          <header class="side-panel-head">
-            <h2>{{ t("docker.toolbarTitle") }}</h2>
-            <span class="side-panel-head-actions">
-              <button class="icon-button compact" :title="t('close')" :aria-label="t('close')" @click="closeRightPanel"><X /></button>
-            </span>
-          </header>
-          <DockerPanel class="right-panel-docker" :t="t" :session-id="session?.sessionId ?? ''" :connection-id="connectionId" />
-        </template>
-      </section>
+      <!-- 右侧栏三视图外壳（T21 迁入 components/WorkbenchSidePanel.vue）：
+           面板根焦点/粘贴/拖放、SFTP 工作区、指标/容器视图整体下传；分隔条与
+           分栏比例仍属外层 pane 布局，留在本模板。 -->
+      <WorkbenchSidePanel
+        ref="sidePanel"
+        v-model:currentPath="currentPath"
+        v-model:pathBarEditing="pathBarEditing"
+        v-model:bookmarkSaveOpen="bookmarkSaveOpen"
+        v-model:bookmarkLabelDraft="bookmarkLabelDraft"
+        v-model:pathHistoryOpen="pathHistoryOpen"
+        v-model:sftpSearchDraft="sftpSearchDraft"
+        v-model:sftpTypeFilter="sftpTypeFilter"
+        v-model:fileMenu="fileMenu"
+        v-model:batchDeleteOpen="batchDeleteOpen"
+        v-model:deleteTarget="deleteTarget"
+        v-model:renamingPath="renamingPath"
+        v-model:sftpDragDropTarget="sftpDragDropTarget"
+        v-model:otpPanelOpen="otpPanelOpen"
+        v-model:importPanelOpen="importPanelOpen"
+        :t="t"
+        :locale="locale"
+        :shell="sidePanelShell"
+        :sftp="sidePanelSftp"
+        :metrics="sidePanelMetrics"
+        :docker="sidePanelDocker"
+        @focus-pane="focusSftpPaneOnPointerDown"
+        @sftp-paste="onSftpClipboardPaste"
+        @sftp-drag-enter="onSftpDragEnter"
+        @sftp-drag-leave="onSftpDragLeave"
+        @sftp-drop="onDrop"
+        @refresh-metrics="refreshMetrics"
+        @toggle-processes="toggleProcessPanel"
+        @refresh-processes="refreshProcessList"
+        @kill-process="(row, signal) => killProcessRow(row, signal)"
+        @update:sort="setMetricsProcessSort"
+        @close-panel="closeRightPanel"
+        @go-parent="goParent"
+        @load-home="loadHome"
+        @load-directory="loadDirectory()"
+        @set-directory-tracking="setDirectoryTracking"
+        @submit-path-input="submitPathInput"
+        @cancel-path-bar-edit="cancelPathBarEdit"
+        @begin-path-bar-edit="beginPathBarEdit"
+        @go-to-path="goToPath"
+        @toggle-bookmark-save="toggleBookmarkSave"
+        @confirm-bookmark-save="confirmBookmarkSave"
+        @toggle-path-history-menu="togglePathHistoryMenu"
+        @remove-bookmark="removeBookmark"
+        @paste-clipboard="pasteClipboard"
+        @toggle-sudo-mode="toggleSudoMode"
+        @clear-sftp-search="clearSftpSearch"
+        @toggle-sftp-show-hidden="toggleSftpShowHidden"
+        @batch-archive="batchArchive"
+        @clear-row-selection="clearRowSelection"
+        @batch-download="batchDownload"
+        @copy-selected-paths="copySelectedPaths"
+        @file-area-context-menu="onFileAreaContextMenu"
+        @toggle-sftp-tree-node="toggleSftpTreeNode"
+        @select-tree-entry="selectTreeEntry"
+        @open-sftp-tree-node="openSftpTreeNode"
+        @sftp-tree-drop="onSftpTreeDrop"
+        @show-file-menu="showFileMenu"
+        @commit-tree-rename="commitTreeRename"
+        @file-row-keydown="onFileRowKeydown"
+        @folder-menu-action="folderMenuAction"
+        @open-entry="openEntry"
+        @download-entry="downloadEntry"
+        @refresh-sftp-folder="refreshSftpFolder"
+        @ensure-external-editors="ensureExternalEditors"
+        @open-with-system-entry="openWithSystemEntry"
+        @open-with-known-entry="openWithKnownEntry"
+        @open-with-custom-entry="openWithCustomEntry"
+        @begin-custom-editor-command="beginCustomEditorCommand"
+        @begin-symlink-edit="beginSymlinkEdit"
+        @begin-rename="beginRename"
+        @copy-selected-entries="copySelectedEntries"
+        @copy-text-to-clipboard="copyTextToClipboard"
+        @begin-chmod="beginChmod"
+        @open-attributes="openAttributes"
+        @archive-entry="archiveEntry"
+        @extract-entry="extractEntry"
+      />
     </section>
 
-    <!-- SFTP 工具栏工具弹窗：OTP 验证码 / 会话导入（组件自带内部弹窗与状态）。 -->
-    <Dialog :open="otpPanelOpen" @update:open="(open) => { if (!open) otpPanelOpen = false; }">
-      <DialogContent class="modal sftp-tool-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>{{ t("otpPanel.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="otpPanelOpen = false"><X /></button>
-        </header>
-        <OtpPanel :t="t" />
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="importPanelOpen" @update:open="(open) => { if (!open) importPanelOpen = false; }">
-      <DialogContent class="modal sftp-tool-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>{{ t("importWizard.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="importPanelOpen = false"><X /></button>
-        </header>
-        <ImportWizard :t="t" />
-      </DialogContent>
-    </Dialog>
-
-    <!-- 弹层统一迁移 reka Dialog（Strategy B）：portal/遮罩/焦点陷阱/外点关闭由 reka
-         承担；Esc 仍由 onDocumentKeydown 分层链独占（内容上一律 @escape-key-down.prevent），
-         外点关闭经 update:open(false) 路由到各弹窗的语义取消函数。 -->
-    <Dialog :open="previewOpen" @update:open="(open) => { if (!open) closePreview(); }">
-      <DialogContent class="modal preview-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>
-            {{ previewTitle }}
-            <span v-if="previewDirty" class="preview-dirty"><span class="preview-dirty-dot" />{{ t("editSave.unsaved") }}</span>
-            <span v-else-if="previewTruncated" class="preview-truncated-badge">{{ t("previewDialog.truncated", { limit: formatBytes(MAX_INLINE_PREVIEW_BYTES), size: formatBytes(previewSize) }) }}</span>
-          </DialogTitle>
-          <div v-if="previewEditableAllowed" class="preview-actions">
-            <template v-if="!previewEditable">
-              <button :title="t('editSave.edit')" :aria-label="t('editSave.edit')" @click="beginPreviewEdit"><Pencil />{{ t("editSave.edit") }}</button>
-            </template>
-            <template v-else>
-              <button :title="t('cancel')" :aria-label="t('cancel')" @click="cancelPreviewEdit">{{ t("cancel") }}</button>
-              <button :title="t('editSave.save')" :aria-label="t('editSave.save')" :disabled="previewSaving" @click="savePreview"><Loader2 v-if="previewSaving" class="spinning" /><Save v-else />{{ t("editSave.save") }}</button>
-            </template>
-          </div>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="closePreview"><X /></button>
-        </header>
-        <div v-if="previewLoading" class="empty"><Loader2 class="spinning" />{{ t("loading") }}</div>
-        <div v-else-if="previewMode === 'image'" class="preview-image-stage">
-          <img class="preview-image" :class="{ 'preview-image--full': previewImageZoomed }" :src="previewImageUrl" :alt="previewTitle" :title="previewImageZoomed ? t('imagePreview.zoomOut') : t('imagePreview.zoomIn')" @click="previewImageZoomed = !previewImageZoomed" />
-        </div>
-        <!-- JSON 候选且非编辑态走格式化预览面板（invalid/too-large 时面板内部降级为
-             原始视图 + 提示条）；其余文件与编辑态保持既有 TextPreview。 -->
-        <JsonPreviewPanel v-else-if="!previewEditable && jsonPreviewState.kind !== 'unavailable'" :state="jsonPreviewState" :text="previewText" :file-name="previewTitle" :locale="locale" :appearance="appearance" />
-        <TextPreview v-else :text="previewText" :file-name="previewTitle" :appearance="appearance" :editable="previewEditable" @change="previewDraft = $event" />
-      </DialogContent>
-    </Dialog>
+    <!-- 内联弹窗宿主（T21 迁入 components/WorkbenchDialogs.vue）：OTP/会话导入、
+         文件预览（含编辑态与 JSON 面板）、录制删除/一键清空、传输历史清空、审计
+         日志查看/清空、终端拖入上传落点询问。弹窗壳仍走 reka Dialog（portal/遮罩/
+         焦点陷阱/外点关闭由 reka 承担，Esc 由 onDocumentKeydown 分层链独占）。 -->
+    <WorkbenchDialogs
+      v-model:otpPanelOpen="otpPanelOpen"
+      v-model:importPanelOpen="importPanelOpen"
+      v-model:previewOpen="previewOpen"
+      v-model:previewImageZoomed="previewImageZoomed"
+      v-model:previewDraft="previewDraft"
+      v-model:recordingDeleteTarget="recordingDeleteTarget"
+      v-model:recordingClearAllOpen="recordingClearAllOpen"
+      v-model:transferHistoryClearOpen="transferHistoryClearOpen"
+      v-model:auditOpen="auditOpen"
+      v-model:auditClearOpen="auditClearOpen"
+      v-model:auditKindFilter="auditKindFilter"
+      v-model:dropUploadTarget="dropUploadTarget"
+      v-model:dropUploadPathInput="dropUploadPathInput"
+      :t="t"
+      :locale="locale"
+      :appearance="appearance"
+      :preview-title="previewTitle"
+      :preview-text="previewText"
+      :preview-loading="previewLoading"
+      :preview-size="previewSize"
+      :preview-editable="previewEditable"
+      :preview-editable-allowed="previewEditableAllowed"
+      :preview-saving="previewSaving"
+      :preview-mode="previewMode"
+      :preview-image-url="previewImageUrl"
+      :preview-truncated="previewTruncated"
+      :preview-dirty="previewDirty"
+      :json-preview-state="jsonPreviewState"
+      :recording-delete-submitting="recordingDeleteSubmitting"
+      :recordings-count="recordings.length"
+      :recording-clear-all-submitting="recordingClearAllSubmitting"
+      :audit-entries="auditEntries"
+      :audit-loading="auditLoading"
+      :audit-load-failed="auditLoadFailed"
+      :audit-truncated="auditTruncated"
+      :visible-audit-entries="visibleAuditEntries"
+      :audit-clear-submitting="auditClearSubmitting"
+      :audit-time="auditTime"
+      :audit-row-kind-class="auditRowKindClass"
+      :drop-upload-prompt="dropUploadPrompt"
+      :drop-cwd-target="dropCwdTarget"
+      :set-drop-upload-path-input-el="bindDropUploadPathInputEl"
+      :format-recorded-at="formatRecordedAt"
+      :format-duration="formatDuration"
+      @close-preview="closePreview"
+      @begin-preview-edit="beginPreviewEdit"
+      @cancel-preview-edit="cancelPreviewEdit"
+      @save-preview="savePreview"
+      @confirm-recording-delete="confirmRecordingDelete"
+      @confirm-recording-clear="confirmRecordingClearAll"
+      @confirm-transfer-history-clear="confirmTransferHistoryClear"
+      @load-audit-entries="loadAuditEntries"
+      @confirm-audit-clear="confirmAuditClear"
+      @confirm-drop-upload="confirmDropUpload"
+      @cancel-drop-upload="resolveDropUpload('cancel')"
+    />
 
     <!-- 端口映射管理（-L/-R/-D）：与连接右键弹框复用预设、列表和操作。
          以 connectionId 创建独立映射，关闭终端不停止端口转发。 -->
@@ -4831,36 +4834,6 @@ const toolbarActions: WorkbenchToolbarActions = {
 
 
 
-    <Dialog :open="!!recordingDeleteTarget" @update:open="(open) => { if (!open) recordingDeleteTarget = null; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="recordingDeleteTarget">
-        <header><DialogTitle>{{ t("recordingDelete") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="recordingDeleteTarget = null"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ t("recordingDeleteConfirm", { host: recordingDeleteTarget.host || recordingDeleteTarget.recordingId }) }}</strong><p class="muted">{{ formatRecordedAt(recordingDeleteTarget.startedAt) }} · {{ formatDuration(recordingDeleteTarget.durationSecs ?? 0) }}</p></div></div>
-        <footer><button @click="recordingDeleteTarget = null" :disabled="recordingDeleteSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="recordingDeleteSubmitting" @click="confirmRecordingDelete"><Loader2 v-if="recordingDeleteSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
-        </template>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 录制一键清空确认：应用内弹窗（沙箱 iframe confirm 恒 false） -->
-    <Dialog :open="recordingClearAllOpen" @update:open="(open) => { if (!open) recordingClearAllOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("recordingsClear") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="recordingClearAllOpen = false"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ t("recordingsClearConfirm", { count: recordings.length }) }}</strong></div></div>
-        <footer><button @click="recordingClearAllOpen = false" :disabled="recordingClearAllSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="recordingClearAllSubmitting" @click="confirmRecordingClearAll"><Loader2 v-if="recordingClearAllSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 传输历史清空确认：应用内弹窗（沙箱 iframe confirm 恒 false） -->
-    <Dialog :open="transferHistoryClearOpen" @update:open="(open) => { if (!open) transferHistoryClearOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("transfersHistory.clear") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="transferHistoryClearOpen = false"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ t("transfersHistory.clearConfirm") }}</strong></div></div>
-        <footer><button @click="transferHistoryClearOpen = false">{{ t("cancel") }}</button><button class="danger-button" @click="confirmTransferHistoryClear"><Trash2 />{{ t("delete") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-
-
     <!-- 设置弹窗 + quick sudo 配置档管理弹窗：独立组件（设置域 UI/状态集中处；Esc 链与终端偏好仍留在 App）。 -->
     <SettingsDialog
       ref="settingsDialog"
@@ -4944,101 +4917,6 @@ const toolbarActions: WorkbenchToolbarActions = {
       @add-schemes="addImportedSchemes"
       @remove-scheme="removeImportedScheme"
     />
-
-    <Dialog :open="auditOpen" @update:open="(open) => { if (!open) auditOpen = false; }">
-      <DialogContent class="modal audit-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("auditLog.title") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="auditOpen = false"><X /></button></header>
-        <div class="settings-body">
-          <div class="audit-toolbar">
-            <Select :model-value="auditKindFilter || SELECT_EMPTY_SENTINEL" @update:model-value="(v) => (auditKindFilter = v === SELECT_EMPTY_SENTINEL ? '' : String(v))">
-              <SelectTrigger size="xs" class="audit-kind-select" :aria-label="t('auditLog.kindFilter')">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="SELECT_EMPTY_SENTINEL">{{ t("auditLog.kindAll") }}</SelectItem>
-                <SelectItem v-for="kind in auditKindOptions(auditEntries)" :key="kind" :value="kind">{{ auditKindLabel(kind, t) }}</SelectItem>
-              </SelectContent>
-            </Select>
-            <div class="audit-actions">
-              <button class="icon-button" :title="t('refresh')" :aria-label="t('refresh')" :disabled="auditLoading" @click="loadAuditEntries"><RefreshCw :class="{ spinning: auditLoading }" /></button>
-              <button class="icon-button" :title="t('auditLog.clear')" :aria-label="t('auditLog.clear')" :disabled="!auditEntries.length" @click="auditClearOpen = true"><Trash2 /></button>
-            </div>
-          </div>
-          <div v-if="auditLoading && !auditEntries.length" class="empty compact audit-empty"><Loader2 class="spinning" />{{ t("loading") }}</div>
-          <div v-else-if="auditLoadFailed" class="empty compact audit-empty">
-            <span>{{ t("auditLog.loadFailed") }}</span>
-            <button class="link-button" @click="loadAuditEntries">{{ t("refresh") }}</button>
-          </div>
-          <div v-else-if="!visibleAuditEntries.length" class="audit-empty"><FileText /><span>{{ t("auditLog.empty") }}</span></div>
-          <template v-else>
-            <ul class="audit-list">
-              <li v-for="(entry, index) in visibleAuditEntries" :key="`${entry.ts}-${entry.kind}-${index}`" class="audit-row">
-                <span class="audit-time mono">{{ auditTime(entry.ts) }}</span>
-                <span class="audit-kind-badge" :class="auditRowKindClass(entry.kind)">{{ auditKindLabel(entry.kind, t) }}</span>
-                <span v-if="entry.connection || entry.sessionId" class="audit-connection mono" :title="entry.connection || entry.sessionId">{{ entry.connection || entry.sessionId }}</span>
-                <span v-if="entry.command" class="audit-command mono" :title="entry.command">{{ entry.command }}</span>
-                <span v-if="entry.output" class="audit-output mono" :title="entry.output">{{ entry.output }}</span>
-                <span v-if="entry.gate" class="audit-gate mono">{{ entry.gate }}</span>
-                <span v-if="auditOutcomeLabel(entry, t)" class="audit-outcome" :class="{ error: entry.outcome === 'error' || entry.decision === 'denied' || entry.decision === 'timeout', ok: entry.outcome === 'ok' || entry.decision === 'approved' }">{{ auditOutcomeLabel(entry, t) }}</span>
-                <span v-if="entry.exitCode != null" class="audit-time">{{ t("auditLog.exitCode", { code: entry.exitCode }) }}</span>
-              </li>
-            </ul>
-            <p v-if="auditTruncated" class="muted audit-truncated">{{ t("auditLog.truncated") }}</p>
-          </template>
-        </div>
-        <footer><button @click="auditOpen = false">{{ t("close") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-    <!-- 审计日志清空确认：应用内弹窗（沙箱 iframe confirm 恒 false） -->
-    <Dialog :open="auditClearOpen" @update:open="(open) => { if (!open) auditClearOpen = false; }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("auditLog.clear") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="auditClearOpen = false"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ t("auditLog.clearConfirm") }}</strong></div></div>
-        <footer><button @click="auditClearOpen = false" :disabled="auditClearSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="auditClearSubmitting" @click="confirmAuditClear"><Loader2 v-if="auditClearSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-
-
-
-
-
-    <Dialog :open="!!dropUploadPrompt" @update:open="(open) => { if (!open) resolveDropUpload('cancel'); }">
-      <DialogContent class="modal small-modal" @escape-key-down.prevent>
-        <template v-if="dropUploadPrompt">
-        <header>
-          <DialogTitle>{{ t("terminalDropPrompt.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="resolveDropUpload('cancel')"><X /></button>
-        </header>
-        <p class="muted">{{ t("terminalDropPrompt.summary", { count: dropUploadPrompt.files.length }) }}</p>
-        <pre class="command-output mono drop-file-list">{{ dropUploadPrompt.files.map((file) => file.name).join("\n") }}</pre>
-        <label class="drop-option">
-          <input v-model="dropUploadTarget" type="radio" name="drop-upload-target" value="cwd" />
-          <span>{{ t("terminalDropPrompt.toCurrent") }}</span>
-          <code class="mono">{{ dropCwdTarget }}</code>
-        </label>
-        <label class="drop-option">
-          <input v-model="dropUploadTarget" type="radio" name="drop-upload-target" value="custom" />
-          <span>{{ t("terminalDropPrompt.toCustom") }}</span>
-        </label>
-        <input
-          ref="dropUploadPathInputEl"
-          v-model="dropUploadPathInput"
-          class="drop-path-input mono"
-          type="text"
-          spellcheck="false"
-          :placeholder="t('terminalDropPrompt.pathPlaceholder')"
-          :disabled="dropUploadTarget !== 'custom'"
-          @keydown.enter.prevent="confirmDropUpload"
-        />
-        <footer>
-          <button @click="resolveDropUpload('cancel')">{{ t("cancel") }}</button>
-          <button class="primary-button" :disabled="dropUploadTarget === 'custom' && !normalizeDropTargetDir(dropUploadPathInput)" @click="confirmDropUpload">{{ t("upload") }}</button>
-        </footer>
-        </template>
-      </DialogContent>
-    </Dialog>
 
     <WorkbenchSessionDialogs
       v-model:spawnSessionDialogOpen="spawnSessionDialogOpen"
