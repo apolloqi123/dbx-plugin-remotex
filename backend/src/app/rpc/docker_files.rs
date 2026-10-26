@@ -13,9 +13,9 @@ use crate::features::docker::files::{
     files_list_payload, import_command, import_local, is_missing_tool, is_regular_file_type,
     join_container_path, list_command, list_entries, local_staging_regular_file_size,
     mktemp_command, normalize_container_path, parse_mktemp_output, parse_staging_probe,
-    parse_stat_output, safe_staging_name, staging_probe_command, stat_command, stat_payload,
-    validate_staging_path, StagingLocation, UploadRegistry, TRANSFER_TIMEOUT, UPLOAD_CHUNK_BYTES,
-    UPLOAD_MAX_BYTES,
+    parse_stat_output, recover_mktemp_output, safe_staging_name, staging_probe_command,
+    stat_command, stat_payload, validate_staging_path, StagingLocation, UploadRegistry,
+    TRANSFER_TIMEOUT, UPLOAD_CHUNK_BYTES, UPLOAD_MAX_BYTES,
 };
 use crate::features::docker::{
     find_local_cli, run_local, validate_container_id, DockerTarget, EngineConfig, FILES_TIMEOUT,
@@ -134,12 +134,29 @@ impl Plugin {
                 let session_id = required_string(&params, "sessionId")?;
                 let (dir_code, dir_output) =
                     self.ssh_output(session_id, &mktemp_command(), FILES_TIMEOUT)?;
-                if dir_code != 0 {
-                    return Err(format!(
-                        "Failed to create a remote staging directory: {dir_output}"
-                    ));
-                }
-                let dir = parse_mktemp_output(&dir_output)?;
+                // `mktemp` may create the directory and still report a
+                // failure, or print it next to a warning the strict parser
+                // rejects. Remove whatever generated directory the output
+                // names before returning, so the export never leaks it.
+                let dir = match parse_mktemp_output(&dir_output) {
+                    Ok(dir) if dir_code == 0 => dir,
+                    Ok(dir) => {
+                        self.cleanup_remote_staging(session_id, &dir);
+                        return Err(format!(
+                            "Failed to create a remote staging directory: {dir_output}"
+                        ));
+                    }
+                    Err(error) => {
+                        if let Some(dir) = recover_mktemp_output(&dir_output) {
+                            self.cleanup_remote_staging(session_id, &dir);
+                        }
+                        return Err(if dir_code == 0 {
+                            error
+                        } else {
+                            format!("Failed to create a remote staging directory: {dir_output}")
+                        });
+                    }
+                };
                 let staging = join_container_path(&dir, &name);
                 let command = export_command(&engine, container_id, &path, &staging)?;
                 let (exit_code, output) =

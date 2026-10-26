@@ -286,6 +286,10 @@ impl DockerStreams {
 
     /// Drains runner chunks into batched `docker/logs/chunk` events, enforces
     /// the TTL, then emits `docker/logs/end` and unregisters the stream.
+    /// A size-triggered [`ChunkBatcher::push`] and a time-driven flush arm
+    /// both drain the batch, so a lone burst followed by silence is still
+    /// visible within [`BATCH_INTERVAL`] instead of waiting for the next
+    /// chunk or the stream end.
     /// Expiry terminates the stream by itself: it stops the pump, cancels the
     /// runner and releases the slot even when the runner never returns.
     async fn forward(
@@ -303,6 +307,11 @@ impl DockerStreams {
         let mut text = StreamText::new();
         let mut ticker = tokio::time::interval(limits.tick());
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // Independent of arrivals: an idle container's last burst must not
+        // stay buffered until the next output or the stream end.
+        let batch_ticker = tokio::time::interval(BATCH_INTERVAL);
+        tokio::pin!(batch_ticker);
+        batch_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut recent: Vec<u8> = Vec::new();
         let mut expired = false;
         loop {
@@ -313,6 +322,11 @@ impl DockerStreams {
                         expired = true;
                         let _ = cancel.send(true);
                         break;
+                    }
+                }
+                _ = batch_ticker.tick() => {
+                    if let Some(batch) = batcher.flush() {
+                        emit_text(&emitter, &stream_id, &mut text, &batch);
                     }
                 }
                 received = chunks.recv() => match received {

@@ -276,6 +276,34 @@ async fn ssh_cancellation_reports_the_same_cancelled_error() {
     wait_for_empty(&registry).await;
 }
 
+/// One sub-8KiB chunk followed by total silence must reach the host through
+/// the time-driven flush, not the end-of-stream flush: an idle container
+/// would otherwise keep its last burst (including `--tail` history) hidden
+/// indefinitely. The runner streams the chunk as soon as the pump starts, so
+/// it lands well inside the first batch window and `push` cannot flush it.
+#[tokio::test]
+async fn idle_stream_flushes_a_small_chunk_before_stream_end() {
+    let (emitter, sink) = emitter_for_test();
+    let registry = Arc::new(DockerStreams::new());
+    let stream_id = registry
+        .start_fake_until_cancelled(emitter, true, Ok(130))
+        .expect("start stream");
+
+    let events = wait_for_event(&sink, "docker/logs/chunk").await;
+    assert_eq!(chunk_text(&events, &stream_id), "before stop");
+    assert!(
+        !events
+            .iter()
+            .any(|event| event["method"] == "docker/logs/end"),
+        "the chunk must be flushed by the batch interval, not by stream end: {events:?}"
+    );
+    assert_eq!(registry.active_count(), 1, "the stream is still live");
+
+    assert!(registry.stop(&stream_id));
+    wait_for_event(&sink, "docker/logs/end").await;
+    wait_for_empty(&registry).await;
+}
+
 #[tokio::test]
 async fn ttl_expiry_ends_the_stream_and_frees_the_slot_for_a_stuck_runner() {
     let (emitter, sink) = emitter_for_test();
