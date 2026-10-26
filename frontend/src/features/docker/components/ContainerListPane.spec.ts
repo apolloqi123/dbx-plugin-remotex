@@ -120,7 +120,7 @@ describe("container list selection", () => {
     }
   });
 
-  it("emits the clicked container with a single payload", async () => {
+  it("marks row clicks as explicit selections", async () => {
     stubHost([
       { id: "db111", name: "db", state: "exited" },
       { id: "web222", name: "web-nginx", state: "running" },
@@ -131,8 +131,7 @@ describe("container list selection", () => {
       // 首载的自动选中只带容器，没有显式标记。
       expect(wrapper.emitted("select")?.[0]).toHaveLength(1);
       await wrapper.get('[data-container-id="db111"]').trigger("click");
-      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "db" });
-      expect(wrapper.emitted("select")?.at(-1)).toHaveLength(1);
+      expect(wrapper.emitted("select")?.at(-1)).toEqual([expect.objectContaining({ name: "db" }), true]);
     } finally {
       wrapper.unmount();
     }

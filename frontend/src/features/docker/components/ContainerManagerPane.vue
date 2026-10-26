@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // 容器管理分屏外壳（Task 6 外壳 + Task 7 列表/详情编排）：终端列底部的独立
-// 区域，默认只显示列表。用户从行菜单「Logs」/「Files」显式打开详情后才切成
-// 左右分栏；分栏线可拖拽或方向键调整。本组件只持有选中容器、活动页签与
-// 分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志、文件与终端页）
-// 各自自治。
+// 区域，默认显示「列表 + 日志」分栏。列表首轮非空数据落地后自动选中并打开
+// 详情（activeTab = logs，只发生一次）；用户收起详情后列表恢复整宽，行点击/
+// 行菜单以日志重开（行点击带 explicit 标记），轮询/刷新只更新已打开的快照。
+// 分栏线可拖拽或方向键调整。本组件只持有选中容器、活动页签、首轮自动打开
+// 标记与分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志、文件与
+// 终端页）各自自治。
 //
 // props 契约固定：t / sessionId / connectionId / canWrite。sessionId 缺省时
 // 列表回落本机 daemon（与容器面板既有语义一致）。
@@ -31,6 +33,8 @@ const MAX_LIST_WIDTH = 70;
 const selected = ref<DockerContainer>();
 type DetailTab = "logs" | "files" | "terminal";
 const activeTab = ref<DetailTab>("logs");
+/** 首轮自动打开只发生一次：列表首轮非空数据落地后以 logs 打开详情。 */
+const autoOpened = ref(false);
 
 /** 详情打开时才占分栏宽度；关闭后列表恢复整宽（内联 flex-basis 100%）。 */
 const detailOpen = computed(() => selected.value !== undefined);
@@ -48,22 +52,40 @@ function setListWidth(value: number): void {
 }
 
 /**
- * 列表选中只同步已打开的详情快照：自动选中/轮询/行点击都不会创建详情。
- * 行点击只让列表自己高亮；详情已打开时切换目标容器，`null`（清空）收起详情。
+ * 列表选中：`explicit` 为行点击/行菜单（true），自动选中与轮询不带该标记。
+ * - `null`（列表清空）：收起详情。
+ * - 显式：总是打开/切换目标；详情原本收起时用 logs 打开，已打开时保留当前页签。
+ * - 非显式：只更新已打开的快照；首轮非空且详情未打开时自动以 logs 打开一次；
+ *   详情收起后轮询/刷新绝不重开。
  */
-function select(container: DockerContainer | null): void {
+function select(container: DockerContainer | null, explicit = false): void {
   if (!container) {
     selected.value = undefined;
     return;
   }
-  if (!detailOpen.value) return;
-  selected.value = container;
+  if (explicit) {
+    const wasOpen = detailOpen.value;
+    selected.value = container;
+    if (!wasOpen) activeTab.value = "logs";
+    autoOpened.value = true;
+    return;
+  }
+  if (detailOpen.value) {
+    selected.value = container;
+    return;
+  }
+  if (!autoOpened.value) {
+    autoOpened.value = true;
+    selected.value = container;
+    activeTab.value = "logs";
+  }
 }
 
-/** 行菜单 Logs/Files：打开（或切换）详情并定位页签。 */
+/** 行菜单 Logs/Files：打开（或切换）详情并定位页签；同样消费首轮自动打开。 */
 function openDetail(container: DockerContainer, tab: "logs" | "files"): void {
   selected.value = container;
   activeTab.value = tab;
+  autoOpened.value = true;
 }
 
 /** 详情页头 X：只收起详情，不关闭整个分屏（分屏头部的 X 才 emit close）。 */
@@ -112,10 +134,12 @@ function onDividerKeydown(event: KeyboardEvent): void {
 
 onUnmounted(stopDrag);
 
-// 连接切换：旧选中项不属于新目标，收起详情；列表按新目标重新轮询。
+// 连接切换：旧选中项不属于新目标，收起详情并复位「首轮自动打开」；列表按新
+// 目标重新轮询，新列表首轮落地后再次自动打开。
 watch([() => props.sessionId, () => props.connectionId], () => {
   selected.value = undefined;
   activeTab.value = "logs";
+  autoOpened.value = false;
 });
 </script>
 

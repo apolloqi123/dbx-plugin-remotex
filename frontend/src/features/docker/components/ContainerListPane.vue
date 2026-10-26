@@ -3,7 +3,8 @@
 // 生命周期动作（start/stop/restart 直发；kill/rm 强制确认）+ 引擎设置 +
 // 「在终端打开」。列表还持有本列的选中规则：首次加载后选中第一个 running
 // 容器（否则第一个），轮询后选中项消失则按同一规则回退；选中签名（id +
-// state/status/image/ports）变化或列表清空（上抛 null）时向上 emit。
+// state/status/image/ports）变化或列表清空（上抛 null）时向上 emit，行点击
+// 额外带 explicit 标记（父组件据此在详情收起后以日志重开）。
 //
 // 状态/轮询/动作在 composables/useDockerContainers，纯逻辑在 lib/dockerPanelModel，
 // 三个 UI 块在 DockerEnginePopover / DockerRowMenu / DockerConfirmDialog。
@@ -32,8 +33,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   /** 选中快照（id/state/status/image/ports 变化时重发）；`null` = 列表已清空，
-   *  父组件据此收起详情。自动选中与行点击同形，父组件自行决定是否建详情。 */
-  (e: "select", container: DockerContainer | null): void;
+   *  父组件据此收起详情。`explicit` 为 true 表示用户行点击/行菜单，父组件据此
+   *  在详情收起后以日志重开；自动选中（首轮/轮询/刷新）不带该标记。 */
+  (e: "select", container: DockerContainer | null, explicit?: boolean): void;
   /** 行菜单「Logs」：打开该容器的日志详情。 */
   (e: "logs", container: DockerContainer): void;
   /** 行菜单「Files」：打开该容器的文件详情。 */
@@ -88,12 +90,15 @@ function identitySignature(container: DockerContainer | null): string {
     : "";
 }
 
-/** `force`：行点击总是上抛（即使签名未变），父组件可据此切换已打开的详情。 */
+/** `force`：行点击总是上抛（即使签名未变）并带上显式标记，父组件可据此在详情
+ *  收起后重开；自动选中（首轮/轮询）只上抛签名变化且不带该标记。 */
 function emitSelection(container: DockerContainer | null, force = false): void {
   const signature = identitySignature(container);
   if (!force && signature === lastSignature) return;
   lastSignature = signature;
-  emit("select", container);
+  // 自动选中沿用旧的两参数形态（explicit 缺省 undefined），行点击才带 true。
+  if (force) emit("select", container, true);
+  else emit("select", container);
 }
 
 function applySelection(rows: DockerContainer[]): void {

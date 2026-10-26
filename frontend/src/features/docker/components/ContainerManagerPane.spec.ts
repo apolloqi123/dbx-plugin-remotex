@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
-// 容器管理分屏的布局生命周期：默认只显示列表（无详情、无分隔条）；行点击只
-// 高亮不建详情；只有行菜单 Logs/Files 才打开右分栏；详情打开后列表/详情之间
-// 是可拖拽/方向键调整的分隔条（25%–70%，默认 40%）；详情关闭回到 100%；
-// 轮询刷新打开的详情快照但绝不重开已关闭的详情；列表清空收起详情。
+// 容器管理分屏的布局生命周期：首轮列表落地即打开「列表 + 日志」分栏；收起详情
+// 后列表恢复整宽，行点击以日志重开，轮询刷新只更新已打开的快照、绝不重开；
+// 列表清空/连接切换收起详情并复位首轮自动打开；详情打开后列表/详情之间是可
+// 拖拽/方向键调整的分隔条（25%–70%，默认 40%）。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import ContainerManagerPane from "./ContainerManagerPane.vue";
 import ContainerListPane from "./ContainerListPane.vue";
+import ContainerDetailPane from "./ContainerDetailPane.vue";
 import { DOCKER_ENGINE_STORE_KEY } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 
@@ -72,8 +73,8 @@ function stubPaneWidth(wrapper: ReturnType<typeof mountManager>, width: number):
 }
 
 describe("container manager layout", () => {
-  it("shows only the full-width list until a detail is opened", async () => {
-    stubHost(rows());
+  it("shows only the full-width list when there are no containers", async () => {
+    stubHost([]);
     const wrapper = mountManager();
     try {
       await flushPromises();
@@ -87,15 +88,19 @@ describe("container manager layout", () => {
     }
   });
 
-  it("highlights a clicked row without opening the detail", async () => {
-    stubHost(rows());
+  it("opens the first selected container by default and switches on row clicks", async () => {
+    stubHost([
+      ...rows(),
+      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+    ]);
     const wrapper = mountManager();
     try {
       await flushPromises();
-      await wrapper.get('[data-container-id="web222"]').trigger("click");
-      expect(wrapper.find(".container-row.is-selected").exists()).toBe(true);
-      expect(wrapper.find(".container-detail-pane").exists()).toBe(false);
-      expect(wrapper.find(".container-manager-divider").exists()).toBe(false);
+      expect(wrapper.find(".container-detail-pane").exists()).toBe(true);
+      expect(wrapper.get(".container-detail-head").text()).toContain("web-nginx");
+      await wrapper.get('[data-container-id="db111"]').trigger("click");
+      await nextTick();
+      expect(wrapper.get(".container-detail-head").text()).toContain("db");
     } finally {
       wrapper.unmount();
     }
@@ -150,7 +155,7 @@ describe("container manager layout", () => {
     }
   });
 
-  it("switches an open detail to a clicked row but never opens a closed one", async () => {
+  it("reopens logs after the detail is closed and a row is clicked", async () => {
     const containers: Row[] = [
       ...rows(),
       { id: "db111", name: "db", state: "exited", image: "postgres:16" },
@@ -159,14 +164,69 @@ describe("container manager layout", () => {
     const wrapper = mountManager();
     try {
       await flushPromises();
-      await wrapper.get('[data-container-id="db111"]').trigger("click");
+      await wrapper.get(".container-detail-close").trigger("click");
       expect(wrapper.find(".container-detail-pane").exists()).toBe(false);
+      expect(listBasis(wrapper)).toBe("100%");
 
-      openFromList(wrapper, "logs");
-      await nextTick();
       await wrapper.get('[data-container-id="db111"]').trigger("click");
       await nextTick();
       expect(wrapper.get(".container-detail-head").text()).toContain("db");
+      expect(wrapper.get('[data-tab="logs"]').attributes("aria-selected")).toBe("true");
+      expect(wrapper.find(".container-manager-divider").exists()).toBe(true);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("opens the logs detail for the first selected container", async () => {
+    stubHost(rows());
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      const list = wrapper.findComponent(ContainerListPane);
+      list.vm.$emit("select", rows()[0]);
+      await nextTick();
+      expect(wrapper.findComponent(ContainerDetailPane).exists()).toBe(true);
+      expect(wrapper.findComponent(ContainerDetailPane).props("activeTab")).toBe("logs");
+      expect(wrapper.find(".container-manager-divider").exists()).toBe(true);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("does not reopen after the user closes the detail on a poll update", async () => {
+    stubHost(rows());
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      const list = wrapper.findComponent(ContainerListPane);
+      list.vm.$emit("select", rows()[0]);
+      await nextTick();
+      wrapper.findComponent(ContainerDetailPane).vm.$emit("close");
+      await nextTick();
+      expect(wrapper.findComponent(ContainerDetailPane).exists()).toBe(false);
+      list.vm.$emit("select", { ...rows()[0], status: "Up 3 hours" });
+      await nextTick();
+      expect(wrapper.findComponent(ContainerDetailPane).exists()).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("reopens logs when an explicit row selection arrives after closing", async () => {
+    stubHost(rows());
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      const list = wrapper.findComponent(ContainerListPane);
+      list.vm.$emit("select", rows()[0]);
+      await nextTick();
+      wrapper.findComponent(ContainerDetailPane).vm.$emit("close");
+      await nextTick();
+      list.vm.$emit("select", rows()[0], true);
+      await nextTick();
+      expect(wrapper.findComponent(ContainerDetailPane).exists()).toBe(true);
+      expect(wrapper.findComponent(ContainerDetailPane).props("activeTab")).toBe("logs");
     } finally {
       wrapper.unmount();
     }
