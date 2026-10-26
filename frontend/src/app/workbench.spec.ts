@@ -816,11 +816,6 @@ const appStyleIndex = appVueSource.indexOf("<style");
 const appTemplate = appVueSource.slice(appVueSource.lastIndexOf("<template>"), appVueSource.lastIndexOf("</template>", appStyleIndex));
 const appScript = appVueSource.slice(appVueSource.indexOf("<script"), appVueSource.indexOf("</script>"));
 
-// SFTP 工作区（列表/单栏树/行选中/目录跟随）已随 T14b 收口到
-// features/sftp/composables/listing/useSftpWorkspace：依赖该模块的源码断言
-// 改扫 App.vue + 工作区模块的联合源，断言意图不变（迁走不等于失守）。
-const sftpWorkspaceSurface = `${appVueSource}\n${sftpWorkspaceSource}`;
-
 // App.vue 持续模块化（状态/接线迁 composables/）：结构守卫的扫描范围相应
 // 演进为 App.vue + composables 联合源，防止"迁走即失守"。
 // 用 `**/*.ts` 递归匹配 composables 子目录（session/io/ui/listing/actions/…），
@@ -843,7 +838,15 @@ const appTemplateSurface = `${appTemplate}\n${appComponentTemplates}`;
 // 脚本域同口径（T21）：模板组件解析与按需加载守卫必须覆盖迁出的
 // ./components/*.vue 脚本块，否则导入漏写只会在真机静默劣化。
 const appComponentScripts = appComponentSources.map((source) => source.slice(source.indexOf("<script"), source.indexOf("</script>"))).join("\n");
-const appScriptSurface = `${appScript}\n${appComponentScripts}`;
+// 工作台接线域（T21b）：App.vue setup 体按序迁入 ./workbench/setup/*.ts（模态收口/
+// Esc 链/互斥族/toggle 都在那里），脚本扫描源同口径并入，防"迁走即失守"。
+const workbenchSetupScript = Object.values(
+  import.meta.glob("./workbench/**/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>,
+).join("\n");
+const appScriptSurface = `${appScript}\n${appComponentScripts}\n${workbenchSetupScript}`;
+
+// SFTP 工作区已随 T14b 收口到 useSftpWorkspace：断言改扫联合源（含 T21b 接线步骤）。
+const sftpWorkspaceSurface = `${appVueSource}\n${sftpWorkspaceSource}\n${workbenchSetupScript}`;
 
 /** 模板中 class 含 marker 且由 v-if 守卫的元素 → 守卫表达式的状态 ref 基名。
  *  reka Popover 面板（Phase 5）无 v-if：内容 portal、由包裹的 <Popover :open="ref">
@@ -886,7 +889,7 @@ function templateGuardRefs(classMarker: string): string[] {
  *  "迁走即失守"（与上方 composablesScript 同口径）；迁入后块体缩进两层、
  *  endMarker 可能不再出现，此时按花括号配平收口。 */
 function scriptBlockRefs(startMarker: string, endMarker: string): Set<string> {
-  const haystack = `${appScript}\n${composablesScript}`;
+  const haystack = `${appScript}\n${composablesScript}\n${workbenchSetupScript}`;
   const start = haystack.indexOf(startMarker);
   if (start < 0) return new Set();
   const found = haystack.indexOf(endMarker, start);
@@ -953,7 +956,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
     // M32-A2：toggleHighlightMenu 已随高亮弹层迁设置·终端而下线。
     for (const name of ["toggleQuickMenu", "toggleConnectionInfo", "toggleAgentModeMenu", "toggleBookmarkSave", "toggleColumnsMenu", "toggleTransferPanel", "togglePathHistoryMenu", "toggleSessionMenu", "toggleRdpResolutionMenu", "toggleRdpPasteMenu", "togglePanelPaletteMenu"]) {
       // toggle 可能随模块化迁入 composables/：App.vue 找不到时到联合源里找。
-      const haystack = appScript.includes(`function ${name}(`) ? appScript : `${appScript}\n${composablesScript}`;
+      const haystack = appScript.includes(`function ${name}(`) ? appScript : `${appScript}\n${composablesScript}\n${workbenchSetupScript}`;
       const start = haystack.indexOf(`function ${name}(`);
       expect(start, `缺少 toggle 函数 ${name}()`).toBeGreaterThanOrEqual(0);
       const body = haystack.slice(start, haystack.indexOf("\n}", start));
@@ -1150,8 +1153,8 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(appScriptSurface).toContain("onTreePane: bindSftpWorkspaceTreePane");
   expect(appScriptSurface).toContain("setPathBarInputEl: bindSftpPathBarInput");
   expect(appTemplateSurface).toContain(':follow-padding="followDirectory"');
-  expect(appTemplate).toContain('@cwd="onShellTabCwd"');
-  expect(appTemplate).toContain('@activate-pane="onPaneActivated"');
+  expect(appTemplateSurface).toContain('@cwd="onShellTabCwd"');
+  expect(appTemplateSurface).toContain('@activate-pane="onPaneActivated"');
   // 旧的主工具条文字+Switch 入口已移除（跟随开关现在是独立图标按钮）。
   expect(appTemplateSurface).not.toContain('@update:model-value="setDirectoryTracking"');
   expect(appTemplateSurface).toContain("emit('set-directory-tracking', !followDirectory)");
@@ -1162,7 +1165,7 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(sftpWorkspaceSurface).toContain("watch(terminalCwd");
   expect(sftpWorkspaceSurface).not.toContain("watch([activePaneCwd, followDirectory]");
   expect(sftpWorkspaceSurface).toContain("shouldFollowTabCwd(previous, path, activeTabId === tabId)");
-  expect(sftpWorkspaceSurface).toContain("activeTerminalPaneId.value = paneId;\n  syncSftpToActivePane();");
+  expect(sftpWorkspaceSurface).toMatch(/activeTerminalPaneId\.value = paneId;\s+syncSftpToActivePane\(\);/);
 });
 
 // 右侧栏三视图与终端分屏：指标/容器不再以浮层覆盖终端，分屏入口在终端
@@ -1172,25 +1175,26 @@ it("hosts metrics and docker in the right panel and exposes terminal split contr
   expect(sidePanelSource).toContain('rightPanelView === \'metrics\'');
   expect(sidePanelSource).toContain("<ServerMetricsPanel");
   expect(sidePanelSource).toContain("<DockerPanel");
-  expect(appTemplate).toContain("openTerminalSplit('row')");
-  expect(appTemplate).toContain("openTerminalSplit('column')");
+  // T21b：终端舞台/布局树随工作区模板迁入 components/，断言改扫模板联合源。
+  expect(appTemplateSurface).toContain("openTerminalSplit('row')");
+  expect(appTemplateSurface).toContain("openTerminalSplit('column')");
   // 每个窗格自带标签栏（标签 + 最后的 +）；主终端与分屏页都是布局树叶子。
-  expect(appTemplate).toContain("<TerminalLayoutTree");
-  expect(appTemplate).toContain(':node="terminalLayout"');
-  expect(appTemplate).toContain('@opened="onShellTabOpened"');
-  expect(appTemplate).toContain('@activate-tab="activatePaneTab"');
-  expect(appTemplate).toContain('@close-tab="closePaneTab"');
-  expect(appTemplate).toContain('@new-tab="createPaneTab"');
-  expect(appTemplate).toContain('@close-pane="closePane"');
-  expect(appTemplate).toContain('@split="splitTerminalPane"');
-  expect(appTemplate).toContain(':can-create-tab="canOpenShellTab"');
-  expect(appTemplate).not.toContain('class="terminal-tabbar"');
-  expect(appTemplate).not.toContain('class="terminal-tab-add"');
-  expect(appTemplate).not.toContain("split-terminal-add");
+  expect(appTemplateSurface).toContain("<TerminalLayoutTree");
+  expect(appTemplateSurface).toContain(':node="terminalLayout"');
+  expect(appTemplateSurface).toContain('@opened="onShellTabOpened"');
+  expect(appTemplateSurface).toContain('@activate-tab="activatePaneTab"');
+  expect(appTemplateSurface).toContain('@close-tab="closePaneTab"');
+  expect(appTemplateSurface).toContain('@new-tab="createPaneTab"');
+  expect(appTemplateSurface).toContain('@close-pane="closePane"');
+  expect(appTemplateSurface).toContain('@split="splitTerminalPane"');
+  expect(appTemplateSurface).toContain(':can-create-tab="canOpenShellTab"');
+  expect(appTemplateSurface).not.toContain('class="terminal-tabbar"');
+  expect(appTemplateSurface).not.toContain('class="terminal-tab-add"');
+  expect(appTemplateSurface).not.toContain("split-terminal-add");
   // 批量条移出终端 pane 后，落盘事件由工作区统一接管，不能露给浏览器默认行为。
-  expect(appTemplate).toContain('@drop.prevent="onTerminalDrop($event)"');
-  expect(appTemplate).not.toContain("batch-bar-open");
-  expect(appTemplate).not.toContain('class="terminal-new-tab"');
-  expect(appTemplate).not.toContain('v-if="metricsOpen" class="metrics-float"');
-  expect(appTemplate).not.toContain("docker-float");
+  expect(appTemplateSurface).toContain('@drop.prevent="onTerminalDrop($event)"');
+  expect(appTemplateSurface).not.toContain("batch-bar-open");
+  expect(appTemplateSurface).not.toContain('class="terminal-new-tab"');
+  expect(appTemplateSurface).not.toContain('v-if="metricsOpen" class="metrics-float"');
+  expect(appTemplateSurface).not.toContain("docker-float");
 });

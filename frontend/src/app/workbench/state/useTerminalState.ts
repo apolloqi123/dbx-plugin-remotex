@@ -1,4 +1,4 @@
-import { computed, reactive, ref, shallowRef, useTemplateRef } from "vue";
+import { computed, reactive, ref, shallowRef } from "vue";
 import type { Terminal } from "@xterm/xterm";
 import { createTerminalCopyCache } from "../../../features/terminal/lib/behavior/terminalInteraction";
 import {
@@ -28,9 +28,10 @@ export interface TerminalAppearanceSource {
  */
 export function useTerminalState(options: { appearance: TerminalAppearanceSource }) {
   /** 终端舞台组件实例：xterm 宿主 ref 由 WorkbenchStage 的 defineExpose 回传
-   *  （T20）。模板 ref 在子组件挂载后写入，computed 惰性读取，因此 composable
-   *  持有的注册表在会话打开时总能拿到真实宿主，且不产生第二个宿主元素。 */
-  const stage = useTemplateRef<{ terminalHost?: HTMLElement }>("stage");
+   *  （T20）。显式 shallowRef（而非 useTemplateRef）以便舞台模板迁入
+   *  components/WorkbenchTerminalStage.vue 后仍能把 `ref="stage"` 回填到这里：
+   *  子组件按名解构同一个 ref 对象，模板 ref 写入语义不变。 */
+  const stage = shallowRef<{ terminalHost?: HTMLElement }>();
   const terminalHost = computed(() => stage.value?.terminalHost);
   // —— xterm 实例：创建/addons/宿主编排/尺寸 fit/WebGL 开关与销毁收口在
   // features/terminal/composables/session/useTerminalInstance。实例由它持有并
@@ -75,6 +76,7 @@ export function useTerminalState(options: { appearance: TerminalAppearanceSource
 
   return {
     terminal,
+    stage,
     terminalHost,
     terminalState,
     terminalCwd,
