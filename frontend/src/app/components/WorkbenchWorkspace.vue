@@ -10,6 +10,7 @@ import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, History, Search, ShieldChe
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../shared/ui/context-menu/index";
 import WorkbenchTerminalStage from "./WorkbenchTerminalStage.vue";
 import type { WorkbenchApi } from "../workbench/useWorkbench";
+import type { ComponentPublicInstance } from "vue";
 
 const props = defineProps<{ bindings: WorkbenchApi }>();
 
@@ -52,6 +53,11 @@ const {
   toggleProcessPanel, toggleQuickGroupCollapse, toggleSftpShowHidden, toggleSftpTreeNode, toggleSudoMode,
   updateEditorText, workbenchId,
 } = props.bindings;
+
+/** 侧栏根元素经 defineExpose 回传；模板 ref 跨组件不会自动绑定到父级 ref。 */
+function bindSidePanel(el: Element | ComponentPublicInstance | null) {
+  props.bindings.sftpPane.value = (el as InstanceType<typeof WorkbenchSidePanel> | null)?.sftpPane;
+}
 </script>
 
 <template>
@@ -235,7 +241,7 @@ const {
            面板根焦点/粘贴/拖放、SFTP 工作区、指标/容器视图整体下传；分隔条与
            分栏比例仍属外层 pane 布局，留在本模板。 -->
       <WorkbenchSidePanel
-        ref="sidePanel"
+        :ref="bindSidePanel"
         v-model:currentPath="currentPath"
         v-model:pathBarEditing="pathBarEditing"
         v-model:bookmarkSaveOpen="bookmarkSaveOpen"

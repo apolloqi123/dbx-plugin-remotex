@@ -1,4 +1,4 @@
-import { computed, reactive, ref, useTemplateRef } from "vue";
+import { computed, reactive, ref, shallowRef } from "vue";
 import {
   DEFAULT_COLUMN_WIDTHS,
   DEFAULT_VISIBLE_COLUMNS,
@@ -30,10 +30,9 @@ const SFTP_QUICK_PATHS = ["/", "/home", "/tmp", "/etc", "/var", "/root"];
  * composables/listing/useSftpWorkspace 持有并经 App 解构，这里只保留声明。
  */
 export function useSftpState(options: { initialPaneOpen: boolean }) {
-  /** 右侧栏根 <section> 随 T21 迁入 WorkbenchSidePanel，ref 经 defineExpose 回传
-   *  （焦点落回面板本身仍由 App 的 focusSftpPaneOnPointerDown 发起）。 */
-  const sidePanel = useTemplateRef<{ sftpPane?: HTMLElement }>("sidePanel");
-  const sftpPane = computed(() => sidePanel.value?.sftpPane);
+  /** 右侧栏根 <section> 位于 WorkbenchSidePanel；该组件经 defineExpose 回传，
+   *  WorkbenchWorkspace 用函数 ref 写入本 ref（模板 ref 不能跨组件自动绑定）。 */
+  const sftpPane = shallowRef<HTMLElement>();
   // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
   const sftpTreePane = ref<SftpTreePaneApi | null>(null);
 

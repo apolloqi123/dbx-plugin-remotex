@@ -30,6 +30,7 @@ const props = defineProps<{ wb: Workbench }>();
 const bindings = workbenchBindings(props.wb);
 
 const {
+  tooltipBubble, settingsDialog, uploadInput, folderUploadInput, zmodemInput, trzszInput,
   RDP_RESOLUTION_PRESETS, actionLinksSettings, activeAppearanceThemeId, activeTransfers, addImportedSchemes,
   agentMode, agentModeBusy, agentModeHint, agentModeOpen, agentPromptCommand,
   agentPromptHead, agentPromptRemaining, agentPromptRemember, aiBridgeReady, aiSettingsState,
