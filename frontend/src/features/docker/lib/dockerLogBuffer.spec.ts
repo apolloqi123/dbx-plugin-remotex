@@ -69,6 +69,16 @@ describe("LogBuffer", () => {
     expect(buffer.lineCount).toBeLessThan(count);
   });
 
+  it("trims a single partial line that exceeds the character cap", () => {
+    const buffer = new LogBuffer();
+    // 没有换行：整段都是一个 partial，丢行策略无法把它裁到上限内。
+    buffer.append("y".repeat(MAX_LOG_CHARS + 5_000));
+    expect(buffer.truncated).toBe(true);
+    expect(buffer.lineCount).toBe(1);
+    expect(buffer.text().length).toBeLessThanOrEqual(MAX_LOG_CHARS);
+    expect(buffer.text().endsWith("y")).toBe(true);
+  });
+
   it("clears lines, pending partial and the truncation flag", () => {
     const buffer = new LogBuffer();
     buffer.append(Array.from({ length: MAX_LOG_LINES + 5 }, (_, i) => `l${i}`).join("\n"));

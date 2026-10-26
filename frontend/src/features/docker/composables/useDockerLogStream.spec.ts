@@ -222,6 +222,49 @@ describe("useDockerLogStream", () => {
     scope.stop();
   });
 
+  it("ignores a stale A start that resolves after the rapid A→B switch", async () => {
+    const calls: Array<Call & { resolve?: (value: unknown) => void }> = [];
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (method: string, params: Record<string, unknown>) => {
+        const call: Call & { resolve?: (value: unknown) => void } = { method, params };
+        calls.push(call);
+        if (method === "docker/logs/start") {
+          return new Promise((resolve) => {
+            call.resolve = resolve;
+          });
+        }
+        return Promise.resolve({ stopped: true });
+      },
+    });
+    const { stream, scope } = createStream({ sessionId: () => "sess-1" });
+
+    const slowA = stream.start("aaa111aaa111");
+    await nextTick();
+    const fastB = stream.start("bbb222bbb222");
+    await nextTick();
+
+    const starts = calls.filter((call) => call.method === "docker/logs/start");
+    expect(starts.map((call) => call.params.containerId)).toEqual(["aaa111aaa111", "bbb222bbb222"]);
+
+    // B 先返回并注册；随后 A 才返回——A 必须作废并收掉自己的后端流。
+    starts[1].resolve?.({ streamId: "stream-b" });
+    await fastB;
+    expect(stream.status.value).toBe("streaming");
+
+    starts[0].resolve?.({ streamId: "stream-a" });
+    await slowA;
+
+    expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-a")).toBe(true);
+    expect(stream.status.value).toBe("streaming");
+
+    // 只有 B 的流还活着：A 的分片被丢弃，B 的分片只计一次。
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-a", text: "stale\n" });
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-b", text: "live\n" });
+    expect(stream.text.value).toBe("live");
+    expect(stream.lines.value).toEqual(["live"]);
+    scope.stop();
+  });
+
   it("follows by default, notifies follow changes and resets on restart", async () => {
     stubHost();
     const onFollowChange = vi.fn();

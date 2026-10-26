@@ -51,7 +51,7 @@ const emit = defineEmits<{
         :aria-selected="activeTab === 'logs'"
         @click="emit('update:activeTab', 'logs')"
       >
-        {{ t("docker.actionLogs") }}
+        {{ t("docker.logsTab") }}
       </button>
       <button
         type="button"
@@ -61,7 +61,7 @@ const emit = defineEmits<{
         :aria-selected="activeTab === 'files'"
         @click="emit('update:activeTab', 'files')"
       >
-        {{ t("sftpFilter.files") }}
+        {{ t("docker.filesTab") }}
       </button>
     </div>
     <ContainerLogsTab
@@ -71,6 +71,7 @@ const emit = defineEmits<{
       :session-id="sessionId"
       :connection-id="connectionId"
       :can-write="canWrite"
+      :visible="activeTab === 'logs'"
     />
     <ContainerFilesTab
       v-show="activeTab === 'files'"

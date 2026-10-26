@@ -86,10 +86,17 @@ export class LogBuffer {
       chars -= this.lines[drop].length + 1;
       drop += 1;
     }
-    if (drop <= 0) return;
-    this.lines.splice(0, drop);
-    this.lineChars = 0;
-    for (const line of this.lines) this.lineChars += line.length;
-    this.recount();
+    if (drop > 0) {
+      this.lines.splice(0, drop);
+      this.lineChars = 0;
+      for (const line of this.lines) this.lineChars += line.length;
+      this.recount();
+    }
+    // 单行 partial 自身就可能超过字符上限（EOL 已收，不能靠丢行解决）：
+    // 保留末尾 MAX_LOG_CHARS 个字符，否则 text() 会突破 2 MB 预算。
+    if (this.partial.length > MAX_LOG_CHARS) {
+      this.partial = this.partial.slice(this.partial.length - MAX_LOG_CHARS);
+      this.recount();
+    }
   }
 }

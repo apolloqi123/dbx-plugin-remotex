@@ -46,6 +46,18 @@ function rows(): Row[] {
 }
 
 describe("container manager selection", () => {
+  it("renders the manager title and the localized empty-detail hint", async () => {
+    stubHost([]);
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      expect(wrapper.get(".container-manager-title").text()).toBe("docker.managerTitle");
+      expect(wrapper.get(".container-manager-empty").text()).toBe("docker.selectContainer");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("clears the detail when the list becomes empty", async () => {
     const containers = rows();
     stubHost(containers);

@@ -5,7 +5,7 @@
 //
 // 跟随规则（spec §3.2）：默认跟随；向上滚动距底 >24px 暂停自动滚动但继续接收；
 // 滚回距底 ≤4px 自动恢复；按钮在跟随时点一下只关自动滚动（不断流）。
-import { nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { FOLLOW_PAUSE_PX, FOLLOW_RESUME_PX, MAX_LOG_CHARS, MAX_LOG_LINES } from "../lib/dockerLogBuffer";
 import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
@@ -16,6 +16,8 @@ const props = defineProps<{
   sessionId?: string;
   connectionId?: string;
   canWrite?: boolean;
+  /** 页签是否可见：v-show 隐藏时没有布局，重新显示后要补一次置底。 */
+  visible?: boolean;
 }>();
 
 const stream = useDockerLogStream({
@@ -39,15 +41,25 @@ const {
 
 const tail = ref<string>("200");
 const scroller = ref<HTMLElement>();
+/** 用户是否刚点过“清空”（只用于空态提示，不参与流状态）。 */
+const clearedNotice = ref(false);
 
 /** 截断提示文案；数值直接取自缓冲上限，避免两处漂移。 */
-const truncatedHint = `已截断（仅保留最近 ${MAX_LOG_LINES} 行 / ${MAX_LOG_CHARS / 1_000_000} MB）`;
+const truncatedHint = computed(() =>
+  props.t("docker.logsTruncated", { lines: MAX_LOG_LINES, chars: MAX_LOG_CHARS / 1_000_000 }),
+);
 
 function scrollToBottom(): void {
   void nextTick(() => {
     const element = scroller.value;
     if (element) element.scrollTop = element.scrollHeight;
   });
+}
+
+/** 清空按钮：只清视图（不断流），并在空态提示“已清空”。 */
+function handleClear(): void {
+  clear();
+  clearedNotice.value = true;
 }
 
 function resumeFollow(): void {
@@ -75,17 +87,21 @@ function onScroll(): void {
 
 /** tail 变更：停旧流、清空缓冲、按新 tail 重启（spec §3.2）。 */
 async function onTailChange(): Promise<void> {
+  clearedNotice.value = false;
   clear();
   await restart({ tail: tail.value });
 }
 
 /** 结束横幅的“重新开始”：清掉上一轮的输出后按原 tail 重开，避免 tail 行重复。 */
 function restartFromEnd(): void {
+  clearedNotice.value = false;
   clear();
   void restart();
 }
 
 const endedBanner = (value: DockerLogStreamStatus): boolean => value === "ended" || value === "error";
+/** 启动中还没有任何输出是正常的：不要显示“无输出”空态。 */
+const showEmptyState = computed(() => !text.value && status.value !== "starting");
 
 onMounted(() => {
   void start(props.container.id, { tail: tail.value });
@@ -95,15 +111,25 @@ onMounted(() => {
 watch(
   () => props.container.id,
   (containerId) => {
+    clearedNotice.value = false;
     clear();
     void start(containerId, { tail: tail.value });
   },
 );
 
 // 新日志到达：跟随态滚到底；暂停态不动滚动位置（内容继续进缓冲）。
-watch(text, () => {
+watch(text, (value) => {
+  if (value) clearedNotice.value = false;
   if (follow.value) scrollToBottom();
 });
+
+// v-show 隐藏期间节点没有布局，scrollToBottom 无效；重新显示时补一次置底。
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible !== false && follow.value) scrollToBottom();
+  },
+);
 </script>
 
 <template>
@@ -128,7 +154,9 @@ watch(text, () => {
       <span v-if="!follow" class="docker-log-paused">{{ t("docker.followPaused") }}</span>
       <span v-if="truncated" class="docker-log-truncated">{{ truncatedHint }}</span>
       <span class="docker-log-spacer" />
-      <button type="button" class="docker-log-clear" data-action="clear" @click="clear()">清空</button>
+      <button type="button" class="docker-log-clear" data-action="clear" @click="handleClear">
+        {{ t("docker.logsClear") }}
+      </button>
     </div>
     <div v-if="endedBanner(status) || needsSudo" class="docker-log-banner" data-role="stream-end">
       <span class="docker-log-ended">{{ t("docker.streamEnded") }}</span>
@@ -151,7 +179,9 @@ watch(text, () => {
     </div>
     <div class="docker-log-body">
       <pre ref="scroller" class="docker-log-scroll" @scroll="onScroll">{{ text }}</pre>
-      <p v-if="!text" class="docker-log-empty">{{ t("docker.logsEmpty") }}</p>
+      <p v-if="showEmptyState" class="docker-log-empty">
+        {{ clearedNotice ? t("docker.logsCleared") : t("docker.logsEmpty") }}
+      </p>
     </div>
   </div>
 </template>

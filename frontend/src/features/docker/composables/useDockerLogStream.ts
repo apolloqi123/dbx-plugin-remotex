@@ -11,10 +11,14 @@ import { rpc } from "../../../shared/lib/rpc";
 import { LogBuffer } from "../lib/dockerLogBuffer";
 import { registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
+import { LOGS_TIMEOUT_MS } from "../lib/dockerPanelModel";
 
 export type DockerLogStreamStatus = "idle" | "starting" | "streaming" | "ended" | "error";
 
 export const DEFAULT_LOG_TAIL = 200;
+
+/** 收流 RPC 的有界等待：流可能已被 TTL/断线收口，不能无限挂起。 */
+const STOP_TIMEOUT_MS = 10_000;
 
 export interface DockerLogStreamOptions {
   /** 工作台绑定的 SSH 会话；缺省时按 target:"local" 查询本机 daemon。 */
@@ -83,6 +87,23 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     detachHandler = undefined;
   }
 
+  /** 摘掉处理器并交出当前流 id：注册新流前先收走任何既有流。 */
+  function takeCurrentStream(): string {
+    detach();
+    const streamId = currentStreamId;
+    currentStreamId = "";
+    return streamId;
+  }
+
+  /** 尽力收流：会话已断开/流已被 TTL 收口时后端报错也无妨。 */
+  async function stopStream(streamId: string): Promise<void> {
+    try {
+      await rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS });
+    } catch {
+      // 收流尽力而为。
+    }
+  }
+
   function startPayload(current: StreamTarget): Record<string, unknown> {
     const sessionId = readSessionId();
     const connectionId = readConnectionId() || "";
@@ -125,32 +146,41 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
 
   /** 启动一条新流：先收掉旧的；旧缓冲保留（清空由调用方显式决定）。 */
   async function start(containerId: string, conditions: DockerLogStartOptions = {}): Promise<void> {
-    target = {
+    // 代际与目标必须在入口同步快照：await 期间的 stop/新 start 会让本次启动作废，
+    // 且 payload 不能等到 await 之后再读可变的 target。
+    const token = ++generation;
+    const next: StreamTarget = {
       containerId,
       tail: normalizeLogTail(conditions.tail),
       sudo: conditions.sudo === true,
     };
-    await stop();
-    const generationAtStart = ++generation;
+    target = next;
     status.value = "starting";
     error.value = "";
     needsSudo.value = false;
     exitCode.value = null;
     setFollow(true);
 
+    // 先收旧流；不调用 stop()，否则它递增代际会把本次 token 立刻作废。
+    const previousStreamId = takeCurrentStream();
+    if (previousStreamId) await stopStream(previousStreamId);
+    if (token !== generation) return;
+
     let streamId = "";
     try {
-      const response = await rpc<{ streamId?: unknown }>("docker/logs/start", startPayload(target));
+      const response = await rpc<{ streamId?: unknown }>("docker/logs/start", startPayload(next), {
+        timeoutMs: LOGS_TIMEOUT_MS,
+      });
       streamId = typeof response?.streamId === "string" ? response.streamId : "";
     } catch (cause) {
-      if (generationAtStart !== generation) return;
+      if (token !== generation) return;
       status.value = "error";
       error.value = errorMessage(cause);
       return;
     }
-    if (generationAtStart !== generation) {
+    if (token !== generation) {
       // start 在途期间被 stop/新 start 取代：后端已建好的流必须立即收掉。
-      if (streamId) void rpc("docker/logs/stop", { streamId }).catch(() => undefined);
+      if (streamId) void stopStream(streamId);
       return;
     }
     if (!streamId) {
@@ -158,6 +188,9 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
       error.value = "docker/logs/start returned no streamId";
       return;
     }
+    // 防御：注册前把任何残留的流收掉，保证同一时刻只有一条后端流。
+    const leftoverStreamId = takeCurrentStream();
+    if (leftoverStreamId && leftoverStreamId !== streamId) await stopStream(leftoverStreamId);
     currentStreamId = streamId;
     detachHandler = registerDockerLogStream(streamId, handleEvent);
     status.value = "streaming";
@@ -166,16 +199,10 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   /** 停止并注销；幂等（无流时不发 RPC）。 */
   async function stop(): Promise<void> {
     generation += 1;
-    detach();
-    const streamId = currentStreamId;
-    currentStreamId = "";
+    const streamId = takeCurrentStream();
     if (status.value === "starting" || status.value === "streaming") status.value = "idle";
     if (!streamId) return;
-    try {
-      await rpc("docker/logs/stop", { streamId });
-    } catch {
-      // 收流尽力而为：会话已断开/流已被 TTL 收口时后端返回错误也无妨。
-    }
+    await stopStream(streamId);
   }
 
   /** 保留容器与 tail/sudo，重新开流（tail 变更后由 UI 清空缓冲）。 */

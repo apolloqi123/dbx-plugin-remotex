@@ -20,9 +20,22 @@ const container: DockerContainer = {
 describe("container detail pane", () => {
   it("switches tabs and keeps the tab strip mounted", async () => {
     const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "logs" } });
+    expect(wrapper.get('[data-tab="logs"]').text()).toBe("docker.logsTab");
+    expect(wrapper.get('[data-tab="files"]').text()).toBe("docker.filesTab");
     await wrapper.get('[data-tab="files"]').trigger("click");
     expect(wrapper.emitted("update:activeTab")?.[0]).toEqual(["files"]);
     expect(wrapper.find('[data-tab="logs"]').exists()).toBe(true);
+  });
+
+  it("tells the logs tab when it becomes visible again after Files → Logs", async () => {
+    const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "logs" } });
+    expect(wrapper.findComponent(ContainerLogsTab).props("visible")).toBe(true);
+
+    await wrapper.setProps({ activeTab: "files" });
+    expect(wrapper.findComponent(ContainerLogsTab).props("visible")).toBe(false);
+
+    await wrapper.setProps({ activeTab: "logs" });
+    expect(wrapper.findComponent(ContainerLogsTab).props("visible")).toBe(true);
   });
 
   it("passes the selected container down to the active tab", () => {

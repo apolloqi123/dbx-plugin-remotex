@@ -73,7 +73,7 @@ watch([() => props.sessionId, () => props.connectionId], () => {
 <template>
   <section class="container-manager-pane" :aria-label="t('docker.toolbarTitle')">
     <header class="container-manager-head">
-      <strong class="container-manager-title">{{ t("docker.toolbarTitle") }}</strong>
+      <strong class="container-manager-title">{{ t("docker.managerTitle") }}</strong>
       <span class="container-manager-spacer" />
       <button
         type="button"
@@ -108,7 +108,7 @@ watch([() => props.sessionId, () => props.connectionId], () => {
         />
       </div>
       <div v-else class="container-manager-empty">
-        <p>选择一个容器查看详情</p>
+        <p>{{ t("docker.selectContainer") }}</p>
       </div>
     </div>
   </section>

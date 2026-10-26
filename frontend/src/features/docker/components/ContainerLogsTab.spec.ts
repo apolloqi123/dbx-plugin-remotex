@@ -45,13 +45,16 @@ function container(overrides: Partial<DockerContainer> = {}): DockerContainer {
   };
 }
 
-async function mountTab(props: { container?: DockerContainer; canWrite?: boolean; sessionId?: string } = {}) {
+async function mountTab(
+  props: { container?: DockerContainer; canWrite?: boolean; sessionId?: string; visible?: boolean } = {},
+) {
   const wrapper = mount(ContainerLogsTab, {
     props: {
       t,
       container: props.container ?? container(),
       canWrite: props.canWrite,
       sessionId: props.sessionId ?? "sess-1",
+      visible: props.visible,
     },
   });
   wrappers.push(wrapper);
@@ -193,6 +196,44 @@ describe("ContainerLogsTab streaming", () => {
     expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
     const starts = calls.filter((call) => call.method === "docker/logs/start");
     expect(starts.at(-1)?.params).toMatchObject({ containerId: "def456abc123" });
+  });
+
+  it("scrolls back to the bottom when the tab becomes visible again", async () => {
+    stubHost();
+    const wrapper = await mountTab({ visible: false });
+    const element = sizeScroller(wrapper);
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "while-hidden\n" });
+    await nextTick();
+    // v-show 隐藏期间没有布局，滚动位置停在原处。
+    element.scrollTop = 0;
+
+    await wrapper.setProps({ visible: true });
+    await nextTick();
+    await nextTick();
+    expect(element.scrollTop).toBe(element.scrollHeight);
+  });
+
+  it("does not show the no-output empty state while the stream is starting", async () => {
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (method: string) => {
+        if (method === "docker/logs/start") return new Promise(() => undefined);
+        return Promise.resolve({ stopped: true });
+      },
+    });
+    const wrapper = mount(ContainerLogsTab, { props: { t, container: container(), sessionId: "sess-1" } });
+    wrappers.push(wrapper);
+    await nextTick();
+    expect(wrapper.find(".docker-log-empty").exists()).toBe(false);
+  });
+
+  it("shows the cleared hint in the empty state after clearing", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "one\n" });
+    await nextTick();
+    await wrapper.get('[data-action="clear"]').trigger("click");
+    expect(wrapper.get('[data-action="clear"]').text()).toBe("docker.logsClear");
+    expect(wrapper.get(".docker-log-empty").text()).toBe("docker.logsCleared");
   });
 
   it("stops the stream on unmount", async () => {
