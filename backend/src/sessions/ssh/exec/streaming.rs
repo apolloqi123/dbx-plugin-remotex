@@ -150,16 +150,31 @@ pub async fn exec_plain_stream(
     cancel: watch::Receiver<bool>,
     sink: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) -> Result<i32, String> {
-    let mut channel = handle
-        .channel_open_session()
-        .await
-        .map_err(|error| format!("Failed to open exec channel: {error}"))?;
-    apply_connection_env(&mut channel, set_env).await?;
-    channel
-        .exec(true, command.as_bytes())
-        .await
-        .map_err(|error| format!("Failed to start command: {error}"))?;
     let mut cancel = cancel;
+    // Dial: no exec issued yet, so a plain error return leaks nothing.
+    let mut channel = tokio::select! {
+        biased;
+        _ = wait_cancelled(&mut cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
+        opened = handle.channel_open_session() =>
+            opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
+    };
+    // env/exec start: the command may have been accepted by the time the
+    // cancel lands, so this arm closes the channel before returning.
+    tokio::select! {
+        biased;
+        _ = wait_cancelled(&mut cancel) => {
+            return Err(
+                abort_exec_channel(&mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
+            );
+        }
+        started = async {
+            apply_connection_env(&mut channel, set_env).await?;
+            channel
+                .exec(true, command.as_bytes())
+                .await
+                .map_err(|error| format!("Failed to start command: {error}"))
+        } => started?,
+    }
     match run_to_completion(&mut channel, None, None, &mut cancel, Some(&sink)).await {
         Ok(outcome) => Ok(outcome.exit_code),
         // Spec 4.2: cancellation must close the channel through the regular

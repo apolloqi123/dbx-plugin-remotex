@@ -264,6 +264,60 @@ pub(super) fn append_capped(buffer: &mut Vec<u8>, data: &[u8]) {
     buffer.extend_from_slice(&data[..take]);
 }
 
+/// Per-stream retained tail while a sink is streaming: every fragment has
+/// already been forwarded downstream, so only the most recent bytes are kept
+/// for the non-zero-exit / error report. 32 KiB per stream (64 KiB total for
+/// stdout + stderr) instead of [`MAX_EXEC_OUTPUT_BYTES`] per stream, which
+/// would let four concurrent log follows retain ~128 MiB of already-delivered
+/// output.
+pub(super) const MAX_STREAM_TAIL_BYTES: usize = 32 * 1024;
+
+/// Appends `data` to a rolling tail of at most [`MAX_STREAM_TAIL_BYTES`],
+/// dropping the oldest bytes first so error text at the end of the stream is
+/// what survives.
+pub(super) fn append_tail_capped(buffer: &mut Vec<u8>, data: &[u8]) {
+    if data.len() >= MAX_STREAM_TAIL_BYTES {
+        buffer.clear();
+        buffer.extend_from_slice(&data[data.len() - MAX_STREAM_TAIL_BYTES..]);
+        return;
+    }
+    let excess = (buffer.len() + data.len()).saturating_sub(MAX_STREAM_TAIL_BYTES);
+    if excess > 0 {
+        buffer.drain(..excess);
+    }
+    buffer.extend_from_slice(data);
+}
+
+/// Retains an output fragment for the exit/error report: a rolling tail while
+/// streaming through a sink, the historical 16 MiB head cap otherwise.
+fn retain_output(buffer: &mut Vec<u8>, data: &[u8], streaming: bool) {
+    if streaming {
+        append_tail_capped(buffer, data);
+    } else {
+        append_capped(buffer, data);
+    }
+}
+
+/// Message for a streaming sink whose receiver was dropped. Deliberately
+/// transport-neutral: the Docker layer adds its own context.
+pub(super) const STREAM_SINK_CLOSED_MESSAGE: &str = "Command output stream receiver closed";
+
+/// Forwards one output fragment to the streaming sink, racing the (possibly
+/// back-pressured) bounded send against cancellation. Cancel wins so a
+/// stalled consumer cannot delay teardown of the remote channel.
+pub(super) async fn send_or_cancel(
+    sink: &tokio::sync::mpsc::Sender<Vec<u8>>,
+    data: &[u8],
+    cancel: &mut watch::Receiver<bool>,
+) -> Result<(), String> {
+    tokio::select! {
+        biased;
+        _ = wait_cancelled(cancel) => Err(EXEC_CANCELLED_MESSAGE.to_string()),
+        sent = sink.send(data.to_vec()) =>
+            sent.map_err(|_| STREAM_SINK_CLOSED_MESSAGE.to_string()),
+    }
+}
+
 pub(super) async fn run_to_completion(
     channel: &mut russh::Channel<russh::client::Msg>,
     timeout: Option<Duration>,
@@ -272,6 +326,7 @@ pub(super) async fn run_to_completion(
     sink: Option<&tokio::sync::mpsc::Sender<Vec<u8>>>,
 ) -> Result<ExecOutcome, String> {
     let deadline = timeout.map(|timeout| tokio::time::Instant::now() + timeout);
+    let streaming = sink.is_some();
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     let mut exit_code: Option<i32> = None;
@@ -306,7 +361,7 @@ pub(super) async fn run_to_completion(
         };
         match message {
             ChannelMsg::Data { ref data } => {
-                append_capped(&mut stdout, data);
+                retain_output(&mut stdout, data, streaming);
                 if let Some((auth, use_pty, _)) = prompt_context.as_ref() {
                     if *use_pty {
                         if let Some(error) = maybe_answer_prompt(
@@ -324,17 +379,11 @@ pub(super) async fn run_to_completion(
                     }
                 }
                 if let Some(sink) = sink {
-                    tokio::select! {
-                        biased;
-                        _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-                        sent = sink.send(data.to_vec()) => {
-                            sent.map_err(|_| "docker log stream receiver closed".to_string())?;
-                        }
-                    }
+                    send_or_cancel(sink, data, cancel).await?;
                 }
             }
             ChannelMsg::ExtendedData { ref data, .. } => {
-                append_capped(&mut stderr, data);
+                retain_output(&mut stderr, data, streaming);
                 if let Some((auth, _, _)) = prompt_context.as_ref() {
                     if let Some(error) = maybe_answer_prompt(
                         channel,
@@ -350,13 +399,7 @@ pub(super) async fn run_to_completion(
                     }
                 }
                 if let Some(sink) = sink {
-                    tokio::select! {
-                        biased;
-                        _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-                        sent = sink.send(data.to_vec()) => {
-                            sent.map_err(|_| "docker log stream receiver closed".to_string())?;
-                        }
-                    }
+                    send_or_cancel(sink, data, cancel).await?;
                 }
             }
             ChannelMsg::ExitStatus { exit_status } => {

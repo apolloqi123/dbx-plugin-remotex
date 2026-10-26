@@ -23,6 +23,8 @@ mod terminal;
 #[cfg(test)]
 mod rotation_tests;
 #[cfg(test)]
+mod stream_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::sessions::ssh::SshClient;
@@ -118,8 +120,10 @@ const SUDO_WAIT_TIMEOUT_MESSAGE: &str =
      package-manager locks before retrying; for long jobs start them \
      detached (ssh_run_bg + ssh_task_status) instead of extending the wait.";
 
-/// Per-stream output ceiling for `run_to_completion`. A hostile or merely
-/// over-productive remote (`cat /dev/urandom`) would otherwise balloon
-/// sidecar memory until the deadline; past the cap chunks are dropped while
-/// the read loop keeps draining so the channel never back-pressures.
+/// Per-stream output ceiling for `run_to_completion` when the caller is not
+/// streaming: a hostile or merely over-productive remote (`cat /dev/urandom`)
+/// would otherwise balloon sidecar memory until the deadline; past the cap
+/// chunks are dropped while the read loop keeps draining so the channel never
+/// back-pressures. Sink-backed runs retain only a small error tail instead
+/// (see `run::MAX_STREAM_TAIL_BYTES`).
 const MAX_EXEC_OUTPUT_BYTES: usize = 16 * 1024 * 1024;

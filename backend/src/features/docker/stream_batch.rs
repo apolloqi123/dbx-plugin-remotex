@@ -8,6 +8,9 @@
 
 use std::time::{Duration, Instant};
 
+/// Flush trigger: the batch is emitted once `pending` reaches this size, but a
+/// single larger incoming fragment can push a batch past it (the fragment is
+/// never split).
 pub const MAX_BATCH_BYTES: usize = 8 * 1024;
 pub const BATCH_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -28,15 +31,15 @@ impl ChunkBatcher {
         self.pending.extend_from_slice(bytes);
         (self.pending.len() >= MAX_BATCH_BYTES
             || now.duration_since(self.last_flush) >= BATCH_INTERVAL)
-            .then(|| self.take())
+            .then(|| self.take(now))
     }
 
     pub fn flush(&mut self) -> Option<Vec<u8>> {
-        (!self.pending.is_empty()).then(|| self.take())
+        (!self.pending.is_empty()).then(|| self.take(Instant::now()))
     }
 
-    fn take(&mut self) -> Vec<u8> {
-        self.last_flush = Instant::now();
+    fn take(&mut self, now: Instant) -> Vec<u8> {
+        self.last_flush = now;
         std::mem::take(&mut self.pending)
     }
 }
@@ -57,7 +60,10 @@ mod tests {
         let mut batcher = ChunkBatcher::new();
         let now = Instant::now();
         assert!(batcher.push(&vec![b'a'; MAX_BATCH_BYTES - 1], now).is_none());
-        assert_eq!(batcher.push(b"b", now).unwrap().len(), MAX_BATCH_BYTES);
+        let batch = batcher.push(b"b", now).unwrap();
+        assert_eq!(batch.len(), MAX_BATCH_BYTES);
+        assert_eq!(&batch[..MAX_BATCH_BYTES - 1], vec![b'a'; MAX_BATCH_BYTES - 1].as_slice());
+        assert_eq!(batch[MAX_BATCH_BYTES - 1], b'b');
     }
 
     #[test]
