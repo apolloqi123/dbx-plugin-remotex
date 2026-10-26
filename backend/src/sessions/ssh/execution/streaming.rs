@@ -2,9 +2,6 @@
 //! connection and forwards output fragments to a channel sink, for log
 //! following where collecting the whole output first would be useless.
 
-// Wired into the docker log stream registry in the next task.
-#![allow(dead_code)]
-
 use super::*;
 
 impl SshRuntime {

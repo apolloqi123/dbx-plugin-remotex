@@ -1,8 +1,9 @@
 //! Docker management panel backend (`docker/list` / `docker/logs` /
-//! `docker/action`): POSIX collector scripts executed through `sh -s`
-//! heredocs plus pure parsers, in the same style as [`crate::features::metrics`].
-//! Zero new dependencies by design — the Docker CLI is driven over shell,
-//! never the daemon API, and no docker client crate is pulled in.
+//! `docker/logs/start` / `docker/logs/stop` / `docker/action`): POSIX
+//! collector scripts executed through `sh -s` heredocs plus pure parsers, in
+//! the same style as [`crate::features::metrics`]. Zero new dependencies by
+//! design — the Docker CLI is driven over shell, never the daemon API, and no
+//! docker client crate is pulled in.
 //!
 //! Safety model for actions: the verb comes from a fixed whitelist, the
 //! container id must match `^[0-9a-f]{12,64}$`, read-only connections are
@@ -25,6 +26,7 @@ mod engine;
 mod local;
 mod parse;
 mod scripts;
+mod stream;
 mod stream_batch;
 
 #[cfg(test)]
@@ -40,7 +42,7 @@ pub use local::*;
 pub use parse::*;
 #[allow(unused_imports)]
 pub use scripts::*;
-#[allow(unused_imports)]
+pub use stream::*;
 pub use stream_batch::*;
 
 /// Wait cap for the container list collector (one `docker ps` round-trip).
@@ -55,6 +57,17 @@ pub const ACTION_TIMEOUT: Duration = Duration::from_secs(60);
 pub const TAIL_MIN: u64 = 10;
 pub const TAIL_MAX: u64 = 2000;
 pub const TAIL_DEFAULT: u64 = 200;
+
+/// Test-only engine constructor: the same shape `parse_engine` produces, so
+/// command-rendering tests do not have to build JSON params to get an
+/// endpoint-carrying engine.
+#[cfg(test)]
+pub(crate) fn test_engine(cli: &str, endpoint: Option<&str>) -> EngineConfig {
+    EngineConfig {
+        cli: cli.to_string(),
+        endpoint: endpoint.map(str::to_string),
+    }
+}
 
 // —— Engine / endpoint configuration (Podman & custom daemons) ————————
 

@@ -7,7 +7,7 @@ impl Plugin {
         &self,
         method: &str,
         params: Value,
-        _emitter: &PluginEmitter,
+        emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         match method {
             // Docker 管理面板（IMPL_PLAN Task P2-4）。列表/日志是只读采集
@@ -191,6 +191,73 @@ impl Plugin {
                     }
                 }
                 Ok(crate::features::docker::logs_payload(&output))
+            }
+
+            // 真流式日志跟随（容器管理分屏）：start 立即返回 streamId，分片
+            // 走 `docker/logs/chunk`，收口走 `docker/logs/end`（exitCode 或
+            // error；daemon 权限签名时 needsSudo）。注册表上限 4 条、单条
+            // TTL 30 分钟；stop 幂等。sudo 仅 SSH 连接可用且要求连接可写、
+            // 已启用 Quick Sudo —— 在开出流之前拒绝，避免前端拿到 streamId
+            // 后才在 end 事件里看到权限错误。
+            "docker/logs/start" => {
+                let container_id = required_string(&params, "containerId")?;
+                crate::features::docker::validate_container_id(container_id)?;
+                let tail = crate::features::docker::clamp_tail(optional_u64(
+                    &params,
+                    "tail",
+                    crate::features::docker::TAIL_DEFAULT,
+                ));
+                let engine = crate::features::docker::parse_engine(&params)?;
+                let sudo = params.get("sudo").and_then(Value::as_bool).unwrap_or(false);
+                if crate::features::docker::parse_target(&params)?
+                    == crate::features::docker::DockerTarget::Local
+                {
+                    // 本机没有 Quick Sudo 管线：显式拒绝而不是静默降级。
+                    if sudo {
+                        return Err(
+                            "Quick Sudo is not available for local docker targets".to_string()
+                        );
+                    }
+                    let stream_id = self.runtime.block_on(async {
+                        self.docker_streams.start_local(
+                            emitter.clone(),
+                            engine,
+                            container_id.to_string(),
+                            tail,
+                        )
+                    })?;
+                    return Ok(json!({ "streamId": stream_id }));
+                }
+                let session_id = required_string(&params, "sessionId")?;
+                if sudo {
+                    self.runtime
+                        .block_on(self.ssh.ensure_writable(session_id))?;
+                    let settings = self
+                        .runtime
+                        .block_on(self.ssh.settings_get(session_id, &json!({})))?;
+                    if settings.get("quickSudo").and_then(Value::as_bool) != Some(true) {
+                        return Err("Quick Sudo is disabled for this connection".to_string());
+                    }
+                }
+                let command =
+                    crate::features::docker::logs_follow_command(&engine, container_id, tail);
+                let stream_id = self.runtime.block_on(async {
+                    self.docker_streams.start_ssh(
+                        self.ssh.clone(),
+                        emitter.clone(),
+                        session_id.to_string(),
+                        command,
+                        sudo,
+                        tail,
+                    )
+                })?;
+                Ok(json!({ "streamId": stream_id }))
+            }
+
+            "docker/logs/stop" => {
+                // 幂等：未知/已结束的 streamId 返回 stopped:false，不报错。
+                let stream_id = required_string(&params, "streamId")?;
+                Ok(json!({ "stopped": self.docker_streams.stop(stream_id) }))
             }
 
             "docker/action" => {

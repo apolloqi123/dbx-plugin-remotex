@@ -240,6 +240,89 @@ pub async fn collect_logs_local(
     )))
 }
 
+/// Read size for streamed log pipes: one chunk per pipe read, coalesced
+/// later by the registry's batcher.
+const STREAM_CHUNK_BYTES: usize = 8 * 1024;
+
+/// `docker logs -f` as a local child process: argv-only direct exec, both
+/// pipes streamed to `sink`, and cancellation kills the child so no orphan
+/// follower survives a stopped pane. The endpoint rides the same two env
+/// vars as [`run_local`] (never argv, never a shell). Exit code 130 reports
+/// a cancelled stream; otherwise the child's own code is returned (-1 for
+/// signal deaths, like the remote parse path).
+pub async fn spawn_logs_stream(
+    engine: &EngineConfig,
+    container_id: &str,
+    tail: u64,
+    sink: tokio::sync::mpsc::Sender<Vec<u8>>,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<i32, String> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+    validate_container_id(container_id)?;
+    let cli = find_local_cli(&engine.cli)
+        .ok_or_else(|| format!("{} CLI not found on this machine", engine.cli))?;
+    let mut command = Command::new(cli);
+    command
+        .arg("logs")
+        .arg("-f")
+        .arg("--tail")
+        .arg(clamp_tail(tail).to_string())
+        .arg(container_id)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(endpoint) = engine.endpoint.as_deref() {
+        command
+            .env("DOCKER_HOST", endpoint)
+            .env("CONTAINER_HOST", endpoint);
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Failed to start {} logs: {error}", engine.cli))?;
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let mut stderr = child.stderr.take().expect("piped stderr");
+    let mut stdout_done = false;
+    let mut stderr_done = false;
+    while !(stdout_done && stderr_done) {
+        tokio::select! {
+            biased;
+            _ = cancel.changed() => {
+                let _ = child.kill().await;
+                return Ok(130);
+            }
+            read = read_chunk(&mut stdout), if !stdout_done => match read? {
+                None => stdout_done = true,
+                Some(bytes) => { let _ = sink.send(bytes).await; }
+            },
+            read = read_chunk(&mut stderr), if !stderr_done => match read? {
+                None => stderr_done = true,
+                Some(bytes) => { let _ = sink.send(bytes).await; }
+            },
+        }
+    }
+    let status = child.wait().await.map_err(|error| error.to_string())?;
+    Ok(status.code().unwrap_or(-1))
+}
+
+/// One bounded read from a streamed pipe; `None` marks EOF.
+async fn read_chunk<R>(reader: &mut R) -> Result<Option<Vec<u8>>, String>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+    let mut buffer = vec![0u8; STREAM_CHUNK_BYTES];
+    match reader.read(&mut buffer).await {
+        Ok(0) => Ok(None),
+        Ok(read) => {
+            buffer.truncate(read);
+            Ok(Some(buffer))
+        }
+        Err(error) => Err(format!("Failed to read container logs: {error}")),
+    }
+}
+
 /// `docker/action` for `target: "local"`. Same whitelist, id gate and
 /// success contract as the remote plane; the sudo fallback does not exist
 /// locally (no Quick Sudo plumbing for the machine itself), so a daemon
@@ -330,4 +413,31 @@ pub fn audit_action_failure(data_dir: &Path, command: &str, error: &str, duratio
         Some(error),
         duration_ms,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn spawn_logs_stream_validates_the_container_id_first() {
+        let (sink, _chunks) = tokio::sync::mpsc::channel(1);
+        let (_cancel, cancel) = tokio::sync::watch::channel(false);
+        let engine = crate::features::docker::test_engine("docker", None);
+        let error = spawn_logs_stream(&engine, "web-nginx", 200, sink, cancel)
+            .await
+            .expect_err("invalid id");
+        assert!(error.contains("Invalid containerId"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn spawn_logs_stream_reports_a_missing_cli() {
+        let (sink, _chunks) = tokio::sync::mpsc::channel(1);
+        let (_cancel, cancel) = tokio::sync::watch::channel(false);
+        let engine = crate::features::docker::test_engine("dbx-missing-container-cli", None);
+        let error = spawn_logs_stream(&engine, "d4a7c9f1e2b3", 200, sink, cancel)
+            .await
+            .expect_err("missing cli");
+        assert!(error.contains("CLI not found on this machine"), "{error}");
+    }
 }

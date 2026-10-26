@@ -33,6 +33,7 @@ impl Plugin {
             vnc: Arc::new(crate::sessions::vnc::VncSessionRuntime::new()),
             rdp: Arc::new(crate::sessions::rdp::RdpSessionRuntime::new()),
             watcher: Arc::new(crate::filesystem::watch::WatchRuntime::new()),
+            docker_streams: Arc::new(crate::features::docker::DockerStreams::new()),
             connection_import: crate::features::import::ImportStream::default(),
             non_ssh_creds: crate::core::non_ssh_credentials::NonSshCredentials::new(),
             tasks: Arc::new(crate::features::automation::task_provider::TaskProvider::new()),

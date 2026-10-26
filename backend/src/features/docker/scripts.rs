@@ -110,3 +110,35 @@ pub fn logs_script(engine: &EngineConfig, container_id: &str, tail: u64) -> Resu
         cli = engine.cli,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn logs_follow_command_is_fixed_and_clamped() {
+        let engine = crate::features::docker::test_engine("docker", None);
+        assert_eq!(
+            logs_follow_command(&engine, "d4a7c9f1e2b3", 200),
+            "docker logs -f --tail 200 d4a7c9f1e2b3"
+        );
+    }
+
+    #[test]
+    fn logs_follow_command_keeps_engine_endpoint() {
+        let engine =
+            crate::features::docker::test_engine("podman", Some("unix:///tmp/podman.sock"));
+        let command = logs_follow_command(&engine, "d4a7c9f1e2b3", 9999);
+        assert!(command.contains("DOCKER_HOST=unix:///tmp/podman.sock"));
+        assert!(command.ends_with("podman logs -f --tail 2000 d4a7c9f1e2b3"));
+    }
+
+    #[test]
+    fn stream_registry_caps_active_streams() {
+        let registry = DockerStreams::new();
+        for index in 0..MAX_ACTIVE_STREAMS {
+            registry.insert_test(format!("s{index}"));
+        }
+        assert!(registry.start_guard().is_err());
+    }
+}

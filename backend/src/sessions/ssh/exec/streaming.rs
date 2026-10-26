@@ -3,9 +3,6 @@
 //! regular `*_cancellable` paths keep their collect-and-return behavior by
 //! passing `sink: None`.
 
-// Wired into the docker log stream registry in the next task.
-#![allow(dead_code)]
-
 use super::*;
 
 /// Shared body of [`exec_with_sudo_cancellable`] and [`exec_sudo_stream`]:

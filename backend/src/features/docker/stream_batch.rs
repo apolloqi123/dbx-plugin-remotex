@@ -3,9 +3,6 @@
 //! event would flood the host bridge. Batches flush on a byte ceiling or an
 //! elapsed interval, whichever comes first.
 
-// The docker log stream registry (next task) is the first consumer.
-#![allow(dead_code)]
-
 use std::time::{Duration, Instant};
 
 /// Flush trigger: the batch is emitted once `pending` reaches this size, but a
