@@ -78,7 +78,6 @@ const messages = {
       filesUploading: "正在上传…",
       filesDownloading: "正在下载…",
       filesCancel: "取消",
-      filesOverwriteTitle: "覆盖文件？",
       filesOverwriteConfirm: "{name} 已存在于当前目录，是否覆盖？",
       filesTooLarge: "文件（{size}）超过容器传输上限 {limit}。",
       filesUnsupported: "仅支持传输普通文件。",

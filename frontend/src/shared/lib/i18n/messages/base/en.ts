@@ -80,7 +80,6 @@ const messages = {
       filesUploading: "Uploading…",
       filesDownloading: "Downloading…",
       filesCancel: "Cancel",
-      filesOverwriteTitle: "Overwrite file?",
       filesOverwriteConfirm: "{name} already exists in this folder. Overwrite it?",
       filesTooLarge: "This file ({size}) exceeds the {limit} container transfer limit.",
       filesUnsupported: "Only regular files can be transferred.",

@@ -78,7 +78,6 @@ const messages = {
       filesUploading: "正在上傳…",
       filesDownloading: "正在下載…",
       filesCancel: "取消",
-      filesOverwriteTitle: "覆寫檔案？",
       filesOverwriteConfirm: "{name} 已存在於此目錄，是否覆寫？",
       filesTooLarge: "檔案（{size}）超過容器傳輸上限 {limit}。",
       filesUnsupported: "僅支援傳輸一般檔案。",

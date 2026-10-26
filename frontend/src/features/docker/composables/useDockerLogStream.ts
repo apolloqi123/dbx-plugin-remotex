@@ -9,7 +9,7 @@
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { rpc } from "../../../shared/lib/rpc";
 import { LogBuffer } from "../lib/dockerLogBuffer";
-import { registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
+import { clearPendingDockerLogEvents, registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { LOGS_TIMEOUT_MS } from "../lib/dockerPanelModel";
 
@@ -97,6 +97,8 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
 
   /** 尽力收流：会话已断开/流已被 TTL 收口时后端报错也无妨。 */
   async function stopStream(streamId: string): Promise<void> {
+    // 这条流已不再被本实例接管：丢掉可能还在缓冲的早到事件，避免复用 id 回放。
+    clearPendingDockerLogEvents(streamId);
     try {
       await rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS });
     } catch {
@@ -192,7 +194,14 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     const leftoverStreamId = takeCurrentStream();
     if (leftoverStreamId && leftoverStreamId !== streamId) await stopStream(leftoverStreamId);
     currentStreamId = streamId;
-    detachHandler = registerDockerLogStream(streamId, handleEvent);
+    // register 会同步回放早到的 chunk/end：fast end 可能在返回前就改写状态并清空
+    // currentStreamId，此时不能再把状态覆盖回 streaming（否则页面停在收流中）。
+    const detach = registerDockerLogStream(streamId, handleEvent);
+    if (currentStreamId !== streamId) {
+      detach();
+      return;
+    }
+    detachHandler = detach;
     status.value = "streaming";
   }
 

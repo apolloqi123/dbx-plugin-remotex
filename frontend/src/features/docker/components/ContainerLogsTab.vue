@@ -6,7 +6,7 @@
 // 跟随规则（spec §3.2）：默认跟随；向上滚动距底 >24px 暂停自动滚动但继续接收；
 // 滚回距底 ≤4px 自动恢复；按钮在跟随时点一下只关自动滚动（不断流）。
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { FOLLOW_PAUSE_PX, FOLLOW_RESUME_PX, MAX_LOG_CHARS, MAX_LOG_LINES } from "../lib/dockerLogBuffer";
+import { FOLLOW_PAUSE_PX, MAX_LOG_CHARS, MAX_LOG_LINES, shouldFollow } from "../lib/dockerLogBuffer";
 import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
 
@@ -82,7 +82,7 @@ function onScroll(): void {
   if (!element) return;
   const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
   if (distance > FOLLOW_PAUSE_PX) pauseFollow();
-  else if (distance <= FOLLOW_RESUME_PX) resumeFollow();
+  else if (shouldFollow(element.scrollTop, element.clientHeight, element.scrollHeight)) resumeFollow();
 }
 
 /** tail 变更：停旧流、清空缓冲、按新 tail 重启（spec §3.2）。 */

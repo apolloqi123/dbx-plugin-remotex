@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { effectScope, nextTick } from "vue";
 import { useDockerLogStream } from "./useDockerLogStream";
-import { dispatchDockerLogEvent } from "../lib/dockerLogEvents";
+import { clearPendingDockerLogEvents, dispatchDockerLogEvent } from "../lib/dockerLogEvents";
 import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 
@@ -36,6 +36,7 @@ function createStream(options: Parameters<typeof useDockerLogStream>[0] = {}) {
 }
 
 afterEach(() => {
+  clearPendingDockerLogEvents();
   pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
   vi.unstubAllGlobals();
 });
@@ -219,6 +220,42 @@ describe("useDockerLogStream", () => {
 
     expect(stream.status.value).toBe("idle");
     expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "late-stream")).toBe(true);
+    scope.stop();
+  });
+
+  it("delivers chunk and a fast end that arrive before the start response", async () => {
+    let resolveStart: ((value: unknown) => void) | undefined;
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (method: string) => {
+        if (method === "docker/logs/start") {
+          return new Promise((resolve) => {
+            resolveStart = resolve;
+          });
+        }
+        return Promise.resolve({ stopped: true });
+      },
+    });
+    const { stream, scope } = createStream({ sessionId: () => "sess-1" });
+    const pending = stream.start("abc123def456");
+    await nextTick();
+    expect(stream.status.value).toBe("starting");
+
+    // start 尚未返回：事件没有处理器，必须先进缓冲而不是被丢弃。
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-fast", text: "fatal: no such container\n" });
+    dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-fast", exitCode: 1, error: "no such container" });
+
+    resolveStart?.({ streamId: "stream-fast" });
+    await pending;
+
+    // 回放 end 后必须停在 error（可显示横幅），不能被 register 之后的状态写回覆盖。
+    expect(stream.status.value).toBe("error");
+    expect(stream.error.value).toBe("no such container");
+    expect(stream.exitCode.value).toBe(1);
+    expect(stream.text.value).toBe("fatal: no such container");
+
+    // 结束即注销：后续迟到分片不再进入缓冲。
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-fast", text: "ghost" });
+    expect(stream.text.value).toBe("fatal: no such container");
     scope.stop();
   });
 

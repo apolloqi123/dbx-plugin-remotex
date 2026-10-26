@@ -78,7 +78,6 @@ const messages = {
       filesUploading: "Subiendo…",
       filesDownloading: "Descargando…",
       filesCancel: "Cancelar",
-      filesOverwriteTitle: "¿Sobrescribir archivo?",
       filesOverwriteConfirm: "{name} ya existe en esta carpeta. ¿Sobrescribirlo?",
       filesTooLarge: "El archivo ({size}) supera el límite de transferencia de contenedores de {limit}.",
       filesUnsupported: "Solo se pueden transferir archivos normales.",

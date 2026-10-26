@@ -78,7 +78,6 @@ const messages = {
       filesUploading: "アップロード中…",
       filesDownloading: "ダウンロード中…",
       filesCancel: "キャンセル",
-      filesOverwriteTitle: "ファイルを上書きしますか？",
       filesOverwriteConfirm: "{name} はこのフォルダーに既に存在します。上書きしますか？",
       filesTooLarge: "ファイル（{size}）がコンテナ転送の上限 {limit} を超えています。",
       filesUnsupported: "通常ファイルのみ転送できます。",

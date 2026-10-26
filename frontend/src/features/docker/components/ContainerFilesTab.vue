@@ -225,7 +225,7 @@ onUnmounted(() => transfer.dispose());
           type="button"
           class="icon-button compact docker-file-download"
           :data-download="entry.name"
-          :title="downloadTitle(entry.kind)"
+          :title="transfer.busyPath.value === entry.path ? t('docker.filesDownloading') : downloadTitle(entry.kind)"
           :aria-label="t('docker.filesDownload')"
           :disabled="entry.kind === 'dir' || !transferReady"
           @click.stop="void runDownload(entry)"

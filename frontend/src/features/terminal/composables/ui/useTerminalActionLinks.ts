@@ -113,11 +113,11 @@ function handleActionLinkActivate(match: ActionLinkMatch, event: MouseEvent) {
   terminalGet()?.focus();
 }
 
-// ---- Docker 面板「在终端打开」（M3 遗留 6）----
-// DockerPanel 挂在终端区右上浮层内，面板经 window 自定义事件把命令字符串直达
-// 这里；走与建议浮层同款的「填入输入行不回车」
-// 通道（replaceTerminalLineWith）：命令落在 shell 输入行原地，用户确认后自行回车。
-// 无终端会话时 toast 提示先连接，不静默丢弃。
+// ---- Docker 容器列表「在终端打开」----
+// 容器列表页（ContainerListPane）的右键菜单经 window 自定义事件
+// （dbx:docker-open-in-terminal）把命令字符串直达这里；走与建议浮层同款的
+// 「填入输入行不回车」通道（replaceTerminalLineWith）：命令落在 shell 输入行
+// 原地，用户确认后自行回车。无终端会话时 toast 提示先连接，不静默丢弃。
 function handleDockerOpenInTerminal(event: Event) {
   const command = (event as CustomEvent<{ command?: string }>).detail?.command ?? "";
   if (!command) return;
