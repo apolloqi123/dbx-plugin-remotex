@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { t, makeEntry, makeNode, row, mountPane, flushMicrotasks, dispatchDrag, detailsCard } from "./sftpTreePaneFixture";
+import type { SftpDetailInfo } from "../lib/actions/sftpDetails";
+import type { HostPointerSample } from "../../../shared/lib/hostPointer";
 
 afterEach(() => {
   document.body.innerHTML = "";
