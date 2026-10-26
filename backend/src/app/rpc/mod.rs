@@ -9,6 +9,7 @@ pub(super) mod agent;
 pub(super) mod automation;
 pub(super) mod connections;
 pub(super) mod docker;
+pub(super) mod docker_files;
 pub(super) mod exec;
 pub(super) mod filesystem;
 pub(super) mod forwarding;

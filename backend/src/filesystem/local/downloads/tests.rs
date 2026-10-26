@@ -68,6 +68,57 @@ fn save_local_file_rejects_relative_dir_and_empty_payload() {
 }
 
 #[test]
+fn save_local_path_copies_records_history_and_honors_conflict() {
+    /// Restores the downloads override on drop, even on panic.
+    struct DirEnvGuard {
+        previous: Option<OsString>,
+    }
+    impl Drop for DirEnvGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(DOWNLOAD_DIR_ENV, value),
+                None => std::env::remove_var(DOWNLOAD_DIR_ENV),
+            }
+        }
+    }
+
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    let downloads = tempfile::tempdir().expect("downloads");
+    let sources = tempfile::tempdir().expect("sources");
+    let _guard = DirEnvGuard {
+        previous: std::env::var_os(DOWNLOAD_DIR_ENV),
+    };
+    std::env::set_var(DOWNLOAD_DIR_ENV, downloads.path());
+
+    let source = sources.path().join("report.log");
+    std::fs::write(&source, b"first").expect("source");
+    let saved = save_local_path(data_dir.path(), "report.log", &source, None).expect("save");
+    let local_path = saved["localPath"].as_str().unwrap().to_string();
+    assert_eq!(std::fs::read(&local_path).unwrap(), b"first");
+
+    // 撞名让位（默认）。
+    let again = save_local_path(data_dir.path(), "report.log", &source, None).expect("save");
+    assert!(again["localPath"]
+        .as_str()
+        .unwrap()
+        .ends_with("report (1).log"));
+
+    // overwrite 直接覆盖同名文件。
+    std::fs::write(&source, b"second").expect("source");
+    save_local_path(data_dir.path(), "report.log", &source, Some("overwrite")).expect("save");
+    assert_eq!(std::fs::read(&local_path).unwrap(), b"second");
+
+    // 记入传输历史，local/reveal 才能定位。
+    let history = crate::features::transfer::history::load_history(data_dir.path());
+    assert!(history
+        .iter()
+        .any(|row| row["localPath"].as_str() == Some(local_path.as_str())));
+
+    // 目录不是可保存的文件。
+    assert!(save_local_path(data_dir.path(), "dir", sources.path(), None).is_err());
+}
+
+#[test]
 fn sanitize_strips_separators_and_traversal() {
     assert_eq!(sanitize_file_name("report.tar.gz"), "report.tar.gz");
     // Separators are gone, so ".."-heavy names can never traverse; the

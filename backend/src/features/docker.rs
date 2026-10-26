@@ -23,6 +23,7 @@ use crate::sessions::ssh::exec;
 
 mod action;
 mod engine;
+pub(crate) mod files;
 mod local;
 mod parse;
 mod scripts;
@@ -36,6 +37,8 @@ mod tests;
 pub use action::*;
 #[allow(unused_imports)]
 pub use engine::*;
+#[allow(unused_imports)]
+pub use files::*;
 #[allow(unused_imports)]
 pub use local::*;
 #[allow(unused_imports)]

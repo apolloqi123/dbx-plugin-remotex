@@ -262,6 +262,12 @@ impl Plugin {
                 Ok(json!({ "stopped": self.docker_streams.stop(stream_id) }))
             }
 
+            // 容器文件浏览/传输（`docker/files/*`）拆到 docker_files.rs，
+            // 保持单文件 600 行上限；分派仍在这里。
+            method if method.starts_with("docker/files/") => {
+                self.handle_docker_files(method, params)
+            }
+
             "docker/action" => {
                 let container_id = required_string(&params, "containerId")?;
                 crate::features::docker::validate_container_id(container_id)?;

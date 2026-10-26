@@ -91,6 +91,56 @@ pub fn save_local_file(
     }))
 }
 
+/// 把本机暂存文件落到下载目录（容器文件导出链路）：复用下载目录、
+/// 撞名让位/覆盖与传输历史语义，但不整体读入内存（文件复制）。
+pub fn save_local_path(
+    data_dir: &Path,
+    name: &str,
+    source: &Path,
+    conflict: Option<&str>,
+) -> Result<Value, String> {
+    let meta = std::fs::metadata(source)
+        .map_err(|error| format!("Failed to read '{}': {error}", source.display()))?;
+    if !meta.is_file() {
+        return Err("Only files can be saved".to_string());
+    }
+    let dir = downloads_base_dir(|key| std::env::var_os(key), data_dir);
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let path = final_download_path(
+        &dir,
+        &sanitize_file_name(name),
+        matches!(conflict, Some("overwrite")),
+    );
+    std::fs::copy(source, &path)
+        .map_err(|error| format!("Failed to write '{}': {error}", path.display()))?;
+    let final_name = path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| sanitize_file_name(name));
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis() as u64)
+        .unwrap_or_default();
+    crate::features::transfer::history::record_transition(
+        data_dir,
+        &serde_json::json!({
+            "taskId": format!("local-save-{}", uuid::Uuid::new_v4()),
+            "direction": "download",
+            "fileName": final_name,
+            "size": meta.len(),
+            "transferred": meta.len(),
+            "status": "completed",
+            "startedAt": now_ms,
+            "finishedAt": now_ms,
+            "localPath": path.to_string_lossy(),
+        }),
+    )?;
+    Ok(serde_json::json!({
+        "localPath": path.to_string_lossy(),
+        "name": final_name,
+    }))
+}
+
 fn env_value(lookup: &impl Fn(&str) -> Option<OsString>, key: &str) -> Option<OsString> {
     lookup(key).filter(|value| !value.to_string_lossy().trim().is_empty())
 }

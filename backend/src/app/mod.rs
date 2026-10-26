@@ -42,6 +42,9 @@ struct Plugin {
     /// Live `docker logs -f` streams (`docker/logs/start|stop`): bounded at
     /// four per sidecar, reaped by TTL, emitting `docker/logs/chunk|end`.
     docker_streams: Arc<crate::features::docker::DockerStreams>,
+    /// 本机分片上传表（`docker/files/upload/*`）：≤4 活跃、单文件
+    /// 512 MiB、30 分钟过期；finished 条目保留到 cleanup。
+    docker_uploads: std::sync::Mutex<crate::features::docker::files::UploadRegistry>,
     connection_import: crate::features::import::ImportStream,
     /// 非 SSH 连接（telnet/vnc/rdp）的已存凭据暂存：connection/connect 生命周期
     /// 存、*\/start 合并、connection/disconnect 清（见 non_ssh_credentials 模块）。

@@ -133,7 +133,8 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `serial/ports/list` | 本机串口清单（连接弹窗端口下拉数据源）：`{ports: [path], portDetails: [{path, description}]}`，按路径排序；枚举失败回落空清单，USB/PCI/Bluetooth 描述尽力标注 |
 | `serial/start`、`serial/write`、`serial/close` | 串口会话生命周期（回放见「串口终端回放」、写回压见「写序列化与回压」节）：`start {workbenchId, portName, baudRate(50–4000000，越界报错不静默钳制), dataBits?, parity?, stopBits?, flowControl?(缺省 none), backspaceMode?}` → `{sessionId, port, baudRate, binaryInput: true}`（binaryInput 为旧前端 JSON 兼容探测位），线路参数校验失败即 start 报错（绝不静默降级），开端口为阻塞 syscall 走 spawn_blocking；`write {sessionId, dataBase64(≤64KiB)}` → `{success: true}`——JSON 兜底车道（主路径 `serial/terminal/in` 二进制通道），Backspace 改写后进专用写线程队列，超限/队满整包丢弃并发 `serial/input/dropped`（不报错）、会话死亡报错；`close {sessionId}` → `{success: true}`，摘除会话并唤醒写线程退出 |
 | `local/wallpaper/get`、`local/wallpaper/set`、`local/wallpaper/clear` | 工作台背景图（桌面形态）：`get` 返回 `{dataUrl: "data:image/<png|jpeg|webp>;base64,…"}`，无背景时返回 `{}`；`set` 接受 `{imageBase64}`，≤8 MiB 且仅 png/jpeg/webp 魔数，原子落盘 `<plugin_data_dir>/wallpaper`，返回与 `get` 相同的 data URL 载荷；`clear` 幂等删除，返回 `{}` |
-| `docker/list`、`docker/logs`、`docker/action` | Docker 管理面板（参数 `target`/`cli`/`socket`/`host` 与全部语义见「Docker 管理面板」节）：list 探针+七列容器清单，`needsSudo` 且配置 Quick Sudo 时自动提权重采（只读连接/白名单拒绝一律退回原 payload 不报错）；logs `tail` 钳 10–2000（缺省 200）、容器消失降级 `container: null`；action 动词白名单 `start/stop/restart/kill/rm`、`containerId` 限 12–64 位小写十六进制、执行前写审计、kill/rm 走确认门、只读连接直接拒绝 |
+| `docker/list`、`docker/logs`、`docker/logs/start`、`docker/logs/stop`、`docker/action` | Docker 管理面板（参数 `target`/`cli`/`socket`/`host` 与全部语义见「Docker 管理面板」节）：list 探针+七列容器清单，`needsSudo` 且配置 Quick Sudo 时自动提权重采（只读连接/白名单拒绝一律退回原 payload 不报错）；logs `tail` 钳 10–2000（缺省 200）、容器消失降级 `container: null`；logs/start 开真流式跟随（事件 `docker/logs/chunk` / `docker/logs/end`，注册表上限 4、TTL 30 分钟），logs/stop 幂等；action 动词白名单 `start/stop/restart/kill/rm`、`containerId` 限 12–64 位小写十六进制、执行前写审计、kill/rm 走确认门、只读连接直接拒绝 |
+| `docker/files/list`、`stat`、`export`、`prepareUpload`、`import`、`cleanup`、`saveLocal`、`upload/begin`、`upload/chunk`、`upload/finish`、`upload/cancel` | 容器文件浏览与传输（见「Docker 管理面板 · 容器文件」）：目标/引擎参数同 docker 家族；路径绝对化并折叠 `.`/`..`；导出/导入走本功能生成的暂存路径（远端 `/tmp/dbx-sshx.<token>`、本机 `<temp>/dbx-sshx-<uuid>`）；上传/导入要求可写连接并写审计；本机上传按 256 KiB 顺序分片、单文件 512 MiB、并发 4、30 分钟过期 |
 | `telnet/list`、`vnc/list`、`rdp/list`、`serial/list` | 活跃非 SSH 会话清单（均含 `sessionId`、`workbenchId`、逻辑端点和创建时间；Telnet/VNC saved connection 会额外带 `connectionId`、`runtimeHost`、`runtimePort`）。工作台重建只按相同 `workbenchId` 回附，绝不按连接抢占另一标签页会话。 |
 | `telnet/replay`、`serial/replay`、`vnc/replay`、`rdp/replay` | Webview 重建回附的输出恢复：Telnet/Serial 重发序号制终端帧；VNC 重发当前完整 framebuffer；RDP 重发一张有明确内存预算的完整合成 framebuffer，绝不重放不能独立恢复画面的增量 patch 序列。 |
 | `telnet/start`、`telnet/write`、`telnet/resize`、`telnet/close` | Telnet 会话生命周期（明文协议，逻辑/拨号端点分工见「生命周期与状态隔离」节，二进制通道见「二进制通道」节）：`start {workbenchId, host, port?(23), connectionId?, runtimeHost?, runtimePort?, enterMode?("crlf"\|"cr"\|"lf"), backspaceMode?("del"\|"ctrl_h"), cols?(120), rows?(32), autoLogin?}` → `{sessionId, host, port}`——实际拨号只用 runtime 端点（缺省回落逻辑端点），`autoLogin` 为 expect `rules`（tssh/JSON 文法，同 `triggers/validate`）或 NyaTerm 式 `declarative`（提示词正则+凭据+成功/失败判定+重试预算）二选一，配置非法即 start 报错、凭据 Debug 全程脱敏。请求未带 `autoLogin` 且 `connectionId` 命中连接表单暂存密码（`connection/connect` 生命周期投递的 `connection.password`，见「非 SSH 连接凭据暂存」）时，sidecar 以内置默认提示词正则合成 `declarative` 自动登录——表单存了密码即自动登录的用户意图；弹窗路径显式携带 `autoLogin` 时以请求为准；`write {sessionId, dataBase64(≤64KiB)}` → `{success: true}`——JSON 兜底（主路径 `telnet/terminal/in`），死会话报 `Telnet session was not found or expired`；`resize {sessionId, cols, rows}` 钳 1..=65535 后经泵发 NAWS；`close {sessionId}` → `{success: true}` |
@@ -654,7 +655,7 @@ Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 
 ## Docker 管理面板
 
-Docker 家族（`docker/list` / `docker/logs` / `docker/action`）通过固定采集脚本 + 纯解析器驱动远端或本机容器 CLI，不接 daemon API、零新增依赖。三个方法都接受可选 `target` 与引擎/端点参数（`cli` / `socket` / `host`，兼容 Podman 与自定义 daemon）：
+Docker 家族（`docker/list` / `docker/logs` / `docker/logs/start|stop` / `docker/action` / `docker/files/*`）通过固定采集脚本 + 纯解析器驱动远端或本机容器 CLI，不接 daemon API、零新增依赖。所有方法都接受可选 `target` 与引擎/端点参数（`cli` / `socket` / `host`，兼容 Podman 与自定义 daemon）：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -669,7 +670,33 @@ Docker 家族（`docker/list` / `docker/logs` / `docker/action`）通过固定�
 - **Windows 远端兜底**：输出不含 `DBXDOCKER_PROBE` 标记（cmd/PowerShell 跑不了 heredoc 的唯一签名）时，自动多花一个往返改用 cmd 版采集器（`where /q <cli>` + `<cli> info` + `<cli> ps`，CRLF 由解析端逐字段吸收；配置端点时以 `set` 行注入）；POSIX 主机恒有标记，不会触发。
 - **Quick Sudo 提权**：探针为 found-but-denied（`needsSudo: true`）且连接配置了 Quick Sudo 时，list 自动用 `sudo -S -p '' sh -c '<脚本体>'` 提权重采（密码走 stdin、脚本体走 argv）；logs 在输出命中 daemon 权限签名时同样提权重采。只读连接、sudoers 白名单拒绝、提权失败一律退回原 payload 保留提示，只读调用不报错。
 - **docker/logs**：`{sessionId|target, containerId, tail?, cli?, socket?, host?}`，返回 `{logs, container?}`；`tail` 钳制到 [10, 2000]（默认 200）。inspect 失败（容器消失）降级 `container: null`。
+- **docker/logs/start**：`{sessionId|target, containerId, tail?, sudo?, cli?, socket?, host?}` → `{streamId}`。SSH 面执行 `docker logs -f --tail <钳制值> <id>` 并把输出分片推进事件；本机面子进程直呼 `logs -f`（无 shell，端点走 `DOCKER_HOST`/`CONTAINER_HOST`）。`sudo:true` 仅 SSH 且要求可写连接 + 连接已启用 Quick Sudo（开流前拒绝，避免拿到 streamId 后才报权限错）；本机显式拒绝 sudo。事件：`docker/logs/chunk {streamId, data}`（UTF-8 边界与批量合并由 sidecar 保证）与 `docker/logs/end {streamId, exitCode?, error?, needsSudo?}`；自然结束给 `exitCode`，取消统一 `error:"cancelled"`，TTL 到期 `error:"stream timed out"`，daemon 权限签名带 `needsSudo:true`。注册表上限 4 条、单条 TTL 30 分钟；`docker/logs/stop {streamId}` → `{stopped}`，未知/已结束 id 幂等返回 `stopped:false`。
 - **docker/action**：`{sessionId|target, containerId, action, cli?, socket?, host?}`，动词白名单 `start/stop/restart/kill/rm`；`containerId` 必须 12–64 位小写十六进制（容器名一律拒绝）；执行前写审计（意图行 + 失败行，审计文本为 `<cli> <动词> <id>` 短形态，端点 export 只在执行文本里）。plain 失败且命中 daemon 权限签名才回落 Quick Sudo 管线（重放同一条含端点 export 的执行文本；其余失败重试可能把半执行动作应用两次）；本机面无提权管线，daemon 拒绝返回指引文案。kill/rm 由前端/MCP 确认门强制二次确认，只读连接直接拒绝。
+
+### 容器文件（`docker/files/*`）
+
+浏览与传输共用 docker 家族的会话/本机目标与引擎参数；容器路径必须是绝对路径，拒绝 NUL/控制字符，折叠 `.`/`..`（根不越界），上限 4096 字符。容器 id 同 action 规则（12–64 位小写十六进制）。
+
+| 方法 | 关键参数 | 响应 |
+| --- | --- | --- |
+| `docker/files/list` | `containerId`, `path` | `{path, parent, entries:[{name,path,kind:"dir"\|"file"}]}`；目录优先、名称升序 |
+| `docker/files/stat` | `containerId`, `path` | `{kind,size,mtime,mode}`；容器缺 `stat` 时为 `{unavailable:true}` |
+| `docker/files/export` | `containerId`, `path` | `{stagingPath,size,name,location:"remote"\|"local"}` |
+| `docker/files/prepareUpload` | `name`（仅 SSH） | `{stagingPath,name}` |
+| `docker/files/import` | `stagingPath`, `destPath` | `{path}` |
+| `docker/files/cleanup` | `stagingPath` | `{removed}` |
+| `docker/files/saveLocal` | `stagingPath`, `name`, `conflict?`（仅本机） | `{localPath,name}` |
+| `docker/files/upload/begin` | `name`（仅本机） | `{uploadId,maxBytes}` |
+| `docker/files/upload/chunk` | `uploadId`, `offset`, `dataBase64` | `{received}` |
+| `docker/files/upload/finish` | `uploadId` | `{stagingPath,size}` |
+| `docker/files/upload/cancel` | `uploadId` | `{canceled}` |
+
+- **list**：SSH 执行 `docker exec <id> ls -1ap -- <shell-quoted path>`，本机 argv `exec <id> ls -1ap -- <path>`；逐行去 `\r`、丢弃空行与 `.`/`..`，尾部 `/` 判定目录。容器缺 `ls` 时错误文本保留 `ls` 与 `executable file not found`，前端据此显示“容器内无 ls，无法浏览”并禁用上传/下载入口。
+- **stat**：`stat -c '%F|%s|%Y|%a' -- <path>`；`stat` 缺失返回 `{unavailable:true}`（UI 显示“—”），不影响下载。
+- **export**：先 `stat` 且要求普通文件，目录直接拒绝（`目录暂不支持下载`）。SSH 先 `umask 077 && mktemp -d /tmp/dbx-sshx.XXXXXX`，再 `docker cp <id>:<path> <暂存目录>/<安全名>`；本机在系统临时目录建 `dbx-sshx-<uuid>` 后 argv `docker cp`，返回 `location:"local"`。安全名取容器路径 basename，`/ \\ NUL CR LF` 替换为 `_`，空名回落 `download`。
+- **prepareUpload / import / cleanup**：暂存路径只接受本功能生成的前缀（远端 `/tmp/dbx-sshx.<token>/…`，本机规范化后位于系统临时目录且首段为 `dbx-sshx-*`；拒绝 `.`/`..` 与更深嵌套）。`import` 的 `destPath` 以 `/` 结尾时视为目录并保留暂存文件名，否则视为完整目标路径；SSH 走 `docker cp <staging> <id>:<dest>`，本机 argv 同形。上传/导入要求可写连接（`ensure_writable`），导入前写一条审计（`tool:"docker/files/import"`、containerId、destPath、size，不含文件内容）。`cleanup` 仅删除校验通过的暂存路径（远端 `rm -f --` + `rmdir --`，目录用 `rm -rf --`；本机 `remove_file` + `remove_dir`），失败只返回 `removed:false`。
+- **saveLocal**：仅本机目标；校验本机暂存前缀后复制到下载目录（沿用撞名让位/`conflict:"overwrite"` 覆盖与传输历史），成功后清理暂存目录。
+- **upload/\***：仅本机目标（SSH 用 `prepareUpload` + 现有 SFTP 队列）。`begin` 建 `<temp>/dbx-sshx-upload-<uuid>/<安全名>`，返回 `uploadId`；`chunk` 的 `offset` 必须等于 `received`，单分片 ≤256 KiB（base64 解码后），累计 ≤512 MiB；`finish` 关闭文件返回暂存路径（条目保留供 import 后 cleanup）；`cancel` 删除临时目录。每 sidecar 最多 4 个活跃上传，30 分钟未活动自动过期清理。超过上限返回可读错误，前端在上传/下载开始前按 512 MiB 上限提示。
 
 MCP 面同名工具已随 #203 瘦身移出——容器巡检/生命周期走 `ssh_exec` 执行 `docker ps` 等命令（`docker ps` 在只读白名单内，需要 daemon 权限时由 Quick Sudo/`ssh_exec_sudo` 提权）；工作台 Docker 面板继续走上述 sidecar 方法族。
 
