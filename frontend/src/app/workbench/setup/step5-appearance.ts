@@ -15,12 +15,12 @@ import { useTerminalMouse } from "../../../features/terminal/composables/ui/useT
 import { useTerminalTooltip } from "../../../features/terminal/composables/ui/useTerminalTooltip";
 import { useTrzsz } from "../../../features/terminal/composables/ui/useTrzsz";
 import { useZmodem } from "../../../features/terminal/composables/ui/useZmodem";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
 import type { InstallWorkbenchPrefsResult } from "./step3-prefs";
 import type { InstallWorkbenchSessionIoResult } from "./step4-sessions";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchAppearance(deps: Deps) {
   const {
@@ -39,6 +39,7 @@ export function installWorkbenchAppearance(deps: Deps) {
   terminalSyncOutput, terminalTransferBusy, terminalWriteThrottle, writeTerminalOutput, zmodemInput,
   } = deps;
   const { late } = deps;
+  const M = deps.state;
 
   const { tooltip, tooltipBubble, hideTooltip, onTooltipOver, onTooltipOut, onTooltipFocusIn, onTooltipFocusOut } = useTerminalTooltip();
 

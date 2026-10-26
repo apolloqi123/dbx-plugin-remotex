@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 // SftpTreePane 组件测试：文件夹/文件单击语义、caret 阻断、双击打开、右键、
 // 键盘（Enter/Space/方向键/roving focus）、改名提交/取消、选中/当前态与空态；
 // 以及 Info 详情卡（250ms 悬停/聚焦、懒加载缓存）与拖放目标（高亮、1s 悬停

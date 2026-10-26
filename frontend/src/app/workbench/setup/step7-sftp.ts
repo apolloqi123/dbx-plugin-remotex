@@ -18,7 +18,7 @@ import { useSftpDownload } from "../../../features/sftp/composables/transfer/use
 import { useSftpDropUpload } from "../../../features/sftp/composables/transfer/useSftpDropUpload";
 import { useSftpFolderActions } from "../../../features/sftp/composables/actions/useSftpFolderActions";
 import { useSftpPathHistory } from "../../../features/sftp/composables/listing/useSftpPathHistory";
-import { useSftpPreview } from "../../../features/sftp/composables/editor/useSftpPreview";
+import { useFilePreview } from "../../../features/sftp/composables/editor/useFilePreview";
 import { useSftpSelectionClipboard } from "../../../features/sftp/composables/actions/useSftpSelectionClipboard";
 import { useSplitDivider } from "../composables/useSplitDivider";
 import { useSymlink } from "../../../features/sftp/composables/actions/useSymlink";
@@ -124,15 +124,14 @@ export function installWorkbenchSftp(deps: Deps) {
     persistState,
   });
 
-  // 文件预览与保存：收口在 composables/editor/useSftpPreview（预览状态机本体在
-  // useFilePreview，这里只补「当前预览条目」锚点和入口）。
+  // 文件预览与保存：状态机收口在 composables/editor/useFilePreview。
   const {
     previewOpen, previewTitle, previewText, previewLoading, previewPath, previewSize,
     previewEditable, previewDraft, previewSaving, previewMode, previewImageUrl,
     previewImageZoomed, previewTruncated, previewDirty, previewEditableAllowed, jsonPreviewState,
     openEntry, openImagePreview, closePreview, beginPreviewEdit, cancelPreviewEdit, savePreview,
     MAX_INLINE_PREVIEW_BYTES,
-  } = useSftpPreview({
+  } = useFilePreview({
     t, showNotice, showError, session, sudoMode, canWrite,
     loadDirectory: (path?: string) => loadDirectory(path),
     downloadEntry: (entry, forceSudo?: boolean) => downloadEntry(entry, forceSudo),

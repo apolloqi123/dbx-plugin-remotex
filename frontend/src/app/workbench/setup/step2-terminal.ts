@@ -13,9 +13,9 @@ import { useTerminalInstance } from "../../../features/terminal/composables/sess
 import { useTerminalMenus } from "../../../features/terminal/composables/ui/useTerminalMenus";
 import { useTransferQueue } from "../../../features/transfers/composables/useTransferQueue";
 import type { SftpEntry } from "../types";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
-type Deps = InstallWorkbenchCoreResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchTerminal(deps: Deps) {
   const {
@@ -28,6 +28,7 @@ export function installWorkbenchTerminal(deps: Deps) {
   terminalFontOverride, terminalFontSize, terminalHost, terminalState, visibleColumns,
   } = deps;
   const { late } = deps;
+  const M = deps.state;
 
   const {
     sendTerminalBytes,

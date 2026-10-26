@@ -14,11 +14,12 @@ import { useTerminalSearch } from "../../../features/terminal/composables/ui/use
 import { useWorkbenchContext } from "../state/useWorkbenchContext";
 import { useWorkbenchViewPrefs } from "../composables/useWorkbenchViewPrefs";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import { setupState as M } from "./setupState";
-type Deps = { late: Record<string, any> };
+import type { SetupState } from "./setupState";
+type Deps = { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchCore(deps: Deps) {
   const { late } = deps;
+  const M = deps.state;
 
   // 粘贴防护：内容含换行或达到该字符数时先确认（对齐 tiny-rdm TerminalPane 阈值）。
   const PASTE_CONFIRM_CHAR_THRESHOLD = 200;

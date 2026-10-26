@@ -7,7 +7,7 @@ import { type WorkbenchToolbarActions } from "../../lib/workbenchToolbarActions"
 import { useHostDragBridge } from "../composables/useHostDragBridge";
 import { usePromptHints } from "../../../features/terminal/composables/ui/usePromptHints";
 import { useWorkbenchBootstrap } from "../composables/useWorkbenchBootstrap";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
 import type { InstallWorkbenchPrefsResult } from "./step3-prefs";
@@ -16,7 +16,7 @@ import type { InstallWorkbenchAppearanceResult } from "./step5-appearance";
 import type { InstallWorkbenchConnectionsResult } from "./step6-connections";
 import type { InstallWorkbenchSftpResult } from "./step7-sftp";
 import type { InstallWorkbenchShellResult } from "./step8-shell";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & InstallWorkbenchConnectionsResult & InstallWorkbenchSftpResult & InstallWorkbenchShellResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & InstallWorkbenchConnectionsResult & InstallWorkbenchSftpResult & InstallWorkbenchShellResult & { state: SetupState };
 
 export function installWorkbenchBootstrap(deps: Deps) {
   const {
@@ -58,7 +58,7 @@ export function installWorkbenchBootstrap(deps: Deps) {
   toggleSessionMenu, toggleSftpAutoConnect, toggleSftpPane, toggleSftpPaneDefaultOpen, toggleTransferPanel, toggleTransferPause,
   trackStableFocus, uploadAckWaiters, visibleColumns, workbenchId, writeWorkbenchState,
   } = deps;
-  const { late } = deps;
+  const M = deps.state;
 
   const hostDrag = useHostDragBridge({ dragActive, sftpDragDropTarget, sftpTreePane });
 

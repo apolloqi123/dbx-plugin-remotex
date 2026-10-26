@@ -20,10 +20,10 @@ import { useWallpaper } from "../../../features/terminal/composables/ui/useWallp
 import { useWorkbenchPrefs } from "../composables/useWorkbenchPrefs";
 import { useWorkbenchToolbar } from "../composables/useWorkbenchToolbar";
 import type { DiskUsage } from "../types";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchPrefs(deps: Deps) {
   const {
@@ -40,6 +40,7 @@ export function installWorkbenchPrefs(deps: Deps) {
   transferDownloadLimitState, transferDuplicateState, transferMaxActiveState, webglRecoveryOptions, webglRenderer, workbenchId,
   } = deps;
   const { late } = deps;
+  const M = deps.state;
 
   const {
     suggestionOpen,

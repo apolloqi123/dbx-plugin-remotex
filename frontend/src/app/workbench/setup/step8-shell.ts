@@ -19,7 +19,7 @@ import type { InstallWorkbenchSessionIoResult } from "./step4-sessions";
 import type { InstallWorkbenchAppearanceResult } from "./step5-appearance";
 import type { InstallWorkbenchConnectionsResult } from "./step6-connections";
 import type { InstallWorkbenchSftpResult } from "./step7-sftp";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & InstallWorkbenchConnectionsResult & InstallWorkbenchSftpResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & InstallWorkbenchConnectionsResult & InstallWorkbenchSftpResult;
 
 export function installWorkbenchShell(deps: Deps) {
   const {
@@ -47,7 +47,6 @@ export function installWorkbenchShell(deps: Deps) {
   transferHistoryMenu, transferPanelOpen, updateTransfer, uploadAckWaiters, uploadDuplicatePrompt, vncDialogOpen,
   vncError, vncSession, vncState, watchModifiedQueue,
   } = deps;
-  const { late } = deps;
 
   const {
     batchBarOpen,
@@ -389,7 +388,6 @@ export function installWorkbenchShell(deps: Deps) {
     rdpPasteOpen.value = false;
     rdpResolutionOpen.value = false;
     batchQuickOpen.value = false;
-    batchTargetsOpen.value = false;
   }
 
   // 弹层焦点管理与 Esc 关闭链：触发元素栈/幽灵点击守卫/焦点表/逐层退出收口在

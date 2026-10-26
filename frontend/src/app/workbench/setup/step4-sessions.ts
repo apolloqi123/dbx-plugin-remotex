@@ -20,11 +20,11 @@ import { useVncSession } from "../../../features/remote-desktop/composables/useV
 import { useVncWorkbench } from "../../../features/remote-desktop/composables/useVncWorkbench";
 import { useWorkbenchPersistence } from "../composables/useWorkbenchPersistence";
 import { workbenchMessage } from "../../../shared/lib/i18n";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
 import type { InstallWorkbenchPrefsResult } from "./step3-prefs";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchSessionIo(deps: Deps) {
   const {
@@ -45,6 +45,7 @@ export function installWorkbenchSessionIo(deps: Deps) {
   terminalState, trackPendingInput, visibleColumns, workbenchId,
   } = deps;
   const { late } = deps;
+  const M = deps.state;
 
   const {
     outputGate,

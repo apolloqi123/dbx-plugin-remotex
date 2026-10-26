@@ -16,13 +16,13 @@ import { useTransferHistory } from "../../../features/transfers/composables/useT
 import { useWorkbenchSpawnTabs } from "../composables/useWorkbenchSpawnTabs";
 import { watch } from "vue";
 import { workbenchCloseTargets } from "../../lib/workbenchCloseSessions";
-import { setupState as M } from "./setupState";
+import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
 import type { InstallWorkbenchPrefsResult } from "./step3-prefs";
 import type { InstallWorkbenchSessionIoResult } from "./step4-sessions";
 import type { InstallWorkbenchAppearanceResult } from "./step5-appearance";
-type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & { late: Record<string, any> };
+type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & { late: Record<string, any>; state: SetupState };
 
 export function installWorkbenchConnections(deps: Deps) {
   const {
@@ -40,6 +40,7 @@ export function installWorkbenchConnections(deps: Deps) {
   vncSession, workbenchId, writeWorkbenchState,
   } = deps;
   const { late } = deps;
+  const M = deps.state;
 
   const {
     openSession,

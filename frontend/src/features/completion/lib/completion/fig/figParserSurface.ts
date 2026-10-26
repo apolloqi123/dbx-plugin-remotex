@@ -6,7 +6,6 @@
 
 // @ts-expect-error — vendored parser 是无类型 JS 产物（见 vendor README / NOTICE）
 import * as parserModule from "../../../../../../vendor/autocomplete-engine/parser.js";
-import { isFigCallableValue } from "./figManifestWire";
 
 /** 上游 TokenType（parseArguments.ts）。 */
 export const TokenType = {
@@ -125,8 +124,4 @@ export interface ParserEngineApi {
 }
 
 export const engine = parserModule as unknown as ParserEngineApi;
-
-// ---------------------------------------------------------------------------
-// spec 注册表：manifest（主线程静态语料 / worker init 数据面）替代上游 fs/CDN loadSpec
-// ---------------------------------------------------------------------------
 

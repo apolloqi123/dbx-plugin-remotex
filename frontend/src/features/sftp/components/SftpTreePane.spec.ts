@@ -2,7 +2,7 @@
 // SftpTreePane 组件测试：行交互、键盘、改名、选中态与目录跟随滚动。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
-import { t, makeEntry, makeNode, row, mountPane, flushMicrotasks, dispatchDrag, detailsCard } from "./sftpTreePaneFixture";
+import { t, makeEntry, makeNode, row, mountPane } from "./sftpTreePaneFixture";
 
 afterEach(() => {
   document.body.innerHTML = "";

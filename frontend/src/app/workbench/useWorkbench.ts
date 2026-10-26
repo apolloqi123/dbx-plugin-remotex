@@ -29,10 +29,14 @@ import { useTerminalWorkbench } from "./useTerminalWorkbench";
 import { useSessionWorkbench } from "./useSessionWorkbench";
 import { useSftpWorkbench } from "./useSftpWorkbench";
 import { useShellWorkbench } from "./useShellWorkbench";
+import { createSetupState } from "./setup/setupState";
 
 export type WorkbenchApi = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & InstallWorkbenchPrefsResult & InstallWorkbenchSessionIoResult & InstallWorkbenchAppearanceResult & InstallWorkbenchConnectionsResult & InstallWorkbenchSftpResult & InstallWorkbenchShellResult & InstallWorkbenchBootstrapResult;
 
 export function useWorkbench() {
+  // Per-workbench imperative bookkeeping shared by the setup steps below.
+  const state = createSetupState();
+
   // Late-binding store: only read after every step has run (all setup-time sinks
   // of these getters are closures the composables invoke later). Reading a key
   // before its step installs it is a wiring bug: fail loudly instead of letting
@@ -55,27 +59,27 @@ export function useWorkbench() {
     return view;
   };
 
-  const step1 = installWorkbenchCore({ late: late(["commandMarker", "commandRunning", "completionOpen", "dismissPromptHints", "dropUploadPathInputEl", "historyPanelOpen", "isLocalMode", "localShellPref", "localShells", "pathBarInputEl", "quickSelectOpen", "readTerminalSuggestionAnchor", "replaceTerminalLineWith", "scheduleFit", "searchAddon", "sniffTerminalShell", "suggestionOpen", "suggestionViewport", "t", "terminalMenuOpen", "terminalTransferBusy"]) });
+  const step1 = installWorkbenchCore({ state, late: late(["commandMarker", "commandRunning", "completionOpen", "dismissPromptHints", "dropUploadPathInputEl", "historyPanelOpen", "isLocalMode", "localShellPref", "localShells", "pathBarInputEl", "quickSelectOpen", "readTerminalSuggestionAnchor", "replaceTerminalLineWith", "scheduleFit", "searchAddon", "sniffTerminalShell", "suggestionOpen", "suggestionViewport", "t", "terminalMenuOpen", "terminalTransferBusy"]) });
   Object.assign(values, step1);
   const api1 = { ...step1 };
 
-  const step2 = installWorkbenchTerminal({ ...api1, late: late(["actionLinksEnabled", "activePaneCwd", "attachActionLinks", "attachGutterListeners", "attachHighlightRender", "batchQuickOpen", "clearRowSelection", "clearSftpSearch", "clipboardDeps", "closeMetrics", "closeToolbarPopovers", "commandMarker", "completionController", "connectionInfoOpen", "copyTerminalSelection", "copyTextToClipboard", "directoryParser", "dragActive", "feedTrzszTerminalInput", "handleEditorRename", "handleTerminalBell", "handleTerminalKey", "handleTerminalMouseDown", "handleTerminalMouseUp", "handleTerminalWheel", "hideGhostSuggestion", "highlightEnabled", "hostTerminalFontFamily", "hydrateLinkTargets", "interceptTerminalPaste", "isGutterActive", "isLocalMode", "isTelnetMode", "linkTargets", "localSession", "localUiMode", "markLocalExited", "measureLatency", "metrics", "openEditorTab", "openTerminalLink", "panelPaletteOpen", "pasteTerminal", "pathHistoryOpen", "persistState", "promptHintsLineEmpty", "rdpPasteOpen", "rdpResolutionOpen", "reconnectPending", "refreshConnectionAuthMethod", "refreshDiskUsage", "refreshGhostAfterInput", "refreshMetrics", "refreshResumableUploads", "refreshSftpAfterUpload", "refreshSuggestionsAfterInput", "refreshTransferHistory", "registerOscColorQueryHandlers", "rememberPathHistory", "resolveUploadDuplicateName", "scheduleReconnect", "selectFile", "serialBinaryInput", "serialSession", "serialUploadBusy", "setTrzszTerminalColumns", "sftpFiltersActive", "syncGhostAnchorOnSettle", "syncSuggestionAnchorsOnSettle", "t", "telnetSession", "terminalTheme", "terminalTransferBusy", "terminalTransportWatch", "trzszBusy", "wallpaperActive", "writeU64", "zmodemBusy"]) });
+  const step2 = installWorkbenchTerminal({ state, ...api1, late: late(["actionLinksEnabled", "activePaneCwd", "attachActionLinks", "attachGutterListeners", "attachHighlightRender", "batchQuickOpen", "clearRowSelection", "clearSftpSearch", "clipboardDeps", "closeMetrics", "closeToolbarPopovers", "commandMarker", "completionController", "connectionInfoOpen", "copyTerminalSelection", "copyTextToClipboard", "directoryParser", "dragActive", "feedTrzszTerminalInput", "handleEditorRename", "handleTerminalBell", "handleTerminalKey", "handleTerminalMouseDown", "handleTerminalMouseUp", "handleTerminalWheel", "hideGhostSuggestion", "highlightEnabled", "hostTerminalFontFamily", "hydrateLinkTargets", "interceptTerminalPaste", "isGutterActive", "isLocalMode", "isTelnetMode", "linkTargets", "localSession", "localUiMode", "markLocalExited", "measureLatency", "metrics", "openEditorTab", "openTerminalLink", "panelPaletteOpen", "pasteTerminal", "pathHistoryOpen", "persistState", "promptHintsLineEmpty", "rdpPasteOpen", "rdpResolutionOpen", "reconnectPending", "refreshConnectionAuthMethod", "refreshDiskUsage", "refreshGhostAfterInput", "refreshMetrics", "refreshResumableUploads", "refreshSftpAfterUpload", "refreshSuggestionsAfterInput", "refreshTransferHistory", "registerOscColorQueryHandlers", "rememberPathHistory", "resolveUploadDuplicateName", "scheduleReconnect", "selectFile", "serialBinaryInput", "serialSession", "serialUploadBusy", "setTrzszTerminalColumns", "sftpFiltersActive", "syncGhostAnchorOnSettle", "syncSuggestionAnchorsOnSettle", "t", "telnetSession", "terminalTheme", "terminalTransferBusy", "terminalTransportWatch", "trzszBusy", "wallpaperActive", "writeU64", "zmodemBusy"]) });
   Object.assign(values, step2);
   const api2 = { ...api1, ...step2 };
 
-  const step3 = installWorkbenchPrefs({ ...api2, late: late(["actionLinksSettings", "batchBarOpen", "closeRdpSession", "closeRightPanel", "closeSession", "closeVncSession", "ctxSearchEnginesText", "dismissPromptHints", "ghostEnabled", "gutterSettings", "hideGhostSuggestion", "interactivePromptGatePending", "isVncMode", "localLastSequence", "localPendingFrames", "localReplayNoProgress", "persistState", "persistTerminalFeaturePrefs", "promptHintsLineEmpty", "quickSelectOpen", "reconnectPending", "requestLocalReplay", "resetCommandMarker", "sendConfirmedPaste", "serialLastSequence", "serialPendingFrames", "serialUnknownStreamFrames", "t", "telnetLastSequence", "telnetPendingFrames", "telnetReplayNoProgress", "terminalTransferBusy", "updateTerminalAppearance"]) });
+  const step3 = installWorkbenchPrefs({ state, ...api2, late: late(["actionLinksSettings", "batchBarOpen", "closeRdpSession", "closeRightPanel", "closeSession", "closeVncSession", "ctxSearchEnginesText", "dismissPromptHints", "ghostEnabled", "gutterSettings", "hideGhostSuggestion", "interactivePromptGatePending", "isVncMode", "localLastSequence", "localPendingFrames", "localReplayNoProgress", "persistState", "persistTerminalFeaturePrefs", "promptHintsLineEmpty", "quickSelectOpen", "reconnectPending", "requestLocalReplay", "resetCommandMarker", "sendConfirmedPaste", "serialLastSequence", "serialPendingFrames", "serialUnknownStreamFrames", "t", "telnetLastSequence", "telnetPendingFrames", "telnetReplayNoProgress", "terminalTransferBusy", "updateTerminalAppearance"]) });
   Object.assign(values, step3);
   const api3 = { ...api2, ...step3 };
 
-  const step4 = installWorkbenchSessionIo({ ...api3, late: late(["actionLinksEnabled", "batchBarOpen", "closeRightPanel", "commandResult", "connectionAuthMethod", "consumeFrameViaZmodem", "drainLocalTerminalFrames", "drainSerialFrames", "drainTelnetFrames", "ensureTrzszFilter", "handleTrzszAnnounce", "hideGhostSuggestion", "hostTerminalFontFamily", "localLastSequence", "localPendingFrames", "markTerminalOutputActive", "reconnectPending", "rescanHighlightViewport", "resetGhostSuggestion", "resetGutterTimestamps", "resetPromptHintsQuiet", "scheduleActionLinkScan", "scheduleGutterRecompute", "scheduleReconnect", "serialLastSequence", "serialPendingFrames", "serialUnknownStreamFrames", "stampGutterWrittenRows", "syncGhostAnchorOnSettle", "telnetLastSequence", "telnetPendingFrames", "terminalTransportWatch", "trzszBusy", "zmodemBusy"]) });
+  const step4 = installWorkbenchSessionIo({ state, ...api3, late: late(["actionLinksEnabled", "batchBarOpen", "closeRightPanel", "commandResult", "connectionAuthMethod", "consumeFrameViaZmodem", "drainLocalTerminalFrames", "drainSerialFrames", "drainTelnetFrames", "ensureTrzszFilter", "handleTrzszAnnounce", "hideGhostSuggestion", "hostTerminalFontFamily", "localLastSequence", "localPendingFrames", "markTerminalOutputActive", "reconnectPending", "rescanHighlightViewport", "resetGhostSuggestion", "resetGutterTimestamps", "resetPromptHintsQuiet", "scheduleActionLinkScan", "scheduleGutterRecompute", "scheduleReconnect", "serialLastSequence", "serialPendingFrames", "serialUnknownStreamFrames", "stampGutterWrittenRows", "syncGhostAnchorOnSettle", "telnetLastSequence", "telnetPendingFrames", "terminalTransportWatch", "trzszBusy", "zmodemBusy"]) });
   Object.assign(values, step4);
   const api4 = { ...api3, ...step4 };
 
-  const step5 = installWorkbenchAppearance({ ...api4, late: late(["dismissPromptHints", "interactivePromptGatePending", "probeLocalCapabilities", "promptHintsVisible", "revealTransferTarget", "saveHostFile"]) });
+  const step5 = installWorkbenchAppearance({ state, ...api4, late: late(["dismissPromptHints", "interactivePromptGatePending", "probeLocalCapabilities", "promptHintsVisible", "revealTransferTarget", "saveHostFile"]) });
   Object.assign(values, step5);
   const api5 = { ...api4, ...step5 };
 
-  const step6 = installWorkbenchConnections({ ...api5, late: late(["activeExternalWatches", "cancelRecordCountdown", "closeToolbarPopovers", "probeLocalCapabilities", "recordingActive", "stopRecordingClock", "watchModifiedQueue"]) });
+  const step6 = installWorkbenchConnections({ state, ...api5, late: late(["activeExternalWatches", "cancelRecordCountdown", "closeToolbarPopovers", "probeLocalCapabilities", "recordingActive", "stopRecordingClock", "watchModifiedQueue"]) });
   Object.assign(values, step6);
   const api6 = { ...api5, ...step6 };
 
@@ -83,11 +87,11 @@ export function useWorkbench() {
   Object.assign(values, step7);
   const api7 = { ...api6, ...step7 };
 
-  const step8 = installWorkbenchShell({ ...api7, late: late([]) });
+  const step8 = installWorkbenchShell({ ...api7 });
   Object.assign(values, step8);
   const api8 = { ...api7, ...step8 };
 
-  const step9 = installWorkbenchBootstrap({ ...api8, late: late([]) });
+  const step9 = installWorkbenchBootstrap({ state, ...api8 });
   Object.assign(values, step9);
   const api9 = { ...api8, ...step9 };
 
