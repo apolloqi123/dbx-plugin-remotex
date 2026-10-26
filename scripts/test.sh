@@ -124,6 +124,25 @@ python3 scripts/smoke/smoke_mcp.py --binary backend/target/release/dbx-plugin-ss
 echo "==> local terminal smoke"
 python3 scripts/smoke/smoke_local_terminal.py --binary backend/target/release/dbx-plugin-sshx
 
+# 本机 Docker 冒烟（容器管理底部分屏的 target:"local" 面）：不依赖
+# dbx-ssh-test 测试容器，有本机 Docker 守护进程即可，故与下面的 live 小节分开。
+# 两个脚本都自带跳过语义，无 Docker 的机器保持全绿：
+#   - smoke_docker_local.py：无守护进程时 list 退化为 available:false，只跑
+#     形状断言并通过；但 sidecar 二进制缺失会直接抛错（sidecar_client），
+#     故仅在 release 产物存在时运行。
+#   - smoke_docker_files.py：docker CLI/守护进程/可用本地镜像任一缺失即打印
+#     SKIP 并 exit 0；只创建一次性临时容器与临时目录、退出时清理，从不 pull
+#     镜像、不改动已有容器/镜像。无镜像属环境条件而非回归，因此这里不随
+#     DBX_SMOKE_STRICT 升级为失败（live 小节的 strict 语义不变）。
+echo "==> local Docker smokes (container manager: list/logs/files)"
+export DBX_PLUGIN_SIDECAR="$ROOT/backend/target/release/dbx-plugin-sshx"
+if [ -x "$DBX_PLUGIN_SIDECAR" ]; then
+  python3 scripts/smoke/smoke_docker_local.py
+else
+  echo "SKIP: smoke_docker_local.py (sidecar binary missing)"
+fi
+python3 scripts/smoke/smoke_docker_files.py
+
 # Live-container smokes + perf baseline: each script SKIPs its cases when the
 # test container is unavailable; the whole section is skipped when docker or
 # the dbx-ssh-test container is absent so the suite stays green everywhere.
