@@ -151,17 +151,22 @@ impl SshRuntime {
         rows: u32,
     ) -> Result<TerminalChannel, String> {
         let entry = self.session(session_id).await?;
-        let channel = open_session_channel(&entry.handle)
+        let mut channel = open_session_channel(&entry.handle)
             .await
             .map_err(|error| format!("Failed to open the container terminal channel: {error}"))?;
-        channel
+        if let Err(error) = channel
             .request_pty(true, "xterm-256color", cols.max(1), rows.max(1), 0, 0, &[])
             .await
-            .map_err(|error| format!("The host refused the terminal PTY request: {error}"))?;
-        channel
-            .exec(true, command.as_bytes())
-            .await
-            .map_err(|error| format!("Failed to start the container shell: {error}"))?;
+        {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(format!(
+                "The host refused the terminal PTY request: {error}"
+            ));
+        }
+        if let Err(error) = channel.exec(true, command.as_bytes()).await {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(format!("Failed to start the container shell: {error}"));
+        }
         Ok(channel)
     }
 

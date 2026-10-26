@@ -29,13 +29,22 @@ impl SshRuntime {
         let mut channel = open_session_channel(handle)
             .await
             .map_err(|error| channel_open_error(reused_transport, error))?;
-        channel
+        // From here on the channel is open on the server: every failure must
+        // close it explicitly (a dropped russh Channel never sends CLOSE and
+        // would hold a MaxSessions slot until the connection ends).
+        if let Err(error) = channel
             .request_pty(true, "xterm-256color", cols.max(1), rows.max(1), 0, 0, &[])
             .await
-            .map_err(pty_error)?;
+        {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(pty_error(error));
+        }
         // Client-specified SetEnv rides on the interactive session too,
         // in ssh(1) order: PTY first, env next, shell/exec last.
-        exec::apply_connection_env(&mut channel, &connection.set_env).await?;
+        if let Err(error) = exec::apply_connection_env(&mut channel, &connection.set_env).await {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(error);
+        }
         // X11 forwarding (OpenSSH -X parity): gated on the connection-scoped
         // preference; a refused request only disables X11, never the shell.
         if crate::features::forwarding::x11::enabled_from(&self.data_dir) {
@@ -51,7 +60,7 @@ impl SshRuntime {
                 Err(error) => eprintln!("[x11] cannot arm the forwarding gate: {error}"),
             }
         }
-        if let Some(command) = spawn_exec {
+        let started = if let Some(command) = spawn_exec {
             // WT-4 (command session): exec `sh -c '<escaped command>'`
             // instead of a shell — see docs/architecture/PROTOCOL.zh-CN.md「同
             // transport 命令会话」. Explicit per-open request wins over
@@ -59,17 +68,18 @@ impl SshRuntime {
             channel
                 .exec(true, command.as_bytes())
                 .await
-                .map_err(remote_command_start_error)?;
+                .map_err(remote_command_start_error)
         } else if connection.remote_command.is_empty() {
-            channel
-                .request_shell(true)
-                .await
-                .map_err(shell_start_error)?;
+            channel.request_shell(true).await.map_err(shell_start_error)
         } else {
             channel
                 .exec(true, connection.remote_command.as_bytes())
                 .await
-                .map_err(remote_command_start_error)?;
+                .map_err(remote_command_start_error)
+        };
+        if let Err(error) = started {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(error);
         }
         Ok((remote_shell, directory_tracking_supported, channel))
     }

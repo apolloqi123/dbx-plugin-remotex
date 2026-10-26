@@ -39,7 +39,11 @@ pub(super) async fn exec_with_sudo_inner(
                     .exec(true, command_line.as_bytes())
                     .await
                     .map_err(|error| format!("Failed to start sudo command: {error}"))
-            } => started?,
+            } => {
+                if let Err(error) = started {
+                    return Err(abort_exec_channel(&mut channel, error).await);
+                }
+            }
         }
         let outcome = match run_to_completion(&mut channel, timeout, None, cancel, sink).await {
             Ok(outcome) => outcome,
@@ -86,7 +90,11 @@ pub(super) async fn exec_with_sudo_inner(
                 .exec(true, command_line.as_bytes())
                 .await
                 .map_err(|error| format!("Failed to start sudo command: {error}"))
-        } => started?,
+        } => {
+            if let Err(error) = started {
+                return Err(abort_exec_channel(&mut channel, error).await);
+            }
+        }
     }
 
     // Phase 1: hand sudo the password, with the OTP code (when configured)
@@ -170,7 +178,11 @@ pub async fn exec_plain_stream(
                 .exec(true, command.as_bytes())
                 .await
                 .map_err(|error| format!("Failed to start command: {error}"))
-        } => started?,
+        } => {
+            if let Err(error) = started {
+                return Err(abort_exec_channel(&mut channel, error).await);
+            }
+        }
     }
     match run_to_completion(&mut channel, None, None, &mut cancel, Some(&sink)).await {
         Ok(outcome) => Ok(outcome.exit_code),

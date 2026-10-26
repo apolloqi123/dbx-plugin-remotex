@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
 use dbx_plugin_sdk::PluginEmitter;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Notify};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -33,6 +33,9 @@ const TTL_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// A runner that ignores cancellation (a wedged child or channel) must never
 /// keep the registry slot or the end event hostage.
 const STOP_GRACE: Duration = Duration::from_secs(5);
+/// Upper bound an explicit stop waits for the forwarder to release its slot
+/// (the runner's own grace plus the channel close round-trip).
+const STOP_WAIT: Duration = Duration::from_secs(4);
 /// End-event error for a stream that hit [`STREAM_TTL`].
 const TIMEOUT_ERROR: &str = "stream timed out";
 /// End-event error for both transports' cancellation (SSH errors, the local
@@ -109,11 +112,13 @@ fn follow_env_prefix(engine: &EngineConfig) -> String {
     }
 }
 
-/// One registered stream: the cancellation switch the runner watches and the
-/// start instant the TTL is measured from.
+/// One registered stream: the cancellation switch the runner watches, the
+/// start instant the TTL is measured from, and the signal the forwarder
+/// raises once the slot is released.
 pub(crate) struct StreamEntry {
     cancel: watch::Sender<bool>,
     started: Instant,
+    done: Arc<Notify>,
 }
 
 /// Registry of live log streams keyed by the `streamId` handed to the host.
@@ -153,17 +158,19 @@ impl DockerStreams {
 
     /// Reserves one slot and inserts the entry. The caller owns the returned
     /// id for both the response and the chunk/end events.
-    fn register(&self, cancel: watch::Sender<bool>) -> Result<String, String> {
+    fn register(&self, cancel: watch::Sender<bool>) -> Result<(String, Arc<Notify>), String> {
         let mut inner = self.start_guard()?;
         let stream_id = Uuid::new_v4().to_string();
+        let done = Arc::new(Notify::new());
         inner.insert(
             stream_id.clone(),
             StreamEntry {
                 cancel,
                 started: Instant::now(),
+                done: Arc::clone(&done),
             },
         );
-        Ok(stream_id)
+        Ok((stream_id, done))
     }
 
     fn started_at(&self, stream_id: &str) -> Instant {
@@ -175,7 +182,11 @@ impl DockerStreams {
 
     /// Starts following a container's logs over an SSH session. `command` is
     /// [`logs_follow_command`]'s rendering for the same engine/container;
-    /// `tail` only documents (and debug-asserts) the baked-in clamp.
+    /// `tail` only documents (and debug-asserts) the baked-in clamp. Stop and
+    /// timeout go through [`crate::sessions::ssh::exec::abort_exec_channel`],
+    /// which signals the remote process group before closing the channel —
+    /// closing alone leaves `docker logs -f` running and its sshd session
+    /// allocated against `MaxSessions`.
     ///
     /// Must be called from inside the plugin's Tokio runtime (the RPC layer
     /// wraps it in `Runtime::block_on`): the runner and forwarder are spawned
@@ -224,22 +235,24 @@ impl DockerStreams {
         )
     }
 
-    /// Signals cancellation for one stream and reports whether it was live.
+    /// Cancels one stream and waits (briefly) for its forwarder to release
+    /// the slot. Serialising stop→start keeps the next `logs -f` channel from
+    /// opening while the cancelled runner is still closing its own: a switch
+    /// otherwise piles two sessions onto the server's `MaxSessions` budget.
     /// Returns false for unknown ids (already finished or never started), so
     /// the RPC can answer `stopped: false` without treating it as an error.
-    ///
-    /// The entry keeps its cap slot until its forwarder exits: a cancelled
-    /// child or SSH channel is still being reaped, and admitting a new stream
-    /// before that would exceed [`MAX_ACTIVE_STREAMS`].
-    pub fn stop(&self, stream_id: &str) -> bool {
-        let inner = self.lock();
-        match inner.get(stream_id) {
-            Some(entry) => {
-                let _ = entry.cancel.send(true);
-                true
+    pub async fn stop_and_wait(&self, stream_id: &str) -> bool {
+        let (cancel, done) = {
+            let inner = self.lock();
+            match inner.get(stream_id) {
+                Some(entry) => (entry.cancel.clone(), Arc::clone(&entry.done)),
+                None => return false,
             }
-            None => false,
-        }
+        };
+        let notified = done.notified();
+        let _ = cancel.send(true);
+        let _ = tokio::time::timeout(STOP_WAIT, notified).await;
+        true
     }
 
     /// Cancels and drops every registered stream. This is the teardown path
@@ -270,14 +283,14 @@ impl DockerStreams {
     {
         let (cancel, cancel_rx) = watch::channel(false);
         let (sink, chunks) = mpsc::channel(STREAM_CHANNEL_CAPACITY);
-        let stream_id = self.register(cancel.clone())?;
+        let (stream_id, done) = self.register(cancel.clone())?;
         let registry = Arc::clone(self);
         let forward_id = stream_id.clone();
         tokio::spawn(async move {
             let runner: JoinHandle<Result<i32, String>> = tokio::spawn(runner(sink, cancel_rx));
             registry
                 .forward(
-                    forward_id, emitter, cancel, chunks, runner, is_local, limits,
+                    forward_id, emitter, cancel, chunks, runner, is_local, limits, done,
                 )
                 .await;
         });
@@ -292,6 +305,7 @@ impl DockerStreams {
     /// chunk or the stream end.
     /// Expiry terminates the stream by itself: it stops the pump, cancels the
     /// runner and releases the slot even when the runner never returns.
+    #[allow(clippy::too_many_arguments)]
     async fn forward(
         self: Arc<Self>,
         stream_id: String,
@@ -301,6 +315,7 @@ impl DockerStreams {
         runner: JoinHandle<Result<i32, String>>,
         is_local: bool,
         limits: StreamLimits,
+        done: Arc<Notify>,
     ) {
         let started = self.started_at(&stream_id);
         let mut batcher = ChunkBatcher::new();
@@ -359,6 +374,7 @@ impl DockerStreams {
         let payload = end_payload(&stream_id, result, &recent, is_local, reason);
         let _ = emitter.event("docker/logs/end", payload);
         self.lock().remove(&stream_id);
+        done.notify_one();
     }
 }
 

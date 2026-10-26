@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.38] — 2026-10-26
+
+- **彻底修复反复切换容器日志/文件/终端后 `AdministrativelyProhibited`（`MaxSessions` 耗尽）**。根因是取消日志流时只关闭了 SSH channel：非 PTY 会话的远端子进程不会因通道关闭收到信号，`docker logs -f` 会一直阻塞并保留 sshd 会话，每切换一次容器就永久占用一个 `MaxSessions` 名额，约十次后所有新通道被拒、列表轮询连续失败。现在所有取消/超时路径先向远端进程组发送 SSH `signal`(SIGTERM) 再 `EOF+CLOSE`；`docker/logs/stop` 会等待转发任务真正释放通道后返回；通道建立中途失败（PTY/env/exec 请求被拒）也会显式关闭，不再泄漏会话。真实 sshd（`MaxSessions 10`）下连续切换 30 轮：0 失败、0 残留进程、服务端并发 session 峰值 3。
+  **Fixed `AdministrativelyProhibited` (`MaxSessions` exhaustion) after repeated container log/file/terminal switches.** Root cause: cancelling a log stream only closed the SSH channel. Children of non-PTY sessions are not signalled by a channel close, so `docker logs -f` kept blocking and kept its sshd session allocated — every container switch permanently burned one `MaxSessions` slot until all new channels were refused and polling paused. All cancel/timeout paths now send the SSH `signal` request (SIGTERM) to the remote process group before `EOF+CLOSE`; `docker/logs/stop` waits for the forwarder to release the channel; setup failures (refused PTY/env/exec requests) also close the channel instead of leaking it. Against a real sshd with `MaxSessions 10`, 30 rapid switches produced 0 failures, 0 stray processes, and a peak of 3 concurrent sessions.
+
 ## [0.7.9-beta.37] — 2026-10-26
 
 - **继续降低容器面板对 SSH session channel 的瞬时占用**。文件页隐藏时不再请求目录（切换容器只复位状态，切回文件页才加载），目录列表请求串行合并为最新一次；日志流启动也串行合并，快速切容器时前几次启动直接作废，不并发打开多条 `docker logs -f` channel；瞬时 channel 拒绝的重试窗口延长到约 2.6 秒。配合 beta.36 的通道重试与终端关闭等待，避免快速切换日志/文件/终端时触发服务器 `MaxSessions` 上限。

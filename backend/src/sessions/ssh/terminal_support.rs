@@ -164,6 +164,7 @@ pub(super) async fn detect_remote_shell_inner(handle: &Handle<SshClient>) -> Rem
         return RemoteShell::Other;
     };
     if channel.exec(true, "printf '%s' \"$SHELL\"").await.is_err() {
+        exec::close_setup_channel(&mut channel).await;
         return RemoteShell::Other;
     }
     let mut output = Vec::new();

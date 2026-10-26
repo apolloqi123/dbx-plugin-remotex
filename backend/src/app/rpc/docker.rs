@@ -258,8 +258,12 @@ impl Plugin {
 
             "docker/logs/stop" => {
                 // 幂等：未知/已结束的 streamId 返回 stopped:false，不报错。
+                // 显式 stop 会短暂等待 forwarder 释放通道，避免「旧 logs -f
+                // 还没退出就开新流」把服务器的 MaxSessions 名额堆满。
                 let stream_id = required_string(&params, "streamId")?;
-                Ok(json!({ "stopped": self.docker_streams.stop(stream_id) }))
+                Ok(json!({
+                    "stopped": self.runtime.block_on(self.docker_streams.stop_and_wait(stream_id))
+                }))
             }
 
             // 容器文件浏览/传输（`docker/files/*`）拆到 docker_files.rs，

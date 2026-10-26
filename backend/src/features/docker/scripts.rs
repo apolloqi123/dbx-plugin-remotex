@@ -133,6 +133,19 @@ mod tests {
         assert!(command.ends_with("podman logs -f --tail 2000 d4a7c9f1e2b3"));
     }
 
+    /// The follow command must stay flat: it also runs on Windows OpenSSH
+    /// hosts whose default shell is cmd.exe. Reaping the remote process is the
+    /// SSH `signal` request's job (see `abort_exec_channel`), not a POSIX
+    /// shell wrapper's — a wrapper here would break those hosts.
+    #[test]
+    fn logs_follow_command_stays_flat_for_non_posix_hosts() {
+        let engine = crate::features::docker::test_engine("docker", None);
+        let command = logs_follow_command(&engine, "d4a7c9f1e2b3", 200);
+        assert!(!command.contains("sh -c"), "{command}");
+        assert!(!command.contains('\''), "{command}");
+        assert_eq!(command, "docker logs -f --tail 200 d4a7c9f1e2b3");
+    }
+
     #[test]
     fn stream_registry_caps_active_streams() {
         let registry = DockerStreams::new();

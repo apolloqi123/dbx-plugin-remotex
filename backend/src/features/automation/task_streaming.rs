@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::sessions::ssh::exec::shell_quote as shell_single_quote;
+use crate::sessions::ssh::open_session_channel;
 
 pub(super) async fn wait_cancelled(cancel: &mut watch::Receiver<bool>) {
     loop {
@@ -16,10 +17,14 @@ pub(super) async fn wait_cancelled(cancel: &mut watch::Receiver<bool>) {
     }
 }
 
-/// Closes the channel so sshd reaps the remote command. Dropping a russh
-/// `Channel` never sends SSH_MSG_CHANNEL_CLOSE — the explicit close is what
-/// makes cancel/timeout a real teardown instead of a status flip.
+/// Reaps the remote run: drops the channel and asks sshd to terminate the
+/// command's process group. A plain channel close does not signal children of
+/// non-PTY sessions, so the command (and its sshd session slot) would survive
+/// a cancel/timeout. Dropping a russh `Channel` never sends
+/// SSH_MSG_CHANNEL_CLOSE either — the explicit close is what makes
+/// cancel/timeout a real teardown instead of a status flip.
 pub(super) async fn close_channel(channel: &mut russh::Channel<russh::client::Msg>) {
+    let _ = channel.signal(russh::Sig::TERM).await;
     let _ = channel.eof().await;
     let _ = channel.close().await;
 }
@@ -50,7 +55,7 @@ pub(super) async fn run_streaming(
     let mut channel = tokio::select! {
         biased;
         _ = wait_cancelled(cancel) => return Ok(RunEnd::Cancelled),
-        opened = handle.channel_open_session() =>
+        opened = open_session_channel(handle) =>
             opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
     };
     if pty {
@@ -318,8 +323,7 @@ pub(super) async fn ssh_upload_script(
                 ))
             }
         })?;
-    let channel = handle
-        .channel_open_session()
+    let channel = open_session_channel(handle)
         .await
         .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
     channel

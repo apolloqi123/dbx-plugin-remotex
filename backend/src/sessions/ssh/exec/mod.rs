@@ -115,10 +115,11 @@ pub const SUDO_KEEPALIVE_MAX_FAILURES: u32 = 2;
 pub const MAX_PROMPT_HINT_LEN: usize = 512;
 
 const SUDO_WAIT_TIMEOUT_MESSAGE: &str =
-    "Timed out waiting for the remote command to finish. The command may \
-     STILL be running on the remote host - check for stray processes or \
-     package-manager locks before retrying; for long jobs start them \
-     detached (ssh_run_bg + ssh_task_status) instead of extending the wait.";
+    "Timed out waiting for the remote command to finish. A SIGTERM was sent to \
+     the remote process group and the channel was closed; on a server that does \
+     not support the SSH signal request, check for stray processes or \
+     package-manager locks before retrying. For long jobs start them detached \
+     (ssh_run_bg + ssh_task_status) instead of extending the wait.";
 
 /// Per-stream output ceiling for `run_to_completion` when the caller is not
 /// streaming: a hostile or merely over-productive remote (`cat /dev/urandom`)

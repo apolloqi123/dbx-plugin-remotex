@@ -15,6 +15,7 @@ impl DockerStreams {
             StreamEntry {
                 cancel,
                 started: Instant::now(),
+                done: Arc::new(Notify::new()),
             },
         );
     }
@@ -243,15 +244,24 @@ async fn stop_cancels_the_runner_and_unregisters_the_stream() {
         .expect("start stream");
     assert_eq!(registry.active_count(), 1);
 
-    assert!(registry.stop(&stream_id));
-    // The slot is held until the forwarder has reaped the runner.
+    assert!(registry.stop_and_wait(&stream_id).await);
+    // stop_and_wait must not return before the slot is free: the next start
+    // (a container switch) is admitted only after this channel is released.
+    assert_eq!(
+        registry.active_count(),
+        0,
+        "slot released before stop returns"
+    );
     let events = wait_for_event(&sink, "docker/logs/end").await;
     assert_eq!(chunk_text(&events, &stream_id), "before stop");
     let end = end_event(&events, &stream_id);
     assert_eq!(end["params"]["error"], "cancelled");
     assert!(end["params"].get("exitCode").is_none(), "{end}");
     wait_for_empty(&registry).await;
-    assert!(!registry.stop(&stream_id), "finished ids stop to false");
+    assert!(
+        !registry.stop_and_wait(&stream_id).await,
+        "finished ids stop to false"
+    );
 }
 
 #[tokio::test]
@@ -267,7 +277,7 @@ async fn ssh_cancellation_reports_the_same_cancelled_error() {
         )
         .expect("start stream");
 
-    assert!(registry.stop(&stream_id));
+    assert!(registry.stop_and_wait(&stream_id).await);
     let events = wait_for_event(&sink, "docker/logs/end").await;
     assert_eq!(chunk_text(&events, &stream_id), "before stop");
     let end = end_event(&events, &stream_id);
@@ -299,7 +309,7 @@ async fn idle_stream_flushes_a_small_chunk_before_stream_end() {
     );
     assert_eq!(registry.active_count(), 1, "the stream is still live");
 
-    assert!(registry.stop(&stream_id));
+    assert!(registry.stop_and_wait(&stream_id).await);
     wait_for_event(&sink, "docker/logs/end").await;
     wait_for_empty(&registry).await;
 }

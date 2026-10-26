@@ -204,6 +204,41 @@ def main() -> None:
         client.request("sftp/delete", {"sessionId": session_id, "path": write_path})
         print(f"    wrote and read back {write_path}")
 
+        step("ssh/exec timeout reaps the remote process group")
+        # Regression for the MaxSessions exhaustion: closing a non-PTY channel
+        # does not signal the remote child, so a timed-out / cancelled command
+        # used to survive and keep its sshd session allocated. The abort path
+        # now sends the SSH signal request before closing the channel.
+        reap_marker = "/tmp/dbx_smoke_reap.pid"
+        reap_command = f"sh -c 'sleep 240 & echo $! > {reap_marker}; wait'"
+        try:
+            client.request(
+                "ssh/exec",
+                {"sessionId": session_id, "command": reap_command, "timeoutSecs": 5},
+                timeout=30,
+            )
+            fail("ssh/exec returned instead of timing out")
+        except SidecarError as error:
+            if "Timed out waiting for the remote command" not in str(error):
+                fail(f"ssh/exec failed for an unexpected reason: {error}")
+        time.sleep(0.5)
+        probe = client.request(
+            "ssh/exec",
+            {
+                "sessionId": session_id,
+                "command": (
+                    f"if [ -f {reap_marker} ]; then p=$(cat {reap_marker}); "
+                    "if kill -0 $p 2>/dev/null; then echo ALIVE; else echo DEAD; fi; "
+                    f"rm -f {reap_marker}; else echo NOFILE; fi"
+                ),
+            },
+            timeout=30,
+        )
+        reap_state = probe.get("output", "").strip()
+        if reap_state != "DEAD":
+            fail(f"timed-out remote command was not reaped: {reap_state or probe}")
+        print("    timed-out command's process group was terminated")
+
         step("session close")
         client.request("ssh/session/close", {"sessionId": session_id})
         print("    closed")

@@ -33,7 +33,7 @@ async fn drive_local_pty_forwards_output_and_exit_code() {
     let (_resize_tx, resize) = mpsc::channel(4);
     let (_cancel_tx, cancel) = watch::channel(false);
 
-    let program = PathBuf::from("sh");
+    let program = PathBuf::from("/bin/sh");
     let args = vec!["-c".to_string(), "printf ready; exit 3".to_string()];
     let pty = spawn_local_program(&program, &args, &[], 80, 24).expect("spawn");
     let code = drive_local_pty(pty, sink, input, resize, cancel)
@@ -58,7 +58,7 @@ async fn cancel_stops_the_local_pty() {
     let (_resize_tx, resize) = mpsc::channel(4);
     let (cancel_tx, cancel) = watch::channel(false);
 
-    let program = PathBuf::from("sh");
+    let program = PathBuf::from("/bin/sh");
     let args = vec!["-c".to_string(), "sleep 30".to_string()];
     let pty = spawn_local_program(&program, &args, &[], 80, 24).expect("spawn");
     let drive = tokio::spawn(drive_local_pty(pty, sink, input, resize, cancel));

@@ -316,7 +316,7 @@ sidecar 方法提供）。
 
 ## Quick Sudo 远程执行
 
-`ssh/exec` 参数为 `sessionId`、`command`、`sudo`（可选，默认 false）、`timeoutSecs`（可选，5–300 秒）、`execId`（可选，用于取消），返回 `output` 与 `exitCode`；`ssh/exec/cancel` 携带 `execId` 中止执行中的命令并返回取消错误。命令通道（sudo 与非 sudo）会先注入连接的 `set_env` 条目（见「会话环境与会话命令」），注入失败即报错。
+`ssh/exec` 参数为 `sessionId`、`command`、`sudo`（可选，默认 false）、`timeoutSecs`（可选，5–300 秒）、`execId`（可选，用于取消），返回 `output` 与 `exitCode`；`ssh/exec/cancel` 携带 `execId` 中止执行中的命令并返回取消错误。取消与超时都先向远端进程组发送 SSH `signal`(SIGTERM)，再 `EOF+CLOSE`：只关 channel 不会给非 PTY 会话的子进程发信号，远端命令（含 `docker logs -f`）会残留并持续占用该连接的一个 `MaxSessions` 名额。服务器不支持 `signal` 请求时退化为仅关闭通道。命令通道（sudo 与非 sudo）会先注入连接的 `set_env` 条目（见「会话环境与会话命令」），注入失败即报错。
 
 Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 
@@ -670,7 +670,7 @@ Docker 家族（`docker/list` / `docker/logs` / `docker/logs/start|stop` / `dock
 - **Windows 远端兜底**：输出不含 `DBXDOCKER_PROBE` 标记（cmd/PowerShell 跑不了 heredoc 的唯一签名）时，自动多花一个往返改用 cmd 版采集器（`where /q <cli>` + `<cli> info` + `<cli> ps`，CRLF 由解析端逐字段吸收；配置端点时以 `set` 行注入）；POSIX 主机恒有标记，不会触发。
 - **Quick Sudo 提权**：探针为 found-but-denied（`needsSudo: true`）且连接配置了 Quick Sudo 时，list 自动用 `sudo -S -p '' sh -c '<脚本体>'` 提权重采（密码走 stdin、脚本体走 argv）；logs 在输出命中 daemon 权限签名时同样提权重采。只读连接、sudoers 白名单拒绝、提权失败一律退回原 payload 保留提示，只读调用不报错。
 - **docker/logs**：`{sessionId|target, containerId, tail?, cli?, socket?, host?}`，返回 `{logs, container?}`；`tail` 钳制到 [10, 2000]（默认 200）。inspect 失败（容器消失）降级 `container: null`。
-- **docker/logs/start**：`{sessionId|target, containerId, tail?, sudo?, cli?, socket?, host?}` → `{streamId}`。SSH 面执行 `docker logs -f --tail <钳制值> <id>`（端点经脚本内 `export DOCKER_HOST/CONTAINER_HOST` 下发）并把输出分片推进事件；本机面子进程直呼 `logs -f`（无 shell，端点走 `DOCKER_HOST`/`CONTAINER_HOST`）。`sudo:true` 仅 SSH 且要求可写连接 + 连接已启用 Quick Sudo（开流前拒绝，避免拿到 streamId 后才报权限错）；本机显式拒绝 sudo。事件：`docker/logs/chunk {streamId, text}`——UTF-8 **有损**解码（非法字节替换为 U+FFFD）、按约 100ms 或 8KiB 合并，**可能切在半行**，前端按行缓冲拼接；`docker/logs/end {streamId, exitCode?, error?, needsSudo?}`——自然结束给 `exitCode`，主动 stop 与 sidecar 侧取消统一 `error:"cancelled"`，TTL 到期 `error:"stream timed out"`，daemon 权限签名带 `needsSudo:true`（本机目标改带 Docker Desktop/docker 组指引文案）。注册表上限 4 条（超出报 `Too many active log streams (4)`）、单条 TTL 30 分钟；读取→转发走 64 分片的**有界通道**，宿主卡住时反压采集端而不是无限缓冲；取消经 SSH `abort_exec_channel` / 本机 `kill_on_drop` 子进程收口，停止宽限 5s，超时 abort 转发任务且仍发 end 事件。流不落盘、事件不进会话回放/录制；`docker/logs/stop {streamId}` → `{stopped}`，未知/已结束 id 幂等返回 `stopped:false`，取消后条目在转发任务退出前仍占一个名额。
+- **docker/logs/start**：`{sessionId|target, containerId, tail?, sudo?, cli?, socket?, host?}` → `{streamId}`。SSH 面执行 `docker logs -f --tail <钳制值> <id>`（端点经脚本内 `export DOCKER_HOST/CONTAINER_HOST` 下发）并把输出分片推进事件；本机面子进程直呼 `logs -f`（无 shell，端点走 `DOCKER_HOST`/`CONTAINER_HOST`）。`sudo:true` 仅 SSH 且要求可写连接 + 连接已启用 Quick Sudo（开流前拒绝，避免拿到 streamId 后才报权限错）；本机显式拒绝 sudo。事件：`docker/logs/chunk {streamId, text}`——UTF-8 **有损**解码（非法字节替换为 U+FFFD）、按约 100ms 或 8KiB 合并，**可能切在半行**，前端按行缓冲拼接；`docker/logs/end {streamId, exitCode?, error?, needsSudo?}`——自然结束给 `exitCode`，主动 stop 与 sidecar 侧取消统一 `error:"cancelled"`，TTL 到期 `error:"stream timed out"`，daemon 权限签名带 `needsSudo:true`（本机目标改带 Docker Desktop/docker 组指引文案）。注册表上限 4 条（超出报 `Too many active log streams (4)`）、单条 TTL 30 分钟；读取→转发走 64 分片的**有界通道**，宿主卡住时反压采集端而不是无限缓冲。SSH 取消走 `abort_exec_channel`：先发 SSH `signal`(SIGTERM) 终止远端进程组，再 `EOF+CLOSE`——只关 channel 不会给非 PTY 会话的子进程发信号，`docker logs -f` 会残留并永久占用一个 `MaxSessions` 名额（快速切换容器时约十次即可耗尽，表现为 `AdministrativelyProhibited`/`ConnectFailed` 且轮询连续失败）；本机走 `kill()` 子进程。停止宽限 5s，超时 abort 转发任务且仍发 end 事件。`docker/logs/stop {streamId}` → `{stopped}`，未知/已结束 id 幂等返回 `stopped:false`；显式 stop 会等待 forwarder 释放通道（上限 4s）再返回，保证切容器时新流不与旧流争名额。流不落盘、事件不进会话回放/录制。
 - **docker/action**：`{sessionId|target, containerId, action, cli?, socket?, host?}`，动词白名单 `start/stop/restart/kill/rm`；`containerId` 必须 12–64 位小写十六进制（容器名一律拒绝）；执行前写审计（意图行 + 失败行，审计文本为 `<cli> <动词> <id>` 短形态，端点 export 只在执行文本里）。plain 失败且命中 daemon 权限签名才回落 Quick Sudo 管线（重放同一条含端点 export 的执行文本；其余失败重试可能把半执行动作应用两次）；本机面无提权管线，daemon 拒绝返回指引文案。kill/rm 由前端/MCP 确认门强制二次确认，只读连接直接拒绝。
 - **docker/terminal/open**（容器 PTY 终端）：`{terminalId?, sessionId|target, containerId, cols, rows, cli?, socket?, host?}` → `{terminalId}`。SSH 面在既有已认证传输上新开 session channel，`request_pty("xterm-256color", cols, rows)` 后执行固定命令 `{export 端点}<cli> exec -i -t -e TERM=xterm-256color <id> sh -c '<bash 优先，否则 sh>'`；本机面用 `portable-pty` 直呼同一 argv（端点走 `DOCKER_HOST`/`CONTAINER_HOST` 环境变量）。`containerId` 同 action 规则；客户端可预生成 `terminalId`（8–64 位字母/数字/连字符），sidecar 原样沿用，保证 open 返回前的首屏输出不丢。SSH 面先 `ensure_writable`（只读连接直接拒绝），通过后写一条 `tool:"docker/terminal"` 审计意图（固定命令短形态，绝不含按键/输出）。注册表上限 4 个并发终端（超出报 `Too many active container terminals (4)`）、单个 TTL 2 小时；显式关闭会等待 runner 释放 SSH channel 后再返回，避免快速切换容器时旧通道未关就重开触发服务器 `MaxSessions`；通道打开对 `AdministrativelyProhibited`/`ResourceShortage` 做约 2.6 秒的有界退避重试。前端仅在文件页可见时请求目录并串行合并为最新一次；日志流启动同样串行合并，避免快速切容器时并发打开多条 channel。显式关闭或断链即回收，不进入会话回放/录制。输出走二进制 `docker/terminal/out/<terminalId>`（原始 PTY 字节，不批处理、不重放），输入走 `docker/terminal/in/<terminalId>`（8 字节大端序号 + 按键字节，满队列短暂重试后丢弃，不当会话死亡），窗口变化走 `docker/terminal/resize {terminalId, cols, rows}` → `{resized}`（未知 id 返回 false），关闭走 `docker/terminal/close {terminalId}` → `{stopped}`（幂等）。生命周期事件 `docker/terminal/state {terminalId, state:"exited", exitCode}` 或 `{terminalId, state:"error", error}`；显式 close 不发 state。镜像缺 `sh`/`bash`（distroless/scratch）时 shell 立即退出并走 error 态。
 
@@ -1067,7 +1067,7 @@ SFTP 单文件上传/下载与目录下载的可选压缩通道：文件超过�
 权限保留 → 清理两侧 .gz。推送或 gunzip 失败（非取消）回落普通推送重传原始字节；取消立即终止。
 
 **下载**（`sftp/download/start` 压缩任务异步 prep）：远端 `gzip -c '<src>' > '<dir>/.dbx-download-<taskId>.gz'`
-（不改源文件；exec 上限 300s，超时后命令仍在远端跑，失败清理会把 .gz 摘目录）→ stat 比率
+（不改源文件；exec 上限 300s，超时会向远端进程组发 SIGTERM 并关闭通道，失败清理会把 .gz 摘目录）→ stat 比率
 守卫（同 95% 口径，不划算回退）→ `fetching` 拉取 .gz 到本地 `download-<taskId>.part.gz`
 （限速沿用 `transfer_download_limit_kib`，按压缩流计）→ `decompressing` 本地 MultiGzDecoder
 解压成 `download-<taskId>.plain`（体积与声明 size 不符视为损坏，回退）→ `ready` 事件
@@ -1460,9 +1460,10 @@ manifest `task-provider` 贡献点（`io.dbx.sshx.tasks`，依赖 `io.dbx.sshx.c
   starting/running/stopping/stopped/crashed/degraded）；`task/progress`
   （execute 起止 0/100）。所有日志行在出进程前过连接凭据脱敏器。
 - **Cancel/Timeout 真实终止**：`task/stop` 与配置超时都在 await 点退出后
-  显式 `EOF+CLOSE` 关闭 channel，由 sshd 回收远端进程（与
-  `exec_plain_cancellable` 同一不变量：裸 drop 不发 SSH_MSG_CHANNEL_CLOSE，
-  sudo timestamp 锁会残留）。
+  先发 SSH `signal`(SIGTERM) 终止远端进程组，再 `EOF+CLOSE` 关闭 channel
+  （与 `exec_plain_cancellable` 同一不变量：只发 CLOSE 对非 PTY 会话的子进程
+  不构成终止信号，裸 drop 更不会发 SSH_MSG_CHANNEL_CLOSE，进程与 sudo
+  timestamp 锁都会残留）。
 - **有界 restart**：resident 崩溃按 `max_restarts`（钳 0..=50，默认 5）/
   `restart_backoff_seconds`（钳 1..=3600，默认 10）/`restart_window_seconds`
   （缺省 = 进程生命周期）滑动窗口计数，超限进入 `degraded`，禁止无限

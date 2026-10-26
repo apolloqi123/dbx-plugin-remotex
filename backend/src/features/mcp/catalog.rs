@@ -205,7 +205,7 @@ pub fn tool_definitions() -> Value {
     let mut tools = json!([
         {
             "name": "ssh_exec",
-            "description": "Run a non-interactive remote shell command over SSH. Quick Sudo is NOT applied; use ssh_exec_sudo for privileged commands. Catastrophic patterns (disk formatting, recursive system deletes, shutdown, raw device writes, SQL DROP) require confirmDestructive: true; read-only connections only accept whitelisted inspection commands (ls, cat, df, ps, systemctl status, journalctl, docker ps, ...). Hosts may abandon the wait after ~15s while the command keeps running remotely; for anything slow use ssh_run_bg + ssh_task_status. After a timeout the command may STILL be running: verify before rerunning.",
+            "description": "Run a non-interactive remote shell command over SSH. Quick Sudo is NOT applied; use ssh_exec_sudo for privileged commands. Catastrophic patterns (disk formatting, recursive system deletes, shutdown, raw device writes, SQL DROP) require confirmDestructive: true; read-only connections only accept whitelisted inspection commands (ls, cat, df, ps, systemctl status, journalctl, docker ps, ...). The plugin-side timeout terminates the remote process group (SIGTERM) before returning; if the host abandons the wait earlier (~15s) the command may still be running — verify before rerunning. For anything slow use ssh_run_bg + ssh_task_status.",
             "inputSchema": {
                 "type": "object",
                 "properties": connection_properties(&[

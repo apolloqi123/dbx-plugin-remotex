@@ -161,7 +161,13 @@ pub async fn exec_plain_cancellable(
                 .exec(true, command.as_bytes())
                 .await
                 .map_err(|error| format!("Failed to start command: {error}"))
-        } => started?,
+        } => {
+            // A refused env/exec request leaves the channel open; close it
+            // instead of dropping it (drop never sends CHANNEL_CLOSE).
+            if let Err(error) = started {
+                return Err(abort_exec_channel(&mut channel, error).await);
+            }
+        }
     }
     match run_to_completion(&mut channel, Some(timeout), None, cancel, None).await {
         Ok(outcome) => Ok(outcome),
@@ -219,15 +225,32 @@ pub async fn exec_with_sudo_cancellable(
     .await
 }
 
+/// Closes a channel whose setup failed before a command was handed over
+/// (refused PTY/env/exec/subsystem request). The channel is already open on
+/// the server, so returning without a close would keep one session allocated
+/// against `MaxSessions` for the life of the connection.
+pub(crate) async fn close_setup_channel(channel: &mut russh::Channel<russh::client::Msg>) {
+    let _ = channel.eof().await;
+    let _ = channel.close().await;
+}
+
 /// Aborts an exec channel after a failed/aborted remote run. Dropping a
 /// russh `Channel` does NOT send SSH_MSG_CHANNEL_CLOSE, so the remote
 /// process would keep waiting on stdin forever - a mid-authentication
 /// `sudo` holds the sudo timestamp lock and deadlocks every later sudo on
 /// the connection. Close the channel so sshd reaps the process.
+///
+/// Closing the channel alone is not enough for non-PTY sessions: sshd only
+/// signals PTY child process groups, so a blocked `docker logs -f` would
+/// survive the close and keep its session allocated (one `MaxSessions` slot
+/// per cancelled stream). The SSH `signal` request kills the command's
+/// process group first, which is also the part that reaps it on servers that
+/// do not deliver EOF promptly.
 pub(super) async fn abort_exec_channel(
     channel: &mut russh::Channel<russh::client::Msg>,
     error: String,
 ) -> String {
+    let _ = channel.signal(russh::Sig::TERM).await;
     let _ = channel.eof().await;
     let _ = channel.close().await;
     error
