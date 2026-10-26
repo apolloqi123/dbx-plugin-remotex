@@ -34,12 +34,23 @@ export type WorkbenchApi = InstallWorkbenchCoreResult & InstallWorkbenchTerminal
 
 export function useWorkbench() {
   // Late-binding store: only read after every step has run (all setup-time sinks
-  // of these getters are closures the composables invoke later).
+  // of these getters are closures the composables invoke later). Reading a key
+  // before its step installs it is a wiring bug: fail loudly instead of letting
+  // an `undefined` function/ref surface only when the user presses that path.
   const values: Record<string, unknown> = {};
   const late = (keys: readonly string[]): Record<string, any> => {
     const view: Record<string, any> = {};
     for (const key of keys) {
-      Object.defineProperty(view, key, { get: () => values[key], enumerable: true, configurable: true });
+      Object.defineProperty(view, key, {
+        get: () => {
+          if (!Object.prototype.hasOwnProperty.call(values, key)) {
+            throw new Error(`late binding "${key}" was read before its step installed it`);
+          }
+          return values[key];
+        },
+        enumerable: true,
+        configurable: true,
+      });
     }
     return view;
   };
