@@ -250,6 +250,18 @@ describe("ContainerTerminalTab", () => {
     expect(harness.invoke).not.toHaveBeenCalled();
   });
 
+  it("reopens after the container starts while the tab was hidden", async () => {
+    const harness = installHost();
+    const wrapper = mountTab({ container: container({ state: "exited", status: "Exited (0)" }) });
+    await vi.waitFor(() => expect(wrapper.text()).toContain("docker.terminalNotRunning"));
+    expect(harness.invoke).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ visible: false });
+    await wrapper.setProps({ container: container(), visible: true });
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+    expect(wrapper.text()).not.toContain("docker.terminalNotRunning");
+  });
+
   it("writes PTY output bytes into xterm", async () => {
     const harness = installHost();
     mountTab();
@@ -273,7 +285,7 @@ describe("ContainerTerminalTab", () => {
 
     terminal()?.resizeHandler?.({ cols: 100, rows: 30 });
     await vi.waitFor(() =>
-      expect(harness.notify).toHaveBeenCalledWith("docker/terminal/resize", {
+      expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/resize", {
         terminalId: TERMINAL_ID,
         cols: 100,
         rows: 30,

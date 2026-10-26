@@ -56,14 +56,22 @@ async fn registry_enforces_the_concurrency_cap() {
 
 #[tokio::test]
 async fn close_and_resize_are_idempotent() {
-    let registry = DockerTerminals::new();
+    let (emitter, _sink) = emitter_for_test();
+    let registry = std::sync::Arc::new(DockerTerminals::new());
     assert!(!registry.close("missing"));
     assert!(!registry.resize("missing", 80, 24));
-    registry.insert_for_test("terminal-1-0000".to_string()).await;
-    assert!(registry.resize("terminal-1-0000", 80, 24));
-    assert!(registry.close("terminal-1-0000"));
-    registry.remove_for_test("terminal-1-0000");
-    assert!(!registry.close("terminal-1-0000"));
+    let terminal_id = registry
+        .start_cancellable_fake_for_test(emitter)
+        .expect("start fake terminal");
+    assert!(registry.resize(&terminal_id, 80, 24));
+    assert!(registry.close(&terminal_id));
+    for _ in 0..200 {
+        if registry.active_for_test() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!registry.close(&terminal_id));
 }
 
 /// Review regression: a failed local spawn must release the slot it reserved
@@ -113,6 +121,27 @@ async fn ttl_reaps_an_idle_terminal() {
             .unwrap_or_default()
             .contains("timed out"),
         "{end}"
+    );
+}
+
+#[tokio::test]
+async fn explicit_close_emits_no_state_event() {
+    let (emitter, sink) = emitter_for_test();
+    let registry = std::sync::Arc::new(DockerTerminals::new());
+    let terminal_id = registry
+        .start_cancellable_fake_for_test(emitter)
+        .expect("start fake terminal");
+    assert!(registry.close(&terminal_id));
+    for _ in 0..200 {
+        if registry.active_for_test() == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(registry.active_for_test(), 0, "close must release the slot");
+    assert!(
+        state_events(&sink).is_empty(),
+        "an explicit close must not emit docker/terminal/state"
     );
 }
 

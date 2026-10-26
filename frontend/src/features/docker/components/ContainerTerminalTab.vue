@@ -101,7 +101,13 @@ function scheduleFit(): void {
  */
 async function startIfNeeded(): Promise<void> {
   if (disposed || !terminal || starting || !props.visible) return;
-  if (status.value !== "idle" && !(status.value === "disabled" && !canConnect())) return;
+  // 不可连接时仍走 open：只拿 disabled 提示文案，不发 RPC。
+  if (status.value === "disabled") {
+    if (!canConnect()) return;
+    // 页签隐藏期间容器被启动/连接变为可写：disabled 已过期，复位后重开。
+    close();
+  }
+  if (status.value !== "idle" && status.value !== "disabled") return;
   starting = true;
   try {
     await nextTick();

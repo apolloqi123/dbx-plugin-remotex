@@ -62,6 +62,8 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
   let stopped = true;
   let lastResizeCols = 0;
   let lastResizeRows = 0;
+  /** 后端 resize 队列满时回 false：最多补发一次，避免静默卡在旧尺寸。 */
+  let resizeRetries = 0;
 
   const encoder = new TextEncoder();
 
@@ -179,12 +181,18 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       setStatus("connected");
     } catch (cause) {
       if (current !== generation) return;
+      // The bridge may have created the PTY before the response was lost:
+      // close the speculative id so a timed-out open cannot hold a slot.
+      const failedId = terminalId;
       const message = cause instanceof Error && cause.message ? cause.message : String(cause);
       errorMessage.value = options.t("docker.terminalOpenFailed", { error: message });
       setStatus("error", { error: errorMessage.value });
       stopListening();
       terminalId = "";
       live = false;
+      if (failedId) {
+        void api.invoke("docker/terminal/close", { terminalId: failedId }).catch(() => undefined);
+      }
     }
   }
 
@@ -215,7 +223,23 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     lastResizeRows = nextRows;
     const api = window.dbxPlugin;
     if (!api) return;
-    void api.notify("docker/terminal/resize", { terminalId, cols: nextCols, rows: nextRows }).catch(() => undefined);
+    void api
+      .invoke<{ resized?: boolean }>("docker/terminal/resize", { terminalId, cols: nextCols, rows: nextRows })
+      .then((result) => {
+        if (result?.resized !== false) {
+          resizeRetries = 0;
+          return;
+        }
+        // 队列满（runner 正在冲刷输出）：清掉去重标记后补发一次最新尺寸。
+        if (resizeRetries >= 1 || stopped || !terminalId) return;
+        resizeRetries += 1;
+        lastResizeCols = 0;
+        lastResizeRows = 0;
+        setTimeout(() => {
+          if (!stopped && terminalId) resize(nextCols, nextRows);
+        }, 150);
+      })
+      .catch(() => undefined);
   }
 
   function handleStateEvent(event: ContainerTerminalStateEvent): void {

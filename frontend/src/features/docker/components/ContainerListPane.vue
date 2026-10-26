@@ -121,6 +121,9 @@ watch(containers, (rows) => applySelection(rows), { flush: "post" });
 watch([() => props.sessionId, () => props.connectionId], () => {
   selectedId.value = "";
   lastSignature = "";
+  // 立即按新目标重采一遍；否则首轮选中要等下一次 10s 轮询，
+  // 面板会长时间停在空列表/旧容器上。
+  void refreshList();
 });
 
 function selectRow(container: DockerContainer): void {

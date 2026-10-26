@@ -398,4 +398,25 @@ describe("container manager layout", () => {
       wrapper.unmount();
     }
   });
+
+  it("resets the auto-open state when the connection changes", async () => {
+    stubHost(rows());
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      expect(wrapper.find(".container-detail-pane").exists()).toBe(true);
+      await wrapper.get(".container-detail-close").trigger("click");
+      expect(wrapper.find(".container-detail-pane").exists()).toBe(false);
+
+      await wrapper.setProps({ connectionId: "other-connection" });
+      await flushPromises();
+      // New connection, first list load: logs auto-opens again.
+      expect(wrapper.find(".container-detail-pane").exists()).toBe(true);
+      expect(
+        wrapper.get('.container-detail-tab[aria-selected="true"]').attributes("data-tab"),
+      ).toBe("logs");
+    } finally {
+      wrapper.unmount();
+    }
+  });
 });

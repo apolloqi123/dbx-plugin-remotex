@@ -70,6 +70,12 @@ pub(crate) async fn drive_pty_channel<C: PtyChannel>(
                 Some(PtyMessage::ExitStatus(code)) => exit_code = Some(code),
                 Some(PtyMessage::Closed) | None => {
                     let _ = channel.close().await;
+                    // A peer close without exit-status is a transport loss, not
+                    // a normal shell exit: surface it as an error so the UI
+                    // offers reconnect instead of "exited (code -1)".
+                    if exit_code.is_none() && !*cancel.borrow() {
+                        return Err("SSH session closed".to_string());
+                    }
                     return Ok(exit_code);
                 }
             },
@@ -129,6 +135,12 @@ impl PtyChannel for ChannelPty {
 }
 
 impl SshRuntime {
+    /// Fails fast when the session has already disappeared, before the
+    /// registry admits a terminal or the caller writes an audit row.
+    pub async fn ensure_container_session(&self, session_id: &str) -> Result<(), String> {
+        self.session(session_id).await.map(|_| ())
+    }
+
     /// Opens a PTY channel and runs `command` in it (an `exec` request after
     /// `pty-req`, exactly like `ssh -t host <command>`).
     async fn open_container_channel(

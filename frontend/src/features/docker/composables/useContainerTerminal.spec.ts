@@ -74,6 +74,12 @@ function options(overrides: Partial<UseContainerTerminalOptions> = {}): UseConta
   };
 }
 
+function resizeCalls(harness: Harness): Array<[string, Record<string, unknown>]> {
+  return harness.invoke.mock.calls.filter((call) => call[0] === "docker/terminal/resize") as Array<
+    [string, Record<string, unknown>]
+  >;
+}
+
 describe("useContainerTerminal", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
@@ -120,17 +126,37 @@ describe("useContainerTerminal", () => {
     const terminal = useContainerTerminal(options());
     await terminal.open(80, 24);
 
+    // Same geometry as the open request: no resize RPC.
+    terminal.resize(80, 24);
+    await Promise.resolve();
+    expect(resizeCalls(harness)).toHaveLength(0);
+
     terminal.resize(100, 30);
     terminal.resize(100, 30);
-    await vi.waitFor(() => expect(harness.notify).toHaveBeenCalledTimes(1));
-    expect(harness.notify).toHaveBeenCalledWith("docker/terminal/resize", {
+    await vi.waitFor(() => expect(resizeCalls(harness)).toHaveLength(1));
+    expect(resizeCalls(harness)[0][1]).toEqual({
       terminalId: "term-12345678",
       cols: 100,
       rows: 30,
     });
-    // 与 open 下发的尺寸相同：不发 resize。
-    terminal.resize(80, 24);
-    expect(harness.notify).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a resize the backend dropped once", async () => {
+    const harness = installHarness();
+    let resizeAttempts = 0;
+    harness.invoke.mockImplementation(async (method: string) => {
+      if (method === "docker/terminal/open") return { terminalId: "term-12345678" };
+      if (method === "docker/terminal/resize") {
+        resizeAttempts += 1;
+        return { resized: resizeAttempts > 1 };
+      }
+      return {};
+    });
+    const terminal = useContainerTerminal(options());
+    await terminal.open(80, 24);
+
+    terminal.resize(100, 30);
+    await vi.waitFor(() => expect(resizeAttempts).toBe(2), { timeout: 2_000 });
   });
 
   it("reports errors and retries with a fresh terminal id", async () => {
@@ -145,11 +171,12 @@ describe("useContainerTerminal", () => {
     await terminal.open(80, 24);
     expect(terminal.status.value).toBe("error");
     expect(terminal.errorMessage.value).toContain("no shell");
+    // A lost response may hide an admitted PTY: the speculative id is closed.
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: "term-12345678" });
 
     await terminal.retry(80, 24);
     expect(terminal.status.value).toBe("connected");
     expect(terminal.errorMessage.value).toBe("");
-    expect(harness.invoke).toHaveBeenCalledTimes(2);
   });
 
   it("maps state events for the current terminal only", async () => {

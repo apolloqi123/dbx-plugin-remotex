@@ -47,3 +47,23 @@ async fn drive_local_pty_forwards_output_and_exit_code() {
     }
     assert_eq!(String::from_utf8_lossy(&output), "ready");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn cancel_stops_the_local_pty() {
+    let (sink, _chunks) = mpsc::channel(16);
+    let (_input_tx, input) = mpsc::channel(4);
+    let (_resize_tx, resize) = mpsc::channel(4);
+    let (cancel_tx, cancel) = watch::channel(false);
+
+    let program = PathBuf::from("sh");
+    let args = vec!["-c".to_string(), "sleep 30".to_string()];
+    let pty = spawn_local_program(&program, &args, &[], 80, 24).expect("spawn");
+    let drive = tokio::spawn(drive_local_pty(pty, sink, input, resize, cancel));
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    cancel_tx.send(true).expect("cancel");
+    let result = tokio::time::timeout(std::time::Duration::from_secs(3), drive)
+        .await
+        .expect("cancel must stop the PTY within the grace window");
+    assert!(result.expect("drive task").is_ok());
+}

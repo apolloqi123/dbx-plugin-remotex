@@ -67,6 +67,25 @@ async fn drive_forwards_output_input_resize_and_exit() {
 }
 
 #[tokio::test]
+async fn peer_close_without_exit_status_is_a_transport_error() {
+    let (sink, _chunks) = mpsc::channel(8);
+    let (_input_tx, mut input) = mpsc::channel(8);
+    let (_resize_tx, mut resize) = mpsc::channel(8);
+    let (_cancel_tx, mut cancel) = watch::channel(false);
+    let mut channel = FakeChannel {
+        incoming: vec![PtyMessage::Closed],
+        ..Default::default()
+    };
+
+    let error = drive_pty_channel(&mut channel, &sink, &mut input, &mut resize, &mut cancel)
+        .await
+        .expect_err("a close without exit-status is transport loss");
+
+    assert_eq!(error, "SSH session closed");
+    assert!(channel.closed);
+}
+
+#[tokio::test]
 async fn cancel_closes_the_channel() {
     let (sink, _chunks) = mpsc::channel(8);
     let (_input_tx, mut input) = mpsc::channel(8);

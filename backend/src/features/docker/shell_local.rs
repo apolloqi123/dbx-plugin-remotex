@@ -17,7 +17,12 @@ use tokio::sync::{mpsc, watch};
 pub(crate) const SHELL_INNER: &str =
     "if command -v bash >/dev/null 2>&1; then exec bash; else exec sh; fi";
 const OUTPUT_QUEUE: usize = 64;
+// A cancelled shell gets a short grace before SIGKILL; tests shorten it so the
+// cancel path is observable without a five-second wait.
+#[cfg(not(test))]
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const CLOSE_GRACE: Duration = Duration::from_millis(200);
 
 /// One running local shell: the PTY master plus the child handle. Input goes
 /// through `writer`, output through `reader`; `killer` is the cancel fallback.

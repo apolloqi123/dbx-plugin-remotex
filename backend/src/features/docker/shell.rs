@@ -203,6 +203,9 @@ impl DockerTerminals {
     ) -> Result<Value, String> {
         let command = shell_ssh_command(&engine, container_id)?;
         let terminal_id = requested_terminal_id(terminal_id)?;
+        // Resolve the session before admission so a vanished session is a
+        // clear RPC error instead of an open that immediately emits `state`.
+        ssh.ensure_container_session(&session_id).await?;
         let Reserved {
             cancel,
             cancel_rx,
@@ -376,14 +379,14 @@ impl DockerTerminals {
     }
 
     /// Applies a window size. Unknown ids answer `false`; a full resize queue
-    /// still answers `true` (the next fit will resend the size).
+    /// also answers `false` so the caller can retry the newest geometry.
     pub fn resize(&self, terminal_id: &str, cols: u32, rows: u32) -> bool {
         let inner = self.lock();
         match inner.get(terminal_id) {
-            Some(entry) => {
-                let _ = entry.resize.try_send((cols.max(1), rows.max(1)));
-                true
-            }
+            Some(entry) => entry
+                .resize
+                .try_send((cols.max(1), rows.max(1)))
+                .is_ok(),
             None => false,
         }
     }
@@ -464,10 +467,6 @@ impl DockerTerminals {
         }
     }
 
-    pub(crate) fn remove_for_test(&self, terminal_id: &str) {
-        self.lock().remove(terminal_id);
-    }
-
     pub(crate) fn active_for_test(&self) -> usize {
         self.lock().len()
     }
@@ -479,6 +478,24 @@ impl DockerTerminals {
         emitter: PluginEmitter,
         ttl: Duration,
     ) -> Result<String, String> {
+        self.start_fake_with(emitter, ttl, false)
+    }
+
+    /// Starts a runner that exits as soon as its cancellation fires, so a
+    /// test can observe the explicit-close suppression path.
+    pub(crate) fn start_cancellable_fake_for_test(
+        self: &Arc<Self>,
+        emitter: PluginEmitter,
+    ) -> Result<String, String> {
+        self.start_fake_with(emitter, Duration::from_secs(60), true)
+    }
+
+    fn start_fake_with(
+        self: &Arc<Self>,
+        emitter: PluginEmitter,
+        ttl: Duration,
+        cancellable: bool,
+    ) -> Result<String, String> {
         let terminal_id = requested_terminal_id(None)?;
         let Reserved {
             cancel,
@@ -487,10 +504,19 @@ impl DockerTerminals {
             resize_rx,
             closed,
         } = self.reserve(&terminal_id)?;
-        drop((cancel_rx, input_rx, resize_rx));
         let (sink, sink_rx) = mpsc::channel(OUTPUT_QUEUE);
         let handle = tokio::spawn(async move {
+            // Keep the queues open while the fake runner lives so resize/input
+            // admission behaves like a real terminal.
+            let _input_rx = input_rx;
+            let _resize_rx = resize_rx;
             let _ = sink.send(b"ready".to_vec()).await;
+            if cancellable {
+                let mut cancel_rx = cancel_rx;
+                let _ = cancel_rx.changed().await;
+                return Ok(Some(0));
+            }
+            drop(cancel_rx);
             std::future::pending::<()>().await;
             unreachable!("the fake terminal is only aborted by the TTL")
         });
