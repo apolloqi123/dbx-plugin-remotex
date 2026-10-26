@@ -17,6 +17,7 @@ use tokio::sync::watch;
 mod auth;
 mod metrics;
 mod run;
+mod streaming;
 mod terminal;
 
 #[cfg(test)]
@@ -39,6 +40,7 @@ pub const EXEC_CANCELLED_MESSAGE: &str = "Remote command was cancelled";
 pub use auth::*;
 pub use metrics::*;
 pub use run::*;
+pub use streaming::*;
 pub use terminal::*;
 
 pub use crate::core::shell_quote::shell_quote;

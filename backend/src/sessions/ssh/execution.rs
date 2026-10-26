@@ -5,4 +5,5 @@ use super::*;
 mod approvals;
 mod core;
 mod keepalive;
+mod streaming;
 mod terminal;

@@ -25,6 +25,7 @@ mod engine;
 mod local;
 mod parse;
 mod scripts;
+mod stream_batch;
 
 #[cfg(test)]
 mod tests;
@@ -39,6 +40,8 @@ pub use local::*;
 pub use parse::*;
 #[allow(unused_imports)]
 pub use scripts::*;
+#[allow(unused_imports)]
+pub use stream_batch::*;
 
 /// Wait cap for the container list collector (one `docker ps` round-trip).
 pub const LIST_TIMEOUT: Duration = Duration::from_secs(15);
