@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.37] — 2026-10-26
+
+- **继续降低容器面板对 SSH session channel 的瞬时占用**。文件页隐藏时不再请求目录（切换容器只复位状态，切回文件页才加载），目录列表请求串行合并为最新一次；日志流启动也串行合并，快速切容器时前几次启动直接作废，不并发打开多条 `docker logs -f` channel；瞬时 channel 拒绝的重试窗口延长到约 2.6 秒。配合 beta.36 的通道重试与终端关闭等待，避免快速切换日志/文件/终端时触发服务器 `MaxSessions` 上限。
+  **Further reduced transient SSH session-channel pressure from the container pane.** The files tab no longer loads directories while hidden (state resets on container change, loads on return) and directory requests are coalesced to the latest one; log-stream starts are also serialized so rapid container switches do not open several `docker logs -f` channels at once; the transient channel-refusal retry window now spans about 2.6 seconds. Together with beta.36's channel retries and terminal-close wait, this avoids hitting the server's `MaxSessions` limit while switching logs/files/terminal quickly.
+
 ## [0.7.9-beta.36] — 2026-10-26
 
 - **修复快速切换容器日志/文件/终端时的 `AdministrativelyProhibited` 失败**。SSH 服务器会限制并发 session channel（`MaxSessions`），快速切换时旧通道尚未关闭，新通道会被拒绝，表现为终端/文件打开失败、轮询连续失败后暂停。现在所有 SSH channel 打开（终端、文件、日志、SFTP、命令执行）对 `AdministrativelyProhibited`/`ResourceShortage` 做有界重试；容器终端关闭会等待旧 PTY 通道释放后再建立新会话，切换容器不再触发该错误。
