@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Braces, ChevronDown, ChevronRight, Search } from "@lucide/vue";
+import { Braces, ChevronDown, ChevronRight, Search, Zap } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
 import type { QuickCommand, QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
 import type { QuickCommandsMenuActions } from "../lib/workbenchToolbarActions";
