@@ -2,7 +2,7 @@
 
 use super::actions::*;
 use super::params::*;
-use super::paths::*;
+use crate::platform::paths::*;
 use super::*;
 
 pub(super) mod agent;

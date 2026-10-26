@@ -385,7 +385,7 @@ impl TaskProvider {
             }
         }
         let shell = target.shell_or(&crate::sessions::local::resolve_default_shell(
-            &crate::app::paths::plugin_data_dir(),
+            &crate::platform::paths::plugin_data_dir(),
         ));
         let args = local_spawn_args(&shell, config);
         run_local_streaming(

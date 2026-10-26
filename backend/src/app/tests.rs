@@ -2,8 +2,8 @@
 
 use super::actions::*;
 use super::params::*;
-use super::paths::*;
 use super::*;
+use crate::platform::paths::rdp_start_gate;
 
 #[test]
 fn rdp_start_gate_refuses_by_default_and_allows_explicit_experimental_opt_in() {
@@ -276,112 +276,6 @@ fn optional_u64_falls_back_on_missing_or_invalid() {
     assert_eq!(optional_u64(&json!({ "offset": -3 }), "offset", 0), 0);
     assert_eq!(optional_u64(&json!({ "offset": "later" }), "offset", 7), 7);
     assert_eq!(optional_u64(&json!({ "offset": null }), "offset", 7), 7);
-}
-
-fn lookup_from<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
-    move |key: &str| {
-        pairs
-            .iter()
-            .find(|(name, _)| *name == key)
-            .map(|(_, value)| OsString::from(*value))
-    }
-}
-
-#[test]
-fn plugin_data_dir_env_var_takes_priority() {
-    let dir = resolve_plugin_data_dir(lookup_from(&[
-        ("DBX_PLUGIN_DATA_DIR", "/tmp/explicit-plugin-data"),
-        ("DBX_DATA_DIR", "/tmp/unused-dbx-data"),
-        ("HOME", "/Users/unused"),
-    ]));
-    assert_eq!(dir, PathBuf::from("/tmp/explicit-plugin-data"));
-}
-
-#[test]
-fn blank_env_values_are_treated_as_unset() {
-    // A blank DBX_PLUGIN_DATA_DIR must not win; DBX_DATA_DIR still applies.
-    let dir = resolve_plugin_data_dir(lookup_from(&[
-        ("DBX_PLUGIN_DATA_DIR", "   "),
-        ("DBX_DATA_DIR", "/tmp/dbx-root"),
-        ("HOME", "/Users/unused"),
-    ]));
-    assert_eq!(
-        dir,
-        PathBuf::from("/tmp/dbx-root")
-            .join("plugin-data")
-            .join("io.dbx.sshx")
-    );
-}
-
-#[test]
-fn dbx_data_dir_maps_into_plugin_data_tree() {
-    let dir = resolve_plugin_data_dir(lookup_from(&[
-        ("DBX_DATA_DIR", "/tmp/dbx-root"),
-        ("HOME", "/Users/unused"),
-    ]));
-    assert_eq!(
-        dir,
-        PathBuf::from("/tmp/dbx-root")
-            .join("plugin-data")
-            .join("io.dbx.sshx")
-    );
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-fn macos_home_falls_back_to_application_support() {
-    let dir = resolve_plugin_data_dir(lookup_from(&[("HOME", "/Users/tester")]));
-    assert_eq!(
-        dir,
-        PathBuf::from("/Users/tester")
-            .join("Library/Application Support")
-            .join("dbx-plugin-data")
-            .join("io.dbx.sshx")
-    );
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-#[test]
-fn unix_xdg_data_home_is_preferred_over_local_share() {
-    let with_xdg = resolve_plugin_data_dir(lookup_from(&[
-        ("XDG_DATA_HOME", "/xdg/data"),
-        ("HOME", "/Users/tester"),
-    ]));
-    assert_eq!(
-        with_xdg,
-        PathBuf::from("/xdg/data/dbx-plugin-data/io.dbx.sshx")
-    );
-    let without_xdg = resolve_plugin_data_dir(lookup_from(&[("HOME", "/Users/tester")]));
-    assert_eq!(
-        without_xdg,
-        PathBuf::from("/Users/tester/.local/share/dbx-plugin-data/io.dbx.sshx")
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn windows_falls_back_to_appdata() {
-    let dir = resolve_plugin_data_dir(lookup_from(&[(
-        "APPDATA",
-        r"C:\Users\tester\AppData\Roaming",
-    )]));
-    assert_eq!(
-        dir,
-        PathBuf::from(r"C:\Users\tester\AppData\Roaming")
-            .join("dbx-plugin-data")
-            .join("io.dbx.sshx")
-    );
-}
-
-#[test]
-fn all_sources_missing_falls_back_to_temp_dir() {
-    let dir = resolve_plugin_data_dir(lookup_from(&[]));
-    assert_eq!(
-        dir,
-        std::env::temp_dir()
-            .join("dbx-plugin-data")
-            .join("io.dbx.sshx")
-    );
 }
 
 #[test]

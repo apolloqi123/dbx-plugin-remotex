@@ -111,7 +111,7 @@ impl RdpSessionRuntime {
                 .find(|(_, candidate)| candidate.workbench_id == request.workbench_id)
                 .map(|(session_id, entry)| (session_id.clone(), entry.clone()))
             {
-                crate::app::diagnostics::log_rdp_debug(format!(
+                crate::platform::diagnostics::log_rdp_debug(format!(
                     "rdp/start idempotent hit workbench={} -> reuse {existing_id}",
                     request.workbench_id
                 ));
@@ -200,7 +200,7 @@ impl RdpSessionRuntime {
             entry.height.load(Ordering::Acquire),
         );
         if previous != (width, height) {
-            crate::app::diagnostics::log_rdp_debug(format!(
+            crate::platform::diagnostics::log_rdp_debug(format!(
                 "rdp/resize id={session_id}: {previous:?} -> ({width}, {height}) via reconnect"
             ));
             entry.width.store(width, Ordering::Release);

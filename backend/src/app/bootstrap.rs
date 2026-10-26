@@ -1,7 +1,7 @@
 //! Plugin construction and the sidecar serve loop.
 
 use super::diagnostics::{log_sidecar_exit, spawn_terminal_input_counter};
-use super::paths::plugin_data_dir;
+use crate::platform::paths::plugin_data_dir;
 use super::*;
 use crate::core::plugin_ids::PLUGIN_ID;
 

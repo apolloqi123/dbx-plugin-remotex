@@ -5,13 +5,10 @@ mod bootstrap;
 pub(crate) mod diagnostics;
 mod handler;
 pub(crate) mod params;
-pub(crate) mod paths;
 pub(crate) mod rpc;
 #[cfg(test)]
 mod tests;
 
-use std::ffi::OsString;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -30,7 +27,7 @@ use crate::core::model::{
 };
 use crate::sessions::ssh::{connection_id_param, filesystem_path, PromptDecision, SshRuntime};
 
-use self::paths::plugin_data_dir;
+use crate::platform::paths::plugin_data_dir;
 
 struct Plugin {
     runtime: Runtime,

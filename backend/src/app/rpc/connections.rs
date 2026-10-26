@@ -1,7 +1,7 @@
 //! Connections RPC handlers.
 
 use super::*;
-use crate::app::diagnostics::*;
+use crate::platform::diagnostics::*;
 
 impl Plugin {
     pub(super) fn handle_connections(
