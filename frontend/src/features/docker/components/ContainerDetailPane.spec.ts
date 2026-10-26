@@ -20,8 +20,10 @@ const container: DockerContainer = {
 describe("container detail pane", () => {
   it("switches tabs and keeps the tab strip mounted", async () => {
     const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "logs" } });
-    expect(wrapper.get('[data-tab="logs"]').text()).toBe("docker.logsTab");
-    expect(wrapper.get('[data-tab="files"]').text()).toBe("docker.filesTab");
+    expect(wrapper.get('[data-tab="logs"]').attributes("aria-label")).toBe("docker.logsTab");
+    expect(wrapper.get('[data-tab="logs"]').find("svg").exists()).toBe(true);
+    expect(wrapper.get('[data-tab="files"]').attributes("aria-label")).toBe("docker.filesTab");
+    expect(wrapper.get('[data-tab="files"]').find("svg").exists()).toBe(true);
     await wrapper.get('[data-tab="files"]').trigger("click");
     expect(wrapper.emitted("update:activeTab")?.[0]).toEqual(["files"]);
     expect(wrapper.find('[data-tab="logs"]').exists()).toBe(true);

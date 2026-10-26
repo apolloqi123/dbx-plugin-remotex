@@ -5,7 +5,7 @@
 // 两个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
 // 切到文件页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
 // Wave 2 在页内填充实现，props 契约不变。
-import { X } from "@lucide/vue";
+import { FolderOpen, ScrollText, X } from "@lucide/vue";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
@@ -49,9 +49,11 @@ const emit = defineEmits<{
         class="container-detail-tab"
         data-tab="logs"
         :aria-selected="activeTab === 'logs'"
+        :title="t('docker.logsTab')"
+        :aria-label="t('docker.logsTab')"
         @click="emit('update:activeTab', 'logs')"
       >
-        {{ t("docker.logsTab") }}
+        <ScrollText />
       </button>
       <button
         type="button"
@@ -59,9 +61,11 @@ const emit = defineEmits<{
         class="container-detail-tab"
         data-tab="files"
         :aria-selected="activeTab === 'files'"
+        :title="t('docker.filesTab')"
+        :aria-label="t('docker.filesTab')"
         @click="emit('update:activeTab', 'files')"
       >
-        {{ t("docker.filesTab") }}
+        <FolderOpen />
       </button>
     </div>
     <ContainerLogsTab
@@ -145,14 +149,21 @@ const emit = defineEmits<{
 }
 
 .container-detail-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: none;
   color: inherit;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 4px 10px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   opacity: 0.7;
+}
+
+.container-detail-tab svg {
+  width: 14px;
+  height: 14px;
 }
 
 .container-detail-tab[aria-selected="true"] {
