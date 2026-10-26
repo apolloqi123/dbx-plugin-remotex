@@ -27,10 +27,13 @@ pub(crate) mod files;
 mod local;
 mod parse;
 mod scripts;
+mod shell_local;
 mod stream;
 mod stream_batch;
 mod terminal;
 
+#[cfg(test)]
+mod shell_local_tests;
 #[cfg(test)]
 mod tests;
 
