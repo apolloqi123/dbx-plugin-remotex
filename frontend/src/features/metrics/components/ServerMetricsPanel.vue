@@ -212,3 +212,13 @@ function formatUptime(seconds: number) {
     </template>
   </div>
 </template>
+
+<style scoped>
+.metrics-trend .metrics-trend-line { width: 120px; height: 18px; }
+.proc-manage { margin-top: 10px; }
+.proc-manage .settings-section-title { display: flex; justify-content: space-between; align-items: center; }
+.proc-sort-row { display: flex; gap: 16px; margin: 6px 0; font-size: 12px; color: var(--muted-foreground); }
+.proc-sort-option { display: inline-flex; align-items: center; gap: 4px; }
+.proc-kill-group { display: flex; gap: 8px; justify-content: flex-end; }
+.proc-kill-force { color: var(--destructive); }
+</style>

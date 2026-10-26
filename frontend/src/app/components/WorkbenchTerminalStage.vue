@@ -402,3 +402,107 @@ const {
         </template>
       </WorkbenchStage>
 </template>
+
+<style scoped>
+/* 录制记录列表：shadcn 式行布局——行间距归零，行间仅一条 45% 淡化的发丝线，
+   行 hover 出 accent 圆角背景。旧卡片每条 border-top + body gap 会叠出
+   "每行上下各一条线"的双线观感，此处整体替换。 */
+.recordings-float { width: 440px; }
+.recordings-float .metrics-float-body { gap: 0; padding: 4px 6px; }
+.recording-card { display: flex; align-items: center; gap: 8px; border-radius: var(--radius); padding: 7px 8px; }
+.recording-card + .recording-card { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+.recording-card:hover { background: var(--accent); }
+.recording-icon { width: 16px; height: 16px; flex: 0 0 16px; color: var(--muted-foreground); }
+.recording-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
+.recording-host { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.recording-meta { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-duration { flex: 0 0 auto; color: var(--foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* M14：录制搜索行（名称过滤 + 内容全文命中）与命中行摘录。 */
+.recordings-search-row { display: flex; align-items: center; gap: 6px; padding: 4px 10px 2px; }
+.recordings-search-icon { width: 13px; height: 13px; flex: 0 0 13px; color: var(--muted-foreground); }
+.recordings-search { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background); color: var(--foreground); font-size: 12px; padding: 4px 8px; }
+.recordings-search:focus { outline: none; border-color: var(--ring); }
+.recording-hit { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-actions { display: flex; flex: 0 0 auto; gap: 2px; }
+.recording-delete { color: var(--muted-foreground); }
+.recording-delete:hover:not(:disabled) { color: var(--destructive); }
+
+/* 终端行内 ghost 自动建议（对标 Warp/fish）：灰字盖在光标格上，无交互
+   （pointer-events:none），不参与选区/搜索。终端主题色在 xterm 内部渲染，
+   CSS 拿不到，故用全局次级前景色 + 低透明度近似 fish 的 dim 灰。 */
+.terminal-ghost {
+  position: absolute;
+  z-index: 3;
+  max-width: calc(100% - 16px);
+  overflow: visible;
+  white-space: pre;
+  line-height: 1;
+  color: var(--muted-foreground);
+  opacity: 0.55;
+  pointer-events: none;
+}
+/* 键位胶囊（批 4e，Warp accept-autosuggestion-hint 同位）：灰字尾巴上的
+   小键帽，pointer-events 独立放开；下拉菜单盖在其上方（z-index 高于浮层
+   互不干扰）。 */
+.terminal-ghost-keycap {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+  vertical-align: 1px;
+}
+
+.terminal-ghost-keycap:hover {
+  background: var(--accent);
+}
+
+.terminal-ghost-keymenu {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.terminal-ghost-keyoption {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.terminal-ghost-keyoption.active,
+.terminal-ghost-keyoption:hover {
+  background: var(--accent);
+}
+
+.terminal-ghost-keymenu-note {
+  padding: 4px 8px 2px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  white-space: nowrap;
+}
+</style>

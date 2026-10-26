@@ -10,7 +10,8 @@ import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, History, Search, ShieldChe
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../shared/ui/context-menu/index";
 import WorkbenchTerminalStage from "./WorkbenchTerminalStage.vue";
 import type { WorkbenchApi } from "../workbench/useWorkbench";
-import type { ComponentPublicInstance } from "vue";
+import { onBeforeUnmount, type ComponentPublicInstance } from "vue";
+import { trackExposedRef } from "../workbench/lib/trackExposedRef";
 
 const props = defineProps<{ bindings: WorkbenchApi }>();
 
@@ -54,10 +55,24 @@ const {
   updateEditorText, workbenchId,
 } = props.bindings;
 
-/** 侧栏根元素经 defineExpose 回传；模板 ref 跨组件不会自动绑定到父级 ref。 */
+/** 侧栏根元素经 defineExpose 回传；模板 ref 跨组件不会自动绑定到父级 ref，
+ *  且子组件根节点的 `v-if` 切换不会重新触发函数 ref，必须持续跟踪暴露值。 */
+let stopSidePanelSync: (() => void) | undefined;
+
 function bindSidePanel(el: Element | ComponentPublicInstance | null) {
-  props.bindings.sftpPane.value = (el as InstanceType<typeof WorkbenchSidePanel> | null)?.sftpPane;
+  stopSidePanelSync?.();
+  stopSidePanelSync = undefined;
+  const panel = el as InstanceType<typeof WorkbenchSidePanel> | null;
+  if (!panel) {
+    props.bindings.sftpPane.value = undefined;
+    return;
+  }
+  stopSidePanelSync = trackExposedRef(() => panel.sftpPane, props.bindings.sftpPane);
 }
+
+onBeforeUnmount(() => {
+  stopSidePanelSync?.();
+});
 </script>
 
 <template>
@@ -321,5 +336,3 @@ function bindSidePanel(el: Element | ComponentPublicInstance | null) {
       />
     </section>
 </template>
-
-<style scoped src="../styles/app.css"></style>
