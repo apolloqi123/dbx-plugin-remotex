@@ -11,7 +11,7 @@ RPC/事件契约以 `docs/architecture/PROTOCOL.zh-CN.md` 的「Docker 管理面
 
 | 文件 | 职责 | 边界 |
 | --- | --- | --- |
-| `ContainerManagerPane.vue` | 页面外壳：页头（标题/本机徽标/引擎设置/刷新/关闭）、左右分栏、页签、内部弹层与 Esc 仲裁 | 持有选中容器、页签状态；把 RPC 调用委托给子组件/composable |
+| `ContainerManagerPane.vue` | 页面外壳：页头（标题/关闭）、列表/详情分栏的打开时机与可拖拽分隔条、页签 | 默认只渲染列表；持有选中容器、页签状态与列表宽度（40%，夹取 25–70%） |
 | `ContainerListPane.vue` | 容器列表：10s 轮询、3 连败暂停、动作菜单、kill/rm 确认、引擎设置 | 轮询与 needsSudo 逻辑在 `dockerPanelModel` / `dockerActions` / `useDockerContainers` |
 | `ContainerDetailPane.vue` | 选中容器详情与页签容器 | 只渲染，不订阅全局事件 |
 | `ContainerLogsTab.vue` | 日志视图：滚动容器、跟随按钮、tail 选择、清空、结束态/sudo 重试 | 行缓冲与 follow 判定在 `lib/dockerLogBuffer`，流生命周期在 `useDockerLogStream` |
@@ -32,6 +32,17 @@ Composable/lib：
 事件订阅只有一处：`app/workbench/composables/usePluginEvents.ts` 把
 `docker/logs/*` 事件分派到 `dockerLogEvents`。组件内**不得**新增第二个
 `onEvent` 订阅（多订阅会导致同一 stream 的行被追加两次）。
+
+## 列表/详情分栏
+
+- **默认只有列表**，占满分屏宽度；没有详情、分隔条或空详情占位。
+- 打开详情的唯一入口是行菜单：`Logs` 打开日志页签，`Files` 打开文件页签。
+- 行点击/自动选中/轮询只更新列表高亮；详情已打开时切到点击的容器，但不会
+  打开已关闭的详情。列表清空或连接切换会收起详情。
+- 分栏打开时列表默认 40%（可用分隔条拖拽或 `ArrowLeft`/`ArrowRight` 调整，
+  `Shift` ×3；夹取 25%–70%）。分隔条为垂直 `separator`，带
+  `aria-valuenow/min/max`；详情页头 X 只收起详情并恢复列表整宽，分屏页头 X
+  才关闭整个分屏。
 
 ## 日志流生命周期
 

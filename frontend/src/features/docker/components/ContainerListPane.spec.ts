@@ -120,7 +120,7 @@ describe("container list selection", () => {
     }
   });
 
-  it("emits the clicked container as an explicit selection", async () => {
+  it("emits the clicked container with a single payload", async () => {
     stubHost([
       { id: "db111", name: "db", state: "exited" },
       { id: "web222", name: "web-nginx", state: "running" },
@@ -128,11 +128,45 @@ describe("container list selection", () => {
     const wrapper = mountList();
     try {
       await flushPromises();
-      // 首载的自动选中不是显式动作：管理器不据此重开被收起的详情。
-      expect(wrapper.emitted("select")?.[0]?.[1]).toBeUndefined();
+      // 首载的自动选中只带容器，没有显式标记。
+      expect(wrapper.emitted("select")?.[0]).toHaveLength(1);
       await wrapper.get('[data-container-id="db111"]').trigger("click");
       expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "db" });
-      expect(wrapper.emitted("select")?.at(-1)?.[1]).toBe(true);
+      expect(wrapper.emitted("select")?.at(-1)).toHaveLength(1);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("emits logs from the row menu", async () => {
+    stubHost([{ id: "web222", name: "web-nginx", state: "running" }]);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      await wrapper.get(".docker-row-trigger").trigger("click");
+      await flushPromises();
+      const item = Array.from(document.querySelectorAll<HTMLButtonElement>(".docker-row-menu-item"))
+        .find((button) => button.textContent?.includes("docker.actionLogs"));
+      expect(item, "row menu must offer logs").toBeDefined();
+      item!.click();
+      expect(wrapper.emitted("logs")?.[0]?.[0]).toMatchObject({ id: "web222" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("emits files from the row menu", async () => {
+    stubHost([{ id: "web222", name: "web-nginx", state: "running" }]);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      await wrapper.get(".docker-row-trigger").trigger("click");
+      await flushPromises();
+      const item = Array.from(document.querySelectorAll<HTMLButtonElement>(".docker-row-menu-item"))
+        .find((button) => button.textContent?.includes("docker.filesTab"));
+      expect(item, "row menu must offer files").toBeDefined();
+      item!.click();
+      expect(wrapper.emitted("files")?.[0]?.[0]).toMatchObject({ id: "web222" });
     } finally {
       wrapper.unmount();
     }

@@ -31,12 +31,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** `null` = 列表已清空（rm/刷新后无容器），父组件必须收起详情。
-   *  `explicit` = 用户显式选择（行点击/行菜单 Logs），区别于轮询/刷新自动选中；
-   *  父组件据此恢复被手动收起的详情。 */
-  (e: "select", container: DockerContainer | null, explicit?: boolean): void;
-  /** 行菜单「Logs」：选中该容器并切到日志页。 */
+  /** 选中快照（id/state/status/image/ports 变化时重发）；`null` = 列表已清空，
+   *  父组件据此收起详情。自动选中与行点击同形，父组件自行决定是否建详情。 */
+  (e: "select", container: DockerContainer | null): void;
+  /** 行菜单「Logs」：打开该容器的日志详情。 */
   (e: "logs", container: DockerContainer): void;
+  /** 行菜单「Files」：打开该容器的文件详情。 */
+  (e: "files", container: DockerContainer): void;
 }>();
 
 const {
@@ -87,13 +88,12 @@ function identitySignature(container: DockerContainer | null): string {
     : "";
 }
 
-/** `force`：用户显式点击/行菜单总是上抛（即使签名未变），并标记为 explicit —
- *  详情被手动收起后再点当前高亮行必须能重新打开。 */
+/** `force`：行点击总是上抛（即使签名未变），父组件可据此切换已打开的详情。 */
 function emitSelection(container: DockerContainer | null, force = false): void {
   const signature = identitySignature(container);
   if (!force && signature === lastSignature) return;
   lastSignature = signature;
-  emit("select", container, force || undefined);
+  emit("select", container);
 }
 
 function applySelection(rows: DockerContainer[]): void {
@@ -138,6 +138,13 @@ function menuOpenLogs(container: DockerContainer): void {
   selectedId.value = container.id;
   emitSelection(container, true);
   emit("logs", container);
+}
+
+function menuOpenFiles(container: DockerContainer): void {
+  rowMenu.close();
+  selectedId.value = container.id;
+  emitSelection(container, true);
+  emit("files", container);
 }
 
 function menuOpenInTerminal(container: DockerContainer): void {
@@ -281,6 +288,7 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
           :can-open-terminal="mode === 'ssh'"
           @action="(action) => runMenuAction(container, action)"
           @logs="menuOpenLogs(container)"
+          @files="menuOpenFiles(container)"
           @terminal="menuOpenInTerminal(container)"
         />
       </li>

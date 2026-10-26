@@ -2,7 +2,7 @@
 // 容器行的「操作」下拉：触发器（⌄，终端回填成功短暂显示 ✓）+ hover 菜单。
 // 开关状态机由面板持有（单个 controller 保证全局只有一个菜单打开），这里
 // 只负责触发/内容渲染与派发；选项目标动作的收尾（先收菜单再派发）在面板。
-import { Check, ChevronDown, Play, RotateCw, ScrollText, Square, Terminal, Trash2, X } from "@lucide/vue";
+import { Check, ChevronDown, FolderOpen, Play, RotateCw, ScrollText, Square, Terminal, Trash2, X } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../shared/ui/popover/index";
 import type { RowMenuController } from "../lib/dockerRowMenu";
 import type { DockerActionName } from "../lib/dockerActions";
@@ -25,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   action: [action: DockerActionName];
   logs: [];
+  files: [];
   terminal: [];
 }>();
 
@@ -81,6 +82,9 @@ function onOpenAutoFocus(event: Event): void {
       <div class="docker-row-menu-sep" role="separator" />
       <button type="button" class="docker-row-menu-item" @click="emit('logs')">
         <ScrollText />{{ props.t("docker.actionLogs") }}
+      </button>
+      <button type="button" class="docker-row-menu-item" @click="emit('files')">
+        <FolderOpen />{{ props.t("docker.filesTab") }}
       </button>
       <button v-if="props.canOpenTerminal" type="button" class="docker-row-menu-item" @click="emit('terminal')">
         <Terminal />{{ props.t("docker.actionTerminal") }}
