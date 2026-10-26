@@ -12,7 +12,7 @@ use super::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use uuid::Uuid;
@@ -64,13 +64,8 @@ impl UploadRegistry {
         }
         let id = Uuid::new_v4().to_string();
         let dir = self.base.join(format!("{UPLOAD_DIR_PREFIX}{id}"));
-        std::fs::create_dir_all(&dir)
-            .map_err(|error| format!("Failed to create upload directory: {error}"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
-        }
+        // 0700 at creation (`DirBuilderExt`), never chmod-after.
+        create_private_dir(&dir)?;
         let path = dir.join(safe_staging_name(name));
         let file = File::create(&path)
             .map_err(|error| format!("Failed to create upload file: {error}"))?;
@@ -90,6 +85,7 @@ impl UploadRegistry {
 
     /// Checks that `bytes` more would stay under [`UPLOAD_MAX_BYTES`].
     pub fn reserve(&mut self, id: &str, bytes: u64) -> Result<(), String> {
+        self.sweep();
         let entry = self.entry(id)?;
         if entry.received.saturating_add(bytes) > UPLOAD_MAX_BYTES {
             return Err(format!(
@@ -128,6 +124,7 @@ impl UploadRegistry {
     /// The entry stays registered so the caller can `import` then
     /// `cleanup`; it no longer occupies an active upload slot.
     pub fn finish(&mut self, id: &str) -> Result<(String, u64), String> {
+        self.sweep();
         let entry = self.entry(id)?;
         if entry.finished {
             return Err("Upload is already finished".to_string());
@@ -148,6 +145,7 @@ impl UploadRegistry {
 
     /// Drops the upload and removes its temp directory.
     pub fn cancel(&mut self, id: &str) -> Result<(), String> {
+        self.sweep();
         let mut entry = self
             .entries
             .remove(id)
@@ -157,6 +155,27 @@ impl UploadRegistry {
         Ok(())
     }
 
+    /// Forgets the upload whose staging file is `staging_path`, after the
+    /// caller cleaned that file up (`docker/files/cleanup`/`saveLocal`).
+    /// Without this the finished entry would linger for the process
+    /// lifetime; returns whether an entry matched.
+    pub fn remove_by_staging_path(&mut self, staging_path: &str) -> bool {
+        self.sweep();
+        let id = self
+            .entries
+            .iter()
+            .find(|(_, entry)| entry.path == Path::new(staging_path))
+            .map(|(id, _)| id.clone());
+        let Some(id) = id else {
+            return false;
+        };
+        if let Some(mut entry) = self.entries.remove(&id) {
+            drop(entry.file.take());
+            let _ = std::fs::remove_dir_all(&entry.dir);
+        }
+        true
+    }
+
     fn entry(&mut self, id: &str) -> Result<&mut UploadEntry, String> {
         self.entries
             .get_mut(id)
@@ -164,7 +183,9 @@ impl UploadRegistry {
     }
 
     /// Removes entries untouched for [`UPLOAD_TTL`], including their temp
-    /// directories. Called on `begin`; an idle registry costs nothing.
+    /// directories. Invoked by every public entry point (begin/reserve/
+    /// chunk/finish/cancel), so an abandoned upload is purged on the next
+    /// call of any kind — not only on a new `begin`.
     fn sweep(&mut self) {
         let now = Instant::now();
         self.entries.retain(|_, entry| {
@@ -175,6 +196,14 @@ impl UploadRegistry {
             let _ = std::fs::remove_dir_all(&entry.dir);
             false
         });
+    }
+
+    /// Test-only: ages an entry past [`UPLOAD_TTL`] without sleeping.
+    #[cfg(test)]
+    fn backdate(&mut self, id: &str, age: Duration) {
+        if let Some(entry) = self.entries.get_mut(id) {
+            entry.last_used = Instant::now() - age;
+        }
     }
 }
 
@@ -229,5 +258,51 @@ mod tests {
         assert!(registry.chunk("missing", 0, b"x").is_err());
         assert!(registry.finish("missing").is_err());
         assert!(registry.cancel("missing").is_err());
+    }
+
+    #[test]
+    fn cleanup_unregisters_the_finished_upload() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = UploadRegistry::new(dir.path().to_path_buf());
+        let id = registry.begin("report.log").unwrap();
+        registry.chunk(&id, 0, b"hello").unwrap();
+        let (staging, _) = registry.finish(&id).unwrap();
+        let upload_dir = std::path::Path::new(&staging).parent().unwrap().to_path_buf();
+        // `docker/files/cleanup` deletes the file, then drops the entry.
+        assert!(registry.remove_by_staging_path(&staging));
+        assert!(!upload_dir.exists());
+        assert!(registry.finish(&id).is_err());
+        // Idempotent: a second cleanup call matches nothing.
+        assert!(!registry.remove_by_staging_path(&staging));
+        // A path that never belonged to an upload matches nothing either.
+        assert!(!registry.remove_by_staging_path("/tmp/dbx-sshx-upload-nope/file"));
+    }
+
+    #[test]
+    fn sweeps_expired_entries_without_a_new_begin() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = UploadRegistry::new(dir.path().to_path_buf());
+        let stale = registry.begin("stale.log").unwrap();
+        let live = registry.begin("live.log").unwrap();
+        registry
+            .chunk(&stale, 0, b"old")
+            .expect("fresh upload accepts a chunk");
+        registry.backdate(&stale, UPLOAD_TTL + Duration::from_secs(1));
+        let stale_dir = registry
+            .entries
+            .get(&stale)
+            .map(|entry| entry.dir.clone())
+            .unwrap();
+        // Any call — here a chunk of an unrelated upload — sweeps expired
+        // entries; no `begin` is required.
+        registry.chunk(&live, 0, b"x").unwrap();
+        assert!(!stale_dir.exists());
+        assert!(registry.finish(&stale).is_err());
+        assert!(registry.finish(&live).is_ok());
+        // `cancel` sweeps too.
+        let abandoned = registry.begin("abandoned.log").unwrap();
+        registry.backdate(&abandoned, UPLOAD_TTL + Duration::from_secs(1));
+        assert!(registry.cancel(&live).is_ok());
+        assert!(registry.cancel(&abandoned).is_err());
     }
 }

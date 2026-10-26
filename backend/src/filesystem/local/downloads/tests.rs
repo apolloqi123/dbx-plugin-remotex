@@ -118,6 +118,22 @@ fn save_local_path_copies_records_history_and_honors_conflict() {
     assert!(save_local_path(data_dir.path(), "dir", sources.path(), None).is_err());
 }
 
+/// `docker cp` 保留符号链接；保存链路必须 lstat 而不是跟随，否则容器内
+/// 指向 `/etc/shadow` 的链接会被复制进下载目录。
+#[cfg(unix)]
+#[test]
+fn save_local_path_rejects_symlink_sources() {
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    let sources = tempfile::tempdir().expect("sources");
+    let real = sources.path().join("real.log");
+    std::fs::write(&real, b"secret").expect("real");
+    let link = sources.path().join("link.log");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+    let error = save_local_path(data_dir.path(), "link.log", &link, None)
+        .expect_err("symlinks must not be saved");
+    assert!(error.contains("Only regular files"));
+}
+
 #[test]
 fn sanitize_strips_separators_and_traversal() {
     assert_eq!(sanitize_file_name("report.tar.gz"), "report.tar.gz");

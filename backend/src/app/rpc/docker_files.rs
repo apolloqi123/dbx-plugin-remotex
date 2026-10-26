@@ -10,13 +10,16 @@ use std::time::Duration;
 
 use crate::features::docker::files::{
     cleanup_command, cleanup_local, create_local_staging_dir, export_command, export_local,
-    files_list_payload, import_command, import_local, is_missing_tool, join_container_path,
-    list_command, list_entries, mktemp_command, normalize_container_path, parse_mktemp_output,
-    parse_stat_output, safe_staging_name, stat_command, stat_payload, validate_staging_path,
-    StagingLocation, UploadRegistry, TRANSFER_TIMEOUT, UPLOAD_CHUNK_BYTES, UPLOAD_MAX_BYTES,
+    files_list_payload, import_command, import_local, is_missing_tool, is_regular_file_type,
+    join_container_path, list_command, list_entries, local_staging_regular_file_size,
+    mktemp_command, normalize_container_path, parse_mktemp_output, parse_staging_probe,
+    parse_stat_output, safe_staging_name, staging_probe_command, stat_command, stat_payload,
+    validate_staging_path, StagingLocation, UploadRegistry, TRANSFER_TIMEOUT, UPLOAD_CHUNK_BYTES,
+    UPLOAD_MAX_BYTES,
 };
-use crate::features::docker::{find_local_cli, run_local, DockerTarget, EngineConfig, FILES_TIMEOUT};
-use crate::sessions::ssh::exec;
+use crate::features::docker::{
+    find_local_cli, run_local, validate_container_id, DockerTarget, EngineConfig, FILES_TIMEOUT,
+};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 
@@ -31,7 +34,7 @@ impl Plugin {
             "docker/files/list" => {
                 let container_id = required_string(&params, "containerId")?;
                 let engine = crate::features::docker::parse_engine(&params)?;
-                let requested = params.get("path").and_then(Value::as_str).unwrap_or("/");
+                let requested = container_path_param(&params)?;
                 let path = normalize_container_path(requested)?;
                 let (ssh_command, local_argv) = list_command(&engine, container_id, &path)?;
                 if is_local_target(&params)? {
@@ -63,7 +66,7 @@ impl Plugin {
             "docker/files/stat" => {
                 let container_id = required_string(&params, "containerId")?;
                 let engine = crate::features::docker::parse_engine(&params)?;
-                let requested = params.get("path").and_then(Value::as_str).unwrap_or("/");
+                let requested = container_path_param(&params)?;
                 let path = normalize_container_path(requested)?;
                 let stat = if is_local_target(&params)? {
                     self.local_stat(&engine, container_id, &path)?
@@ -74,13 +77,19 @@ impl Plugin {
                 Ok(stat_payload(stat))
             }
 
-            // 容器文件 → 暂存。先 stat 拒绝目录（v1 目录不可下载）；SSH
-            // 在远端 `mktemp -d /tmp/dbx-sshx.XXXXXX` 后 `docker cp`；本机
-            // 在系统临时目录建 `dbx-sshx-<uuid>` 后 argv `docker cp`。
+            // 容器文件 → 暂存。先 stat：目录拒绝（v1 目录不可下载），且
+            // 只放行 `%F == "regular file"`——`docker cp` 会保留符号链接，
+            // 容器内指向 /etc/shadow 的链接会变成主机/远端链接，随后被
+            // SFTP 或本机保存跟随。SSH 在远端 `mktemp -d
+            // /tmp/dbx-sshx.XXXXXX` 后 `docker cp`；本机在系统临时目录建
+            // `dbx-sshx-<uuid>` 后 argv `docker cp`。复制完成后再对暂存项
+            // 做一次类型校验（lstat / `stat -c %F`），stat 不可用时也不会
+            // 把目录或链接交出去。
             "docker/files/export" => {
                 let container_id = required_string(&params, "containerId")?;
+                validate_container_id(container_id)?;
                 let engine = crate::features::docker::parse_engine(&params)?;
-                let requested = params.get("path").and_then(Value::as_str).unwrap_or("/");
+                let requested = container_path_param(&params)?;
                 let path = normalize_container_path(requested)?;
                 let local = is_local_target(&params)?;
                 let stat = if local {
@@ -89,20 +98,31 @@ impl Plugin {
                     let session_id = required_string(&params, "sessionId")?;
                     self.remote_stat(session_id, &engine, container_id, &path)?
                 };
-                if stat.as_ref().map(|stat| stat.kind.as_str()) == Some("dir") {
-                    return Err("目录暂不支持下载".to_string());
+                if let Some(stat) = stat.as_ref() {
+                    if stat.kind == "dir" {
+                        return Err("目录暂不支持下载".to_string());
+                    }
+                    if !stat.is_regular_file() {
+                        return Err("仅支持下载普通文件".to_string());
+                    }
                 }
                 let name = safe_staging_name(&path);
                 if local {
                     let dir = create_local_staging_dir()?;
                     let staging = dir.join(&name);
                     let staging_text = staging.to_string_lossy().into_owned();
-                    let size = self.runtime.block_on(export_local(
+                    let size = match self.runtime.block_on(export_local(
                         &engine,
                         container_id,
                         &path,
                         &staging_text,
-                    ))?;
+                    )) {
+                        Ok(size) => size,
+                        Err(error) => {
+                            cleanup_local(&staging_text);
+                            return Err(error);
+                        }
+                    };
                     return Ok(json!({
                         "stagingPath": staging_text,
                         "size": size,
@@ -124,14 +144,19 @@ impl Plugin {
                 let (exit_code, output) =
                     self.ssh_output(session_id, &command, TRANSFER_TIMEOUT)?;
                 if exit_code != 0 {
-                    let _ = cleanup_command(&staging)
-                        .map(|cleanup| self.ssh_output(session_id, &cleanup, FILES_TIMEOUT));
+                    self.cleanup_remote_staging(session_id, &dir);
                     return Err(format!(
                         "{} cp failed (exit {exit_code}): {output}",
                         engine.cli
                     ));
                 }
-                let size = stat.map(|stat| stat.size).unwrap_or(0);
+                let size = match self.remote_staging_regular_file(session_id, &staging) {
+                    Ok(size) => size,
+                    Err(error) => {
+                        self.cleanup_remote_staging(session_id, &dir);
+                        return Err(error);
+                    }
+                };
                 Ok(json!({
                     "stagingPath": staging,
                     "size": size,
@@ -166,10 +191,13 @@ impl Plugin {
             }
 
             // 暂存 → 容器。destPath 以 `/` 结尾视为目录并保留暂存文件名；
-            // 否则视为完整目标路径。先写结构化审计（容器 id/目标/字节数，
-            // 不含文件内容），再执行复制。
+            // 否则视为完整目标路径。暂存项必须经 lstat/`stat %F` 确认为
+            // 普通文件（符号链接/目录/其他类型拒绝）。审计只在复制成功后
+            // 写入，记录真实字节数（容器 id/目标/大小，不含文件内容）。
             "docker/files/import" => {
                 let container_id = required_string(&params, "containerId")?;
+                // 先校验 id，审计行（含 id）只能在合法 id 下产生。
+                validate_container_id(container_id)?;
                 let engine = crate::features::docker::parse_engine(&params)?;
                 let staging = required_string(&params, "stagingPath")?;
                 let dest_input = required_string(&params, "destPath")?;
@@ -178,31 +206,18 @@ impl Plugin {
                     &safe_staging_name(staging),
                 )?;
                 let local = is_local_target(&params)?;
-                if local {
+                let size = if local {
                     validate_staging_path(staging, StagingLocation::Local)?;
-                    let size = std::fs::metadata(staging)
-                        .map(|meta| meta.len())
-                        .unwrap_or(0);
-                    crate::features::docker::audit_import(
-                        &self.ssh.data_dir(),
-                        container_id,
-                        &dest,
-                        size,
-                    );
+                    let size = local_staging_regular_file_size(staging)?;
                     self.runtime
                         .block_on(import_local(&engine, staging, container_id, &dest))?;
+                    size
                 } else {
                     validate_staging_path(staging, StagingLocation::Remote)?;
                     let session_id = required_string(&params, "sessionId")?;
                     self.runtime
                         .block_on(self.ssh.ensure_writable(session_id))?;
-                    let size = self.remote_staging_size(session_id, staging);
-                    crate::features::docker::audit_import(
-                        &self.ssh.data_dir(),
-                        container_id,
-                        &dest,
-                        size,
-                    );
+                    let size = self.remote_staging_regular_file(session_id, staging)?;
                     let command = import_command(&engine, container_id, staging, &dest)?;
                     let (exit_code, output) =
                         self.ssh_output(session_id, &command, TRANSFER_TIMEOUT)?;
@@ -212,17 +227,29 @@ impl Plugin {
                             engine.cli
                         ));
                     }
-                }
+                    size
+                };
+                crate::features::docker::audit_import(
+                    &self.ssh.data_dir(),
+                    container_id,
+                    &dest,
+                    size,
+                );
                 Ok(json!({ "path": dest }))
             }
 
             // 删除暂存：只接受本功能生成的前缀。清理失败只返回
-            // `removed:false`，不改变传输结果。
+            // `removed:false`，不改变传输结果。成功后同一条目从上传
+            // 注册表移除，避免 finished 上传在进程生命周期内泄漏。
             "docker/files/cleanup" => {
                 let staging = required_string(&params, "stagingPath")?;
                 if is_local_target(&params)? {
                     validate_staging_path(staging, StagingLocation::Local)?;
-                    return Ok(json!({ "removed": cleanup_local(staging) }));
+                    let removed = cleanup_local(staging);
+                    if removed {
+                        self.forget_upload(staging);
+                    }
+                    return Ok(json!({ "removed": removed }));
                 }
                 let session_id = required_string(&params, "sessionId")?;
                 let command = cleanup_command(staging)?;
@@ -247,7 +274,9 @@ impl Plugin {
                     Path::new(staging),
                     conflict,
                 )?;
-                cleanup_local(staging);
+                if cleanup_local(staging) {
+                    self.forget_upload(staging);
+                }
                 Ok(saved)
             }
 
@@ -339,6 +368,15 @@ impl Plugin {
             .map_err(|_| "Upload registry is poisoned".to_string())
     }
 
+    /// Drops the upload entry that produced `staging_path` once its file was
+    /// cleaned up. Best-effort: local export staging paths (not uploads)
+    /// simply match nothing.
+    fn forget_upload(&self, staging_path: &str) {
+        if let Ok(mut registry) = self.upload_registry() {
+            registry.remove_by_staging_path(staging_path);
+        }
+    }
+
     /// Runs one local container CLI invocation (argv only).
     fn run_local_args(
         &self,
@@ -424,19 +462,72 @@ impl Plugin {
         Ok(parse_stat_output(&output))
     }
 
-    /// Best-effort byte size of a remote staging file (0 when unavailable).
-    fn remote_staging_size(&self, session_id: &str, staging: &str) -> u64 {
-        let command = format!("stat -c %s -- {}", exec::shell_quote(staging));
-        self.ssh_output(session_id, &command, FILES_TIMEOUT)
-            .ok()
-            .and_then(|(code, output)| {
-                (code == 0).then(|| output.trim().parse::<u64>().ok()).flatten()
-            })
-            .unwrap_or(0)
+    /// Best-effort removal of a generated remote staging directory (also
+    /// covers non-empty dirs and symlinks a failed `docker cp` may have left).
+    fn cleanup_remote_staging(&self, session_id: &str, staging_dir: &str) {
+        if let Ok(command) = cleanup_command(staging_dir) {
+            let _ = self.ssh_output(session_id, &command, FILES_TIMEOUT);
+        }
+    }
+
+    /// `stat -c '%F|%s'` on the SSH host for a staging path, rejecting
+    /// anything that is not a plain file. `docker cp` preserves symlinks, so
+    /// the type must be checked after staging (and before import, where a
+    /// link would be copied into the container). Returns the real size.
+    fn remote_staging_regular_file(
+        &self,
+        session_id: &str,
+        staging: &str,
+    ) -> Result<u64, String> {
+        let command = staging_probe_command(staging)?;
+        let (exit_code, output) = self.ssh_output(session_id, &command, FILES_TIMEOUT)?;
+        if exit_code != 0 {
+            return Err(format!(
+                "Failed to inspect staging file '{staging}': {}",
+                output.trim()
+            ));
+        }
+        match parse_staging_probe(&output) {
+            Some((file_type, size)) if is_regular_file_type(&file_type) => Ok(size),
+            Some((file_type, _)) => Err(format!(
+                "Staging path is not a regular file ({file_type})"
+            )),
+            None => Err(format!("Failed to inspect staging file '{staging}'")),
+        }
     }
 }
 
 /// Whether the call addresses the sidecar machine (`target: "local"`).
 fn is_local_target(params: &Value) -> Result<bool, String> {
     Ok(crate::features::docker::parse_target(params)? == DockerTarget::Local)
+}
+
+/// `path` parameter: absent/null means the container root; any other
+/// non-string value is a caller error instead of a silent `/` fallback.
+fn container_path_param(params: &Value) -> Result<&str, String> {
+    match params.get("path") {
+        None | Some(Value::Null) => Ok("/"),
+        Some(Value::String(value)) => Ok(value),
+        Some(_) => Err("path must be a string".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn container_paths_default_to_root_but_reject_non_strings() {
+        assert_eq!(container_path_param(&serde_json::json!({})).unwrap(), "/");
+        assert_eq!(
+            container_path_param(&serde_json::json!({ "path": null })).unwrap(),
+            "/"
+        );
+        assert_eq!(
+            container_path_param(&serde_json::json!({ "path": "/var/log" })).unwrap(),
+            "/var/log"
+        );
+        assert!(container_path_param(&serde_json::json!({ "path": 7 })).is_err());
+        assert!(container_path_param(&serde_json::json!({ "path": ["/etc"] })).is_err());
+    }
 }

@@ -40,6 +40,19 @@ pub struct ContainerStat {
     pub size: u64,
     pub mtime: u64,
     pub mode: String,
+    /// Raw GNU `%F` text ("regular file", "symbolic link", "directory", …).
+    /// Not part of the wire payload, but exports must distinguish a real
+    /// file from a symlink that `docker cp` would preserve.
+    #[serde(skip)]
+    pub file_type: String,
+}
+
+impl ContainerStat {
+    /// True only for GNU `%F` == `regular file`. `kind` collapses every
+    /// non-directory into `file`, which would also accept symlinks/FIFOs.
+    pub fn is_regular_file(&self) -> bool {
+        is_regular_file_type(&self.file_type)
+    }
 }
 
 /// Normalizes an absolute container path: collapses empty and `.` segments,
@@ -173,6 +186,7 @@ pub fn parse_stat_output(output: &str) -> Option<ContainerStat> {
         size,
         mtime,
         mode,
+        file_type: file_type.to_string(),
     })
 }
 
@@ -228,8 +242,24 @@ mod tests {
         assert_eq!(stat.size, 4096);
         assert_eq!(stat.mtime, 1712345678);
         assert_eq!(stat.mode, "644");
+        assert!(stat.is_regular_file());
         assert_eq!(parse_stat_output("directory|4096|1|755").unwrap().kind, "dir");
         assert!(parse_stat_output("garbage").is_none());
+    }
+
+    #[test]
+    fn only_gnu_regular_file_counts_as_a_file_type() {
+        // `kind` collapses these to "file", but exports must reject them:
+        // `docker cp` preserves symlinks, so a container link to
+        // /etc/shadow would otherwise become a staged host symlink.
+        for file_type in ["symbolic link", "FIFO", "socket", "block special file"] {
+            let stat = parse_stat_output(&format!("{file_type}|0|0|644")).unwrap();
+            assert_eq!(stat.kind, "file");
+            assert!(!stat.is_regular_file(), "{file_type} must not be exportable");
+        }
+        assert!(is_regular_file_type("regular file"));
+        assert!(!is_regular_file_type("regular file "));
+        assert!(!is_regular_file_type("directory"));
     }
 
     #[test]

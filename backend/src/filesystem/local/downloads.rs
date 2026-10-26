@@ -93,16 +93,19 @@ pub fn save_local_file(
 
 /// 把本机暂存文件落到下载目录（容器文件导出链路）：复用下载目录、
 /// 撞名让位/覆盖与传输历史语义，但不整体读入内存（文件复制）。
+/// 只用 `symlink_metadata`（lstat）：暂存链路绝不解引用符号链接——
+/// `docker cp` 会保留容器内的链接，跟随它可能把 `/etc/shadow` 之类
+/// 的主机/远端文件复制进下载目录。
 pub fn save_local_path(
     data_dir: &Path,
     name: &str,
     source: &Path,
     conflict: Option<&str>,
 ) -> Result<Value, String> {
-    let meta = std::fs::metadata(source)
+    let meta = std::fs::symlink_metadata(source)
         .map_err(|error| format!("Failed to read '{}': {error}", source.display()))?;
-    if !meta.is_file() {
-        return Err("Only files can be saved".to_string());
+    if !meta.file_type().is_file() {
+        return Err("Only regular files can be saved".to_string());
     }
     let dir = downloads_base_dir(|key| std::env::var_os(key), data_dir);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
