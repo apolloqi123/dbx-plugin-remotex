@@ -9,7 +9,7 @@
  * - 解码端（宿主桥/前端/sidecar）遇到未知流标签一律静默丢弃该帧并计数，
  *   不得断连或 panic；
  * - sidecar 对 `serial/terminal/in` 上标签非 Stdin 的入站帧返回参数错误
- *   （sidecar 侧实现，见 backend/src/serial_session.rs decode_input_frame）。
+ *   （sidecar 侧实现，见 backend/src/sessions/serial/input.rs decode_input_frame）。
  */
 
 export const SERIAL_STREAM_STDOUT = 0;

@@ -76,7 +76,7 @@ export const surfaceFixture = fixtureParams.get("surface") === "panel" ? "panel"
 
 // ?auth=auto 模拟 Auto 认证链（M13-A，M18 mock 补齐）：ssh/session/open 按后端
 // AUTO_AUTH_ORDER（password → private-key → keyboard-interactive → agent，见
-// backend/src/ssh.rs）逐方式发 ssh/auth/auto 进度事件后拨号成功（agent 兜底
+// backend/src/sessions/ssh/auth/negotiation.rs）逐方式发 ssh/auth/auto 进度事件后拨号成功（agent 兜底
 // 成功，成功方式不发事件——与真实 sidecar「只报非成功阶段」一致）；
 // ?auth=autofail 四个方式全败并抛聚合错误串（auto_auth_failure_message 同构）。
 // 缺省不发任何认证进度事件（显式方式无回退叙事）。

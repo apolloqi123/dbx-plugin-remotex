@@ -23,7 +23,7 @@ const SOURCES = import.meta.glob("../../**/*.{vue,ts}", {
 /** shim 自身：这里正是"原生 API 可用时透传"的实现，裸调用合法。 */
 const SHIM_SUFFIX = "/uuid.ts";
 
-/** glob 的键是相对本 spec 所在目录（src/lib）的路径，如 "./uuid.ts"、"../App.vue"。 */
+/** glob 的键是相对本 spec 所在目录（src/shared/lib）的路径，如 "../../shared/lib/uuid.ts"、"../../app/App.vue"。 */
 function shimSource(): string {
   const key = Object.keys(SOURCES).find((path) => path.endsWith(SHIM_SUFFIX));
   return key ? SOURCES[key] : "";

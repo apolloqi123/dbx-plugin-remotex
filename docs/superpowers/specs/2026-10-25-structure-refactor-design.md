@@ -1,7 +1,7 @@
 # 代码层级重构设计：组合根收口与大文件拆分
 
 - 日期：2026-10-25
-- 状态：待评审
+- 状态：已实施（2026-10-26）
 - 范围：`frontend/`、`backend/` 的目录层级与文件拆分
 - 约束：行为、RPC、i18n key、CSS 级联结果、依赖版本均不变
 
@@ -329,3 +329,10 @@ DOM 迁移时同步迁移对应 scoped CSS。若规则依赖 `.workbench` 祖先
 4. `scripts/test.sh --skip-host` 全绿：后端测试、前端 typecheck/test/build、dead-code、MCP/本地 smoke。
 5. 浏览器冒烟清单全部通过，控制台无新增错误。
 6. 生成新版本 `.dbxp`，报告路径、大小、SHA-256；由用户安装做最终验收。
+
+## 实施结果
+
+- 行数预算与结构守卫已落地：前端 `frontend/src/shared/lib/structure.spec.ts`、后端 `backend/src/structure_tests.rs`；两侧 allowlist 均为空。
+- `frontend/src/app/App.vue` 现为 12 行组合根，工作台外壳在 `frontend/src/app/components/WorkbenchShell.vue`。
+- 后端 `core` 保持叶子层（无 `crate::app/features/filesystem/sessions` 引用）。
+- 已知且接受的唯一例外：`backend/src/features/**` 与 `backend/src/sessions/**` 仍存在围绕 `sessions::ssh::exec`、sudo/transfer helper 的兄弟 import，待后续提取；后端方向表并未完全强制，守卫当前只覆盖 `core` 叶子约束。

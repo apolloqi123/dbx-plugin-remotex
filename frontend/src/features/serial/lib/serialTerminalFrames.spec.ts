@@ -53,7 +53,7 @@ describe("serialTerminalFrames", () => {
   });
 
   it("roundtrips against the TerminalFrame wire shape the sidecar encodes", () => {
-    // 与 backend/src/model.rs TerminalFrame::encode 对称：首字节标签 +
+    // 与 backend/src/core/model/terminal.rs TerminalFrame::encode 对称：首字节标签 +
     // 8 字节大端序号 + 数据。
     const frame = encodeSerialInputFrame(7, new Uint8Array([0x68, 0x69]));
     expect(frame[0]).toBe(3);

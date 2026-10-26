@@ -30,7 +30,7 @@ interface MockAutoAuthAttempt {
 
 // 剧本：password 失败 → private-key 跳过（本地无私钥）→ keyboard-interactive
 // 失败 → agent 分歧点（auto 成功 / autofail 失败）。覆盖 skipped/failed 两种
-// 状态，事件形状镜像 backend/src/ssh.rs authenticate_auto 的 emitter.event。
+// 状态，事件形状镜像 backend/src/sessions/ssh/auth/negotiation.rs authenticate_auto 的 emitter.event。
 const AUTO_AUTH_BASE_ATTEMPTS: MockAutoAuthAttempt[] = [
   { method: "password", status: "failed", detail: "password rejected by server" },
   { method: "private-key", status: "skipped", detail: "no private key configured for this connection" },

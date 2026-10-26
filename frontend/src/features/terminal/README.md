@@ -14,7 +14,7 @@
 | `lib/transfer/` | 文件传输协议：批量发送、trzsz、zmodem 的检测与状态机 | `batchSend` `terminalTrzsz` `terminalZmodem` |
 | `lib/behavior/` | 行为与策略：快捷键表、交互策略（选中复制/右键）、危险命令、交互式提示守卫、回车行采集、输出文本处理、重连、分屏模型、提示词语料 | `terminalHotkeys` `terminalInteraction` `dangerousCommands` `interactivePromptGuard` `terminalEnterCapture` `terminalOutputText` `terminalReconnect` `terminalSplit` `promptCorpus.spec` |
 | `composables/session/` | 会话级编排：与传输/连接生命周期绑定的 composable，以及本地 shell 偏好 | `useTerminalTransportWatch` `useLocalShellPreferences` |
-| `composables/io/` | IO 编排（输入/按键/剪贴板）预留位，由后续任务填充 | — |
+| `composables/io/` | IO 编排：终端输入队列与发送、按键路由与 overlay 仲裁、复制/粘贴/危险确认/OSC52 | `useTerminalInput` `useTerminalKeys` `useTerminalClipboard` |
 | `composables/ui/` | 组件状态与交互：搜索、菜单、tooltip、提示、分屏、字体缩放、外观、历史面板、批量发送与传输对话框、AI 助手等 | `useTerminalSearch` `useTerminalMenus` `useSplitTerminal` `useTerminalAppearance` `useCommandHistory` `useZmodem` `useTrzsz` … |
 
 `components/` 不参与子域分组：它是 UI 组合层，可同时消费 `lib` 与 `composables` 的公开导出。

@@ -272,7 +272,7 @@ describe("mockDbxHost fixture", () => {
   });
 
   // PR-A4 恢复语义（spec §7.6/§8.4）：restored 夹具把恢复事实暴露给 App 的
-  // passthrough branch (no-replay restore — the App.vue restored branch guarantees no automatic shell; the browser
+  // passthrough branch (no-replay restore — the useWorkbenchBootstrap restored branch guarantees no automatic shell; the browser
   // side is locked to zero local/terminal/start calls by the A4 anchors in scripts/smoke/smoke_ui_mock.mjs).
   it("?local=1&restored=1 exposes the restored fixture for the no-replay shell state", async () => {
     const plugin = await loadMock("?local=1&restored=1");
@@ -375,7 +375,7 @@ describe("mockDbxHost fixture", () => {
   });
 
   // M18（M13 遗留 3 之 mock 补齐）：?auth=auto 按 AUTO_AUTH_ORDER 逐方式发
-  // ssh/auth/auto 进度事件（App.vue 据此渲染 Show logs 的逐方式日志：status
+  // ssh/auth/auto 进度事件（app/workbench/composables/usePluginEvents.ts 据此渲染 Show logs 的逐方式日志：status
   // skipped → info、failed → warn，method+detail 走 authAuto 文案），agent 兜底
   // 成功（成功方式不发事件），会话仍建立；渲染数据面 authMethod 回 "auto"。
   it("?auth=auto emits per-method ssh/auth/auto progress in AUTO_AUTH_ORDER and still opens the session", async () => {
@@ -391,7 +391,7 @@ describe("mockDbxHost fixture", () => {
     expect(autoEvents.map((event) => event.params.method)).toEqual(["password", "private-key", "keyboard-interactive"]);
     expect(autoEvents.map((event) => event.params.status)).toEqual(["failed", "skipped", "failed"]);
     for (const event of autoEvents) {
-      // 事件形状镜像 backend/src/ssh.rs authenticate_auto 的 emitter.event：
+      // 事件形状镜像 backend/src/sessions/ssh/auth/negotiation.rs authenticate_auto 的 emitter.event：
       // App 只消费 method/status/detail，operationId/connectionId 随包可诊断。
       expect(event.params.operationId).toBe("visual-auth-auto");
       expect(event.params.connectionId).toBe("visual-connection");

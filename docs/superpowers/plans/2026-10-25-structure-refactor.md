@@ -1,6 +1,8 @@
 # 代码层级重构实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态：已完成（2026-10-26）** — T1–T31 全部完成，改动已落在 `refactor/structure-v2`。
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** 把 `App.vue` 从 8,620 行降为纯组合根，领域逻辑回到 `features`，底座层依赖方向可被自动守卫约束，最终所有源文件落在行数预算内。
 
@@ -80,7 +82,7 @@ backend/src/structure_tests.rs
 - Consumes: 无。
 - Produces: `lineViolations(sources, allowlist)`、`directionViolations(sources, allowlist)`、`locationViolations(sources)`，供后续任务复用断言。
 
-- [ ] **Step 1: 写失败测试（守卫本体）**
+- [x] **Step 1: 写失败测试（守卫本体）**
 
 创建 `frontend/src/shared/lib/structure.spec.ts`：
 
@@ -210,7 +212,7 @@ describe("source structure guards", () => {
 });
 ```
 
-- [ ] **Step 2: 运行守卫，确认当前基线通过**
+- [x] **Step 2: 运行守卫，确认当前基线通过**
 
 Run:
 
@@ -220,7 +222,7 @@ pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 
 Expected: PASS。若行数/白名单不一致，按实际行数修正 `LINE_ALLOWLIST` 与 `DIRECTION_ALLOWLIST`，不删除断言。
 
-- [ ] **Step 3: 记录基线**
+- [x] **Step 3: 记录基线**
 
 Run:
 
@@ -231,7 +233,7 @@ pnpm --dir frontend test
 
 把测试文件数与用例数写入提交说明（例如 `frontend: 210 files / 2306 tests`）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src/shared/lib/structure.spec.ts
@@ -248,7 +250,7 @@ git commit -m "test: add frontend structure guards for size and layering"
 - Consumes: 无。
 - Produces: `is_test_file(rel)`、`count_lines(text)` 与两条结构测试。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `backend/src/structure_tests.rs`：
 
@@ -358,7 +360,7 @@ fn core_does_not_depend_on_upper_layers() {
 }
 ```
 
-- [ ] **Step 2: 注册测试模块**
+- [x] **Step 2: 注册测试模块**
 
 在 `backend/src/main.rs` 的模块声明后加入：
 
@@ -367,7 +369,7 @@ fn core_does_not_depend_on_upper_layers() {
 mod structure_tests;
 ```
 
-- [ ] **Step 3: 运行，确认行数测试通过、core 测试当前失败**
+- [x] **Step 3: 运行，确认行数测试通过、core 测试当前失败**
 
 Run:
 
@@ -379,7 +381,7 @@ Expected:
 - `sources_stay_within_line_budget` PASS（白名单覆盖现状）。
 - `core_does_not_depend_on_upper_layers` FAIL，并列出 ≥22 处 `core → features/sessions/filesystem`。这是 Wave 7 的待办，不得修改断言。
 
-- [ ] **Step 4: 临时标记 core 测试为已知失败**
+- [x] **Step 4: 临时标记 core 测试为已知失败**
 
 在 `core_does_not_depend_on_upper_layers` 上加：
 
@@ -389,7 +391,7 @@ Expected:
 
 并在任务备注中记录失败清单。W7 最后一个任务移除 `#[ignore]`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/structure_tests.rs backend/src/main.rs
@@ -405,7 +407,7 @@ git commit -m "test: add backend structure guards for size and layering"
 - Consumes: 无。
 - Produces: `node scripts/refactor/move-file.mjs <from> <to>`，移动 `frontend/src` 内单文件并重写所有相对 import（含 `?raw`）。
 
-- [ ] **Step 1: 实现工具**
+- [x] **Step 1: 实现工具**
 
 创建 `scripts/refactor/move-file.mjs`：
 
@@ -496,7 +498,7 @@ for (const file of walk(SRC)) {
 console.log(`moved ${relative(ROOT, from)} -> ${relative(ROOT, to)}; rewrote ${rewritten} files`);
 ```
 
-- [ ] **Step 2: 用单个无害文件验证工具**
+- [x] **Step 2: 用单个无害文件验证工具**
 
 Run:
 
@@ -513,7 +515,7 @@ git diff --stat
 
 Expected: 两次移动后 `git diff --stat` 为空、`git status --short` 干净；typecheck PASS。若反向移动不是零 diff，修正脚本后重复本步（不要用 `git reset --hard`）。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/refactor/move-file.mjs
@@ -531,7 +533,7 @@ git commit -m "chore: add frontend file move codemod"
 - Consumes: `move-file.mjs`。
 - Produces: `app/composables` 只剩工作台级模块；所有领域模块位于对应 `features/<domain>/{composables,lib}`。
 
-- [ ] **Step 1: 先建目录**
+- [x] **Step 1: 先建目录**
 
 ```bash
 mkdir -p frontend/src/features/sftp/composables/{listing,tree,transfer,editor,actions}
@@ -542,7 +544,7 @@ mkdir -p frontend/src/features/serial/composables
 mkdir -p frontend/src/app/workbench/{composables,lib}
 ```
 
-- [ ] **Step 2: 迁移 SFTP 领域模块**
+- [x] **Step 2: 迁移 SFTP 领域模块**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/app/composables/sftpRemotePaths.ts frontend/src/features/sftp/lib/paths/sftpRemotePaths.ts
@@ -556,7 +558,7 @@ node scripts/refactor/move-file.mjs frontend/src/app/composables/useEditorOpenWi
 node scripts/refactor/move-file.mjs frontend/src/app/composables/useEditorSplitPane.ts frontend/src/features/sftp/composables/editor/useEditorSplitPane.ts
 ```
 
-- [ ] **Step 3: 迁移终端/串口/指标/快速命令模块**
+- [x] **Step 3: 迁移终端/串口/指标/快速命令模块**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/app/composables/useTerminalMenus.ts frontend/src/features/terminal/composables/ui/useTerminalMenus.ts
@@ -572,7 +574,7 @@ node scripts/refactor/move-file.mjs frontend/src/app/composables/useDockMetrics.
 node scripts/refactor/move-file.mjs frontend/src/app/composables/useQuickCommandPanel.ts frontend/src/features/quick-commands/composables/useQuickCommandPanel.ts
 ```
 
-- [ ] **Step 4: 迁移工作台级模块**
+- [x] **Step 4: 迁移工作台级模块**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/app/composables/usePluginEvents.ts frontend/src/app/workbench/composables/usePluginEvents.ts
@@ -586,7 +588,7 @@ node scripts/refactor/move-file.mjs frontend/src/app/composables/useLocalShellPr
 node scripts/refactor/move-file.mjs frontend/src/app/composables/useNotices.ts frontend/src/app/workbench/composables/useNotices.ts
 ```
 
-- [ ] **Step 5: 类型检查与测试**
+- [x] **Step 5: 类型检查与测试**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -595,7 +597,7 @@ pnpm --dir frontend test
 
 Expected: 全绿。若 `hostKeyChallengeProtocol.spec.ts` 仍指向旧路径，更新其 `?raw` import 到 `./workbench/composables/usePluginEvents.ts?raw`。
 
-- [ ] **Step 6: 运行结构守卫**
+- [x] **Step 6: 运行结构守卫**
 
 ```bash
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
@@ -603,7 +605,7 @@ pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 
 Expected: PASS（方向白名单尚未清空）。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src
@@ -628,7 +630,7 @@ git commit -m "refactor(frontend): move domain composables out of the app layer"
 - Consumes: Task 3 工具。
 - Produces: `shared` 不再依赖 `features`/`app`；`normalizeConnectionText` 从 `shared/lib/connectionText.ts` 导出，`connectionInfo.ts` 继续 re-export 以保持既有调用点。
 
-- [ ] **Step 1: 迁移组合型模块**
+- [x] **Step 1: 迁移组合型模块**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/shared/lib/preferencesMirror.ts frontend/src/app/workbench/lib/preferencesMirror.ts
@@ -639,7 +641,7 @@ node scripts/refactor/move-file.mjs frontend/src/shared/composables/useAppearanc
 node scripts/refactor/move-file.mjs frontend/src/shared/lib/promptCorpus.spec.ts frontend/src/features/terminal/lib/behavior/promptCorpus.spec.ts
 ```
 
-- [ ] **Step 2: 下沉 `normalizeConnectionText`**
+- [x] **Step 2: 下沉 `normalizeConnectionText`**
 
 新建 `frontend/src/shared/lib/connectionText.ts`，逐字迁移 `connectionInfo.ts:11` 的现有实现（保留大小写不敏感的 `"null"`/`"undefined"` 判定与注释）：
 
@@ -664,7 +666,7 @@ import { normalizeConnectionText } from "../../../shared/lib/connectionText";
 import { normalizeConnectionText } from "./connectionText";
 ```
 
-- [ ] **Step 3: 清空方向白名单**
+- [x] **Step 3: 清空方向白名单**
 
 把 `structure.spec.ts` 的 `DIRECTION_ALLOWLIST` 改为空数组：
 
@@ -672,7 +674,7 @@ import { normalizeConnectionText } from "./connectionText";
 const DIRECTION_ALLOWLIST: string[] = [];
 ```
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -682,7 +684,7 @@ pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 
 Expected: 全绿；结构守卫无方向违规。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -721,7 +723,7 @@ composables/ui/       useTerminalMenus useTerminalSearch useTerminalTooltip useP
                       useSplitTerminal useSplitSearch useSplitClipboard useSplitTerminalRenderer
 ```
 
-- [ ] **Step 1: 批量移动 lib**
+- [x] **Step 1: 批量移动 lib**
 
 对上表每个文件执行一次（示例，重复到全部归位）：
 
@@ -739,7 +741,7 @@ node scripts/refactor/move-file.mjs frontend/src/features/terminal/lib/actionLin
 pnpm --dir frontend typecheck
 ```
 
-- [ ] **Step 2: 批量移动 composables**
+- [x] **Step 2: 批量移动 composables**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/features/terminal/composables/useTerminalTransportWatch.ts frontend/src/features/terminal/composables/session/useTerminalTransportWatch.ts
@@ -749,7 +751,7 @@ node scripts/refactor/move-file.mjs frontend/src/features/terminal/composables/u
 
 其余 UI 型 composable 按接口块归属表移动到 `composables/ui/`；`useLocalShellPreferences` 已在 Task 4 移到 `composables/session/`。
 
-- [ ] **Step 3: 全量验证**
+- [x] **Step 3: 全量验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -757,15 +759,15 @@ pnpm --dir frontend test
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 ```
 
-- [ ] **Step 4: 递归化结构守卫的 composable 扫描**
+- [x] **Step 4: 递归化结构守卫的 composable 扫描**
 
 `frontend/src/app/workbench.spec.ts` 的 `import.meta.glob("../**/composables/*.ts", ...)` 改为 `"../**/composables/**/*.ts"`，否则子域分组后终端 composable 会从弹层结构守卫中静默消失。同步检查 `scripts/refactor/move-file.mjs` 打印的 glob 审计清单。
 
-- [ ] **Step 5: 写子域边界说明**
+- [x] **Step 5: 写子域边界说明**
 
 新建 `frontend/src/features/terminal/README.md`，用一张表列出 `lib/emulator|appearance|decorations|panels|transfer|behavior` 与 `composables/session|io|ui` 的职责，并写明：跨子域只能经 `lib` 的具名导出，不得直接引用其他子域的内部文件。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src
@@ -799,7 +801,7 @@ composables/actions/  useSftpChmod useSftpDelete useSftpRename useSftpCreateDire
                       useSftpFolderActions useSftpRowSelection useSftpDialogs useSftpDropUpload
 ```
 
-- [ ] **Step 1: 移动 lib 并每批验证**
+- [x] **Step 1: 移动 lib 并每批验证**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/features/sftp/lib/sftpEntries.ts frontend/src/features/sftp/lib/entries/sftpEntries.ts
@@ -808,7 +810,7 @@ pnpm --dir frontend typecheck
 
 重复到上表全部归位。
 
-- [ ] **Step 2: 移动 composables 并每批验证**
+- [x] **Step 2: 移动 composables 并每批验证**
 
 ```bash
 node scripts/refactor/move-file.mjs frontend/src/features/sftp/composables/useSftpNavigation.ts frontend/src/features/sftp/composables/listing/useSftpNavigation.ts
@@ -817,18 +819,18 @@ pnpm --dir frontend typecheck
 
 表中尚不存在的模块（`useSftpDialogs`、`useSftpDropUpload`、`useSftpPreview`）由 Task 14b 直接创建到目标目录，本任务不移动。
 
-- [ ] **Step 3: 全量验证**
+- [x] **Step 3: 全量验证**
 
 ```bash
 pnpm --dir frontend test
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 ```
 
-- [ ] **Step 4: 写子域边界说明**
+- [x] **Step 4: 写子域边界说明**
 
 新建 `frontend/src/features/sftp/README.md`，列出 `lib/entries|paths|tree|transfer|editor|actions` 与 `composables/listing|tree|transfer|editor|actions` 的职责，并注明 `listing` 是唯一允许发起 `sftp/list` 的位置。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -857,7 +859,7 @@ git commit -m "refactor(sftp): group modules by subdomain"
   - `useTerminalGutter(options)` → `{ gutterRows, gutterCellHeight, gutterPaneVisible, gutterWidth, gutterVisible, gutterPaneStyle, isGutterActive, attachGutterListeners, detachGutterListeners, scheduleGutterRecompute, resetGutterTimestamps, stampGutterWrittenRows, updateGutterSettings }`
   - `useTerminalDecorations(options)` → 合并上述三者返回值，供 `useTerminalWorkbench` 聚合使用。
 
-- [ ] **Step 1: 按抽取约定迁出高亮引擎**
+- [x] **Step 1: 按抽取约定迁出高亮引擎**
 
 从 `App.vue` 迁出以下符号及 4,624–4,776 的实现：
 
@@ -871,15 +873,15 @@ watch([compiledHighlightRules, highlightDisplayMode])
 
 `HIGHLIGHT_DECORATION_LIMIT`、`HIGHLIGHT_SCAN_MIN_INTERVAL_MS` 一并迁入模块。
 
-- [ ] **Step 2: 迁出动作链接引擎**
+- [x] **Step 2: 迁出动作链接引擎**
 
 迁出 4,791–4,989 的 `actionLink*` 状态与函数；`actionLinkHint` 放返回值供模板使用。
 
-- [ ] **Step 3: 迁出 gutter**
+- [x] **Step 3: 迁出 gutter**
 
 迁出 4,989–5,160 的 `gutter*` 状态与函数；`GUTTER_SUSPEND_PENDING_BYTES` 一并迁入。
 
-- [ ] **Step 4: 写聚合器**
+- [x] **Step 4: 写聚合器**
 
 `useTerminalDecorations.ts`：
 
@@ -892,7 +894,7 @@ export function useTerminalDecorations(options: TerminalDecorationsOptions) {
 }
 ```
 
-- [ ] **Step 5: 接线**
+- [x] **Step 5: 接线**
 
 `App.vue` 中删除原块，加入：
 
@@ -913,7 +915,7 @@ const {
 
 保留模板中同名绑定。
 
-- [ ] **Step 6: 验证**
+- [x] **Step 6: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -923,11 +925,11 @@ pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 
 Expected: 全绿；`App.vue` 行数下降约 500 行。
 
-- [ ] **Step 7: 浏览器冒烟**
+- [x] **Step 7: 浏览器冒烟**
 
 运行 `pnpm --dir frontend dev`，打开 `visual.html`，确认：终端输出着色、动作链接按住 Cmd/Ctrl 悬停提示、行号/时间戳开关即时生效、控制台无错误。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src
@@ -948,15 +950,15 @@ git commit -m "refactor(app): extract terminal decoration engines"
   - `useCommandMarker(options)` → `{ commandMarker, commandMarkerElapsed, commandMarkerDetails, resetCommandMarker, startCommandMarkerTick, stopCommandMarkerTick, applyCommandMarker }`
   - `useTerminalClipboard(options)` → `{ copyTextToClipboard, copyTerminalSelection, pasteTerminal, interceptTerminalPaste, sendConfirmedPaste, confirmRiskyPaste, resolvePasteConfirm, selectAllTerminal, clearTerminal, pasteConfirm }`
 
-- [ ] **Step 1: 迁出命令标记**
+- [x] **Step 1: 迁出命令标记**
 
 迁出 1,335–1,348 与 3,200–3,304：`commandMarker`、`commandMarkerElapsed`、`commandMarkerTimer`、`stopCommandMarkerTick`、`startCommandMarkerTick`、`resetCommandMarker`、`applyCommandMarker`、`commandMarkerDetails`。
 
-- [ ] **Step 2: 迁出剪贴板与危险粘贴**
+- [x] **Step 2: 迁出剪贴板与危险粘贴**
 
 迁出 `copyTextToClipboard`、`clipboardDeps`、`copyTerminalSelection`、`pasteTerminal`、`interceptTerminalPaste`、`sendConfirmedPaste`、`pasteConfirmAskChain`、`confirmRiskyPaste`、`resolvePasteConfirm`、`selectAllTerminal`、`clearTerminal` 及 `pasteConfirm` ref。OSC52 handler 仍留在 `createTerminal`，只通过 options 传入 `terminalCopyCache`。
 
-- [ ] **Step 3: 接线并验证**
+- [x] **Step 3: 接线并验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -965,7 +967,7 @@ pnpm --dir frontend exec vitest run src/features/terminal/lib/terminalInteractio
 
 浏览器冒烟：复制选中、右键粘贴、危险命令二次确认、命令标记计时。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -986,15 +988,15 @@ git commit -m "refactor(app): extract command marker and clipboard logic"
   - `useWorkbenchPersistence(options)` → `{ restoreUiState, persistState, writeWorkbenchState, applyWorkbenchLayoutPrefs, initialState }`
   - `useSplitDivider(options)` → `{ startDividerDrag, onDividerKeydown, nudgeSplitDivider }`
 
-- [ ] **Step 1: 迁出持久化 2,085–2,269**
+- [x] **Step 1: 迁出持久化 2,085–2,269**
 
 将 `initialState`、`applyWorkbenchLayoutPrefs`、`restoreUiState`、`writeWorkbenchState`、`persistThrottle`、`persistState` 与 `WORKBENCH_LAYOUT_KEY` 等常量迁入；`persistState` 依赖的 `session`/`terminalState`/布局 refs 全部走 options。
 
-- [ ] **Step 2: 迁出分隔条 5,311–5,401**
+- [x] **Step 2: 迁出分隔条 5,311–5,401**
 
 迁出 `startDividerDrag`、`DIVIDER_KEY_STEP_PX`、`onDividerKeydown`、`nudgeSplitDivider`；`splitRatio`/`dockerSplitRatio` 仍留在 App，通过 getter/setter 注入。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1003,7 +1005,7 @@ pnpm --dir frontend exec vitest run src/app/lib/workbenchLayout.spec.ts src/app/
 
 浏览器冒烟：拖拽分隔条、键盘方向键微调、刷新后布局恢复。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1021,15 +1023,15 @@ git commit -m "refactor(app): extract workbench persistence and divider"
 - Consumes: `modalOpenCount` 依赖的弹窗 refs、`pickModalFocusTarget`、`ghostClickGuard`、`closeToolbarPopovers`、键盘动作回调表。
 - Produces: `useWorkbenchModals(options)` → `{ modalOpenStates, modalOpenCount, topModalContainer, focusTopModal, onDocumentMouseDownCapture, onDocumentClickCapture, trackStableFocus, onDocumentKeydown }`
 
-- [ ] **Step 1: 迁出 6,275–6,535**
+- [x] **Step 1: 迁出 6,275–6,535**
 
 迁移 `modalTriggerStack`、`lastStableFocus`、`ghostClickGuard`、三个 document 监听、`modalOpenStates`、`modalOpenCount`、`topModalContainer`、`focusTopModal`、`watch(modalOpenCount)`、`onDocumentKeydown`。键盘分支保留原有顺序与优先级。
 
-- [ ] **Step 2: 更新结构守卫**
+- [x] **Step 2: 更新结构守卫**
 
 `frontend/src/app/workbench.spec.ts` 的弹层接入扫描若只读 `App.vue`，把 `appScript` 改为 `App.vue + app/workbench/composables/*.ts` 联合源；断言内容不变。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1038,7 +1040,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：设置弹窗 Esc 关闭、焦点回到触发元素、快捷键不与终端输入冲突。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1064,15 +1066,15 @@ git commit -m "refactor(app): extract modal focus and key arbitration"
   - `useTelnetWorkbench(options)` → `{ telnetSession, telnetDialogOpen, telnetState, telnetError, isTelnetMode, telnetTarget, startTelnetSession, closeTelnetSession, startTelnetFromConnection }`
   - `useSerialWorkbench(options)` → `{ serialSession, serialDialogOpen, serialState, serialError, serialBinaryInput, isSerialMode, serialTarget, startSerialSession, closeSerialSession, startSerialFromConnection }`
 
-- [ ] **Step 1: 迁出本地 shell（4,057–4,146、4,384–4,500）**
+- [x] **Step 1: 迁出本地 shell（4,057–4,146、4,384–4,500）**
 
 保持 `watch(localOpenConfirmOpen)`、`pendingLocalShellOverride` 与重启链原样。
 
-- [ ] **Step 2: 迁出 Telnet（4,146–4,204、4,212–4,224）**
+- [x] **Step 2: 迁出 Telnet（4,146–4,204、4,212–4,224）**
 
-- [ ] **Step 3: 迁出串口（4,294–4,334）**
+- [x] **Step 3: 迁出串口（4,294–4,334）**
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1081,7 +1083,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：底部 dock 打开本地终端、切换 shell、重启；Telnet 连接/断开；串口连接/断开/二进制输入开关。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -1101,13 +1103,13 @@ git commit -m "refactor(app): extract local, telnet and serial session lifecycle
   - `useVncWorkbench(options)` → `{ startVncFromConnection, vncConnectHandlers }`
   - `useRdpWorkbench(options)` → `{ routeRdpConnection, connectViaRdpDialog, startRdpFromConnection, rdpClosedTitle, rdpScaleMode, rdpClipboardChunks }`
 
-- [ ] **Step 1: 迁出 `startVncFromConnection`（4,224–4,238）与其对话框接线**
+- [x] **Step 1: 迁出 `startVncFromConnection`（4,224–4,238）与其对话框接线**
 
-- [ ] **Step 2: 迁出 RDP 路由（3,699–3,717、4,255–4,289）**
+- [x] **Step 2: 迁出 RDP 路由（3,699–3,717、4,255–4,289）**
 
 `rdpClosedTitle`、`rdpScaleMode` 若已被 `useRdpWorkbench` 管理，则直接复用其返回值，不重复声明。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1116,7 +1118,7 @@ pnpm --dir frontend exec vitest run src/features/remote-desktop/composables/useV
 
 浏览器冒烟：VNC/RDP 连接、缩放切换、断线重连提示。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1133,15 +1135,15 @@ git commit -m "refactor(app): extract vnc and rdp workbench wiring"
 - Consumes: `terminalState`、`terminalError`、`session`、`openRetryAttempt`、`transportReuseState`、`connectLog`、`hostKeyPrompt`、`resolveHostKey`、`requestHostReopenConnection`、`afterSessionConnected` 回调。
 - Produces: `useSshConnection(options)` → `{ openSession, attachSession, closeSession, afterSessionConnected, resolveStoredConnectionProtocol, reconnectNow, reconnectPending, resolveHostKey, requestHostReopenConnection }`
 
-- [ ] **Step 1: 迁出会话打开/附着/关闭（3,666–4,057）**
+- [x] **Step 1: 迁出会话打开/附着/关闭（3,666–4,057）**
 
 保持重试、传输复用、回执日志与错误分类的调用顺序不变。
 
-- [ ] **Step 2: 迁出 host reopen 与 host key（4,500–4,598）**
+- [x] **Step 2: 迁出 host reopen 与 host key（4,500–4,598）**
 
 `resolveHostKey` 的 `connection/challenge/resolve` payload 必须逐字保留；`hostKeyChallengeProtocol.spec.ts` 若仍扫描 App.vue，改为扫描新文件。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1150,7 +1152,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：连接、断线重连、host key 接受/拒绝、记住主机密钥。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1174,25 +1176,25 @@ git commit -m "refactor(app): extract ssh connection lifecycle"
   - `useSftpDropUpload(options)` → `{ dragActive, sftpDragDropTarget, dropUploadPrompt, onDrop, onSftpDragEnter, onSftpDragLeave, resolveDropUpload, onSftpTreeDrop }`
   - `useSftpPreview(options)` → `{ previewOpen, previewEntry, previewEditableAllowed, closePreview, savePreview }`
 
-- [ ] **Step 1: 迁出 SFTP 列表/选择状态（874–1,114、5,188–5,254）**
+- [x] **Step 1: 迁出 SFTP 列表/选择状态（874–1,114、5,188–5,254）**
 
 `useSftpWorkspace` 负责组合已有导航/选择/树 composable；列表仍以 `entries/currentPath` 为唯一出口，`loadDirectory` 不复制实现。
 
-- [ ] **Step 2: 迁出 SFTP 对话框状态（874–1,114、5,530–5,657）**
+- [x] **Step 2: 迁出 SFTP 对话框状态（874–1,114、5,530–5,657）**
 
 `useSftpDialogs` 持有删除/批量/新建/粘贴/错误态；`openNewFileDialog`、`createNewFile` 逐字迁移。
 
-- [ ] **Step 3: 迁出本机拖放上传（5,657–5,759）**
+- [x] **Step 3: 迁出本机拖放上传（5,657–5,759）**
 
 `useSftpDropUpload` 负责 `dragenter/dragover/dragleave/drop`、目标目录解析、冲突策略提示与 `useUploadChain` 调用。
 
-- [ ] **Step 4: 迁出预览与保存（5,401–5,530）**
+- [x] **Step 4: 迁出预览与保存（5,401–5,530）**
 
-- [ ] **Step 5: 更新源码扫描守卫**
+- [x] **Step 5: 更新源码扫描守卫**
 
 `frontend/src/app/workbench.spec.ts` 中依赖 `watch(terminalCwd)`、`shouldFollowTabCwd`、`activeTerminalPaneId.value = paneId` 的源码断言改为扫描 `App.vue + features/sftp/composables/listing/useSftpWorkspace.ts` 联合源；断言意图不变。
 
-- [ ] **Step 6: 验证**
+- [x] **Step 6: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1201,7 +1203,7 @@ pnpm --dir frontend exec vitest run src/features/sftp/composables src/features/s
 
 浏览器冒烟：目录切换、选中/Shift 多选、新建文件夹/文件、删除/批量删除、重命名、拖本机文件到目录行、冲突策略、预览保存。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src
@@ -1222,15 +1224,15 @@ git commit -m "refactor(app): extract sftp workspace, dialogs and drop upload"
 - Consumes: `terminalHost`、`terminalAppearance`、`terminalFontOverride`、`terminalBehavior`、`hostTerminalFontFamily`、`terminalTheme`、`openTerminalLink`、`settingsPreferences`、`wallpaperActive`、装饰挂载回调。
 - Produces: `useTerminalInstance(options)` → `{ terminal, fitAddon, searchAddon, webglRenderer, createTerminal, attachTerminalHost, detachTerminalHost, ensureTerminalResizeObserver, scheduleFit, fitTerminalDimensions, settledTerminalDimensions, terminalCursorPosition, setWebglEnabled, webglRecoveryOptions }`
 
-- [ ] **Step 1: 迁出 2,269–2,511 与 3,043–3,200**
+- [x] **Step 1: 迁出 2,269–2,511 与 3,043–3,200**
 
 包括 `createTerminal`、`attachTerminalHost`、`detachTerminalHost`、`ensureTerminalResizeObserver`、`watch(terminalHost)`、`setWebglEnabled`、`scheduleFit`、`fitTerminalDimensions`、`nextAnimationFrame`、`settledTerminalDimensions`、`terminalCursorPosition`。
 
-- [ ] **Step 2: 保留扩展点**
+- [x] **Step 2: 保留扩展点**
 
 `highlightEnabled`/`actionLinksEnabled`/`isGutterActive` 的挂载改为 options 回调 `onReady`，由 App 在 composable 返回后调用，避免循环依赖。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1239,7 +1241,7 @@ pnpm --dir frontend exec vitest run src/features/terminal/lib/terminalFont.spec.
 
 浏览器冒烟：终端首屏渲染、窗口缩放 fit、WebGL 开关、壁纸模式、分屏增删后终端迁移。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1256,13 +1258,13 @@ git commit -m "refactor(app): extract xterm instance lifecycle"
 - Consumes: `terminal`、`session`、`pendingTerminalFrames`、`replayInFlight`、`terminalTransportWatch`、`commandMarker`、`directoryParser`、`promptNewline`、`terminalWriteThrottle`、`zmodemBusy`。
 - Produces: `useTerminalWriter(options)` → `{ writeTerminalOutput, dispatchTerminalOutput, handleBinary, drainTerminalFrames, settleOutputChunk, onOutputGateRelease, outputInFlightBytes }`
 
-- [ ] **Step 1: 迁出输出 gate 与写节流（1,622–1,737 中的输出部分）**
+- [x] **Step 1: 迁出输出 gate 与写节流（1,622–1,737 中的输出部分）**
 
-- [ ] **Step 2: 迁出 3,304–3,632**
+- [x] **Step 2: 迁出 3,304–3,632**
 
 `writeTerminalOutput`、`dispatchTerminalOutput`、`handleBinary`、`drainTerminalFrames` 逐字迁移；帧序号 `lastSequence`、`pendingTerminalFrames`、`replayNoProgress` 作为 options 注入的响应式容器与 getter/setter。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1271,7 +1273,7 @@ pnpm --dir frontend exec vitest run src/features/terminal/lib/terminalBackpressu
 
 浏览器冒烟：长输出不卡顿、断线重连后无重复输出、`ssh-transport-disconnected` 状态帧正确显示。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1291,13 +1293,13 @@ git commit -m "refactor(app): extract terminal output pipeline"
   - `useTerminalInput(options)` → `{ sendTerminalBytes, routeTerminalData, trackPendingInput, captureEnterLine, readEchoTextBeforeCursor, enterLineTracker }`
   - `useTerminalKeys(options)` → `{ handleTerminalKey, priority, terminalOverlayKeyOwners, panelClaims, fourKeyClaims, keyEventClaimKey, overlayOwnsKey }`
 
-- [ ] **Step 1: 迁出输入与行跟踪（1,688–1,737、2,894–3,043）**
+- [x] **Step 1: 迁出输入与行跟踪（1,688–1,737、2,894–3,043）**
 
-- [ ] **Step 2: 迁出按键路由（2,511–2,894）**
+- [x] **Step 2: 迁出按键路由（2,511–2,894）**
 
 保持 `resolveTerminalInputRoute`、overlay 优先级、历史/补全分支顺序不变。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1306,7 +1308,7 @@ pnpm --dir frontend exec vitest run src/features/terminal/lib/terminalInputQueue
 
 浏览器冒烟：方向键历史、Tab 补全、Ctrl+F 搜索、远端交互提示时不抢键、分屏内按键落到活动窗格。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1323,16 +1325,16 @@ git commit -m "refactor(app): extract terminal input and key routing"
 - Consumes: `terminalTransportWatch`、`reconnectPending`、`reconnectAttempt`、`terminalReconnect` helpers、`openSession`。
 - Produces: `useTerminalReconnect(options)` → `{ terminalTransportWatch, reconnectPending, reconnectNow, scheduleReconnect, cancelReconnect }`
 
-- [ ] **Step 1: 迁出 3,632–3,666 与分散的重连定时器状态**
+- [x] **Step 1: 迁出 3,632–3,666 与分散的重连定时器状态**
 
-- [ ] **Step 2: 验证**
+- [x] **Step 2: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
 pnpm --dir frontend exec vitest run src/features/terminal/composables/session/useTerminalTransportWatch.spec.ts src/features/terminal/lib/terminalReconnect.spec.ts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend/src
@@ -1352,23 +1354,23 @@ git commit -m "refactor(app): extract terminal reconnect wiring"
   - `useWorkbenchBootstrap(options)` → `{ initialize, findReattachSession, closeOrphanSplitSessions, reattachProtocolSession, syncMcpSettingsMirror, mount, unmount }`
   - `useHostDragBridge(options)` → `{ applyHostDragState, onHostDragMessage }`
 
-- [ ] **Step 1: 迁出主机拖拽桥（6,569–6,593）**
+- [x] **Step 1: 迁出主机拖拽桥（6,569–6,593）**
 
 保持 `dbx-plugin:file-drag` 消息形状与 `dragActive`/`terminalDragActive` 语义不变。
 
-- [ ] **Step 2: 迁出初始化（6,593–6,808）**
+- [x] **Step 2: 迁出初始化（6,593–6,808）**
 
 `initialize`、`resolveStoredConnectionProtocol` 的启动分支、`findReattachSession`、`closeOrphanSplitSessions`、`reattachProtocolSession` 移入；启动顺序（waitForHostApi → hydrate → open/restore → subscribe）不得调整。
 
-- [ ] **Step 3: 迁出事件分派与 MCP 镜像（6,109–6,146、6,808–6,852）**
+- [x] **Step 3: 迁出事件分派与 MCP 镜像（6,109–6,146、6,808–6,852）**
 
 `handleEvent` 保留 `usePluginEvents` 的解码结果与各分支顺序。
 
-- [ ] **Step 4: 迁出挂载/卸载（6,852–6,955）**
+- [x] **Step 4: 迁出挂载/卸载（6,852–6,955）**
 
 `onMounted`/`onBeforeUnmount` 改为模块返回的 `mount`/`unmount`，由 App.vue 调用；清理顺序（计时器 → 订阅 → terminal dispose）保持不变。
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1377,7 +1379,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：冷启动连接、恢复上次会话、重新附着本地/协议会话、宿主拖拽高亮、关闭视图无泄漏（控制台无 error、无重复订阅）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src
@@ -1403,21 +1405,21 @@ git commit -m "refactor(app): extract workbench bootstrap and host drag bridge"
 - Consumes: 现有工具栏 props/actions；每个组件用显式 props + emits，不 inject 全局上下文。
 - Produces: `App.vue` 中 `<WorkbenchToolbar>` 替换 6,995–7,453 的工具栏 DOM。
 
-- [ ] **Step 1: 先拆 `SessionMenu.vue`**
+- [x] **Step 1: 先拆 `SessionMenu.vue`**
 
 把 7,093–7,227 的会话菜单（本地/远程/复制/命令会话、shell 选择、环境变量、连接列表）迁入；props 覆盖 `localShells`、`localShellPref`、`localShellEnvPref`、`dockConnections`；emits 覆盖原 `@click` 动作。
 
-- [ ] **Step 2: 拆 `QuickCommandsMenu.vue`（7,247–7,336）**
+- [x] **Step 2: 拆 `QuickCommandsMenu.vue`（7,247–7,336）**
 
-- [ ] **Step 3: 拆 `RdpToolbarControls.vue`（7,039–7,092）**
+- [x] **Step 3: 拆 `RdpToolbarControls.vue`（7,039–7,092）**
 
-- [ ] **Step 4: 拆 `AppearanceMenu.vue` 与剩余 popover**
+- [x] **Step 4: 拆 `AppearanceMenu.vue` 与剩余 popover**
 
-- [ ] **Step 5: 组合 `WorkbenchToolbar.vue`**
+- [x] **Step 5: 组合 `WorkbenchToolbar.vue`**
 
 外壳、身份区、主操作位、panel 模式左区（7,361–7,405）留在这一层。
 
-- [ ] **Step 6: CSS 迁移与验证**
+- [x] **Step 6: CSS 迁移与验证**
 
 把 `toolbar.css` 中仅作用于这些 DOM 的规则移入各组件 scoped 样式；依赖 `.workbench` 祖先的规则保留在全局。
 
@@ -1428,7 +1430,7 @@ pnpm --dir frontend test
 
 浏览器截图对比重构前后的工具栏（1440×900 与 720×900）：布局、间距、下拉位置、z-index 一致。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src
@@ -1448,19 +1450,19 @@ git commit -m "refactor(app): split workbench toolbar into components"
 - Consumes: `terminalHost` ref 通过 `defineExpose`/模板 ref 回传；状态 props 分组。
 - Produces: 7,474–8,050 的终端区 DOM 与浮层拆为三组件。
 
-- [ ] **Step 1: 拆连接/本地/协议状态浮层（7,708–7,798）**
+- [x] **Step 1: 拆连接/本地/协议状态浮层（7,708–7,798）**
 
 生成 `TerminalStatusOverlays.vue`，props：`reconnectPending`、`recordingActive`、`recordCountdown`、`localState`、`telnetState`、`serialState`、`vncState`、`rdpState`、`t`。
 
-- [ ] **Step 2: 拆传输/回放浮层（7,848–7,980）**
+- [x] **Step 2: 拆传输/回放浮层（7,848–7,980）**
 
 生成 `TransferOverlays.vue`，props：`zmodem*`、`trzsz*`、`serialUpload`、`replayState`。
 
-- [ ] **Step 3: 组装 `WorkbenchStage.vue`**
+- [x] **Step 3: 组装 `WorkbenchStage.vue`**
 
 保留 xterm 宿主、壁纸、诊断层、投放遮罩、AI 修复条、命令标记、批量栏状态；通过 `defineExpose({ terminalHost })` 暴露宿主 ref。
 
-- [ ] **Step 4: CSS 与验证**
+- [x] **Step 4: CSS 与验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1469,7 +1471,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：本地 shell 退出层、Telnet/串口/VNC/RDP 关闭层、zmodem/trzsz 进度、回放弹层、拖放遮罩。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -1488,19 +1490,19 @@ git commit -m "refactor(app): extract terminal stage and overlays"
 - Consumes: 现有 `SftpWorkspacePanel`、`DockerPanel`、`MetricsPanel`、各对话框组件与状态。
 - Produces: 右侧三视图外壳（8,051–8,400）与剩余内联对话框（OTP/导入/预览/录制/审计/拖放上传/目录选择）独立组件。
 
-- [ ] **Step 1: 拆 `WorkbenchSidePanel.vue`**
+- [x] **Step 1: 拆 `WorkbenchSidePanel.vue`**
 
 保留 `sftpPane` ref、三视图切换、`@paste/@dragenter/@dragover/@dragleave/@drop` 上抛。
 
-- [ ] **Step 2: 拆 `WorkbenchDialogs.vue`**
+- [x] **Step 2: 拆 `WorkbenchDialogs.vue`**
 
 逐组迁移内联 `<Dialog>`，props 使用 `v-model:open` 风格；不改变 reka 传送门行为。
 
-- [ ] **Step 3: 更新结构守卫**
+- [x] **Step 3: 更新结构守卫**
 
 `workbench.spec.ts` 的“模板组件解析守卫”扩展扫描 `app/components/*.vue`，确保新增组件仍能解析图标与导入。
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1509,7 +1511,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：SFTP/Docker/Metrics 切换、SFTP 右键粘贴与文件拖入、各对话框开关、窄视口布局。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -1538,7 +1540,7 @@ git commit -m "refactor(app): extract side panel and dialog host"
   - `useWorkbenchContext()` → `{ terminal, session, sftp, layout, dialogs, appearance, locale, workbenchId }`，每个命名空间是按域创建的 refs/reactive（纯本地工厂，不是全局单例）。
   - `useWorkbench()` → `{ ctx, terminal, sessions, sftp, shell }`，其中四个域对象是聚合器返回的扁平 API。
 
-- [ ] **Step 1: 按域迁出状态声明**
+- [x] **Step 1: 按域迁出状态声明**
 
 从 `App.vue` 搬移声明（保留初始值与消毒器）：
 
@@ -1550,7 +1552,7 @@ git commit -m "refactor(app): extract side panel and dialog host"
 
 依赖这些 refs 的派生 computed 一并迁入对应工厂（`connection`、`connectionIdentity`、`sessionPillText`、`toolbarStyle`、`sftpTreeRows` 等）；设置/偏好适配器（`downloadPrefsAdapter`、`transferPrefsAdapter`、`suggestionPrefsAdapter`、`webglEnabled`）并入 `useWorkbenchPrefs` 的返回对象；`diskUsage` 与指标轮询并入 `useDockMetrics` 的返回对象。
 
-- [ ] **Step 2: 组合上下文**
+- [x] **Step 2: 组合上下文**
 
 `useWorkbenchContext.ts`：
 
@@ -1584,7 +1586,7 @@ export function useWorkbenchContext() {
 
 `fallbackWorkbenchId` 必须继续走 `lib/uuid` shim（issue #77）；`randomUUID`、`resolveAppearance`、`resolveWorkbenchId` 的 import 随迁。
 
-- [ ] **Step 3: 写四个域聚合器**
+- [x] **Step 3: 写四个域聚合器**
 
 每个聚合器只做“调用已抽取模块 + 返回扁平 API”，不写实现：
 
@@ -1601,7 +1603,7 @@ export function useTerminalWorkbench(ctx: WorkbenchContext) {
 
 `useSessionWorkbench`、`useSftpWorkbench`、`useShellWorkbench` 同构：只做调用与合并，不写实现。
 
-- [ ] **Step 4: 顶层聚合**
+- [x] **Step 4: 顶层聚合**
 
 `useWorkbench.ts`：
 
@@ -1618,7 +1620,7 @@ export function useWorkbench() {
 }
 ```
 
-- [ ] **Step 5: App.vue 改为单入口**
+- [x] **Step 5: App.vue 改为单入口**
 
 ```ts
 const wb = useWorkbench();
@@ -1626,7 +1628,7 @@ const wb = useWorkbench();
 
 模板组件按域接收 `wb.terminal` / `wb.sessions` / `wb.sftp` / `wb.shell`，不再直接引用上百个 ref。
 
-- [ ] **Step 6: 验证**
+- [x] **Step 6: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1635,11 +1637,11 @@ pnpm --dir frontend test
 
 浏览器冒烟：与 Task 21 相同清单，重点确认启动、终端输入输出、SFTP 操作、设置与分屏。
 
-- [ ] **Step 7: 更新源码扫描守卫**
+- [x] **Step 7: 更新源码扫描守卫**
 
 `frontend/src/shared/lib/uuidCallSites.spec.ts` 的 “keeps App.vue importing the shim” 用例改为断言 `useWorkbenchContext.ts` 引入 shim；裸调用扫描保持不变。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src
@@ -1656,15 +1658,15 @@ git commit -m "refactor(app): add workbench state factories and domain aggregato
 - Consumes: 前面所有 composable、状态工厂与组件。
 - Produces: `App.vue` ≤600 行，只含 `useWorkbench()` 单入口、外壳布局与生命周期 hooks。
 
-- [ ] **Step 1: 收敛剩余装配**
+- [x] **Step 1: 收敛剩余装配**
 
 把仍留在 `App.vue` 的 options 对象提取为 `app/workbench/lib/wiring.ts` 的构造函数（纯数据/回调打包）；删除已迁入 `state/` 的重复声明。`App.vue` 只保留 `const wb = useWorkbench()`、`onMounted(wb.shell.mount)`、`onBeforeUnmount(wb.shell.unmount)` 与外壳模板。
 
-- [ ] **Step 2: 移除 App.vue 白名单**
+- [x] **Step 2: 移除 App.vue 白名单**
 
 从 `LINE_ALLOWLIST` 删除 `"../../app/App.vue"`。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1672,7 +1674,7 @@ pnpm --dir frontend test
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1694,15 +1696,15 @@ git commit -m "refactor(app): reduce App.vue to a composition root"
 - Consumes: 现有 pane 组件与共享草稿状态。
 - Produces: `SettingsDialog.vue` ≤600 行；保存链、导航、脏状态判定各自独立。
 
-- [ ] **Step 1: 迁出保存链**
+- [x] **Step 1: 迁出保存链**
 
 把 `save()` 及其校验/逐项写入逻辑迁到 `useSettingsSave`，返回 `{ save, saving, saveError, dirty }`。
 
-- [ ] **Step 2: 迁出导航与外壳**
+- [x] **Step 2: 迁出导航与外壳**
 
 导航列表、底部按钮、提示条拆为组件；共享草稿仍由 `SettingsDialog` 持有。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
@@ -1711,7 +1713,7 @@ pnpm --dir frontend test
 
 浏览器冒烟：设置各分区切换、修改后保存、取消回滚、错误提示。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1729,20 +1731,20 @@ git commit -m "refactor(settings): split settings dialog orchestrator"
 - Consumes: 现有 vendored parser 与生成语料。
 - Produces: 三个 ≤600 行模块；`figSourceCore.ts` 保留冻结接缝 `FigCompletionSource` 的实现。
 
-- [ ] **Step 1: 按职责搬迁**
+- [x] **Step 1: 按职责搬迁**
 
 - 语料装载/索引 → `figCorpus.ts`
 - 查询、过滤、排序 → `figQuery.ts`
 - `FigCompletionSource` 组合层留在 `figSourceCore.ts`
 
-- [ ] **Step 2: 验证**
+- [x] **Step 2: 验证**
 
 ```bash
 pnpm --dir frontend typecheck
 pnpm --dir frontend exec vitest run src/features/completion
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend/src
@@ -1760,23 +1762,23 @@ git commit -m "refactor(completion): split fig source core"
 - Consumes: 现有夹具函数 `makeEntry`/`makeNode`/`row`/`mountPane`/`dispatchDrag`。
 - Produces: 行交互 spec 与详情卡/拖放 spec 各自 ≤1,200 行；共享夹具独立。
 
-- [ ] **Step 1: 提取夹具**
+- [x] **Step 1: 提取夹具**
 
 把 `makeEntry`、`makeNode`、`row`、`PaneProps`、`mountPane`、`dispatchDrag`、`flushMicrotasks` 移到 `sftpTreePaneFixture.ts`。
 
-- [ ] **Step 2: 拆分用例**
+- [x] **Step 2: 拆分用例**
 
 - 行点击/键盘/改名/选中态 → `SftpTreePane.spec.ts`
 - Info 详情卡 + 拖放目标/1s 展开 → `SftpTreePane.details.spec.ts`
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 pnpm --dir frontend exec vitest run src/features/sftp/components
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src
@@ -1799,7 +1801,7 @@ git commit -m "test(sftp): split tree pane specs"
 - Consumes: 无。
 - Produces: `crate::sessions::ssh::exec::*` 与原导出保持一致。
 
-- [ ] **Step 1: 移动目录并改模块声明**
+- [x] **Step 1: 移动目录并改模块声明**
 
 ```bash
 git mv backend/src/core/exec backend/src/sessions/ssh/exec
@@ -1807,14 +1809,14 @@ git mv backend/src/core/exec backend/src/sessions/ssh/exec
 
 `core/mod.rs` 删除 `pub(crate) mod exec;`；`sessions/ssh/mod.rs` 加入 `pub(crate) mod exec;`。
 
-- [ ] **Step 2: 批量替换路径**
+- [x] **Step 2: 批量替换路径**
 
 ```bash
 grep -rl 'crate::core::exec' backend/src --include='*.rs' | xargs perl -pi -e 's/crate::core::exec/crate::sessions::ssh::exec/g'
 grep -rl 'pub(in crate::core::exec)' backend/src --include='*.rs' | xargs perl -pi -e 's/pub\(in crate::core::exec\)/pub(in crate::sessions::ssh::exec)/g'
 ```
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 cargo test --manifest-path backend/Cargo.toml
@@ -1822,7 +1824,7 @@ cargo test --manifest-path backend/Cargo.toml
 
 Expected: 全绿。`filesystem` 暂时引用 `crate::sessions::ssh::exec::shell_quote`，Task 27 会迁回 core。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/src
@@ -1845,7 +1847,7 @@ git commit -m "refactor(backend): move remote exec pipeline under ssh sessions"
 - Consumes: Task 26 后的模块布局。
 - Produces: `core` 不再出现上层 crate 路径；原调用点通过 re-export 保持不变。
 
-- [ ] **Step 1: 下沉 `shell_quote`**
+- [x] **Step 1: 下沉 `shell_quote`**
 
 新建 `core/shell_quote.rs`：
 
@@ -1860,29 +1862,29 @@ pub fn shell_quote(value: &str) -> String {
 
 删除 `sessions/ssh/exec/quote.rs`，把 `exec/mod.rs` 的 `mod quote; pub use quote::*;` 改为 `pub use crate::core::shell_quote::shell_quote;`；`filesystem` 引用改为 `crate::core::shell_quote::shell_quote`。
 
-- [ ] **Step 2: 下沉 `NameEncoding`**
+- [x] **Step 2: 下沉 `NameEncoding`**
 
 把 `filesystem/sftp/name.rs` 的 `NameEncoding` 枚举与 `parse/as_str` 迁到 `core/model/name_encoding.rs`；在 `name.rs` 顶部 `pub use crate::core::model::name_encoding::NameEncoding;`。
 
-- [ ] **Step 3: 下沉压缩策略**
+- [x] **Step 3: 下沉压缩策略**
 
 把 `CompressPolicy`、`THRESHOLD_MIB_DEFAULT`、`THRESHOLD_MIB_MAX`、`WORTHWHILE_PERCENT`、`WEAK_CPU_PARALLELISM` 迁到 `core/preferences/transfer.rs`；`features/transfer/compress/policy.rs` 改为 `pub use crate::core::preferences::transfer::{...}`。
 
-- [ ] **Step 4: 下沉触发器类型**
+- [x] **Step 4: 下沉触发器类型**
 
 把 `features/automation/triggers/types.rs` 整体迁到 `core/model/connection/triggers.rs`；`core/model/connection.rs` 的字段直接引用 `triggers::TriggersConfig`；`features/automation/triggers/mod.rs` re-export core 类型。
 
-- [ ] **Step 5: 下沉环境变量清洗**
+- [x] **Step 5: 下沉环境变量清洗**
 
 把 `USER_ENV_MAX_PAIRS`、`sanitize_env_pair` 与相关上限常量迁到 `core/preferences/env.rs`；`sessions/local/env.rs` re-export。
 
-- [ ] **Step 6: 下沉私钥错误文案**
+- [x] **Step 6: 下沉私钥错误文案**
 
 把 `private_key_decode_failure` 与 `looks_like_public_key` 迁到 `core/keys/decode_error.rs`；`sessions/ssh/mod.rs` 继续 `pub(crate) use crate::core::keys::decode_error::private_key_decode_failure;`。
 
 同时补齐新模块声明：`core/mod.rs` 加 `pub(crate) mod shell_quote;`；`core/model/mod.rs` 加 `pub(crate) mod name_encoding;`；`core/preferences.rs` 加 `mod env;` 与 `mod transfer;`（并按现有 `pub use` 风格导出）；`core/model/connection.rs` 加 `mod triggers;`；`core/keys.rs` 加 `mod decode_error;`。
 
-- [ ] **Step 7: 解除 core 守卫 ignore**
+- [x] **Step 7: 解除 core 守卫 ignore**
 
 删除 Task 2 中 `core_does_not_depend_on_upper_layers` 的 `#[ignore]`，运行：
 
@@ -1893,7 +1895,7 @@ cargo test --manifest-path backend/Cargo.toml
 
 Expected: 全绿，core 无上层引用。
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/src
@@ -1910,14 +1912,14 @@ git commit -m "refactor(backend): make core a leaf layer"
 - Consumes: 现有 `open_connection` 调用方（保持不变）。
 - Produces: `connection::open::open_connection` 签名不变；子模块 `pub(super)`。
 
-- [ ] **Step 1: 建目录并移动**
+- [x] **Step 1: 建目录并移动**
 
 ```bash
 mkdir -p backend/src/sessions/ssh/connection/open
 git mv backend/src/sessions/ssh/connection/open.rs backend/src/sessions/ssh/connection/open/mod.rs
 ```
 
-- [ ] **Step 2: 按职责搬移函数**
+- [x] **Step 2: 按职责搬移函数**
 
 - `pty.rs`：PTY/通道请求/窗口尺寸
 - `register.rs`：会话注册、转发/keepalive 启动
@@ -1926,13 +1928,13 @@ git mv backend/src/sessions/ssh/connection/open.rs backend/src/sessions/ssh/conn
 
 每搬一组运行 `cargo test --manifest-path backend/Cargo.toml sessions::ssh`。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 cargo test --manifest-path backend/Cargo.toml
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/src
@@ -1949,26 +1951,26 @@ git commit -m "refactor(ssh): split connection open into focused modules"
 - Consumes: 现有 runtime 公开函数与 `use runtime::*`。
 - Produces: 对外签名不变。
 
-- [ ] **Step 1: 建目录并移动**
+- [x] **Step 1: 建目录并移动**
 
 ```bash
 mkdir -p backend/src/sessions/local/runtime
 git mv backend/src/sessions/local/runtime.rs backend/src/sessions/local/runtime/mod.rs
 ```
 
-- [ ] **Step 2: 按职责搬移**
+- [x] **Step 2: 按职责搬移**
 
 - `lifecycle.rs`：spawn/reap/退出态
 - `io.rs`：stdin/stdout 泵与帧编码
 - `control.rs`：resize/signal/关闭
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 ```bash
 cargo test --manifest-path backend/Cargo.toml
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/src
@@ -1988,7 +1990,7 @@ git commit -m "refactor(local): split local terminal runtime"
 - Consumes: 现有测试函数与 helper。
 - Produces: 每个测试文件 ≤1,200 行；测试数量不减少。
 
-- [ ] **Step 1: 记录测试数量**
+- [x] **Step 1: 记录测试数量**
 
 ```bash
 cargo test --manifest-path backend/Cargo.toml 2>&1 | tail -5
@@ -1996,7 +1998,7 @@ cargo test --manifest-path backend/Cargo.toml 2>&1 | tail -5
 
 记录通过数，最终必须 ≥ 该值。
 
-- [ ] **Step 2: 拆 SSH 测试**
+- [x] **Step 2: 拆 SSH 测试**
 
 按主题搬运，helper（`auth_failure`、`method_set`、`test_timeout` 等）放 `mod.rs` 并 `pub(super) use`。每拆完一组运行：
 
@@ -2004,11 +2006,11 @@ cargo test --manifest-path backend/Cargo.toml 2>&1 | tail -5
 cargo test --manifest-path backend/Cargo.toml sessions::ssh
 ```
 
-- [ ] **Step 3: 拆 MCP / import / manifest 测试**
+- [x] **Step 3: 拆 MCP / import / manifest 测试**
 
 同样按主题搬运；`state()`、`zip_entry_names` 等 helper 放各自 `mod.rs`。
 
-- [ ] **Step 4: 验证全量**
+- [x] **Step 4: 验证全量**
 
 ```bash
 cargo test --manifest-path backend/Cargo.toml
@@ -2016,7 +2018,7 @@ cargo test --manifest-path backend/Cargo.toml
 
 Expected: 通过数不低于 Step 1，`structure_tests::sources_stay_within_line_budget` PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src
@@ -2038,11 +2040,11 @@ git commit -m "test(backend): split oversized test modules by scenario"
 - Consumes: 所有前置任务。
 - Produces: 无白名单的结构守卫、可安装的 `.dbxp`。
 
-- [ ] **Step 1: 清空白名单**
+- [x] **Step 1: 清空白名单**
 
 两个守卫的 `LINE_ALLOWLIST` 改为空；确认无 stale 项。
 
-- [ ] **Step 2: 跑结构守卫**
+- [x] **Step 2: 跑结构守卫**
 
 ```bash
 pnpm --dir frontend exec vitest run src/shared/lib/structure.spec.ts
@@ -2051,7 +2053,7 @@ cargo test --manifest-path backend/Cargo.toml structure_tests
 
 Expected: 全绿且无 allowlist。
 
-- [ ] **Step 3: 全量门禁**
+- [x] **Step 3: 全量门禁**
 
 ```bash
 scripts/test.sh --skip-host
@@ -2059,7 +2061,7 @@ scripts/test.sh --skip-host
 
 Expected: 后端测试、前端 typecheck/test/build、dead-code、MCP/本地 smoke 全部通过。
 
-- [ ] **Step 4: 浏览器全流程冒烟**
+- [x] **Step 4: 浏览器全流程冒烟**
 
 ```bash
 pnpm --dir frontend dev
@@ -2076,7 +2078,7 @@ pnpm --dir frontend dev
 - 窄视口（720px）工具栏不溢出
 - 控制台无新增 error
 
-- [ ] **Step 5: 升版与打包**
+- [x] **Step 5: 升版与打包**
 
 版本从 `0.7.9-beta.28` 升到 `0.7.9-beta.29`，同步 `manifest.json`、`backend/Cargo.toml`、`backend/Cargo.lock`；CHANGELOG 写双语条目（结构重构、行为不变）。
 
@@ -2086,14 +2088,14 @@ ls -l dist/io.dbx.sshx-0.7.9-beta.29-darwin-arm64.dbxp
 shasum -a 256 dist/io.dbx.sshx-0.7.9-beta.29-darwin-arm64.dbxp
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/shared/lib/structure.spec.ts backend/src/structure_tests.rs manifest.json backend/Cargo.toml backend/Cargo.lock CHANGELOG.md
 git commit -m "refactor: enforce source structure budgets and release beta.29"
 ```
 
-- [ ] **Step 7: 报告**
+- [x] **Step 7: 报告**
 
 报告：每波提交哈希、最终结构守卫结果、全量测试数量、`.dbxp` 路径/大小/SHA-256。等待用户安装验证；不 push、不自行合并。
 
@@ -2101,7 +2103,7 @@ git commit -m "refactor: enforce source structure budgets and release beta.29"
 
 ## 自检清单
 
-- [ ] 每个 spec 目标都有对应任务：`App.vue` 逻辑（Tasks 8–18b、21b–22）、模板（19–21）、目录归位（4–7）、`shared` 越界（5）、SFTP 工作区（14b）、后端 `core` 叶子（26–27）、后端大文件（28–30）、其余前端超限（23–25）、守卫与打包（1–2、31）。
-- [ ] 每个任务都有独立验证命令和提交点。
-- [ ] 没有 TBD/TODO/“稍后实现”占位。
-- [ ] 接口名在各任务间一致：`useWorkbenchContext`、`useWorkbench`、`useWorkbenchPersistence`、`useSplitDivider`、`useWorkbenchModals`、`useWorkbenchBootstrap`、`useHostDragBridge`、`useTerminalInstance`、`useTerminalWriter`、`useTerminalInput`、`useTerminalKeys`、`useTerminalReconnect`、`useCommandMarker`、`useTerminalClipboard`、`useTerminalHighlight`、`useTerminalActionLinks`、`useTerminalGutter`、`useSshConnection`、`useLocalShellSession`、`useTelnetWorkbench`、`useSerialWorkbench`、`useVncWorkbench`、`useRdpWorkbench`、`useSftpWorkspace`、`useSftpDialogs`、`useSftpDropUpload`、`useSftpPreview`。
+- [x] 每个 spec 目标都有对应任务：`App.vue` 逻辑（Tasks 8–18b、21b–22）、模板（19–21）、目录归位（4–7）、`shared` 越界（5）、SFTP 工作区（14b）、后端 `core` 叶子（26–27）、后端大文件（28–30）、其余前端超限（23–25）、守卫与打包（1–2、31）。
+- [x] 每个任务都有独立验证命令和提交点。
+- [x] 没有 TBD/TODO/“稍后实现”占位。
+- [x] 接口名在各任务间一致：`useWorkbenchContext`、`useWorkbench`、`useWorkbenchPersistence`、`useSplitDivider`、`useWorkbenchModals`、`useWorkbenchBootstrap`、`useHostDragBridge`、`useTerminalInstance`、`useTerminalWriter`、`useTerminalInput`、`useTerminalKeys`、`useTerminalReconnect`、`useCommandMarker`、`useTerminalClipboard`、`useTerminalHighlight`、`useTerminalActionLinks`、`useTerminalGutter`、`useSshConnection`、`useLocalShellSession`、`useTelnetWorkbench`、`useSerialWorkbench`、`useVncWorkbench`、`useRdpWorkbench`、`useSftpWorkspace`、`useSftpDialogs`、`useSftpDropUpload`、`useSftpPreview`。

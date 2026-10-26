@@ -1,7 +1,7 @@
 # SSH/SFTP 特性能力清单
 
 插件现状：RPC 分发在 `backend/src/app/rpc/mod.rs`——`handle_request` 按方法命名空间路由到
-`backend/src/app/rpc/*.rs` 各域处理器（`backend/src/main.rs` 仅为 12 行入口），含 sftp/copy、sftp/move、
+`backend/src/app/rpc/*.rs` 各域处理器（`backend/src/main.rs` 仅为 15 行入口），含 sftp/copy、sftp/move、
 ssh/host-key/check、keys/discover/options，以及 watch/*、sftp/download/tree/start、sudo/download/*、rdp/*、
 serial/* 等后续批次方法；2026-09-26 协议审计复核的「184 个分发方法臂、185 个方法名」是目录重组前
 单文件 match 表的计数（`ssh/host-key/resolve` 与 `connection/challenge/resolve` 共用一臂；更早的

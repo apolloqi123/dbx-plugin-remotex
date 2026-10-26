@@ -1,6 +1,6 @@
 # 深度重构：大文件拆分与可维护性治理
 
-状态：执行中（2026-10-24）
+状态：已完成（2026-10-26）
 分支：`refactor/deep-split`
 
 ## 进度
@@ -19,12 +19,12 @@
 
 ## 完成边界
 
-本轮的自动化机械拆分到此完成。剩余未拆项均为高耦合核心或数据/引擎，继续拆分收益低于行为风险：
+本轮机械拆分已由后续结构重构收口，最终状态如下（已完成，无剩余超限项）：
 
-- `frontend/src/app/App.vue`（约 8.6k 行）：终端帧 drain、连接生命周期、Esc/焦点仲裁等核心状态机。
-- `frontend/src/features/settings/components/SettingsDialog.vue`（约 929 行）：设置编排器（导航 + 共享草稿 + 保存链）。
-- `frontend/src/features/completion/lib/completion/fig/figSourceCore.ts`（737 行）：纯引擎，语料由调用方注入。
-- `backend/src/sessions/ssh/connection/open.rs`（718 行）：单个连接建立 God-function，含 PTY/注册/读循环。
+- `frontend/src/app/App.vue`（12 行）：纯组合根，仅装配状态与外壳；工作台外壳在 `frontend/src/app/components/WorkbenchShell.vue`（561 行），终端帧 drain、连接生命周期、Esc/焦点仲裁等已迁入 `frontend/src/features/*` 与 `frontend/src/app/workbench/`。
+- `frontend/src/features/settings/components/SettingsDialog.vue`（436 行）：设置编排器已拆到行数预算内。
+- `frontend/src/features/completion/lib/completion/fig/figSourceCore.ts`（524 行）：纯引擎保持语义不变，已拆出 parser surface、manifest 数据面与建议 helper，行数降至预算内。
+- `backend/src/sessions/ssh/connection/open/`（`mod/pty/register/reader/error`，共 920 行）：原 718 行连接建立 God-function 已按 PTY/注册/读循环/错误拆分。
 - i18n `messages/base/*.ts` 与 fig 语料：数据文件，按语言/语料边界保留。
 
 ## 目标
@@ -35,7 +35,7 @@
 
 - 不改变运行时行为、RPC 协议、工具 schema、i18n key、CSS 级联结果。
 - 不升级依赖，不做无关格式化，不重排无关代码。
-- 不触碰 unsafe 模块（`filesystem/sftp/tree.rs`、`automation/task_config.rs`、`platform/job_object.rs`）与 `sessions/ssh/connection/open.rs` 内部。
+- 不触碰 unsafe 模块（`filesystem/sftp/tree.rs`、`automation/task_config.rs`、`platform/job_object.rs`）与 `sessions/ssh/connection/open/` 内部。
 - 认证、sudo、命令执行语义只做机械搬移，改完单独标注供人工复核。
 - 每阶段通过各自的测试门禁后才进入下一阶段；需要改行为时停下报告。
 

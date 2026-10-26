@@ -20,7 +20,7 @@
 | 标记 | 含义 | 路径参数的实际去向 | 典型后果 |
 | --- | --- | --- | --- |
 | ✅ | **裸包 SFTP 车道** | 路径参数在插件内还原为**服务器原始字节**（`unescape_wire` / `write_path_bytes` / `latin1_encode_display`，`backend/src/filesystem/sftp/name.rs`），装进 SFTP 协议帧（SSH_FXP_*）发送，不经任何 shell | 非 UTF-8 文件名（如 latin-1 编码的 `caf%E9.txt` ↔ 字节 `café.txt`）读写改名删除均逐字节保真 |
-| ⚠️ | **shell 拼装车道** | 路径参数先 `normalize_remote_path`（`backend/src/core/model/paths.rs:21`：绝对化 + 去 `.`/`..`/空段 + 拒空/拒 NUL，不做 `~` 展开），再 `shell_quote`（`backend/src/core/exec/run.rs:553`）后拼进 SSH exec 命令串 | 命令串是 UTF-8 String 边界：latin-1 单字节名（wire 形式 `%XX` 或非 ASCII 显示文本）被远端 shell/进程按 locale 重解释，字节层面不可控。**clean 名（纯 ASCII）行为不变**；转义名/非 ASCII 名由远端报错（`No such file` 类） |
+| ⚠️ | **shell 拼装车道** | 路径参数先 `normalize_remote_path`（`backend/src/core/model/paths.rs:21`：绝对化 + 去 `.`/`..`/空段 + 拒空/拒 NUL，不做 `~` 展开），再 `shell_quote`（`backend/src/core/shell_quote.rs` 的 `shell_quote`）后拼进 SSH exec 命令串 | 命令串是 UTF-8 String 边界：latin-1 单字节名（wire 形式 `%XX` 或非 ASCII 显示文本）被远端 shell/进程按 locale 重解释，字节层面不可控。**clean 名（纯 ASCII）行为不变**；转义名/非 ASCII 名由远端报错（`No such file` 类） |
 | ❌ | **字面量发送** | 路径参数（或命令文本）按调用方原样字符串发送，插件不做编码还原 | 含 `%XX` 转义或非 UTF-8 字节的路径无法命中远端真实文件；适用面是自由命令文本（`ssh/exec`、agent），不在「路径参数」语义之内 |
 
 补充口径：
@@ -34,7 +34,7 @@
 ## 2. 矩阵 A：工作台 RPC · SFTP 协议车道（全部 ✅）
 
 分发层在 `backend/src/app/rpc/mod.rs`（`handle_request` 按方法命名空间路由到 `backend/src/app/rpc/*.rs`
-各域处理器；`backend/src/main.rs` 仅为 12 行入口）；实现层按「来源」列的文件:行号。latin-1 生效时全部走裸包客户端
+各域处理器；`backend/src/main.rs` 仅为 15 行入口）；实现层按「来源」列的文件:行号。latin-1 生效时全部走裸包客户端
 （`backend/src/filesystem/sftp/raw.rs`，独立 sftp 子系统通道、严格串行；原始方法见 `backend/src/filesystem/sftp/raw/client.rs:50 readdir`、
 `:88 stat`、`:191 lstat`、`:208 remove`、`:219 open_write`、`:257 setstat`、`:274 readlink`、
 `:298 symlink`、`:321 mkdir`、`:339 rename`）。
@@ -54,7 +54,7 @@
 | `sftp/symlink-read` | — | `linkPath`（整条 wire） | ✅ | ✅ 整条 `unescape_wire` 后裸包 READLINK，指向文本 latin-1 显示解码 | 读↔写在 latin-1 域内闭环 | `main.rs:964` → `sftp_ext.rs:585`（归一 591、unescape 595） |
 | `sftp/symlink-update` | — | `linkPath`（整条 wire）/ `target`（显示文本） | ✅（仅 linkPath） | ✅ link `unescape_wire`、target `latin1_encode_display`，read-compare 后裸包 REMOVE+SYMLINK | v3 无 re-link 原语，remove+recreate 实现 | `main.rs:972` → `sftp_ext.rs:628`（归一 637；unescape 641、encode 642） |
 | `sftp/write` | `sftp_write_file` | `remotePath`（整条 wire） | ✅ | ✅ 整条 `unescape_wire` 后裸包暂存（`.dbx-part-<uuid>`）+ 原子提交 | wire 的 `%` 自转义保证字面 `%XX` 名往返不变 | `main.rs:982` → `sftp_ext.rs:334` → `write_bytes:351`（归一 359、unescape 365） |
-| `sftp/upload-local` | — | `remotePath`（watcher 登记的整条 wire） | ✅ | ✅ 整条 `unescape_wire` 后裸包暂存 + 原子提交 | 本地文件先经 `validate_remote_edit_path` 源校验 | `main.rs:1040` → `sftp_ext.rs:1220`（归一 1239、unescape 1247） |
+| `sftp/upload-local` | — | `remotePath`（watcher 登记的整条 wire） | ✅ | ✅ 整条 `unescape_wire` 后裸包暂存 + 原子提交 | 本地文件先经 `validate_remote_edit_path` 源校验 | `backend/src/app/rpc/sftp.rs`（`sftp/upload-local` 臂）→ `backend/src/filesystem/sftp/ext/watch.rs` `upload_watched_file`（归一与 `unescape_wire` 均在该函数内） |
 | `watch/upload` | — | watcher 登记的 `remotePath`（整条 wire） | ✅ | ✅ 复用 `sftp_ext::write_bytes`，latin-1 按所属连接编码走裸包回写（M21） | watchId 是 bearer token；本地源 `validate_local_origin` 重校验 | `main.rs:1080` → `file_watch.rs:471`（→ `sftp_ext.rs:519` write_bytes） |
 | `sftp/copy` | `sftp_copy` | `from`/`toDir`（wire 形式） | ✅（`parse_request` 内 `normalize`，`copy.rs:152,167`） | ✅ 覆盖预检逐个裸包 LSTAT（`PathForm::WireEscaped` 还原，`copy.rs:49`）；同目录 move 快路径裸包 RENAME（`copy.rs:461–480`） | **执行层边界（登记）**：底层远端 `cp -a --`/`mv -f --` 是 shell 拼装（`copy.rs:212–227`），UTF-8 String 命令串不做字节保真迁移；预检/快路径已收口 | `backend/src/app/rpc/sftp.rs:288` → `backend/src/filesystem/sftp/copy.rs:311 run`、`execute_with:340`（预检裸包 LSTAT 370–373） |
 | `sftp/move` | `sftp_move` | 同 `sftp/copy` | ✅ | ✅ 同上（同目录 RENAME 快路径；跨目录回落 shell `mv`——执行层同上边界） | SFTPv3 RENAME 不覆盖已存在目标，撞名回落 shell | `backend/src/app/rpc/sftp.rs:303` → `backend/src/filesystem/sftp/copy.rs:311` |
@@ -74,7 +74,7 @@
 本族路径参数先归一再 `shell_quote` 进 exec 命令串（UTF-8 String 边界）。**这些入口本就没有
 wire 形式的名字来源**（不消费 latin-1 列表回传的 `%XX` 转义），latin-1 下维持字面量发送、
 由远端报错（PROTOCOL 431 行登记）。sudo 族统一经 `runtime.exec(..., sudo=true, ...)`
-（`sudo_fs.rs:40 sudo_exec` → `ssh.rs:3565 exec` → `exec.rs exec_with_sudo`）。
+（`backend/src/features/security/sudo/fs.rs` `sudo_exec` → `backend/src/sessions/ssh/execution/core.rs` `SshRuntime::exec` → `backend/src/sessions/ssh/exec/run.rs` `exec_with_sudo`）。
 
 | 入口（工作台 RPC） | MCP 对应（历史，当前工具面见第 4 节） | 路径参数 | 归一 | 字节保真 | 备注 | 来源 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -93,7 +93,7 @@ wire 形式的名字来源**（不消费 latin-1 列表回传的 `%XX` 转义）
 | `sudo/chmod` | — | `path` | ✅（540） | ⚠️ `chmod <mode> -- '<path>'`（542） | | `main.rs:1444` → `sudo_fs.rs:534` |
 | `sudo/rename` | — | `sourcePath` / `targetPath` | ✅（555–556） | ⚠️ `mv -- '<src>' '<tgt>'`（557） | | `main.rs:1452` → `sudo_fs.rs:549` |
 | `sudo/download/start` | — | `path` | ✅（`sudo_download.rs:139`） | ⚠️ 暂存链 `mktemp -- '<dir>/...XXXXXXXX'`、`cat -- '<src>' > '<tmp>'`、`chown/chmod`（`sudo_download.rs:74/112/119`）；**暂存后的分块读走 SFTP**（复用 `sftp/download/next` 管线，但对象是 ASCII 临时件路径） | 根文件下载先 sudo 复制为同目录 0600 临时件 | `main.rs:1464` → `ssh.rs:5891` → `sudo_download.rs:134 stage_source` |
-| `ssh/exec` | `ssh_exec`/`ssh_exec_sudo`/`ssh_run_bg` | `command`（完整命令文本） | —（无路径参数） | ❌ 自由命令文本按原样发送 | **天然超出字节保真语义**：路径只是命令文本的子串，插件无从区分「路径参数」；用户可在命令内自行还原编码。sudo 面受连接级 allowlist 门禁（`main.rs:408–412`） | `main.rs:403` → `ssh.rs:3565` |
+| `ssh/exec` | `ssh_exec`/`ssh_exec_sudo`/`ssh_run_bg` | `command`（完整命令文本） | —（无路径参数） | ❌ 自由命令文本按原样发送 | **天然超出字节保真语义**：路径只是命令文本的子串，插件无从区分「路径参数」；用户可在命令内自行还原编码。sudo 面受连接级 allowlist 门禁（`backend/src/app/rpc/exec.rs` 的 `ensure_sudo_allowed` 调用） | `backend/src/app/rpc/exec.rs`（`ssh/exec` 臂）→ `backend/src/sessions/ssh/execution/core.rs` `SshRuntime::exec` |
 | agent exec（`exec_in_terminal` 终端注入路由） | — | `command`（完整命令文本） | — | ❌ 命令经 `sanitize_command`（去控制字符）后注入交互 PTY，按键盘输入语义执行 | 同上：自由命令文本；注入前有 approval 挑战与 agent-exec 串行锁 | `ssh.rs:3743` |
 
 小计：**15 个 ⚠️ 入口 + 2 个 ❌（自由命令）**。
