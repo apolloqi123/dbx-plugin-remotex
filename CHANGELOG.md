@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.39] — 2026-10-26
+
+- **全插件卡片化视觉升级**。工作台、终端页签、SFTP、容器管理、设置、弹窗/浮层、服务器指标与终端浮层统一为卡片化布局：18px 面板圆角、12px 行卡片、10px 控件圆角与胶囊页签；工具栏、容器列表/详情、SFTP 文件与设置分类使用亮色图标底座；卡片间距、柔和描边、悬浮lift 与阴影全部走设计令牌（`cards.css` / `tokens.css`），暗色与亮色宿主主题自动适配。同时修复无宿主 `--color-*` 令牌时语义状态色被 Tailwind 反向映射成 CSS 变量环而整体失效的问题。
+  **Card-based visual refresh across the whole plugin.** The workbench, terminal tabs, SFTP, container manager, settings, dialogs/popovers, server metrics, and terminal overlays now share one card language: 18px panel radii, 12px row cards, 10px control radii and pill tabs; bright icon tiles on the toolbar, container list/detail, SFTP files, and settings categories; consistent card spacing, hairline borders, hover lift, and shadows driven by design tokens (`cards.css` / `tokens.css`), adapting automatically to dark and light host themes. Also fixed semantic status tokens collapsing when a host provides no `--color-*` tokens (Tailwind's reverse mapping formed a CSS variable cycle).
+
 ## [0.7.9-beta.38] — 2026-10-26
 
 - **彻底修复反复切换容器日志/文件/终端后 `AdministrativelyProhibited`（`MaxSessions` 耗尽）**。根因是取消日志流时只关闭了 SSH channel：非 PTY 会话的远端子进程不会因通道关闭收到信号，`docker logs -f` 会一直阻塞并保留 sshd 会话，每切换一次容器就永久占用一个 `MaxSessions` 名额，约十次后所有新通道被拒、列表轮询连续失败。现在所有取消/超时路径先向远端进程组发送 SSH `signal`(SIGTERM) 再 `EOF+CLOSE`；`docker/logs/stop` 会等待转发任务真正释放通道后返回；通道建立中途失败（PTY/env/exec 请求被拒）也会显式关闭，不再泄漏会话。真实 sshd（`MaxSessions 10`）下连续切换 30 轮：0 失败、0 残留进程、服务端并发 session 峰值 3。

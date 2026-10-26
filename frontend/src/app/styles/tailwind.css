@@ -51,9 +51,11 @@
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--primary);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-info: var(--info);
+  /* 状态色不在此处反向映射：宿主主题桥已经把它们写成
+     --success: var(--color-success, fallback)。若同时声明
+     --color-success: var(--success)，两者互为引用形成 CSS 自定义属性环，
+     计算值会一起失效（状态图标/徽标失去颜色）。Tailwind 语义色工具类
+     未在本插件使用，去掉这三行不影响任何 className。 */
   --color-overlay: var(--overlay);
   --font-sans: var(--ui-font-family);
   --font-mono: var(--terminal-font-family);

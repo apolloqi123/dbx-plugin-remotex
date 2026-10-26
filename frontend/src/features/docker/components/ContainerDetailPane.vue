@@ -5,7 +5,7 @@
 // 三个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
 // 切到文件/终端页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
 // Wave 2 在页内填充实现，props 契约不变。
-import { FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
+import { Box, FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
 import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
@@ -38,6 +38,7 @@ const emit = defineEmits<{
 <template>
   <section class="container-detail-pane">
     <header class="container-detail-head">
+      <span class="ui-icon-tile ui-tone-emerald container-detail-logo"><Box /></span>
       <strong class="container-detail-name mono" :title="container.id">{{ container.name || container.id.slice(0, 12) }}</strong>
       <span class="docker-badge" :class="dockerStateClass(container.state)">{{ container.state }}</span>
       <span class="container-detail-spacer" />

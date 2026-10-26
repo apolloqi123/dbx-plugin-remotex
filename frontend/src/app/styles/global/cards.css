@@ -1,0 +1,1113 @@
+/* ---------------------------------------------------------------------------
+   卡片化视觉层（2026-10-26）
+   所有表面/描边/色调从宿主桥接令牌派生，暗色与亮色宿主共用一套规则。
+   本文件最后导入：同特异性下覆盖各域旧样式，不改变 DOM 结构与交互。
+   --------------------------------------------------------------------------- */
+
+/* —— 通用卡片原语（模板可直接引用） —— */
+.ui-card {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-panel);
+  background: var(--gradient-card);
+  box-shadow: var(--card-shadow);
+}
+.ui-card--interactive {
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.ui-card--interactive:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--card-border));
+  box-shadow: var(--card-shadow-hover);
+}
+.ui-icon-tile {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--tone-soft, var(--tone-blue-soft));
+  color: var(--tone, var(--tone-blue));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%), 0 8px 16px -12px currentColor;
+}
+.ui-icon-tile svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.ui-tone-blue { --tone: var(--tone-blue); --tone-soft: var(--tone-blue-soft); }
+.ui-tone-emerald { --tone: var(--tone-emerald); --tone-soft: var(--tone-emerald-soft); }
+.ui-tone-amber { --tone: var(--tone-amber); --tone-soft: var(--tone-amber-soft); }
+.ui-tone-rose { --tone: var(--tone-rose); --tone-soft: var(--tone-rose-soft); }
+.ui-tone-violet { --tone: var(--tone-violet); --tone-soft: var(--tone-violet-soft); }
+.ui-tone-cyan { --tone: var(--tone-cyan); --tone-soft: var(--tone-cyan-soft); }
+
+/* —— 画布与工作台 —— */
+.workbench {
+  background:
+    radial-gradient(1100px 520px at 8% -14%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 62%),
+    radial-gradient(900px 460px at 102% -6%, color-mix(in srgb, var(--tone-violet) 8%, transparent), transparent 58%),
+    var(--background);
+}
+.workbench > .toolbar {
+  height: 40px;
+  min-height: 40px;
+  margin: 8px 8px 0;
+  border: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--card-surface) 86%, transparent);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+.workbench.panel-surface > .toolbar {
+  height: 32px;
+  min-height: 32px;
+  margin: 6px 6px 0;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--card-surface) 42%, transparent);
+  box-shadow: none;
+}
+.workbench > .panes {
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  margin-top: var(--space-2xs);
+}
+.workbench .divider {
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+.workbench .divider::after {
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  transition: background var(--transition-fast);
+}
+.workbench .divider:hover::after { background: color-mix(in srgb, var(--primary) 60%, transparent); }
+
+/* —— 终端栈 / 终端页签 —— */
+.terminal-stack {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-panel);
+  background: var(--card-surface);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.terminal-workspace { border-radius: inherit; }
+.terminal-tabbar {
+  height: 34px;
+  flex-basis: 34px;
+  align-items: center;
+  gap: var(--space-2xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 6px;
+  background: transparent;
+}
+.terminal-tab {
+  height: 24px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-control);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.terminal-tab:hover { background: color-mix(in srgb, var(--foreground) 7%, transparent); }
+.terminal-tab.is-active {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--card-border));
+  background: color-mix(in srgb, var(--primary) 15%, var(--card-surface-raised));
+  color: var(--foreground);
+  box-shadow: 0 6px 18px -14px var(--primary), inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+.terminal-tab.is-active .terminal-tab-main svg { color: var(--primary); }
+.terminal-tab-add {
+  width: 24px;
+  height: 24px;
+  border: 1px dashed color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+.terminal-tab-add:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: rotate(90deg);
+}
+.terminal-tab-close { border-radius: var(--radius-xs); }
+.terminal-tab-close:hover { background: var(--tone-rose-soft); color: var(--tone-rose); }
+
+/* —— 右侧栏 / 容器底部分屏：同一套卡片表面 —— */
+.sftp-pane.right-panel,
+.docker-pane-surface {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-panel);
+  background: var(--card-surface);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.docker-divider {
+  height: 5px;
+  flex-basis: 5px;
+  margin: 0 var(--space-sm);
+}
+.docker-divider::after {
+  inset: 2px 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+.side-panel-head {
+  min-height: 38px;
+  gap: var(--space-sm);
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 8px 4px 12px;
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+}
+.side-panel-head h2 { font-size: 12px; letter-spacing: 0.01em; }
+
+/* —— 图标语言：按钮、导航行、页签统一亮色圆角底 —— */
+.icon-button {
+  border-radius: var(--radius-control);
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.icon-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 14%, var(--card-surface-raised));
+  color: var(--foreground);
+  box-shadow: 0 4px 14px -10px var(--primary);
+}
+.icon-button:active:not(:disabled) { transform: scale(0.94); }
+.icon-button.is-active {
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--card-border));
+  background: color-mix(in srgb, var(--primary) 18%, var(--card-surface-raised));
+  box-shadow: none;
+}
+.toolbar-actions .icon-button:hover:not(:disabled) { color: var(--primary); }
+.session-menu-popover { padding: 8px; }
+.session-menu-item,
+.shell-surface-item,
+.panel-palette-row,
+.columns-popover label,
+.folder-picker-row {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+.session-menu-item:hover:not(:disabled),
+.shell-surface-item:hover,
+.panel-palette-row:hover,
+.columns-popover label:hover,
+.folder-picker-row:hover { background: var(--card-surface-raised); }
+.session-menu-item svg,
+.shell-surface-item svg {
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.session-menu-item:hover:not(:disabled) svg { background: var(--tone-blue-soft); }
+
+/* —— 输入与通用控件：更大圆角、聚焦光环 —— */
+.path-toolbar input,
+.modal input,
+.modal textarea,
+.popover input,
+.popover textarea,
+.settings-field input,
+.settings-field textarea,
+.batch-bar-input,
+.theme-save-row input {
+  border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+.path-toolbar input:focus,
+.modal input:focus,
+.modal textarea:focus,
+.popover input:focus,
+.popover textarea:focus,
+.settings-field input:focus,
+.settings-field textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 65%, var(--card-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.path-crumbs {
+  border-radius: var(--radius-control);
+  background: var(--card-surface-inset);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.path-crumbs:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+.path-crumb { border-radius: var(--radius-xs); }
+.path-crumb:hover { background: var(--card-surface-raised); }
+.sudo-toggle { border-radius: var(--radius-control); }
+.sudo-toggle.is-on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent); }
+.browse-button { border-radius: var(--radius-control); }
+.batch-bar {
+  border-top: 1px solid var(--card-border);
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--card-surface) 70%, transparent);
+}
+.batch-bar-targets { border-radius: var(--radius-control); background: var(--card-surface-inset); }
+.batch-bar-status { border-radius: var(--radius-md); box-shadow: var(--card-shadow); }
+.batch-target-row { border-radius: var(--radius-sm); }
+.batch-badge { border-radius: var(--radius-pill); background: var(--card-surface-inset); }
+
+/* —— 浮层 / 菜单 / 弹窗 —— */
+[data-slot="popover-content"],
+[data-slot="context-menu-content"] {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  background: var(--card-surface-raised);
+  box-shadow: var(--card-shadow-hover);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+[data-slot="context-menu-item"],
+[data-slot="context-menu-sub-trigger"] {
+  border-radius: var(--radius-sm);
+  margin: 1px 2px;
+}
+[data-slot="context-menu-item"] svg { color: var(--primary); }
+[data-slot="context-menu-item"][data-highlighted] { background: var(--card-surface-inset); }
+[data-slot="dialog-content"] { border-radius: var(--radius-panel); }
+[data-slot="tabs-trigger"] { border-radius: var(--radius-pill); }
+
+.modal {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-panel);
+  padding: 18px;
+  background: var(--gradient-card);
+  box-shadow: var(--card-shadow-hover);
+}
+.modal h2 { font-size: 15px; letter-spacing: 0.01em; }
+.modal header { min-height: 28px; }
+.modal header > .icon-button { top: 12px; right: 12px; border-radius: var(--radius-control); }
+.modal footer {
+  margin: 0 -18px -18px;
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: color-mix(in srgb, var(--card-surface-inset) 55%, transparent);
+}
+.modal footer button,
+.primary-button,
+.danger-button {
+  border-radius: var(--radius-control);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+.primary-button {
+  /* 实色 background-color 必须保留：只写 background: linear-gradient 会把
+     背景色重置为 transparent，亮色主题下按钮被判为「不可见」。 */
+  background-color: var(--primary) !important;
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary) 88%, #fff 12%),
+    color-mix(in srgb, var(--primary) 72%, var(--tone-cyan))
+  ) !important;
+  box-shadow: 0 8px 20px -12px var(--primary);
+}
+.primary-button:hover { box-shadow: 0 10px 24px -10px var(--primary); }
+.primary-button:active { transform: translateY(1px); }
+.danger-button { box-shadow: 0 6px 18px -14px var(--destructive); }
+.destructive-icon { border-radius: var(--radius-md); }
+
+.notice,
+.error-banner { border-radius: var(--radius-md); box-shadow: var(--card-shadow-hover); }
+.notice-action { border-radius: var(--radius-sm); }
+.app-tooltip { border-radius: var(--radius-sm); }
+
+/* —— 空态：卡片内居中，图标带柔光 —— */
+.docker-empty,
+.empty,
+.profiles-empty {
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+}
+.sftp-body > .empty,
+.file-rows > .empty {
+  margin: 8px;
+  border: 1px dashed var(--card-border);
+  background: color-mix(in srgb, var(--card-surface-inset) 55%, transparent);
+}
+
+/* —— SFTP：树行/文件行/页脚 —— */
+.path-toolbar {
+  min-height: 42px;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 42%, transparent);
+}
+.path-toolbar .icon-button:not(.sudo-toggle) {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+}
+.path-toolbar .icon-button:not(.sudo-toggle):hover:not(:disabled) {
+  color: var(--tone-blue);
+  background: var(--tone-blue-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone-blue) 32%, transparent);
+}
+.path-toolbar .icon-button.is-active:not(.sudo-toggle) {
+  color: var(--tone-amber);
+  background: var(--tone-amber-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone-amber) 34%, transparent);
+}
+.sftp-tree-row {
+  border-radius: var(--radius-sm);
+  padding-right: 6px;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.sftp-tree-row:hover { background: var(--card-surface-raised); }
+.sftp-tree-row.is-current {
+  background: color-mix(in srgb, var(--primary) 14%, var(--card-surface-raised));
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.sftp-tree-row.is-current .sftp-tree-name { color: var(--primary); font-weight: 600; }
+.sftp-tree-caret { border-radius: var(--radius-xs); }
+.sftp-tree-row > svg.sftp-tree-dir-icon {
+  box-sizing: content-box;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 18px;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: var(--tone-amber-soft);
+  color: var(--tone-amber);
+}
+.file-header {
+  height: 30px;
+  min-height: 30px;
+  border-bottom: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+  box-shadow: none;
+}
+.file-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--card-border) 55%, transparent);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.file-row:hover { background: var(--card-surface-raised); }
+.file-row.selected,
+.file-row.selected:hover {
+  background: color-mix(in srgb, var(--primary) 14%, var(--card-surface-raised));
+  box-shadow: inset 2px 0 0 var(--primary);
+  color: var(--foreground);
+}
+.file-name > svg {
+  box-sizing: content-box;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 18px;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.folder-icon {
+  background: var(--tone-amber-soft);
+  color: var(--tone-amber);
+  fill: color-mix(in srgb, var(--tone-amber) 18%, transparent);
+}
+.file-footer {
+  height: 30px;
+  min-height: 30px;
+  border-top: 1px solid var(--card-border);
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--card-surface-raised) 40%, transparent);
+}
+
+/* —— 容器管理：列表卡片 / 页签胶囊 / 日志与文件卡 ——
+   容器组件使用 Vue scoped 样式（选择器带 [data-v] 属性，特异性 +1），
+   本段统一用 .workbench .docker-pane-surface 前缀压过，避免组件内旧规则
+   把卡片外观盖回去。 */
+.workbench .docker-pane-surface .container-manager-pane { background: transparent; }
+.workbench .docker-pane-surface .container-manager-head {
+  min-height: 34px;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 8px 4px 12px;
+  background: color-mix(in srgb, var(--card-surface-raised) 50%, transparent);
+}
+.workbench .docker-pane-surface .container-manager-title { font-size: 12px; letter-spacing: 0.01em; }
+.workbench .docker-pane-surface .container-manager-logo,
+.workbench .docker-pane-surface .container-list-logo {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: var(--radius-xs);
+}
+.workbench .docker-pane-surface .container-manager-logo svg,
+.workbench .docker-pane-surface .container-list-logo svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+.workbench .docker-pane-surface .container-detail-logo {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: var(--radius-xs);
+}
+.workbench .docker-pane-surface .container-manager-body { gap: var(--space-sm); padding: var(--space-sm); }
+.workbench .docker-pane-surface .container-manager-divider { flex: 0 0 6px; margin: 0; }
+.workbench .docker-pane-surface .container-manager-divider::after {
+  inset: 0 2px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+.workbench .docker-pane-surface .container-manager-divider:hover::after { background: color-mix(in srgb, var(--primary) 55%, transparent); }
+.workbench .docker-pane-surface .container-manager-detail {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background: var(--card-surface);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.workbench .docker-pane-surface .container-detail-pane { background: transparent; }
+.workbench .docker-pane-surface .container-detail-head {
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 6px 8px 6px 12px;
+  background: color-mix(in srgb, var(--card-surface-raised) 50%, transparent);
+}
+.workbench .docker-pane-surface .container-detail-name { font-size: 12px; }
+.workbench .docker-pane-surface .container-detail-tabs {
+  gap: var(--space-2xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 5px 8px;
+  background: transparent;
+}
+.workbench .docker-pane-surface .container-detail-tab {
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 5px 10px;
+  opacity: 0.72;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+.workbench .docker-pane-surface .container-detail-tab:hover { background: var(--card-surface-raised); opacity: 1; }
+.workbench .docker-pane-surface .container-detail-tab[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--card-border));
+  border-bottom-color: color-mix(in srgb, var(--primary) 38%, var(--card-border));
+  background: color-mix(in srgb, var(--primary) 14%, var(--card-surface-raised));
+  opacity: 1;
+}
+.workbench .docker-pane-surface .container-detail-tab svg {
+  box-sizing: content-box;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.workbench .docker-pane-surface .container-detail-tab[data-tab="logs"] svg { background: var(--tone-blue-soft); color: var(--tone-blue); }
+.workbench .docker-pane-surface .container-detail-tab[data-tab="files"] svg { background: var(--tone-amber-soft); color: var(--tone-amber); }
+.workbench .docker-pane-surface .container-detail-tab[data-tab="terminal"] svg { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+.workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="logs"] { border-color: color-mix(in srgb, var(--tone-blue) 45%, var(--card-border)); }
+.workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="files"] { border-color: color-mix(in srgb, var(--tone-amber) 45%, var(--card-border)); }
+.workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="terminal"] { border-color: color-mix(in srgb, var(--tone-emerald) 45%, var(--card-border)); }
+
+.workbench .docker-pane-surface .container-list-pane { gap: var(--space-xs); padding: 0 2px 4px; }
+.workbench .docker-pane-surface .container-list-head {
+  gap: var(--space-xs);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+}
+.workbench .docker-pane-surface .container-list-title { font-size: 12px; }
+.workbench .docker-pane-surface .docker-source-badge,
+.workbench .docker-pane-surface .docker-engine-badge {
+  border: 1px solid color-mix(in srgb, var(--tone-blue) 28%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+  line-height: 18px;
+}
+.workbench .docker-pane-surface .container-rows {
+  gap: var(--space-xs);
+  padding: 2px;
+  border-top: 0;
+}
+.workbench .docker-pane-surface .container-row-item {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 72%, transparent);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.workbench .docker-pane-surface .container-row-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--card-border));
+  box-shadow: var(--card-shadow);
+  background: var(--card-surface-raised);
+}
+.workbench .docker-pane-surface .container-row {
+  gap: 2px;
+  border-radius: calc(var(--radius-md) - 1px);
+  padding: 7px 9px;
+}
+.workbench .docker-pane-surface .container-row.is-selected {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 18%, transparent), transparent 72%);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.workbench .docker-pane-surface .container-row-name { font-size: 12px; }
+.workbench .docker-pane-surface .container-row-meta { opacity: 0.72; }
+.workbench .docker-pane-surface .container-row-status { opacity: 0.6; }
+.workbench .docker-pane-surface .docker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  line-height: 17px;
+}
+.workbench .docker-pane-surface .docker-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+.workbench .docker-pane-surface .docker-state-running { border-color: color-mix(in srgb, var(--success) 30%, transparent); background: var(--tone-emerald-soft); color: var(--success); }
+.workbench .docker-pane-surface .docker-state-paused,
+.workbench .docker-pane-surface .docker-state-restarting { border-color: color-mix(in srgb, var(--warning) 32%, transparent); background: var(--tone-amber-soft); color: var(--warning); }
+.workbench .docker-pane-surface .docker-state-dead { border-color: color-mix(in srgb, var(--destructive) 32%, transparent); background: var(--tone-rose-soft); color: var(--destructive); }
+
+.workbench .docker-pane-surface .docker-log-toolbar {
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 42%, transparent);
+}
+.workbench .docker-pane-surface .docker-log-follow.is-active {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--card-border));
+  background: var(--tone-blue-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.workbench .docker-pane-surface .docker-log-body { margin: 0 8px 8px; }
+.workbench .docker-pane-surface .docker-log-scroll {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: var(--card-surface-inset);
+  padding: 8px 10px;
+}
+.workbench .docker-pane-surface .docker-log-banner { border-radius: var(--radius-sm); margin: 0 8px 6px; }
+.workbench .docker-pane-surface .docker-log-empty { border-radius: var(--radius-md); }
+.workbench .docker-pane-surface .docker-files-toolbar {
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--card-border);
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 42%, transparent);
+}
+.workbench .docker-pane-surface .docker-files-breadcrumb {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  padding: 2px 4px;
+  background: var(--card-surface-inset);
+}
+.workbench .docker-pane-surface .docker-file-crumb { border-radius: var(--radius-xs); }
+.workbench .docker-pane-surface .docker-file-crumb:hover { background: var(--card-surface-raised); }
+.workbench .docker-pane-surface .docker-files-list { gap: var(--space-2xs); padding: 6px 8px 8px; }
+.workbench .docker-pane-surface .docker-file-row {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.workbench .docker-pane-surface .docker-file-row:hover { background: var(--card-surface-raised); border-color: var(--card-border); }
+.workbench .docker-pane-surface .docker-file-row.is-selected {
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--card-border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--card-surface-raised));
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.workbench .docker-pane-surface .docker-file-icon {
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.workbench .docker-pane-surface .docker-file-row.is-dir .docker-file-icon { background: var(--tone-amber-soft); color: var(--tone-amber); }
+.workbench .docker-pane-surface .docker-files-progress,
+.workbench .docker-pane-surface .docker-files-notice {
+  margin: 0 8px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border);
+  background: var(--card-surface-raised);
+  padding: 6px 8px;
+}
+.workbench .docker-pane-surface .container-terminal-tab { background: var(--card-surface-inset); }
+.workbench .docker-pane-surface .container-terminal-overlay {
+  inset: 8px;
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface) 88%, transparent);
+}
+.workbench .docker-pane-surface .container-terminal-retry {
+  border-radius: var(--radius-control);
+  padding: 4px 14px;
+}
+.workbench .docker-pane-surface .container-terminal-retry:hover { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent); }
+
+/* —— 设置：导航药丸 + 分区卡片 —— */
+.settings-body { gap: var(--space-md); }
+.settings-layout {
+  margin: 0 -18px;
+  border-top: 1px solid var(--card-border);
+  gap: var(--space-sm);
+  padding: 0 8px 8px;
+}
+.settings-nav {
+  flex-basis: 176px;
+  gap: 2px;
+  border-right: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 52%, transparent);
+}
+.settings-nav .settings-nav-item {
+  height: 30px;
+  border-radius: var(--radius-control);
+  padding: 0 9px;
+  gap: 8px;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.settings-nav .settings-nav-item::before { content: none; }
+.settings-nav .settings-nav-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-nav .settings-nav-item svg,
+.settings-nav .settings-nav-item .settings-nav-icon {
+  box-sizing: content-box;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+/* 每个分类一盏亮色：只染图标底与描边，正文保持宿主前景对比度。 */
+.settings-nav .settings-nav-item:nth-child(10n + 1) svg { background: var(--tone-blue-soft); color: var(--tone-blue); }
+.settings-nav .settings-nav-item:nth-child(10n + 2) svg { background: var(--tone-cyan-soft); color: var(--tone-cyan); }
+.settings-nav .settings-nav-item:nth-child(10n + 3) svg { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+.settings-nav .settings-nav-item:nth-child(10n + 4) svg { background: var(--tone-amber-soft); color: var(--tone-amber); }
+.settings-nav .settings-nav-item:nth-child(10n + 5) svg { background: var(--tone-violet-soft); color: var(--tone-violet); }
+.settings-nav .settings-nav-item:nth-child(10n + 6) svg { background: var(--tone-rose-soft); color: var(--tone-rose); }
+.settings-nav .settings-nav-item:nth-child(10n + 7) svg { background: var(--tone-blue-soft); color: var(--tone-blue); }
+.settings-nav .settings-nav-item:nth-child(10n + 8) svg { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+.settings-nav .settings-nav-item:nth-child(10n + 9) svg { background: var(--tone-amber-soft); color: var(--tone-amber); }
+.settings-nav .settings-nav-item:nth-child(10n + 10) svg { background: var(--tone-violet-soft); color: var(--tone-violet); }
+.settings-nav .settings-nav-item[data-state="active"] svg,
+.settings-nav .settings-nav-item[data-active] svg {
+  background: color-mix(in srgb, var(--background) 18%, transparent);
+  color: var(--background);
+}
+.settings-nav .settings-nav-item[data-state="active"] > span,
+.settings-nav .settings-nav-item[data-active] > span { font-weight: 600; }
+.settings-content { gap: var(--space-md); padding: 4px 6px 4px 0; }
+.settings-pane {
+  gap: var(--space-md);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: color-mix(in srgb, var(--card-surface-raised) 42%, transparent);
+}
+.settings-section-title {
+  margin: 4px 0 0;
+  border-top: 1px solid var(--card-border);
+  padding-top: 12px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.settings-list {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: var(--card-surface-inset);
+  overflow: hidden;
+}
+.settings-list li { padding: 7px 10px; }
+.settings-list li:hover { background: var(--card-surface-raised); }
+.settings-field input,
+.settings-field textarea,
+.folder-picker-path input { background: var(--card-surface-inset); }
+.settings-field [data-slot="select-trigger"] { border-radius: var(--radius-control); }
+.folder-picker-list {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: var(--card-surface-inset);
+}
+.folder-picker-row svg { color: var(--tone-amber); }
+.folder-picker-hint { border-radius: var(--radius-sm); background: var(--card-surface-inset); }
+.theme-chip { border-radius: var(--radius-pill); padding: 4px 10px; }
+.theme-chip.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent); }
+.appearance-number-grid { gap: var(--space-sm) var(--space-md); }
+
+/* —— 指标 / 传输 / 历史等浮面统一卡片半径 —— */
+.metrics-side-body { padding: var(--space-md); }
+.metrics-float {
+  border: 1px solid var(--card-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--card-surface-raised);
+  box-shadow: var(--card-shadow-hover);
+}
+.metrics-float > header {
+  min-height: 36px;
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 6px 4px 12px;
+  background: color-mix(in srgb, var(--card-surface) 72%, transparent);
+}
+.recordings-float { width: min(440px, calc(100% - 16px)); }
+.recordings-search-row {
+  border-bottom: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--card-surface) 60%, transparent);
+}
+.recordings-search {
+  border-radius: var(--radius-control);
+  background: var(--card-surface-inset);
+}
+.recording-card { border-radius: var(--radius-sm); transition: background var(--transition-fast); }
+.recording-card:hover { background: var(--card-surface-inset); }
+.recording-icon { color: var(--tone-rose); }
+.metrics-card,
+.metric-card,
+.transfer-card,
+.terminal-history-panel,
+.terminal-search-panel,
+.command-output {
+  border-radius: var(--radius-md);
+}
+.transfer-card { border-top: 0; border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 8px; margin: 4px 0; background: var(--card-surface-raised); }
+.transfer-popover { padding: 8px; }
+.zmodem-status,
+.reconnect-banner,
+.agent-run-banner,
+.terminal-ai-fix {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--card-shadow-hover);
+}
+.drop-overlay {
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* —— 交互细节 —— */
+.toolbar-actions .icon-button:not(.icon-neutral):not(.compact) {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 15%, transparent);
+}
+.toolbar-actions .icon-button:not(.icon-neutral):hover:not(:disabled) {
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 19%, transparent);
+  box-shadow: 0 6px 16px -12px currentColor, inset 0 0 0 1px color-mix(in srgb, currentColor 34%, transparent);
+}
+.toolbar-actions .icon-button.is-active {
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  border-color: color-mix(in srgb, currentColor 36%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
+}
+.terminal-tab-main {
+  height: 28px;
+  gap: var(--space-xs);
+  padding: 0 3px 0 8px;
+}
+.terminal-tab.is-active { height: 28px; }
+.terminal-tab-main svg {
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.terminal-tab.is-active .terminal-tab-main svg { background: var(--tone-blue-soft); }
+.terminal-tab-add { width: 26px; height: 26px; }
+.sftp-tree-row > svg.sftp-tree-file-icon {
+  box-sizing: content-box;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 18px;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.sftp-tree-row > svg.sftp-tree-file-icon.is-link {
+  background: var(--tone-cyan-soft);
+  color: var(--tone-cyan);
+}
+
+/* 设置分类：每个入口一枚亮色图标（见上方 settings-nav 规则）。 */
+
+/* —— 设置 / 传输 / 安全 / 终端面板：卡片化容器 —— */
+.otp-toolbar,
+.import-nav,
+.forward-form-kinds,
+.terminal-history-search,
+.terminal-search-panel {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+}
+.otp-list,
+.import-sources,
+.quick-manage-list,
+.forward-profiles,
+.settings-list {
+  border-radius: var(--radius-md);
+}
+.otp-entry,
+.import-source,
+.quick-manage-group,
+.forward-row,
+.forward-profile,
+.terminal-history-row {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+.otp-entry:hover,
+.import-source:hover,
+.quick-manage-group:hover,
+.forward-row:hover,
+.terminal-history-row:hover {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--card-border));
+  background: var(--card-surface-raised);
+}
+.otp-entry-head svg,
+.import-source svg,
+.forward-kind svg,
+.terminal-history-search-icon {
+  color: var(--primary);
+}
+.otp-badge {
+  border-radius: var(--radius-pill);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.otp-code-row,
+.otp-code {
+  border-radius: var(--radius-sm);
+}
+.import-table-wrap,
+.import-table {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.import-table tr:nth-child(even) { background: color-mix(in srgb, var(--card-surface-inset) 45%, transparent); }
+.forward-kind-picker { border-radius: var(--radius-control); }
+.forward-kind {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.forward-kind.is-active,
+.forward-kind[aria-pressed="true"] {
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.forward-state {
+  border-radius: var(--radius-pill);
+  background: var(--card-surface-inset);
+  padding: 0 8px;
+}
+.terminal-history-panel,
+.terminal-search-panel {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background: var(--card-surface-raised);
+  box-shadow: var(--card-shadow-hover);
+}
+.terminal-history-row { padding: 5px 7px; }
+.terminal-history-command { color: var(--foreground); }
+.terminal-history-hit { background: color-mix(in srgb, var(--warning) 30%, transparent); border-radius: 3px; }
+.quick-command-editor,
+.quick-group-editor,
+.quick-manage-list {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: var(--card-surface-inset);
+}
+.quick-manage-group-head { border-radius: var(--radius-sm); }
+.quick-group-title svg { color: var(--tone-amber); }
+.quick-card {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.quick-card:hover { border-color: var(--card-border); background: var(--card-surface-raised); }
+.metrics-grid { gap: var(--space-sm); }
+.metric-card {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: var(--card-surface-raised);
+  box-shadow: var(--card-shadow);
+  padding: 10px;
+}
+.metric-card h3,
+.metric-card strong { letter-spacing: 0.01em; }
+.metrics-hint { border-radius: var(--radius-sm); background: var(--card-surface-inset); padding: 6px 8px; }
+.disk-row { border-radius: var(--radius-sm); }
+.audit-row,
+.recording-row {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+.audit-row:hover,
+.recording-row:hover { background: var(--card-surface-raised); }
+
+/* 远程桌面画布 / 终端浮层（补全、快速选择、提示条）：与卡片同一圆角与阴影。 */
+.vnc-surface-holder {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-panel);
+  background: var(--card-surface-inset);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.vnc-canvas { border-radius: inherit; }
+.completion-menu,
+.terminal-quick-select,
+.terminal-prompt-hints {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  background: var(--card-surface-raised);
+  box-shadow: var(--card-shadow-hover);
+  backdrop-filter: blur(18px) saturate(1.2);
+  padding: 6px;
+}
+.completion-row,
+.terminal-quick-select-row {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.completion-row.active,
+.completion-row:hover,
+.terminal-quick-select-row.active,
+.terminal-quick-select-row:hover { background: var(--card-surface-inset); }
+.completion-icon {
+  box-sizing: content-box;
+  padding: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
+}
+.completion-kind-mark { color: var(--tone-cyan); }
+.terminal-quick-select-kind {
+  border-radius: var(--radius-pill);
+  background: var(--tone-emerald-soft);
+  color: var(--tone-emerald);
+  padding: 0 6px;
+}
+.terminal-quick-select-hit,
+.completion-label mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+.terminal-prompt-hints-item {
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.quick-command-limit,
+.quick-import-note,
+.quick-group-editor,
+.quick-command-editor {
+  border-radius: var(--radius-md);
+  background: var(--card-surface-inset);
+  padding: 8px;
+}
+.quick-group-title { font-weight: 600; }
+
+/* 原生输入与 reka 选择器统一大圆角（组件内旧 var(--radius) 随宿主可能仍为 6px）。 */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea,
+[data-slot="select-trigger"],
+[data-slot="select-content"],
+[data-slot="toggle-group"],
+[data-slot="toggle-group-item"] {
+  border-radius: var(--radius-control);
+}
+.settings-section-title {
+  position: relative;
+  padding-left: 12px;
+}
+.settings-section-title::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - 5px);
+  left: 0;
+  width: 3px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, var(--primary), var(--tone-cyan));
+}
+.import-steps,
+.import-nav {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+  padding: 8px;
+}
+.import-source-line,
+.import-source {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+  padding: 8px 10px;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+.import-source-line:hover,
+.import-source:hover {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--card-border));
+  background: var(--card-surface-raised);
+}
+.import-source-line svg,
+.import-source svg { color: var(--tone-blue); }
+.profiles-list {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.profiles-list li { background: color-mix(in srgb, var(--card-surface-raised) 45%, transparent); }
+.otp-panel { display: flex; flex-direction: column; gap: var(--space-sm); }
+.otp-toolbar { padding: 6px 8px; }
+.otp-entry { padding: 8px 10px; }
+.otp-actions { gap: var(--space-2xs); }
+.otp-empty {
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 18px 12px;
+  background: color-mix(in srgb, var(--card-surface-inset) 45%, transparent);
+}
+.audit-row,
+.recording-row { padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, var(--card-border) 55%, transparent); }
+.audit-row:last-child,
+.recording-row:last-child { border-bottom: 0; }
+.terminal-history-empty,
+.quick-commands-empty {
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 16px 12px;
+  background: color-mix(in srgb, var(--card-surface-inset) 45%, transparent);
+}
+
+/* —— 交互细节 —— */
+.container-row-item,
+.docker-file-row,
+.file-row,
+.sftp-tree-row,
+.settings-nav .settings-nav-item,
+.terminal-tab,
+.icon-button,
+.primary-button,
+.danger-button {
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-button,
+  .terminal-tab,
+  .terminal-tab-add,
+  .container-row-item,
+  .docker-file-row,
+  .settings-nav .settings-nav-item,
+  .primary-button {
+    transition: none !important;
+  }
+  .container-row-item:hover { transform: none; }
+  .terminal-tab-add:hover:not(:disabled) { transform: none; }
+}

@@ -16,6 +16,7 @@ import type { ContainerTerminalStateEvent } from "../composables/useContainerTer
 import type { DockerContainer } from "../lib/dockerPanelModel";
 import ContainerListPane from "./ContainerListPane.vue";
 import ContainerDetailPane from "./ContainerDetailPane.vue";
+import DockerWhaleLogo from "./DockerWhaleLogo.vue";
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -153,6 +154,7 @@ watch([() => props.sessionId, () => props.connectionId], () => {
 <template>
   <section class="container-manager-pane" :aria-label="t('docker.toolbarTitle')">
     <header class="container-manager-head">
+      <span class="ui-icon-tile ui-tone-blue container-manager-logo"><DockerWhaleLogo /></span>
       <strong class="container-manager-title">{{ t("docker.managerTitle") }}</strong>
       <span class="container-manager-spacer" />
       <button

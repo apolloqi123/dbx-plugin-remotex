@@ -23,6 +23,7 @@ import { useDockerContainers } from "../composables/useDockerContainers";
 import DockerEnginePopover from "./DockerEnginePopover.vue";
 import DockerRowMenu from "./DockerRowMenu.vue";
 import DockerConfirmDialog from "./DockerConfirmDialog.vue";
+import DockerWhaleLogo from "./DockerWhaleLogo.vue";
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -196,6 +197,7 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
 <template>
   <div class="container-list-pane">
     <header class="container-list-head">
+      <span class="ui-icon-tile ui-tone-blue container-list-logo"><DockerWhaleLogo /></span>
       <strong class="container-list-title">{{ props.t("docker.title") }}</strong>
       <span v-if="mode === 'local'" class="docker-source-badge">{{ props.t("docker.localSource") }}</span>
       <span v-if="available && containers.length" class="docker-count">{{ containers.length }}</span>

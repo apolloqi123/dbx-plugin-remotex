@@ -12,8 +12,25 @@
 // 自动录制/RDP 开关、主保存链与 Esc 分层退出）拆到
 // composables/useSettingsDialogModel，各分类面板拆到 components/Settings*Pane.vue，
 // props 契约下沉到 lib/settingsDialogProps。
-import { computed, ref } from "vue";
-import { Loader2, Trash2, X } from "@lucide/vue";
+import { computed, ref, type Component } from "vue";
+import {
+  Bot,
+  Download,
+  Highlighter,
+  Keyboard,
+  Loader2,
+  Lock,
+  Monitor,
+  Paintbrush,
+  Palette,
+  Plug,
+  ShieldCheck,
+  Sparkles,
+  Terminal as TerminalIcon,
+  Trash2,
+  X,
+  Zap,
+} from "@lucide/vue";
 import { Dialog, DialogContent, DialogTitle } from "../../../shared/ui/dialog/index";
 import { Tabs, TabsList, TabsTrigger } from "../../../shared/ui/tabs/index";
 import TerminalHotkeyEditor from "../../terminal/components/TerminalHotkeyEditor.vue";
@@ -181,6 +198,22 @@ const SETTINGS_CATEGORIES = [
   { id: "mcp", labelKey: "mcpLimits.title" },
 ] as const;
 type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]["id"];
+/** 分类图标只做识别与亮色点缀；颜色由 cards.css 的分类规则统一给出。 */
+const CATEGORY_ICONS: Record<string, Component> = {
+  appearance: Palette,
+  scheme: Paintbrush,
+  terminal: TerminalIcon,
+  suggestions: Sparkles,
+  highlight: Highlighter,
+  commands: Zap,
+  ai: Bot,
+  hotkeys: Keyboard,
+  sudo: ShieldCheck,
+  agent: Monitor,
+  transfer: Download,
+  security: Lock,
+  mcp: Plug,
+};
 const settingsCategory = ref<SettingsCategory>("appearance");
 // 会话级分类（sudo / 智能体）只对 SSH 会话有意义：本地终端没有 sessionId，
 // 面板沦为可编辑却永不可保存的死 UI，直接从导航隐藏。isLocalSession 由模型
@@ -214,7 +247,10 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
             <nav class="settings-nav" aria-label="settings categories">
               <Tabs :model-value="settingsCategory" orientation="vertical" class="settings-nav-tabs" @update:model-value="onSettingsCategoryChange">
                 <TabsList class="settings-nav-list">
-                  <TabsTrigger v-for="cat in visibleSettingsCategories" :key="cat.id" :value="cat.id" class="settings-nav-item">{{ t(cat.labelKey) }}</TabsTrigger>
+                  <TabsTrigger v-for="cat in visibleSettingsCategories" :key="cat.id" :value="cat.id" class="settings-nav-item">
+                    <component :is="CATEGORY_ICONS[cat.id]" class="settings-nav-icon" />
+                    <span>{{ t(cat.labelKey) }}</span>
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
             </nav>

@@ -8,6 +8,14 @@
   --accent-foreground: #dddde2;
   --border: rgb(110 110 114 / 28%);
   --destructive: #ef4444;
+  /* 语义状态色兜底：真实宿主由主题桥覆盖；无桥环境（mock/visual fixture、
+     Host API 1.0）缺这三个变量时，任何 var(--success/--warning/--info)
+     参与的颜色计算都会失效，连带整条背景/阴影声明被丢弃。 */
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --success-bg: color-mix(in srgb, var(--success) 14%, transparent);
+  --warning-bg: color-mix(in srgb, var(--warning) 14%, transparent);
   --primary: #3b82f6;
   --primary-foreground: #fff;
   --popover: color-mix(in srgb, var(--background) 94%, var(--foreground));
@@ -15,6 +23,51 @@
   --ui-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --terminal-font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
   --radius: 6px;
+  /* —— 卡片化设计系统 ——
+     宿主主题桥会覆盖 --radius（宿主设置项），因此卡片/控件的圆角使用
+     本组插件自有令牌；表面/描边全部从 --background/--foreground 混色，
+     暗色与亮色宿主自动成立，不硬编码两套配色。 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-control: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-panel: 18px;
+  --radius-pill: 999px;
+  --space-2xs: 4px;
+  --space-xs: 6px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --card-border: color-mix(in srgb, var(--foreground) 11%, transparent);
+  --card-border-strong: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --card-surface: color-mix(in srgb, var(--background) 89%, var(--foreground) 11%);
+  --card-surface-raised: color-mix(in srgb, var(--background) 82%, var(--foreground) 18%);
+  --card-surface-inset: color-mix(in srgb, var(--background) 82%, #000);
+  --card-glow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  --card-shadow: 0 16px 38px -26px rgb(0 0 0 / 62%), var(--card-glow);
+  --card-shadow-hover: 0 22px 46px -26px rgb(0 0 0 / 72%), var(--card-glow);
+  --gradient-card: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-surface) 94%, #fff 6%),
+    var(--card-surface)
+  );
+  /* 亮色语义色：只用于图标底色/描边，不承载正文对比度。 */
+  --tone-blue: var(--info);
+  --tone-emerald: var(--success);
+  --tone-amber: var(--warning);
+  --tone-rose: var(--destructive);
+  --tone-violet: color-mix(in srgb, var(--info) 58%, var(--destructive));
+  --tone-cyan: color-mix(in srgb, var(--info) 55%, var(--success));
+  --tone-blue-soft: color-mix(in srgb, var(--tone-blue) 15%, transparent);
+  --tone-emerald-soft: color-mix(in srgb, var(--tone-emerald) 15%, transparent);
+  --tone-amber-soft: color-mix(in srgb, var(--tone-amber) 16%, transparent);
+  --tone-rose-soft: color-mix(in srgb, var(--tone-rose) 15%, transparent);
+  --tone-violet-soft: color-mix(in srgb, var(--tone-violet) 16%, transparent);
+  --tone-cyan-soft: color-mix(in srgb, var(--tone-cyan) 15%, transparent);
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 220ms cubic-bezier(0.4, 0, 0.2, 1);
   /* 阴影两档：弹层 / 模态。所有浮面统一引用，不再各写各的 rgb 配方。 */
   --shadow-popover: 0 10px 32px rgb(0 0 0 / 28%);
   --shadow-modal: 0 16px 48px rgb(0 0 0 / 32%);
