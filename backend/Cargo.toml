@@ -1,6 +1,6 @@
 [package]
 name = "dbx-plugin-sshx"
-version = "0.7.9-beta.30"
+version = "0.7.9-beta.31"
 edition = "2021"
 license = "MIT"
 authors = ["jinpy"]
@@ -8,7 +8,7 @@ authors = ["jinpy"]
 [workspace]
 
 [dependencies]
-# Session import (connection_import.rs): the AES block cipher for the
+# Session import (src/features/import/): the AES block cipher for the
 # WindTerm autoLogin AES-256-CBC decryption. 0.9 is the current generation
 # that shares `cipher 0.5` with the aes-gcm 0.11 tree.
 aes = "0.9"
@@ -32,11 +32,11 @@ portable-pty = "0.9.0"
 # `otp/import-qr`: QR decode (rqrr 0.9) over `image` (luma8 bitmap); image is
 # pinned to the four photo formats QR screenshots actually use with default
 # features (rayon, exr/gif/hdr/tiff/avif/…) trimmed off. Both are MIT OR
-# Apache-2.0 (verified via `cargo info`). See src/otp_store.rs.
+# Apache-2.0 (verified via `cargo info`). See src/core/otp_store/.
 rqrr = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "webp"] }
 
-# Terminal trigger (expect) stage patterns — see src/triggers.rs.
+# Terminal trigger (expect) stage patterns — see src/features/automation/triggers.rs.
 regex = "1"
 russh = { version = "0.62", features = ["des"] }
 russh-sftp = "3"
@@ -48,7 +48,7 @@ sha3 = "0.11"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1"
-# SFTP 压缩传输（src/transfer_compress.rs）：gzip 通道的本地编解码端。默认
+# SFTP 压缩传输（src/features/transfer/compress.rs）：gzip 通道的本地编解码端。默认
 # feature 即纯 Rust miniz_oxide 后端（无 C 依赖，跨平台构建面不变）。对端
 # 解压/压缩由远端 gzip/gunzip/tar 工具承担（探测后回退）。
 flate2 = "1"
@@ -56,20 +56,20 @@ flate2 = "1"
 # 路径穿越防护。仅解包方向使用，读侧仍是逐文件分块管线。
 tar = { version = "0.4", default-features = false }
 # Xshell .xts session archives; deflate is all Xshell writes (zip-bomb
-# guards live in connection_import.rs).
+# guards live in src/features/import/).
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # Local file watching for the "open in external editor" round-trip
-# (watch/start in src/file_watch.rs). Defaults stay on: v6 has no
+# (watch/start in src/filesystem/watch.rs). Defaults stay on: v6 has no
 # linux_inotify feature (the backend is unconditional there), macos_fsevent
 # is the macOS backend and crossbeam-channel is the default event plumbing.
 notify = "6"
-# Serial-port sessions (nyaterm-parity P3-2, src/serial_session.rs). 4.x is
+# Serial-port sessions (nyaterm-parity P3-2, src/sessions/serial/). 4.x is
 # the current generation (MIT OR Apache-2.0, actively maintained); default
 # features keep the Linux udev port enumerator, which links the system
 # libudev — glibc CI needs the libudev-dev apt package (ci.yml "Install
 # native dependencies").
 serialport = "4"
-# VNC sessions (nyaterm-parity P2 2d, src/vnc_session.rs). crates.io name is
+# VNC sessions (nyaterm-parity P2 2d, src/sessions/vnc/). crates.io name is
 # "vnc-rs" (lib name `vnc`), HsuJv/vnc-rs. 0.6.0 (2026-09-21, MIT OR
 # Apache-2.0) upstreamed the NyaTerm fork hardening: zero unsafe, typed
 # network errors, per-message decoder limits (8.3MP / 8192px / 64MiB
@@ -87,12 +87,12 @@ vnc-rs = "0.6"
 # redirection or keyboard capture. TLS backend follows NyaTerm's platform
 # split (rustls elsewhere, native-tls/Schannel on Windows).
 ironrdp = { version = "0.17", default-features = false, features = ["client", "client-clipboard", "cliprdr", "connector", "core", "input", "pdu"] }
-# RDP 键盘输入路径（src/rdp_session.rs）：ironrdp-input 的 Database::apply
+# RDP 键盘输入路径（src/sessions/rdp/input.rs）：ironrdp-input 的 Database::apply
 # 返回 SmallVec<[FastPathInputEvent; 2]>，右 Shift 直发 fast-path 事件也用
 # smallvec! 构造。已是 ironrdp 传递依赖（锁内 1.16.x），此处只声明直用。
 smallvec = "1"
 
-# 本地任务取消/超时的进程组终止（src/task_provider.rs）：直接 killpg 系统调用，
+# 本地任务取消/超时的进程组终止（src/features/automation/task_provider.rs）：直接 killpg 系统调用，
 # 不经外部 `kill` 二进制（其对负 pid 的 argv 解析随环境镜像变化，GitHub runner
 # 镜像 2026-10 更新后曾误伤 runner agent 自身，CI 连续红灯）。
 [target.'cfg(unix)'.dependencies]
@@ -100,7 +100,7 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 pageant = "0.2"
-# 进程级 kill-on-close job（src/job_object.rs）：sidecar 死亡时由内核回收
+# 进程级 kill-on-close job（src/platform/job_object.rs）：sidecar 死亡时由内核回收
 # ConPTY conhost/shell 全树。CreateJobObjectW 的 SECURITY_ATTRIBUTES 参数被
 # Win32_Security feature 门控（0.59 实测），故需要四组 feature。
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
