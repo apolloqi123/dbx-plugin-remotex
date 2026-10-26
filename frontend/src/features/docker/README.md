@@ -11,17 +11,19 @@ RPC/事件契约以 `docs/architecture/PROTOCOL.zh-CN.md` 的「Docker 管理面
 
 | 文件 | 职责 | 边界 |
 | --- | --- | --- |
-| `ContainerManagerPane.vue` | 页面外壳：页头（标题/关闭）、列表/详情分栏的打开时机与可拖拽分隔条、页签 | 默认只渲染列表；持有选中容器、页签状态与列表宽度（40%，夹取 25–70%） |
+| `ContainerManagerPane.vue` | 页面外壳：页头（标题/关闭）、列表/详情分栏的打开时机与可拖拽分隔条、页签 | 首轮列表非空时自动以 Logs 打开详情；持有选中容器、页签状态与列表宽度（40%，夹取 25–70%） |
 | `ContainerListPane.vue` | 容器列表：10s 轮询、3 连败暂停、动作菜单、kill/rm 确认、引擎设置 | 轮询与 needsSudo 逻辑在 `dockerPanelModel` / `dockerActions` / `useDockerContainers` |
 | `ContainerDetailPane.vue` | 选中容器详情与页签容器 | 只渲染，不订阅全局事件 |
 | `ContainerLogsTab.vue` | 日志视图：滚动容器、跟随按钮、tail 选择、清空、结束态/sudo 重试 | 行缓冲与 follow 判定在 `lib/dockerLogBuffer`，流生命周期在 `useDockerLogStream` |
 | `ContainerFilesTab.vue` | 文件浏览：面包屑/上一级/刷新、条目详情、下载/上传、覆盖确认、进度/取消 | 路径运算在 `lib/dockerFilePaths`，浏览在 `useContainerFiles`，传输编排在 `useContainerFileTransfer` |
+| `ContainerTerminalTab.vue` | 容器 PTY 终端页：xterm（Fit/Unicode11/WebLinks）、状态覆盖层与重连按钮 | xterm 实例归本组件；协议与生命周期在 `useContainerTerminal`，主题/字体由工作台下传 |
 | `DockerRowMenu.vue` / `DockerConfirmDialog.vue` / `DockerEnginePopover.vue` / `DockerWhaleLogo.vue` | 复用件（历史容器面板） | 无全局状态 |
 
 Composable/lib：
 
 - `composables/useDockerContainers.ts`：列表轮询、失败退避、动作执行。
 - `composables/useDockerLogStream.ts`：`start/stop/restart/tail/sudoRetry`、状态机、按 `streamId` 过滤事件。
+- `composables/useContainerTerminal.ts`：`docker/terminal/open|close|resize` 协议、二进制输入输出、`state` 事件与重试；terminalId 由客户端预生成，先订阅 `onBinary` 再发 open。
 - `composables/useContainerFiles.ts`：目录浏览、选中详情、错误映射与上传/下载入口。
 - `lib/dockerLogBuffer.ts`：纯函数——跨 chunk 拼行、行数/字符裁剪、follow 判定（无 Vue 依赖，可单测）。
 - `lib/dockerLogEvents.ts`：`docker/logs/chunk|end` 的处理器表。
@@ -30,19 +32,49 @@ Composable/lib：
 - `composables/useContainerFileTransfer.ts`：SSH（SFTP 暂存）与本机（分片上传/保存）两条传输链路，负责覆盖确认、暂存清理与提示。
 
 事件订阅只有一处：`app/workbench/composables/usePluginEvents.ts` 把
-`docker/logs/*` 事件分派到 `dockerLogEvents`。组件内**不得**新增第二个
-`onEvent` 订阅（多订阅会导致同一 stream 的行被追加两次）。
+`docker/logs/*` 事件分派到 `dockerLogEvents`；`docker/terminal/state` 由工作台
+事件总线下传。组件内**不得**新增第二个 `onEvent` 订阅（多订阅会导致同一 stream
+的行被追加两次）。终端输出是唯一的二进制通道例外：`useContainerTerminal`
+自己订阅 `onBinary` 并按 `docker/terminal/out/<terminalId>` 过滤。
 
 ## 列表/详情分栏
 
-- **默认只有列表**，占满分屏宽度；没有详情、分隔条或空详情占位。
-- 打开详情的唯一入口是行菜单：`Logs` 打开日志页签，`Files` 打开文件页签。
-- 行点击/自动选中/轮询只更新列表高亮；详情已打开时切到点击的容器，但不会
-  打开已关闭的详情。列表清空或连接切换会收起详情。
+- **默认列表 + 日志左右分栏**：首轮非空数据落地后自动选中第一个 `running`
+  容器（否则第一个），详情以 `Logs` 页签打开并立即开始跟随日志。列表为空或
+  加载中时只渲染列表（整宽）。
+- 行点击（详情已打开）切换详情目标容器并保留当前页签；行点击（详情已收起）
+  以 `Logs` 页签重新打开详情。行菜单 `Logs`/`Files` 打开（或切换）详情并定位页签。
+- 轮询/刷新只更新已打开的详情快照；详情收起后**不**自动重开（`autoOpened`
+  只消费一次）。列表清空或连接切换收起详情。
 - 分栏打开时列表默认 40%（可用分隔条拖拽或 `ArrowLeft`/`ArrowRight` 调整，
   `Shift` ×3；夹取 25%–70%）。分隔条为垂直 `separator`，带
   `aria-valuenow/min/max`；详情页头 X 只收起详情并恢复列表整宽，分屏页头 X
   才关闭整个分屏。
+
+## 容器 PTY 终端
+
+`Terminal` 页签是真正的交互式 PTY（设计见
+`docs/superpowers/specs/2026-10-26-container-pty-terminal-design.md`）：
+
+- 传输：SSH 目标在当前已认证连接上新开独立 session channel
+  （`request_pty("xterm-256color")` + `docker exec -it … sh`）；本机目标由
+  sidecar 用 `portable-pty` 起本地伪终端，端点经 `DOCKER_HOST`/`CONTAINER_HOST`
+  注入。前端只经宿主桥收发。
+- 请求：`docker/terminal/open {terminalId?, containerId, cols, rows, sessionId?|target,
+  cli?/socket?/host?}` → `{ terminalId }`；`resize {terminalId, cols, rows}` →
+  `{ resized }`（未知 id 返回 false）；`close {terminalId}` → `{ stopped }`（幂等）。
+- 二进制：输入 `docker/terminal/in/<terminalId>`（8 字节大端序号 + 原始按键，
+  `useContainerTerminal` 的输入队列负责封装）；输出
+  `docker/terminal/out/<terminalId>`（原始 PTY 字节，按序、不重放、不落盘）。
+- 生命周期：`docker/terminal/state {terminalId, state:"exited", exitCode}` 或
+  `{state:"error", error}`；显式 close 不产生 state。打开失败（只读连接、未运行、
+  CLI 缺失、并发上限、SSH 会话失效）以 RPC 错误返回，UI 显示 open-failed + 重连。
+- 注册表上限 **4 个并发终端**、**TTL 2 小时**（超时自动回收槽位），无设置项。
+- 只在「页签可见 + 容器 running + 可写」时 open；切走页签 PTY 保持存活，切回
+  重新 fit/聚焦；切容器、收起详情、关闭分屏或卸载组件时 close（重新打开是新
+  shell，不保留 cwd/env）。日志与文件页签仍用 `v-show` 常驻挂载。
+- xterm 主题/字体由工作台经 `ContainerManagerPane` → `ContainerDetailPane` 下传，
+  缺省用内置浅色/等宽回退；ResizeObserver 按帧合并 fit，同尺寸 resize 去重。
 
 ## 日志流生命周期
 
@@ -99,7 +131,9 @@ stop 触发点：切容器 / 关闭容器页 / 组件卸载 / 换 tail / 显式�
 - 文件名含换行/控制字符显示不完整；符号链接按 Docker CLI 默认行为处理。
 - 日志仅内存保存（关闭页面即丢失），单条流最长 30 分钟；sidecar 侧注册表上限
   4 条流、4 个并发上传，暂存/上传 30 分钟 TTL 兜底 webview 崩溃遗留。
-- 日志流不落盘、不进会话回放/录制。
+- 终端不持久化：关详情/切容器即销毁；并发 4 个、TTL 2 小时兜底；只支持含
+  POSIX `sh`/`bash` 的容器（distroless/Windows 容器明确报错）。
+- 日志流不落盘、不进会话回放/录制；终端输入输出同样不落盘、不进审计。
 
 ## 夹具与冒烟
 
@@ -108,6 +142,11 @@ stop 触发点：切容器 / 关闭容器页 / 组件卸载 / 换 tail / 显式�
   日志流不推 chunk、直接以 `needsSudo:true` 结束）。日志流在 mock 中每 700ms
   推一行、10s 自然结束；`stop` 会补发 `error:"cancelled"` 的 end。流事件
   方法名/字段与 sidecar 一致（`docker/logs/chunk {streamId,text}`）。
+- 容器终端夹具：`docker/terminal/open` 沿客户端 `terminalId` 立即投一段
+  `root@<id12>:/# ` 提示符（`?docker=off` 抛 `docker CLI not found on this host`），
+  输入帧去掉 8 字节序号后原样回显、`\r` 之后补 `\r\nroot@mock:/# `；
+  `resize`/`close` 幂等回执。输出走 `docker/terminal/out/<id>` 二进制事件，
+  与真桥 `onBinary` 同形。
 - 本机 Docker 冒烟：`python3 scripts/smoke/smoke_docker_files.py`。
   仅当 docker CLI、可连通的 daemon 或可用的本机镜像缺失时打印 `SKIP` 并退出 0；
   未找到 sidecar 二进制时**不算 SKIP**——自动回落到 docker CLI 面执行同一套

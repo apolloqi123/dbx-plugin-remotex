@@ -34,6 +34,7 @@ import base64
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -193,7 +194,41 @@ def sidecar_smoke(plane: SidecarPlane, cid: str, timeout: float) -> None:
     assert end_params.get("error") == "cancelled", end_params
     log(f"docker/logs/start|stop ok (streamId={stream_id}, chunk={params['text'].strip()!r})")
 
-    # 2) browse: root listing + stat of a known file.
+    # 2) PTY terminal: open a local container shell, resize it, type a command
+    # over the binary input channel and verify both the output and exit state.
+    terminal_id = str(uuid.uuid4())
+    opened = plane.request(
+        "docker/terminal/open",
+        {"target": "local", "containerId": cid, "terminalId": terminal_id, "cols": 80, "rows": 24},
+        timeout=40,
+    )
+    assert opened.get("terminalId") == terminal_id, opened
+    resized = plane.request(
+        "docker/terminal/resize", {"terminalId": terminal_id, "cols": 100, "rows": 30}, timeout=20
+    )
+    assert resized.get("resized") is True, resized
+    plane.client.send_binary(
+        f"docker/terminal/in/{terminal_id}",
+        struct.pack(">Q", 1) + b"echo DBX_PTY_OK; exit 7\r",
+    )
+    state = plane.client.wait_event("docker/terminal/state", timeout=min(20, timeout))
+    assert state is not None, "no docker/terminal/state after the shell exited"
+    state_params = state.get("params", {})
+    assert state_params.get("terminalId") == terminal_id, state_params
+    assert state_params.get("state") == "exited", state_params
+    assert state_params.get("exitCode") == 7, state_params
+    output = b"".join(
+        data
+        for channel, data in plane.client.binary_frames
+        if channel == f"docker/terminal/out/{terminal_id}"
+    )
+    assert b"DBX_PTY_OK" in output, f"shell output missing marker: {output[:200]!r}"
+    assert plane.request("docker/terminal/close", {"terminalId": terminal_id}, timeout=20).get(
+        "stopped"
+    ) is False, "an exited terminal must not be reported as actively stopped"
+    log(f"docker/terminal open/input/resize/exit ok (terminalId={terminal_id})")
+
+    # 3) browse: root listing + stat of a known file.
     root = plane.request("docker/files/list", {"target": "local", "containerId": cid, "path": "/"})
     assert root.get("path") == "/", root
     assert isinstance(root.get("entries"), list) and root["entries"], root

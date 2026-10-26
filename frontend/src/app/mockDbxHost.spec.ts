@@ -450,20 +450,46 @@ describe("mockDbxHost fixture", () => {
     expect(action.success).toBe(true);
   });
 
-  it("docker/exec echoes the command with exit 0 and rejects invalid input or a missing CLI", async () => {
+  // 容器 PTY 终端（PTY spec §2.3）：open 回一段提示符；输入帧（8 字节序号 +
+  // 原始按键）无 Enter 原样回显、Enter 补换行 + 提示符；resize/close 幂等；
+  // ?docker=off 以 CLI 缺失失败，供终端页 open-failed + 重连态走查。
+  it("docker/terminal family opens a PTY, echoes typed input and rejects a missing CLI", async () => {
     const plugin = await loadMock("");
-    const result = await plugin.invoke("docker/exec", { containerId: "d4a7c9f1e2b3", command: "uname -a" }) as {
-      success: boolean;
-      output: string;
-      exitCode: number;
+    const output: Array<{ channel: string; text: string }> = [];
+    plugin.onBinary((event) => {
+      if (!event.channel.startsWith("docker/terminal/out/") || !event.data) return;
+      output.push({ channel: event.channel, text: new TextDecoder().decode(event.data) });
+    });
+
+    const opened = (await plugin.invoke("docker/terminal/open", {
+      terminalId: "t-1",
+      containerId: "d4a7c9f1e2b3",
+      cols: 80,
+      rows: 24,
+    })) as { terminalId: string };
+    expect(opened).toEqual({ terminalId: "t-1" });
+    expect(output.pop()).toEqual({ channel: "docker/terminal/out/t-1", text: "root@d4a7c9f1e2b3:/# " });
+
+    const inputFrame = (text: string) => {
+      const data = new TextEncoder().encode(text);
+      const bytes = new Uint8Array(8 + data.length);
+      new DataView(bytes.buffer).setBigUint64(0, 7n, false);
+      bytes.set(data, 8);
+      return bytes;
     };
-    expect(result).toEqual({ success: true, output: "uname -a\n", exitCode: 0 });
-    // 命令首尾空白裁剪后不得为空；containerId 与 action 同口径校验。
-    await expect(plugin.invoke("docker/exec", { containerId: "d4a7c9f1e2b3", command: "   " })).rejects.toThrow(/must not be empty/);
-    await expect(plugin.invoke("docker/exec", { containerId: "web-nginx", command: "id" })).rejects.toThrow(/Invalid containerId/);
+    await plugin.sendBinary("docker/terminal/in/t-1", inputFrame("echo hi"));
+    expect(output.pop()).toEqual({ channel: "docker/terminal/out/t-1", text: "echo hi" });
+    await plugin.sendBinary("docker/terminal/in/t-1", inputFrame("\r"));
+    expect(output.pop()).toEqual({ channel: "docker/terminal/out/t-1", text: "\r\nroot@mock:/# " });
+
+    expect(await plugin.invoke("docker/terminal/resize", { terminalId: "t-1", cols: 100, rows: 30 })).toEqual({ resized: true });
+    expect(await plugin.invoke("docker/terminal/close", { terminalId: "t-1" })).toEqual({ stopped: true });
+    await expect(plugin.invoke("docker/terminal/open", { containerId: "web-nginx" })).rejects.toThrow(/Invalid containerId/);
 
     const off = await loadMock("?docker=off");
-    await expect(off.invoke("docker/exec", { target: "local", containerId: "d4a7c9f1e2b3", command: "id" })).rejects.toThrow(/CLI not found/);
+    await expect(
+      off.invoke("docker/terminal/open", { target: "local", containerId: "d4a7c9f1e2b3" }),
+    ).rejects.toThrow(/docker CLI not found on this host/);
   });
 
   it("docker fixture knobs switch the probe narrative (off = missing CLI, sudo = denied socket)", async () => {

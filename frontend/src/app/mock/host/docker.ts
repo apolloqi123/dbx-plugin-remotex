@@ -1,7 +1,12 @@
 /**
  * Docker 面板夹具：docker/list|logs|action 与容器管理分屏的
- * docker/logs/start|stop、docker/files/* 家族，镜像 sidecar 的载荷形状
- * （backend/src/app/rpc/docker.rs、docker_files.rs、features/docker/stream.rs）。
+ * docker/logs/start|stop、docker/files/* 家族、docker/terminal/* PTY 会话，
+ * 镜像 sidecar 的载荷形状（backend/src/app/rpc/docker.rs、docker_files.rs、
+ * features/docker/stream.rs、features/docker/shell.rs）。
+ *
+ * 终端夹具只做最小回显：open 投一段提示符，输入帧去掉 8 字节序号后原样
+ * 回显，Enter 补 `\r\nroot@mock:/# `。输出走二进制通道
+ * `docker/terminal/out/<id>`（与真桥 onBinary 同形）。
  *
  * ?docker= 开关：
  * - 缺省：容器表 + 基础目录树；日志流每 700ms 推一行，10s 自然结束。
@@ -16,7 +21,7 @@
  * 校验；cleanup 只对本轮生成的暂存路径返回 removed:true（未知/已清理为 false）。
  */
 
-import { UNHANDLED, type Unhandled, emitHostEvent } from "./shared";
+import { UNHANDLED, type Unhandled, emitHostBinary, emitHostEvent } from "./shared";
 import { fixtureParams } from "./fixture";
 
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
@@ -32,6 +37,10 @@ const UPLOAD_CHUNK_BYTES = 256 * 1024;
 const FIXTURE_MTIME = 1786262400;
 const REMOTE_STAGING_PREFIX = "/tmp/dbx-sshx.";
 const LOCAL_STAGING_PREFIX = "/tmp/dbx-sshx-mock/";
+/** 容器 PTY 的二进制通道前缀；输入帧 = 8 字节大端序号 + 原始按键字节。 */
+const TERMINAL_IN_PREFIX = "docker/terminal/in/";
+const TERMINAL_OUT_PREFIX = "docker/terminal/out/";
+const TERMINAL_INPUT_HEADER_BYTES = 8;
 
 interface MockContainerEntry {
   kind: "dir" | "file";
@@ -112,6 +121,22 @@ const stagedPaths = new Set<string>();
 
 function dockerMode(): string {
   return fixtureParams.get("docker") || "default";
+}
+
+function emitTerminalOutput(terminalId: string, text: string): void {
+  emitHostBinary({ channel: `${TERMINAL_OUT_PREFIX}${terminalId}`, data: new TextEncoder().encode(text) });
+}
+
+/**
+ * `docker/terminal/in/<id>` 夹具回显：校验/剥离 8 字节序号后把按键原样写回
+ * 输出通道（= PTY 的本地 echo），Enter 之后再补一段提示符。
+ */
+export function handleDockerTerminalInput(channel: string, bytes: Uint8Array): void {
+  const terminalId = channel.slice(TERMINAL_IN_PREFIX.length);
+  if (!terminalId) return;
+  const text = new TextDecoder().decode(bytes.slice(TERMINAL_INPUT_HEADER_BYTES));
+  const payload = text.endsWith("\r") ? `${text.slice(0, -1)}\r\nroot@mock:/# ` : text;
+  emitTerminalOutput(terminalId, payload);
 }
 
 function requireContainerId(params: Record<string, unknown>): string {
@@ -337,16 +362,21 @@ export async function handleDockerInvoke(method: string, params: unknown): Promi
     if (fixtureParams.get("docker") === "off") throw new Error(`${action} failed: docker CLI not found`);
     return { success: true, output: `${containerId}\n` };
   }
-  // 内嵌容器终端：每条命令都是一次独立 exec，夹具把命令原样回显（= echo 语义）
-  // 并以 0 退出；?docker=off 仍模拟 CLI 缺失，供终端页错误态走查。
-  if (method === "docker/exec") {
+  // 容器 PTY 终端（spec §2.3）：open 沿客户端预生成的 terminalId 回一段
+  // 提示符，后续按键由 handleDockerTerminalInput 回显；?docker=off 模拟 CLI
+  // 缺失（UI 走 open-failed + 重连态）。
+  if (method === "docker/terminal/open") {
     const cli = cliName(input);
-    requireContainerId(input);
-    const command = String(input.command || "").trim();
-    if (!command) throw new Error("docker exec command must not be empty");
+    const containerId = requireContainerId(input);
     if (dockerMode() === "off") throw new Error(`${cli} CLI not found on this host`);
-    return { success: true, output: `${command}\n`, exitCode: 0 };
+    const terminalId = String(input.terminalId || "mock-terminal");
+    emitTerminalOutput(terminalId, `root@${containerId.slice(0, 12)}:/# `);
+    return { terminalId };
   }
+  // resize/close 幂等：sidecar 对未知 id 返回 false，夹具不维护会话表，
+  // 一律按成功回执（UI 只关心不报错）。
+  if (method === "docker/terminal/resize") return { resized: true };
+  if (method === "docker/terminal/close") return { stopped: true };
 
   // 容器管理分屏：真流式日志（事件 docker/logs/chunk|end）。
   if (method === "docker/logs/start") {

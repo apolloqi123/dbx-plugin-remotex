@@ -55,7 +55,7 @@ import { exitLocalSession, handleLocalInvoke, handleLocalTerminalInput, setMockP
 import { handleSftpInvoke } from "./mock/host/sftpFiles";
 import { handleSftpUploadBinary, handleTransfersInvoke } from "./mock/host/transfers";
 import { handleTunnelsInvoke } from "./mock/host/tunnels";
-import { handleDockerInvoke } from "./mock/host/docker";
+import { handleDockerInvoke, handleDockerTerminalInput } from "./mock/host/docker";
 import { handleMetricsInvoke } from "./mock/host/metrics";
 import { handleSettingsInvoke } from "./mock/host/settings";
 import { handleMiscInvoke } from "./mock/host/misc";
@@ -155,6 +155,11 @@ window.dbxPlugin = {
     }
     if (channel.startsWith("local/terminal/in/")) {
       handleLocalTerminalInput(channel, toBytes(data));
+      return;
+    }
+    // 容器 PTY 输入：8 字节序号 + 原始按键，回显写 docker/terminal/out/<id>。
+    if (channel.startsWith("docker/terminal/in/")) {
+      handleDockerTerminalInput(channel, toBytes(data));
       return;
     }
     if (!channel.startsWith("ssh/terminal/in/")) return;
