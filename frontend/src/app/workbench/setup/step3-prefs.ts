@@ -147,7 +147,7 @@ export function installWorkbenchPrefs(deps: Deps) {
     readTerminalSuggestionAnchor,
     hideGhostSuggestion: () => late.hideGhostSuggestion(),
     closeSuggestions,
-    dismissPromptHints: late.dismissPromptHints,
+    dismissPromptHints: () => late.dismissPromptHints(),
   });
   // 终端拖入文件的落点询问：null 表示取消；"cwd" 用解析后的 shell/SFTP 当前
   // 目录（resolveDropTargetDir：终端 cwd 跟随 → SFTP home → 面板当前目录），

@@ -222,7 +222,7 @@ export function installWorkbenchSftp(deps: Deps) {
     currentPathHistory,
     rememberPathHistory,
     togglePathHistoryMenu,
-  } = useSftpPathHistory({ connectionId, closeToolbarPopovers: late.closeToolbarPopovers });
+  } = useSftpPathHistory({ connectionId, closeToolbarPopovers: () => late.closeToolbarPopovers() });
 
   // ---------------------------------------------------------------------------
   // SFTP 路径书签：存储迁移/收藏/删除收口在 composables/useSftpBookmarks。
@@ -237,7 +237,7 @@ export function installWorkbenchSftp(deps: Deps) {
     confirmBookmarkSave,
     removeBookmark,
   } = useSftpBookmarks({
-    t, showNotice, showError, connected, currentPath, pathHistoryOpen, closeToolbarPopovers: late.closeToolbarPopovers,
+    t, showNotice, showError, connected, currentPath, pathHistoryOpen, closeToolbarPopovers: () => late.closeToolbarPopovers(),
   });
 
 
@@ -315,7 +315,7 @@ export function installWorkbenchSftp(deps: Deps) {
   } = useExternalEdits({
     t, showNotice, showError, loadDirectory,
     session,
-    openTransferPanel: late.openTransferPanel, transferTasks, pathFromUri, waitWhilePaused, cancelledTransferTasks, downloadChunkWaiters,
+    openTransferPanel: () => late.openTransferPanel(), transferTasks, pathFromUri, waitWhilePaused, cancelledTransferTasks, downloadChunkWaiters,
     waitForDownloadChunk: (taskId, offset) => waitForDownloadChunk(taskId, offset),
     waitForDownloadReady: (taskId, compression) => waitForDownloadReady(taskId, compression),
     probeLocalCapabilities: () => probeLocalCapabilities(),
@@ -449,7 +449,7 @@ export function installWorkbenchSftp(deps: Deps) {
     terminal: () => terminal.value,
     loadDirectory,
     refreshAfterUpload: refreshSftpAfterUpload,
-    openTransferPanel: late.openTransferPanel,
+    openTransferPanel: () => late.openTransferPanel(),
     joinRemote,
     // 与 useTransferQueue 同源判定：sudo 模式 + 可写连接（UploadSudo 车道）。
     sudoUpload: () => sudoMode.value && canWrite.value,

@@ -304,7 +304,7 @@ export function installWorkbenchTerminal(deps: Deps) {
     showError,
     session, currentPath, panelSurface,
     resolveUploadDuplicateName: (name, targetDir) => late.resolveUploadDuplicateName(name, targetDir),
-    joinRemote, writeU64: late.writeU64, syncPrefs,
+    joinRemote, writeU64: (...args: any[]) => late.writeU64(...args), syncPrefs,
     refreshTransferHistory: () => late.refreshTransferHistory(),
     refreshResumableUploads: () => late.refreshResumableUploads(),
     // UploadSudo：sudo 模式 + 可写连接时上传走 sudo 车道（sudo/upload/*）。

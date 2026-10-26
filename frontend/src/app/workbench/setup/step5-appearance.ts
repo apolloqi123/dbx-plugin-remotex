@@ -247,7 +247,7 @@ export function installWorkbenchAppearance(deps: Deps) {
     terminalTransferBusy,
     acceptGhostSuggestionWord,
     acceptGhostSuggestion,
-    dismissPromptHints: late.dismissPromptHints,
+    dismissPromptHints: () => late.dismissPromptHints(),
     ghostTabAccept,
     openTerminalSearch,
     closeTerminalSearch,

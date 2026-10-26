@@ -173,7 +173,7 @@ export function installWorkbenchCore(deps: Deps) {
     },
     notify: showNotice,
     context: aiContextExtras,
-    onActivate: late.dismissPromptHints,
+    onActivate: () => late.dismissPromptHints(),
   });
   const {
     state: aiSearchState,

@@ -244,7 +244,7 @@ export function installWorkbenchConnections(deps: Deps) {
     toggleAgentModeMenu,
     refreshAgentMode,
     applyAgentMode,
-  } = useAgentTerminalMode({ t, showError, session, connectionId: () => connectionId.value, sendTerminalBytes, closeToolbarPopovers: late.closeToolbarPopovers });
+  } = useAgentTerminalMode({ t, showError, session, connectionId: () => connectionId.value, sendTerminalBytes, closeToolbarPopovers: () => late.closeToolbarPopovers() });
 
   // 告警排查：状态与分诊交互收口在 composables/useAlertTriage。
   const {
