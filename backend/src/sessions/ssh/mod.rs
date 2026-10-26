@@ -18,6 +18,9 @@ pub(crate) mod algorithms;
 mod auth;
 #[cfg(test)]
 mod channel_error_tests;
+mod container_terminal;
+#[cfg(test)]
+mod container_terminal_tests;
 mod connection;
 mod download;
 pub(crate) mod exec;
