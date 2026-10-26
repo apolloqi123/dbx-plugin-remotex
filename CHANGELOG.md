@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.34] — 2026-10-26
+
+- **容器详情新增命令终端**。日志/文件旁新增「终端」页签，可直接在容器内执行命令：每条命令独立以 `docker exec <id> sh -lc` 运行，支持命令历史（↑/↓）、输出与退出码、清空、只读连接禁用；单条命令 60 秒超时、输出上限 1MiB，命令与失败原因写入审计但不记录输出内容。SSH 与本机 Docker 都支持；不保留 shell 的 cwd/env（长任务仍建议使用主终端）。
+  **A command terminal in the container detail pane.** A new Terminal tab next to Logs/Files runs commands inside the container: each command is an independent `docker exec <id> sh -lc`, with history (↑/↓), output and exit code, clear, and a read-only gate; commands time out at 60 seconds and output is capped at 1 MiB; commands and failure reasons are audited without recording output. Works for SSH and local Docker; shell cwd/env are not preserved (use the main terminal for long jobs).
+
 ## [0.7.9-beta.33] — 2026-10-26
 
 - **容器页默认只显示容器列表**。打开容器管理时不再自动展开详情；从行菜单选择「日志」或「文件」才出现左右分栏，中间分隔线支持鼠标拖拽与左右方向键调整（列表默认 40%，25%–70%）；关闭详情后列表恢复整宽。日志/文件页签改为图标显示，保留悬停提示与无障碍名称。
