@@ -9,7 +9,7 @@ import ContainerLogsTab from "./ContainerLogsTab.vue";
 import type { DockerContainer } from "../lib/dockerPanelModel";
 import { dispatchDockerLogEvent } from "../lib/dockerLogEvents";
 import { pluginStore } from "../../../shared/lib/pluginStore";
-import { DOCKER_ENGINE_STORE_KEY } from "../lib/dockerEngine";
+import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
 
 const t = (key: string) => key;
 
@@ -46,7 +46,13 @@ function container(overrides: Partial<DockerContainer> = {}): DockerContainer {
 }
 
 async function mountTab(
-  props: { container?: DockerContainer; canWrite?: boolean; sessionId?: string; visible?: boolean } = {},
+  props: {
+    container?: DockerContainer;
+    canWrite?: boolean;
+    sessionId?: string;
+    connectionId?: string;
+    visible?: boolean;
+  } = {},
 ) {
   const wrapper = mount(ContainerLogsTab, {
     props: {
@@ -54,6 +60,7 @@ async function mountTab(
       container: props.container ?? container(),
       canWrite: props.canWrite,
       sessionId: props.sessionId ?? "sess-1",
+      connectionId: props.connectionId,
       visible: props.visible,
     },
   });
@@ -87,6 +94,22 @@ describe("ContainerLogsTab streaming", () => {
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "boot\nready\n" });
     await nextTick();
     expect(wrapper.get(".docker-log-scroll").text()).toBe("boot\nready");
+  });
+
+  it("carries the per-connection engine settings into the start payload", async () => {
+    saveDockerEngineSettings("conn-1", { cli: "podman", socket: "/run/podman.sock", host: "" });
+    const calls = stubHost();
+    await mountTab({ connectionId: "conn-1" });
+    expect(calls[0]).toEqual({
+      method: "docker/logs/start",
+      params: {
+        sessionId: "sess-1",
+        containerId: "abc123def456",
+        tail: 200,
+        cli: "podman",
+        socket: "/run/podman.sock",
+      },
+    });
   });
 
   it("follows by default and pins to the bottom when text arrives", async () => {
