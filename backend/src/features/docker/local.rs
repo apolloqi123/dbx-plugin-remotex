@@ -430,10 +430,10 @@ pub async fn perform_action_local(
     ))
 }
 
-// —— Audit (workbench docker/action + docker/exec paths) ————————
+// —— Audit (workbench docker/action + docker/terminal paths) ————————
 
 /// Audit rows for the workbench docker paths. The tool name is a parameter
-/// so `docker/action` and `docker/exec` share one writer (and one shape)
+/// so `docker/action` and `docker/terminal` share one writer (and one shape)
 /// instead of duplicating the entry construction.
 pub(crate) fn audit_row(
     data_dir: &Path,
@@ -506,17 +506,6 @@ pub fn audit_action_failure(data_dir: &Path, command: &str, error: &str, duratio
         error,
         duration_ms,
     );
-}
-
-/// `docker/exec` intent row. The command text is recorded; output never is.
-pub fn audit_exec_intent(data_dir: &Path, command: &str) {
-    audit_intent(data_dir, "docker/exec", command);
-}
-
-/// `docker/exec` failure/non-zero row. `reason` is a content-free label
-/// (exit code plus a signature hint), never the container output.
-pub fn audit_exec_failure(data_dir: &Path, command: &str, reason: &str, duration_ms: u64) {
-    audit_failure(data_dir, "docker/exec", command, reason, duration_ms);
 }
 
 #[cfg(test)]

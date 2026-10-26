@@ -42,6 +42,9 @@ struct Plugin {
     /// Live `docker logs -f` streams (`docker/logs/start|stop`): bounded at
     /// four per sidecar, reaped by TTL, emitting `docker/logs/chunk|end`.
     docker_streams: Arc<crate::features::docker::DockerStreams>,
+    /// Live container terminal PTYs (`docker/terminal/*`): ≤4 per sidecar,
+    /// 2-hour TTL, binary output on `docker/terminal/out/{id}`.
+    docker_terminals: Arc<crate::features::docker::DockerTerminals>,
     /// 本机分片上传表（`docker/files/upload/*`）：≤4 活跃、单文件
     /// 512 MiB、30 分钟过期；finished 条目保留到 cleanup。
     docker_uploads: std::sync::Mutex<crate::features::docker::files::UploadRegistry>,

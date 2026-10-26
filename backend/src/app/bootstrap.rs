@@ -34,6 +34,7 @@ impl Plugin {
             rdp: Arc::new(crate::sessions::rdp::RdpSessionRuntime::new()),
             watcher: Arc::new(crate::filesystem::watch::WatchRuntime::new()),
             docker_streams: Arc::new(crate::features::docker::DockerStreams::new()),
+            docker_terminals: Arc::new(crate::features::docker::DockerTerminals::new()),
             docker_uploads: std::sync::Mutex::new(
                 crate::features::docker::files::UploadRegistry::new(std::env::temp_dir()),
             ),

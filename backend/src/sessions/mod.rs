@@ -1,4 +1,4 @@
-mod input_queue;
+pub(crate) mod input_queue;
 pub(crate) mod local;
 pub(crate) mod rdp;
 pub(crate) mod serial;

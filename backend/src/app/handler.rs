@@ -130,6 +130,23 @@ impl PluginHandler for Plugin {
             )?;
             return Ok(());
         }
+        if let Some(terminal_id) = channel.strip_prefix("docker/terminal/in/") {
+            // 容器 PTY 输入：8 字节序号 + 原始按键字节（与 ssh/local 同封装）。
+            // 终端注册表已回收/不存在的 id 镜像 state 错误事件，工作台才能
+            // 立刻显示断链而不是静默吞键。
+            let (_sequence, payload) = match decode_sequenced_input(&data) {
+                Ok(split) => split,
+                Err(error) => return Err(to_plugin_error(error)),
+            };
+            if let Err(error) = self.docker_terminals.write_input(terminal_id, payload) {
+                let _ = emitter.event(
+                    "docker/terminal/state",
+                    json!({ "terminalId": terminal_id, "state": "error", "error": error }),
+                );
+                return Err(to_plugin_error(error));
+            }
+            return Ok(());
+        }
         if let Some(rest) = channel.strip_prefix("import/preview/") {
             let Some((task_id, part)) = rest.rsplit_once('/') else {
                 return Err(PluginError::new(

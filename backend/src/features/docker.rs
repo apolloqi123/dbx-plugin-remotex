@@ -1,9 +1,12 @@
 //! Docker management panel backend (`docker/list` / `docker/logs` /
-//! `docker/logs/start` / `docker/logs/stop` / `docker/action` / `docker/exec`):
-//! POSIX collector scripts executed through `sh -s` heredocs plus pure
-//! parsers, in the same style as [`crate::features::metrics`]. Zero new
-//! dependencies by design — the Docker CLI is driven over shell, never the
-//! daemon API, and no docker client crate is pulled in.
+//! `docker/logs/start` / `docker/logs/stop` / `docker/action` /
+//! `docker/terminal/*`): POSIX collector scripts executed through `sh -s`
+//! heredocs plus pure parsers, in the same style as
+//! [`crate::features::metrics`]. Zero new dependencies for the collector
+//! path by design — the Docker CLI is driven over shell, never the daemon
+//! API, and no docker client crate is pulled in. The interactive terminal
+//! (Task 3) adds a PTY channel over the already-authenticated SSH transport
+//! and `portable-pty` for the local plane.
 //!
 //! Safety model for actions: the verb comes from a fixed whitelist, the
 //! container id must match `^[0-9a-f]{12,64}$`, read-only connections are
@@ -27,13 +30,15 @@ pub(crate) mod files;
 mod local;
 mod parse;
 mod scripts;
+mod shell;
 mod shell_local;
 mod stream;
 mod stream_batch;
-mod terminal;
 
 #[cfg(test)]
 mod shell_local_tests;
+#[cfg(test)]
+mod shell_tests;
 #[cfg(test)]
 mod tests;
 
@@ -49,10 +54,9 @@ pub use local::*;
 pub use parse::*;
 #[allow(unused_imports)]
 pub use scripts::*;
+pub use shell::*;
 pub use stream::*;
 pub use stream_batch::*;
-#[allow(unused_imports)]
-pub use terminal::*;
 
 /// Wait cap for the container list collector (one `docker ps` round-trip).
 pub const LIST_TIMEOUT: Duration = Duration::from_secs(15);

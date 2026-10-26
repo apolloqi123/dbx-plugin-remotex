@@ -268,120 +268,70 @@ impl Plugin {
                 self.handle_docker_files(method, params)
             }
 
-            // 容器内嵌终端（容器管理分屏的终端页）：一次调用执行一条独立
-            // `docker exec <id> sh -lc <命令>`，没有常驻 shell，因此也没有
-            // 持久 cwd/env。命令文本先过纯校验（非空、≤8192 字符、除 \n\t
-            // 外禁止控制字符），`sh -lc` 参数经 shell_quote 原样进容器；
-            // 容器 id 走 validate_container_id。执行前写审计意图行，非零
-            // 退出或传输错误再补一行失败行（只记命令/退出码/提示，绝不
-            // 记录输出内容）。等待上限 60s，输出截断到 1 MiB。
-            "docker/exec" => {
+            // 容器内嵌终端（容器管理分屏的终端页）：真正的 PTY 会话。
+            // `target: "local"` 用本机 portable-pty，否则在既有 SSH 传输上
+            // 新开 PTY channel 跑固定的 `docker exec -it ...`；并发上限 4、
+            // TTL 2 小时，输出走二进制 `docker/terminal/out/<id>`，输入走
+            // `docker/terminal/in/<id>`（handler 分支）。打开前写审计意图
+            // （固定命令文本，绝不含按键/输出）；只读连接先拒绝再审计。
+            "docker/terminal/open" => {
                 let container_id = required_string(&params, "containerId")?;
                 crate::features::docker::validate_container_id(container_id)?;
-                let command = crate::features::docker::validate_exec_command(required_string(
-                    &params,
-                    "command",
-                )?)?;
                 let engine = crate::features::docker::parse_engine(&params)?;
+                let cols = required_u32(&params, "cols")?;
+                let rows = required_u32(&params, "rows")?;
+                let terminal_id = params.get("terminalId").and_then(Value::as_str);
+                let audit_text = crate::features::docker::shell_audit_text(&engine, container_id)?;
                 if crate::features::docker::parse_target(&params)?
                     == crate::features::docker::DockerTarget::Local
                 {
-                    // 本机面（无 SSH 会话）：审计只记短形态命令，执行走
-                    // argv 直呼（端点经 env 注入）。非零退出是正常响应，
-                    // 仍返回 success + exitCode；只有传输/daemon 权限失败
-                    // 才报错，后者带与其他本机动作一致的指引。
-                    let audit_text =
-                        crate::features::docker::exec_audit_text(&engine, container_id, command)?;
-                    crate::features::docker::audit_exec_intent(&self.ssh.data_dir(), &audit_text);
-                    let started = std::time::Instant::now();
-                    return match self.runtime.block_on(
-                        crate::features::docker::perform_exec_local(
-                            &engine,
-                            container_id,
-                            command,
-                        ),
-                    ) {
-                        Ok(payload) => {
-                            let exit_code = payload
-                                .get("exitCode")
-                                .and_then(Value::as_i64)
-                                .unwrap_or(0) as i32;
-                            if exit_code != 0 {
-                                let output = payload
-                                    .get("output")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or_default();
-                                crate::features::docker::audit_exec_failure(
-                                    &self.ssh.data_dir(),
-                                    &audit_text,
-                                    &crate::features::docker::exec_failure_reason(
-                                        &engine, exit_code, output,
-                                    ),
-                                    started.elapsed().as_millis() as u64,
-                                );
-                            }
-                            Ok(payload)
-                        }
-                        Err(error) => {
-                            crate::features::docker::audit_exec_failure(
-                                &self.ssh.data_dir(),
-                                &audit_text,
-                                &crate::features::docker::exec_error_reason(&error),
-                                started.elapsed().as_millis() as u64,
-                            );
-                            Err(error)
-                        }
-                    };
-                }
-                let session_id = required_string(&params, "sessionId")?;
-                // 只读连接直接拒绝：终端能改容器内状态。
-                self.runtime
-                    .block_on(self.ssh.ensure_writable(session_id))?;
-                let audit_text =
-                    crate::features::docker::exec_audit_text(&engine, container_id, command)?;
-                let text =
-                    crate::features::docker::exec_ssh_command(&engine, container_id, command)?;
-                crate::features::docker::audit_exec_intent(&self.ssh.data_dir(), &audit_text);
-                let started = std::time::Instant::now();
-                let response = match self.runtime.block_on(self.ssh.exec(
-                    session_id,
-                    None,
-                    &text,
-                    false,
-                    Some(crate::features::docker::EXEC_TIMEOUT.as_secs()),
-                )) {
-                    Ok(response) => response,
-                    Err(error) => {
-                        crate::features::docker::audit_exec_failure(
-                            &self.ssh.data_dir(),
-                            &audit_text,
-                            &crate::features::docker::exec_error_reason(&error),
-                            started.elapsed().as_millis() as u64,
-                        );
-                        return Err(error);
-                    }
-                };
-                let exit_code =
-                    response.get("exitCode").and_then(Value::as_i64).unwrap_or(-1) as i32;
-                let output = response
-                    .get("output")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                if exit_code != 0 {
-                    crate::features::docker::audit_exec_failure(
+                    crate::features::docker::audit_terminal_intent(
                         &self.ssh.data_dir(),
                         &audit_text,
-                        &crate::features::docker::exec_failure_reason(
-                            &engine, exit_code, output,
-                        ),
-                        started.elapsed().as_millis() as u64,
                     );
+                    // The registry spawns its forwarder/runner onto the plugin
+                    // runtime; this RPC runs on an SDK worker thread, so enter
+                    // the runtime before starting the local PTY.
+                    return self.runtime.block_on(async {
+                        self.docker_terminals.start_local(
+                            emitter.clone(),
+                            container_id,
+                            engine,
+                            terminal_id,
+                            cols,
+                            rows,
+                        )
+                    });
                 }
-                Ok(json!({
-                    "success": true,
-                    "output": crate::features::docker::exec_output(output, exit_code),
-                    "exitCode": exit_code,
-                }))
+                let session_id = required_string(&params, "sessionId")?;
+                // 只读连接直接拒绝：终端能改容器内状态；拒绝发生在审计之前。
+                self.runtime
+                    .block_on(self.ssh.ensure_writable(session_id))?;
+                crate::features::docker::audit_terminal_intent(&self.ssh.data_dir(), &audit_text);
+                self.runtime.block_on(self.docker_terminals.start_ssh(
+                    self.ssh.clone(),
+                    emitter.clone(),
+                    session_id.to_string(),
+                    container_id,
+                    engine,
+                    terminal_id,
+                    cols,
+                    rows,
+                ))
+            }
+
+            "docker/terminal/resize" => {
+                // 幂等：未知/已结束的 terminalId 返回 resized:false，不报错。
+                let terminal_id = required_string(&params, "terminalId")?;
+                let cols = required_u32(&params, "cols")?;
+                let rows = required_u32(&params, "rows")?;
+                Ok(json!({ "resized": self.docker_terminals.resize(terminal_id, cols, rows) }))
+            }
+
+            "docker/terminal/close" => {
+                // 幂等：未知/已结束的 terminalId 返回 stopped:false，不报错。
+                let terminal_id = required_string(&params, "terminalId")?;
+                Ok(json!({ "stopped": self.docker_terminals.close(terminal_id) }))
             }
 
             "docker/action" => {
