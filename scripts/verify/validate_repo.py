@@ -229,6 +229,15 @@ def main() -> int:
         fail("backend Cargo package name does not match manifest")
     if not re.search(rf'(?m)^version\s*=\s*"{re.escape(version)}"\s*$', cargo):
         fail("backend Cargo version does not match manifest")
+    lock = (ROOT / "backend/Cargo.lock").read_text(encoding="utf-8")
+    if not re.search(
+        rf'(?m)^name = "dbx-plugin-sshx"\r?\nversion = "{re.escape(version)}"\s*$',
+        lock,
+    ):
+        fail("backend Cargo.lock version does not match manifest")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    if not re.search(rf"(?m)^## \[{re.escape(version)}\](?:\s|$)", changelog):
+        fail(f"CHANGELOG has no section for {version}")
     validate_backend_identity(manifest["id"])
 
     required = [

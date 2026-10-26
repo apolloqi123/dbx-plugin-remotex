@@ -20,7 +20,11 @@ function countLines(text: string): number {
 }
 
 function isSpec(key: string): boolean {
-  return key.endsWith(".spec.ts");
+  return (
+    key.endsWith(".spec.ts") ||
+    key.endsWith(".test.ts") ||
+    key.includes("/testing/")
+  );
 }
 
 export function lineViolations(
@@ -31,27 +35,45 @@ export function lineViolations(
   for (const [key, text] of Object.entries(sources)) {
     const lines = countLines(text);
     const budget = isSpec(key) ? MAX_SPEC_LINES : MAX_SOURCE_LINES;
-    const allowed = allow[key] ?? budget;
-    if (lines > allowed) out.push(`${key}: ${lines} > ${allowed}`);
-    if (allow[key] !== undefined && lines <= budget) {
+    const allowed = allow[key];
+    const limit = allowed ?? budget;
+    if (lines > limit) out.push(`${key}: ${lines} > ${limit}`);
+    if (allowed !== undefined && allowed > budget && lines <= budget) {
       out.push(`${key}: allowlist entry is stale (${lines} <= ${budget})`);
     }
   }
   return out;
 }
 
-const IMPORT_SPECIFIER = /\b(?:from\s*|import\s*\(\s*|^import\s+)["']([^"']+)["']/gm;
+/** 白名单条目对应的文件已被移动/删除。 */
+export function deadLineEntries(
+  sources: Record<string, string>,
+  allow: Record<string, number>,
+): string[] {
+  return Object.keys(allow).filter((key) => sources[key] === undefined);
+}
+
+const IMPORT_SPECIFIER =
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\.meta\.glob\s*\(\s*|^import\s+)["'`]([^"'`]+)["'`]/gm;
 
 function layerOf(key: string): "shared" | "feature" | null {
+  // Vite 以相对本文件的最短路径生成 glob 键：shared 内是 `./` 或单层 `../`，
+  // features/app 则是 `../../features/`、`../../app/`。显式 shared 前缀兼容
+  // 合成用例与未来键格式变化。
+  if (key.startsWith("../../shared/")) return "shared";
+  if (key.startsWith("../../features/")) return "feature";
   if (key.startsWith("./") || (key.startsWith("../") && !key.startsWith("../../"))) {
     return "shared";
   }
-  if (key.startsWith("../../features/")) return "feature";
   return null;
 }
 
+const UPWARD_TARGET = /(?:^|\/)(?:features|app)(?:\/|$)/;
+const APP_TARGET = /(?:^|\/)app(?:\/|$)/;
+
 export function isUpwardImport(layer: "shared" | "feature", spec: string): boolean {
-  return layer === "shared" ? /\/(?:features|app)\//.test(spec) : /\/app\//.test(spec);
+  const clean = spec.split("?")[0].split("#")[0];
+  return layer === "shared" ? UPWARD_TARGET.test(clean) : APP_TARGET.test(clean);
 }
 
 /** `<file> -> <spec>` for every upward import in `text`; empty for unguarded files. */
@@ -103,11 +125,20 @@ describe("source structure guards", () => {
     const files = Object.keys(SOURCES);
     expect(files.length).toBeGreaterThan(100);
     expect(files.some((key) => key.endsWith("app/App.vue"))).toBe(true);
+    // glob 不包含导入方自身；用同目录文件确认 shared 子树被扫描到。
+    expect(
+      files.some((key) => key === "./pluginContext.ts" || key.endsWith("shared/lib/pluginContext.ts")),
+    ).toBe(true);
   });
 
   it("keeps every source file within its line budget", () => {
     const report = lineViolations(SOURCES, LINE_ALLOWLIST);
     expect(report, `oversized sources:\n${report.join("\n")}`).toEqual([]);
+  });
+
+  it("keeps every line allowlist entry live", () => {
+    const dead = deadLineEntries(SOURCES, LINE_ALLOWLIST);
+    expect(dead, `dead line allowlist entries:\n${dead.join("\n")}`).toEqual([]);
   });
 
   it("keeps imports pointing downward", () => {
@@ -128,7 +159,9 @@ describe("source structure guards", () => {
   it("detects synthetic violations instead of passing vacuously", () => {
     // 用 join 拼接 specifier，避免本文件被扫描时出现字面量的向上导入。
     const FEATURES_IMPORT = ["..", "features", "sftp", "lib", "a"].join("/");
+    const FEATURES_DIR = ["..", "..", "features"].join("/");
     const APP_IMPORT = ["..", "..", "..", "app", "App.vue"].join("/");
+    const APP_GLOB = ["..", "..", "app", "**", "*.vue"].join("/");
     expect(
       directionViolations({ "./x.ts": `import { a } from "${FEATURES_IMPORT}";` }, []),
     ).toEqual([`./x.ts -> ${FEATURES_IMPORT}`]);
@@ -138,11 +171,42 @@ describe("source structure guards", () => {
         [],
       ),
     ).toEqual([`../../features/sftp/lib/x.ts -> ${APP_IMPORT}`]);
+    // 真实 glob 键形状：shared 文件（`./`、单层 `../`、显式前缀）都必须被检查。
     expect(
-      lineViolations({ "./x.ts": `${"x\n".repeat(601)}` }, {}),
-    ).toEqual(["./x.ts: 601 > 600"]);
-    expect(lineViolations({ "./x.ts": "a\n" }, { "./x.ts": 10 })).toEqual([
+      upwardImports("../../shared/lib/x.ts", `import { a } from "${FEATURES_IMPORT}";`),
+    ).toEqual([`../../shared/lib/x.ts -> ${FEATURES_IMPORT}`]);
+    expect(upwardImports("./x.ts", `import { a } from "${FEATURES_IMPORT}";`)).toEqual([
+      `./x.ts -> ${FEATURES_IMPORT}`,
+    ]);
+    expect(upwardImports("../ui/x.ts", `import { a } from "${FEATURES_IMPORT}";`)).toEqual([
+      `../ui/x.ts -> ${FEATURES_IMPORT}`,
+    ]);
+    // 动态导入 / import.meta.glob 也是向上导入口。
+    expect(
+      upwardImports("../../shared/lib/x.ts", `const m = import.meta.glob("${APP_GLOB}");`),
+    ).toEqual([`../../shared/lib/x.ts -> ${APP_GLOB}`]);
+    expect(
+      upwardImports(
+        "../../features/sftp/lib/x.ts",
+        `const m = import("${APP_IMPORT}");`,
+      ),
+    ).toEqual([`../../features/sftp/lib/x.ts -> ${APP_IMPORT}`]);
+    // 扩展名缺省的目录 specifier 同样命中。
+    expect(
+      upwardImports("../../shared/lib/x.ts", `import { a } from "${FEATURES_DIR}";`),
+    ).toEqual([`../../shared/lib/x.ts -> ${FEATURES_DIR}`]);
+    // 同名字符串不误报。
+    expect(
+      upwardImports("../../shared/lib/x.ts", 'import { a } from "./featuresish/a";'),
+    ).toEqual([]);
+    expect(lineViolations({ "./x.ts": `${"x\n".repeat(601)}` }, {})).toEqual([
+      "./x.ts: 601 > 600",
+    ]);
+    expect(lineViolations({ "./x.ts": "a\n" }, { "./x.ts": 700 })).toEqual([
       "./x.ts: allowlist entry is stale (1 <= 600)",
+    ]);
+    expect(deadLineEntries({ "./x.ts": "" }, { "./x.ts": 700, "./gone.ts": 700 })).toEqual([
+      "./gone.ts",
     ]);
     expect(locationViolations({ "../../features/stray.ts": "" })).toEqual([
       "../../features/stray.ts",
