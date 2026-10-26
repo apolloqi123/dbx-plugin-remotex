@@ -11,7 +11,7 @@ const MAX_SPEC_LINES = 1_200;
 
 /** 迁移期白名单：值 = 当前允许的行数；清零后删除。 */
 const LINE_ALLOWLIST: Record<string, number> = {
-  "../../app/App.vue": 4991,
+  "../../app/App.vue": 4770,
 };
 
 /** 迁移期方向白名单；W1 结束后必须为空，且每个条目都必须仍然违规。 */

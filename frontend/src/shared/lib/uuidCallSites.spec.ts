@@ -87,12 +87,15 @@ describe("crypto.randomUUID stays behind the lib/uuid shim (issue #77)", () => {
     expect(shim).toContain("getRandomValues");
   });
 
-  it("keeps App.vue importing the shim rather than the global", () => {
-    // App.vue 是 issue #77 实际爆掉的入口（fallbackWorkbenchId 在启动期求值）。
-    const app = Object.keys(SOURCES)
-      .filter((path) => path.endsWith("App.vue"))
+  it("keeps the workbench context importing the shim rather than the global", () => {
+    // App.vue 是 issue #77 实际爆掉的入口（fallbackWorkbenchId 在启动期求值）；
+    // T21b 把 fallbackWorkbenchId 随工作台状态上下文迁入 useWorkbenchContext.ts，
+    // 断言随之改扫该模块——它才是现在启动期求值 shim 的地方。
+    const context = Object.keys(SOURCES)
+      .filter((path) => path.endsWith("/workbench/state/useWorkbenchContext.ts"))
       .map((path) => SOURCES[path])
       .join("\n");
-    expect(app).toMatch(/import\s*{[^}]*\brandomUUID\b[^}]*}\s*from\s*"[^"]*lib\/uuid"/);
+    expect(context).not.toBe("");
+    expect(context).toMatch(/import\s*{[^}]*\brandomUUID\b[^}]*}\s*from\s*"[^"]*lib\/uuid"/);
   });
 });

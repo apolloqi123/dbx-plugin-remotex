@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef, watch } from "vue";
-import { Terminal } from "@xterm/xterm";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
   ChevronDown,
@@ -25,7 +24,6 @@ import { Osc7DirectoryParser } from "../features/terminal/lib/emulator/terminalD
 import { PromptNewlineTransformer } from "../features/terminal/lib/emulator/terminalPromptNewline";
 import { useConfirmDialogHost } from "../shared/lib/confirmDialog";
 import {
-  createTerminalCopyCache,
   isApplePlatform,
   normalizeDropTargetDir,
 } from "../features/terminal/lib/behavior/terminalInteraction";
@@ -37,11 +35,8 @@ import { useTerminalInput } from "../features/terminal/composables/io/useTermina
 import { useTerminalKeys } from "../features/terminal/composables/io/useTerminalKeys";
 import { useTerminalAiSearch } from "../features/terminal/composables/ui/useTerminalAiSearch";
 import { classifyConnectError, connectErrorKey } from "../features/connections/lib/connectError";
-import { useSshConnection, type ReplayResult, type SessionInfo } from "../features/connections/composables/useSshConnection";
+import { useSshConnection, type ReplayResult } from "../features/connections/composables/useSshConnection";
 import { workbenchCloseTargets } from "./lib/workbenchCloseSessions";
-import { createConnectLog } from "../features/connections/lib/connectLog";
-import { DOCKER_SPLIT_RATIO_DEFAULT, paneDirectionClass, paneSplitCssVar, resolveWorkbenchPaneLayout, terminalFlexBasis } from "../shared/lib/paneLayout";
-import { type SftpTypeFilter } from "../features/sftp/lib/entries/sftpFileFilters";
 import { SFTP_BOOKMARK_LABEL_MAX_LENGTH } from "../features/sftp/lib/paths/sftpBookmarks";
 import type { SftpCompressMode } from "./workbench/lib/preferencesMirror";
 import { loadGhostTabAccept, saveGhostTabAccept } from "../features/completion/lib/ghostAcceptKey";
@@ -60,18 +55,16 @@ import { type SftpNameEncoding } from "../features/sftp/lib/entries/sftpName";
 import { batchUploadPercent, runTransfers, type TransferDuplicatePolicy, type TransferTask,
 } from "../features/transfers/lib/transferQueue";
 import { registerWatch } from "../features/sftp/lib/editor/watchEdits";
-import { formatLatency, formatAuthMethodLabel, normalizeConnectionPort, normalizeConnectionText, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
-import { resolveWorkbenchId } from "../shared/lib/pluginContext";
+import { formatLatency, formatAuthMethodLabel, type KnownAuthMethod } from "../features/connections/lib/connectionInfo";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
 import { pluginStore } from "../shared/lib/pluginStore";
-import { loadTerminalFontOverride, resolveTerminalFont, type TerminalFontOverride } from "../features/terminal/lib/appearance/terminalFont";
+import { resolveTerminalFont } from "../features/terminal/lib/appearance/terminalFont";
 import type { DownloadConflictPolicy } from "../features/sftp/lib/transfer/downloadPrefs";
 import { formatCommandDuration, Osc633CommandParser } from "../features/terminal/lib/panels/terminalCommandMarkers";
-import { batchProgressPercent, type BatchProgressState } from "../features/transfers/lib/sftpBatchProgress";
+import { batchProgressPercent } from "../features/transfers/lib/sftpBatchProgress";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../features/connections/lib/sessionStatus";
 import { sanitizeCommandOutput } from "../features/terminal/lib/behavior/terminalOutputText";
 import { formatBytes, formatRate } from "../shared/lib/format";
-import { resolveAppearance } from "../shared/lib/appearance";
 import { AGENT_MODES } from "../features/agent/lib/agentTerminal";
 // 关键词高亮 / 动作链接 / 行号时间戳 gutter 三类 decoration 引擎收口在
 // features/terminal/composables/ui/useTerminal{Highlight,ActionLinks,Gutter}。
@@ -116,6 +109,7 @@ import { useWorkbenchSpawnTabs } from "./workbench/composables/useWorkbenchSpawn
 import { useWorkbenchToolbar } from "./workbench/composables/useWorkbenchToolbar";
 import { useWorkbenchModals } from "./workbench/composables/useWorkbenchModals";
 import { useWorkbenchBootstrap } from "./workbench/composables/useWorkbenchBootstrap";
+import { useWorkbenchContext } from "./workbench/state/useWorkbenchContext";
 import { useHostDragBridge } from "./workbench/composables/useHostDragBridge";
 import { useTerminalSearch } from "../features/terminal/composables/ui/useTerminalSearch";
 import { useTerminalTooltip } from "../features/terminal/composables/ui/useTerminalTooltip";
@@ -167,24 +161,13 @@ import { useQuickCommands } from "../features/quick-commands/composables/useQuic
 import { useAgentTerminalMode } from "../features/agent/composables/useAgentTerminalMode";
 import { useAlertTriage } from "../features/security/composables/useAlertTriage";
 import { useTransferHistory } from "../features/transfers/composables/useTransferHistory";
-import { shouldLazyLoadSftpListing, type SshWorkbenchPaneOrder } from "./lib/workbenchLayout";
-import { toolbarTintStyle } from "../shared/lib/toolbarTint";
-import {
-  DEFAULT_COLUMN_WIDTHS,
-  DEFAULT_VISIBLE_COLUMNS,
-  type SftpColumn,
-} from "../features/sftp/lib/entries/sftpEntries";
+import { DOCKER_SPLIT_RATIO_DEFAULT } from "../shared/lib/paneLayout";
+import { shouldLazyLoadSftpListing } from "./lib/workbenchLayout";
 import {
   folderUploadPercent,
 } from "../features/sftp/lib/transfer/folderUpload";
 import { createCrossSurfaceStorageReader, subscribeStorageEvents } from "./workbench/lib/appearanceSync";
-import {
-  activeProfileId,
-  loadTerminalAppearance,
-  type TerminalAppearanceState,
-} from "../features/terminal/lib/appearance/terminalAppearance";
 import { workbenchMessage } from "../shared/lib/i18n";
-import { randomUUID } from "../shared/lib/uuid";
 // 预览面板（含 CodeMirror + language-data）的按需加载定义随预览弹窗迁入
 // components/WorkbenchDialogs.vue（T21）：工作台启动不再解析编辑器/语言包。
 import TerminalSearchPanel from "../features/terminal/components/TerminalSearchPanel.vue";
@@ -226,12 +209,8 @@ import VncSurface from "../features/remote-desktop/components/VncSurface.vue";
 // RDP 会话（nyaterm-parity P3-4）：画布与 VNC 同构（同一 44 字节 patch 头，
 // 解码复用 vncFrame），输入走扫描码/unicode 双通道，证书确认走
 // connection/challenge kind=rdp-certificate 分支。
-import RdpConnectDialog, { type RdpConnectOptions } from "../features/remote-desktop/components/RdpConnectDialog.vue";
+import RdpConnectDialog from "../features/remote-desktop/components/RdpConnectDialog.vue";
 import RdpSurface from "../features/remote-desktop/components/RdpSurface.vue";
-import {
-  initialRdpSessionState,
-  type RdpSessionStateView,
-} from "../features/remote-desktop/lib/rdpFrame";
 import { ToastAction, ToastClose, ToastProvider, ToastRoot, ToastViewport } from "../shared/ui/toast/index";
 
 interface SftpEntry {
@@ -247,47 +226,6 @@ interface SftpEntry {
   group?: string;
   /** M14-B：显示名不可忠实还原（wire 名含 U+FFFD）；传输仍走 uri。 */
   lossy?: boolean;
-}
-
-interface HostKeyPrompt {
-  challengeId: string;
-  operationId: string;
-  host: string;
-  port: number;
-  keyType: string;
-  fingerprint: string;
-}
-
-
-type RightPanelView = "sftp" | "metrics" | "docker";
-
-interface RuntimeEndpoint {
-  host?: string;
-  port?: number;
-}
-
-interface ConnectionSummary {
-  name?: string;
-  host?: string;
-  port?: number;
-  username?: string;
-  color?: string;
-  readOnly?: boolean;
-  /** 宿主连接表单的 protocol 字段（缺省 ssh）：非 SSH 连接在 openSession 里路由到各自会话。 */
-  protocol?: "ssh" | "telnet" | "vnc" | "serial" | "rdp";
-  /** 串口连接配置（M32-B，manifest serial_* 字段；缺失时回落连接表单）。 */
-  serialPort?: string;
-  serialBaud?: number;
-  serialDataBits?: "7" | "8";
-  serialParity?: "none" | "even" | "odd";
-  serialStopBits?: "1" | "2";
-  serialBackspace?: "del" | "ctrl_h";
-  /** RDP 连接配置（M32-B，manifest rdp_* 字段）。 */
-  rdpDomain?: string;
-  rdpWidth?: number;
-  rdpHeight?: number;
-  rdpCertificatePolicy?: "prompt" | "strict" | "accept-temporarily";
-  rdpClipboard?: boolean;
 }
 
 interface DownloadInfo {
@@ -316,9 +254,6 @@ interface DiskUsage {
   availableBytes: number;
   percentUsed: number;
 }
-
-// 列类型移到 lib/sftpEntries（issue #34：owner/group 属主/属组列，默认关）。
-type SftpSortColumn = "name" | "size" | "modified";
 
 // 粘贴防护：内容含换行或达到该字符数时先确认（对齐 tiny-rdm TerminalPane 阈值）。
 const PASTE_CONFIRM_CHAR_THRESHOLD = 200;
@@ -361,8 +296,6 @@ const suggestionMaxCharsState = ref(64);
 // issue #108a 起 Ctrl+F 只在 ghost 建议可见待接受时作接受键，无 ghost 归终端
 // 搜索（iTerm2 同位，resolveCtrlFRoute 判定）；→ / Ctrl+E 行为不变。
 const ghostTabAccept = ref(loadGhostTabAccept());
-// 键位胶囊（Warp accept-autosuggestion-hint 同位）的下拉菜单与展示标签。
-const ghostKeycapMenuOpen = ref(false);
 const ghostAcceptKeyLabel = computed(() => (ghostTabAccept.value ? "Tab" : "→"));
 function setGhostTabAccept(value: boolean) {
   ghostTabAccept.value = value;
@@ -403,7 +336,7 @@ const {
   handleSearchResults,
   runTerminalSearch,
 } = useTerminalSearch({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   searchAddon: () => searchAddon(),
   closeMenu: () => {
     terminalMenuOpen.value = false;
@@ -443,24 +376,24 @@ const {
   getLocalShells: () => localShells.value,
   isApplePlatform: () => applePlatform,
   sniffShell: () => sniffTerminalShell(),
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   commandMarker: () => commandMarker,
   suggestionViewportHeight: () => suggestionViewport.value.height,
   readSuggestionAnchor: () => readTerminalSuggestionAnchor(),
   replaceLine: (command) => {
     replaceTerminalLineWith(command, false);
-    terminal?.focus();
+    terminal.value?.focus();
   },
 });
 // `#` 命令搜索状态机/等待冻结/锚点/直连生成与分屏窗格共用同一 composable。
 const aiSearch = useTerminalAiSearch({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   getHost: () => terminalHost.value,
   t: (key, values) => t(key, values),
   getLine: () => pendingTerminalInput,
   isEnabled: () => aiBridgeOk() && aiSettingsState.value.search,
   gates: () => ({
-    alternateActive: terminal?.buffer.active.type === "alternate",
+    alternateActive: terminal.value?.buffer.active.type === "alternate",
     commandRunning: commandRunning.value,
     transferBusy: terminalTransferBusy.value,
     suggestionOpen: suggestionOpen.value,
@@ -471,7 +404,7 @@ const aiSearch = useTerminalAiSearch({
   }),
   replaceLine: (command) => {
     replaceTerminalLineWith(command, false);
-    terminal?.focus();
+    terminal.value?.focus();
   },
   notify: showNotice,
   context: aiContextExtras,
@@ -490,21 +423,6 @@ const {
 // 因此在此单点声明，供后面的偏好初始值与终端选项复用。
 const applePlatform = isApplePlatform();
 
-/** 终端舞台组件实例：xterm 宿主 ref 由 WorkbenchStage 的 defineExpose 回传
- *  （T20）。模板 ref 在子组件挂载后写入，computed 惰性读取，因此 composable
- *  持有的注册表在会话打开时总能拿到真实宿主，且不产生第二个宿主元素。 */
-const stage = useTemplateRef<{ terminalHost?: HTMLElement }>("stage");
-const terminalHost = computed(() => stage.value?.terminalHost);
-/** 右侧栏根 <section> 随 T21 迁入 WorkbenchSidePanel，ref 经 defineExpose 回传
- *  （焦点落回面板本身仍由本文件的 focusSftpPaneOnPointerDown 发起）。 */
-const sidePanel = useTemplateRef<{ sftpPane?: HTMLElement }>("sidePanel");
-const sftpPane = computed(() => sidePanel.value?.sftpPane);
-// 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
-const sftpTreePane = ref<{
-  scrollPathToTop(path: string): Promise<boolean>;
-  markDropTargetAt(point: { x: number; y: number }): string;
-  resetHostDragCalibration(): void;
-} | null>(null);
 /** SftpWorkspacePanel 把内部树实例回填到上面的 ref，保持目录跟随与宿主拖拽落点。
  *  markDropTargetAt 接宿主转发的 iframe 内坐标，命中目录行并返回目标路径。 */
 function bindSftpWorkspaceTreePane(api: {
@@ -523,32 +441,13 @@ function bindSftpPathBarInput(el: HTMLInputElement | null) {
 function bindDropUploadPathInputEl(el: HTMLInputElement | null) {
   dropUploadPathInputEl.value = el ?? undefined;
 }
-const paneContainer = ref<HTMLElement>();
 const zmodemInput = ref<HTMLInputElement>();
-const hostContext = ref<Record<string, unknown>>({});
 // Bottom dock panel surface (surface=panel, host §8.3): hide the workbench identity block so the panel
 // and focus the terminal itself; multi-open/shell switching goes through the panel "+" menu (bridge openWorkbench opens another panel).
 // Declared early: the batch bar / sftp pane initializers below must know the surface at setup time.
 // 宿主表面词表（开放集合，未知回退）："tab" 主工作台多标签 / "dock" 底部栏
 // （2026-09-30 起，旧值 "panel" 兼容期保留）/ "sidebar-left|right" / "window" 预留。
 const panelSurface = computed(() => hostContext.value.surface === "dock" || hostContext.value.surface === "panel");
-// 宿主未下发 appearance 前的兜底：DBX `.dark` 规范令牌。
-const appearance = ref(resolveAppearance());
-const terminalState = ref<"connecting" | "connected" | "disconnected" | "error">("connecting");
-// 连接卡片：用户取消（在途 open 无法中止，仅切换 UI 态并在 promise 落地后回收
-// 孤儿会话）、Show logs 展开态与连接尝试日志（环形 200 条，跨尝试保留历史）。
-const connectCancelled = ref(false);
-// 连接成功后立即揭示终端；success 标记只用于非阻塞的视觉状态。
-const connectSucceeded = ref(false);
-const connectLogsOpen = ref(false);
-const connectLog = createConnectLog();
-const session = ref<SessionInfo>();
-const hostKeyPrompt = ref<HostKeyPrompt>();
-const rememberHostKey = ref(true);
-const splitRatio = ref(58);
-// Docker 底部分屏的独立比例：默认终端 67% / 容器 33%，每次打开 Docker 重置。
-const dockerSplitRatio = ref(DOCKER_SPLIT_RATIO_DEFAULT);
-const paneOrder = ref<SshWorkbenchPaneOrder>("terminal-left");
 // 工作台视图/终端行为偏好（布局轴向、SFTP 默认/自动连接、目录跟随、终端行为
 // 与快捷键）：收口在 composables/useWorkbenchViewPrefs。
 const {
@@ -569,33 +468,106 @@ const {
   updateTerminalHotkeys,
 } = useWorkbenchViewPrefs({
   applePlatform,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   showNotice: (message) => showNotice(message),
   t: (key, values) => t(key, values),
   scheduleFit: () => scheduleFit(),
 });
-// 右侧栏可见性：SFTP / 指标 / 容器三视图互斥，sftpPaneOpen 表示右侧栏
-// 整体开合（沿用既有 workbenchState 持久化），rightPanelView 决定当前内容。
-// 指标/容器视图不跨重启恢复，避免启动即触发轮询。
-const sftpPaneOpen = ref(loadSftpPaneDefaultOpen());
-const rightPanelView = ref<RightPanelView>("sftp");
-// 容器视图：关闭/切换后即卸载停轮询。Docker 打开期间分栏固定为上下。
-const dockerPanelOpen = computed(() => sftpPaneOpen.value && rightPanelView.value === "docker");
-const sftpViewActive = computed(() => rightPanelView.value === "sftp");
-// 终端拖放的“面板抢落点”门控：只有 SFTP 树真的可见时才把拖入交给面板；
-// 指标/容器视图不应阻止终端接收拖拽。
-const sftpViewVisible = computed(() => sftpPaneOpen.value && sftpViewActive.value);
-// 沙箱宿主读不到系统剪贴板：右键粘贴的降级链靠这份插件视图内的复制副本。
-const terminalCopyCache = createTerminalCopyCache();
-// 终端 shell 最近一次上报的 cwd（OSC 7 / OSC 633 Cwd，无论跟随开关是否打开
-// 都记录）：终端拖拽上传的「当前目录」落点解析靠它，避免误用 SFTP 面板的
-// 浏览目录（初始值 "/"，拼根路径会被服务器以权限拒绝）。
-const terminalCwd = ref("");
-// —— xterm 实例：创建/addons/宿主编排/尺寸 fit/WebGL 开关与销毁收口在
-// features/terminal/composables/session/useTerminalInstance。实例由它持有并
-// 在创建时回填下面的别名（既有大量调用点与模板绑定直接读 terminal）；
-// 跨模块依赖一律经 getter/回调注入——本段之后的 composable 才有实现。
-let terminal: Terminal | undefined;
+// —— 工作台状态上下文（Task 21b）：按域创建的 refs 收口在 workbench/state/*，
+// 本文件解构同名绑定保持模板/接线不变（行为、初始值与消毒器均未改动）。 ——
+const ctx = useWorkbenchContext({
+  sftpPaneDefaultOpen: loadSftpPaneDefaultOpen(),
+  paneDirection,
+});
+const { hostContext, appearance, locale, workbenchId } = ctx;
+const {
+  terminal,
+  terminalHost,
+  terminalState,
+  terminalCwd,
+  terminalCopyCache,
+  directoryTrackingSupported,
+  terminalFontSize,
+  terminalFontOverride,
+  terminalAppearance,
+  terminalAppearanceState,
+  activeAppearanceThemeId,
+  terminalDiag,
+  terminalDiagVisible,
+} = ctx.terminal;
+const {
+  session,
+  connectCancelled,
+  connectSucceeded,
+  connectLogsOpen,
+  connectLog,
+  hostKeyPrompt,
+  rememberHostKey,
+  connectionReadOnly,
+  rdpSession,
+  rdpDialogOpen,
+  rdpState,
+  rdpScaleMode,
+  rdpSurface,
+  rdpClipboardChunks,
+  isRdpMode,
+  rdpTarget,
+  connectionId,
+  restored,
+  runtimeEndpoint,
+  connection,
+  storedConnectionProtocol,
+  connectionProtocol,
+  isRdpConnection,
+  canWrite,
+  connected,
+  toolbarStyle,
+} = ctx.session;
+const {
+  sftpPane,
+  sftpTreePane,
+  sftpPaneOpen,
+  rightPanelView,
+  dockerPanelOpen,
+  sftpViewActive,
+  sftpViewVisible,
+  visibleColumns,
+  sftpColumnWidths,
+  sftpNameWidth,
+  sort,
+  sftpSearch,
+  sftpTypeFilter,
+  sftpShowHidden,
+  batchProgress,
+  terminalDragActive,
+  localDownloadDir,
+  localCanSave,
+  SFTP_QUICK_PATHS,
+} = ctx.sftp;
+const {
+  splitRatio,
+  dockerSplitRatio,
+  paneOrder,
+  sudoMode,
+  paneContainer,
+  paneLayout,
+  terminalBasis,
+  paneSplitStyle,
+  orderedPaneClass,
+} = ctx.layout;
+const {
+  settingsOpen,
+  auditOpen,
+  profilesOpen,
+  otpPanelOpen,
+  importPanelOpen,
+  forwardsOpen,
+  columnsOpen,
+  ghostKeycapMenuOpen,
+  sessionMenuOpen,
+  sessionMenuShellOpen,
+  sessionMenuShellPickOpen,
+} = ctx.dialogs;
 
 // 主终端输入、行跟踪与有序输入队列收口在
 // features/terminal/composables/io/useTerminalInput；实例只做 onData 接线
@@ -630,7 +602,7 @@ const {
   refreshSuggestionsAfterInput: (data, lineBeforeInput) => refreshSuggestionsAfterInput(data, lineBeforeInput),
   refreshGhostAfterInput: (data) => refreshGhostAfterInput(data),
   notifyCompletionLineChanged: () => completionController.lineChanged(),
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   commandMarkerActive: () => commandMarker.active,
   pushTerminalCommandHistory: (command) => pushTerminalCommandHistory(command),
   showError,
@@ -695,17 +667,8 @@ const {
     if (actionLinksEnabled.value) attachActionLinks();
     if (isGutterActive()) attachGutterListeners();
   },
-  onTerminalCreated: (created) => { terminal = created; },
+  onTerminalCreated: (created) => { terminal.value = created; },
 });
-const directoryTrackingSupported = ref<boolean | undefined>();
-const visibleColumns = ref<SftpColumn[]>([...DEFAULT_VISIBLE_COLUMNS]);
-/** 每列当前宽度（px）。 */
-const sftpColumnWidths = reactive<Record<SftpColumn, number>>({ ...DEFAULT_COLUMN_WIDTHS });
-/** 名称列宽度（px）；null = 未拖过，弹性填充剩余空间。 */
-const sftpNameWidth = ref<number | null>(null);
-/** 正在拖拽的列（含 name）；null 表示没在拖。 */
-const sort = ref<{ column: SftpSortColumn; direction: "asc" | "desc" }>({ column: "name", direction: "asc" });
-
 // —— SFTP 面板对话框态：删除/批量删除、新建目录/文件落点、面板内剪贴板与
 // 粘贴忙碌、错误横幅 key 收口在 composables/actions/useSftpDialogs（新建文件
 // 动作逐字迁移）。删除/新建目录的动作本体仍由下方 useSftpDelete /
@@ -893,13 +856,7 @@ const {
   // 只读连接不切——sudo 族对只读 fail closed，普通下载/上传可读目标不受影响。
   sudoUpload: () => sudoMode.value && canWrite.value,
 });
-const columnsOpen = ref(false);
-const sudoMode = ref(false);
 
-// 拖拽高亮/宿主拖放落点由 useSftpDropUpload 持有（见下方上传链接线）。
-// Terminal-local drag overlay: true only while files are dragged over the
-// terminal pane and the drop can actually be accepted (writable session).
-const terminalDragActive = ref(false);
 // 窗口级兜底（issue #197）：拖拽离开 webview 窗口或被 Esc 取消时，最后一次
 // dragleave 的 relatedTarget 为空——无论高亮来自哪条链路（面板 DOM 事件或宿主
 // 桥 onDragState）都复位，SFTP 面板不再停留在「上传」悬浮层。子元素间移动的
@@ -933,7 +890,7 @@ const {
   toggleBatchQuickPopover,
   toggleTransferPanel,
 } = useTerminalMenus<SftpEntry>({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   terminalBehavior: () => terminalBehavior.value,
   isRdp: () => isRdpMode.value || isRdpConnection.value,
   pasteTerminal: () => { void pasteTerminal(); },
@@ -1039,7 +996,7 @@ const {
   session,
   commandRunning,
   terminalTransferBusy: () => terminalTransferBusy.value,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   trackPendingInput,
   sendTerminalBytes,
   // 惰性求值：hideGhostSuggestion 由下方 useGhostSuggest 解构（issue #196，
@@ -1095,7 +1052,7 @@ const {
   resetSuggestionsForSession,
   ignoreSuggestion,
 } = useCommandSuggestions({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   getTerminalHost: () => terminalHost.value,
   sendTerminalBytes,
   getPendingTerminalInput: () => pendingTerminalInput,
@@ -1128,15 +1085,8 @@ const {
 // —— 快速命令数据面（M32-A3）：RPC 全部留在 App，编辑器/导入视图在
 // QuickCommandsSection（设置·终端），经 SettingsDialog 上抛意图。 ——
 
-// 批量发送命令条（Electerm quick-command bar 风格）：常驻贴在终端底部，回车
-// 生效只读门禁（来自 ssh/sessions/list 行的 readOnly：表单 read_only ∥
-// 宿主标准 read_only）。后端门禁为权威来源，前端据此禁用写操作。
-const connectionReadOnly = ref(false);
-const settingsOpen = ref(false);
 // reka Select 不接受空串 option value（空串 = 未选中占位）；空值选项用哨兵值双向映射。
 const SELECT_EMPTY_SENTINEL = "__empty__";
-const auditOpen = ref(false);
-const profilesOpen = ref(false);
 const diskUsage = ref<DiskUsage>();
 // Warp 式 history 面板（↑ 唤起）：状态/过滤/键位消费收口在
 // composables/useHistoryPanel；这里做数据与浮层互斥接线。
@@ -1157,7 +1107,7 @@ const {
   handleHistoryPanelKey,
   handleHistoryPanelPanelKey,
 } = useHistoryPanel({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   commandHistory: () => commandHistory.value,
   commandHistoryTimes: () => commandHistoryTimes.value,
   commandHistoryMeta: () => commandHistoryMeta.value,
@@ -1183,25 +1133,6 @@ const {
 // 终端拖入文件的落点询问：null 表示取消；"cwd" 用解析后的 shell/SFTP 当前
 // 目录（resolveDropTargetDir：终端 cwd 跟随 → SFTP home → 面板当前目录），
 // 弹窗展示解析结果；{ dir } 是用户输入的目标目录（文件原名落其下）。
-const terminalFontSize = ref(appearance.value.terminal.fontSize);
-// 终端字体单独设置（issue #31）：字体族/字号的用户覆盖，null 字段 = 跟随宿主。
-// setup 期读取安全：loadTerminalFontOverride 经 pluginStore（内部全 guarded，
-// opaque origin 不抛错），见 lib/terminalFont.ts 说明。
-const terminalFontOverride = ref<TerminalFontOverride>(loadTerminalFontOverride());
-// 终端外观偏好（对标 Tabby 的 Settings → Appearance）：配色方案两槽（随宿主
-// 亮暗自动切换）、底色策略、字体间距、光标形态与多套主题快照。默认态为
-// schemeSource: "host"，即不启用任何方案、行为与既有版本完全一致。
-//
-// 字体字段（font）不在此持久化状态里作为真相：权威态是 terminalFontOverride
-// （Ctrl+滚轮缩放也写它）。读取时用 terminalAppearanceState 覆盖合成，避免
-// 「缩放改过字号后主题仍高亮」这类双真相漂移。
-const terminalAppearance = ref<TerminalAppearanceState>(loadTerminalAppearance());
-const terminalAppearanceState = computed<TerminalAppearanceState>(() => ({
-  ...terminalAppearance.value,
-  font: { family: terminalFontOverride.value.fontFamily, size: terminalFontOverride.value.fontSize },
-}));
-// 当前配置命中的主题 id（null = 已改动，不再等于任何预设/我的主题）。
-const activeAppearanceThemeId = computed(() => activeProfileId(terminalAppearanceState.value));
 // 设置弹窗（独立组件 SettingsDialog）：实例 ref 用于 Esc 内联分层消费与
 // 下载草稿回填；下载偏好权威态在本组件，经适配器交给组件读写。
 const settingsDialog = ref<InstanceType<typeof SettingsDialog>>();
@@ -1325,7 +1256,7 @@ const {
   updateWallpaperOpacity,
 } = useWallpaper({
   webglEnabled,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   getWebglRenderer: () => webglRenderer.value,
   setWebglRenderer: (renderer) => { webglRenderer.value = renderer; },
   createWebglAddon: () => new WebglAddon(),
@@ -1334,26 +1265,11 @@ const {
 });
 // True while attachSession sits inside its bounded backoff loop; turns the
 // status pill and overlay into the dedicated "reconnecting" phase.
-const sftpSearch = ref("");
-const sftpTypeFilter = ref<SftpTypeFilter>("all");
-/** 默认隐藏以 "." 开头的 Unix 隐藏文件、__pycache__ 等系统缓存条目；
- *  用户可通过过滤栏眼睛图标切换。 */
-const sftpShowHidden = ref(false);
 /** 显示/隐藏文件切换进全局布局偏好（issue #178），重启不再回落默认隐藏。 */
 function toggleSftpShowHidden() {
   sftpShowHidden.value = !sftpShowHidden.value;
   persistState();
 }
-// 单栏文件树（根/可见行/已加载全集/行选中态）由 useSftpWorkspace 持有，
-// 这里只保留过滤草稿与快捷路径。
-// 路径弹层快捷路径（侧栏移除后仍保留在路径历史 popover 内）。
-const SFTP_QUICK_PATHS = ["/", "/home", "/tmp", "/etc", "/var", "/root"];
-// OTP 验证码 / 会话导入工具弹窗（SFTP 路径工具栏入口）。
-const otpPanelOpen = ref(false);
-const importPanelOpen = ref(false);
-// Aggregated progress for multi-item batch operations (delete / archive);
-// null while no batch is in flight.
-const batchProgress = ref<BatchProgressState | null>(null);
 
 // SetUserVar cwd 元数据（优先通道）的最新上报；null 表示通道未启用，OSC 7
 // 提示符通道照旧跟随（回落语义不变）。裁决规则见 shouldOsc7FollowOverrideUserVarCwd。
@@ -1401,7 +1317,7 @@ const {
   session,
   sftpPaneOpen,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   getWorkbenchId: () => workbenchId,
   closeRightPanel: () => closeRightPanel(),
   getBatchBarOpen: () => batchBarOpen,
@@ -1426,7 +1342,7 @@ const {
 } = useTelnetWorkbench({
   showError,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   getConnectionId: () => connectionId,
   getWorkbenchId: () => workbenchId,
   getRuntimeEndpoint: () => runtimeEndpoint,
@@ -1443,7 +1359,7 @@ const {
 } = useSerialWorkbench({
   showError,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   localShellRestored,
   getWorkbenchId: () => workbenchId,
   getConnection: () => connection,
@@ -1471,23 +1387,9 @@ const {
   showError,
   getSessionId: () => serialSession.value?.sessionId,
 });
-// RDP 会话（nyaterm-parity P3-4）：与 SSH/本地/Telnet/串口/VNC 同款互斥展示，
-// 并入 localUiMode。画面走 RdpSurface 画布（帧从 rdp/frame/{id} 解码），状态
-// 经 lib/rdpFrame 的纯 reducer 折叠（connecting/connected/reconnecting/closed
-// + errorKind），断线重连展示手动 rdp/reconnect 出口。
-const rdpSession = ref<{ sessionId: string; host: string; port: number } | null>(null);
-const rdpDialogOpen = ref(false);
-// RDP 实验门控的权威在后端（rdp/start 前置检查 local/preferences 的
-// rdp_experimental_enabled，直接 RPC 也无法绕过）；M32-A 移除工具条入口后
-// 前端不再持有内存门副本。
-const rdpState = ref<RdpSessionStateView>(initialRdpSessionState());
-const rdpScaleMode = ref<RdpConnectOptions["scaleMode"]>("fit");
-const rdpSurface = ref<InstanceType<typeof RdpSurface> | null>(null);
-// 超大剪贴板的分片拼接缓冲（sidecar C2 修复：>8 MiB 的 JSON 事件会被 SDK
-// 上限静默丢弃，后端按 chunkIndex/chunkTotal 分片发送；sessionId 隔离防串话）。
-const rdpClipboardChunks = new Map<string, { parts: string[]; received: number }>();
-const isRdpMode = computed(() => rdpSession.value !== null);
-const rdpTarget = computed(() => (rdpSession.value ? `${rdpSession.value.host}:${rdpSession.value.port}` : ""));
+// 本地/非 SSH 会话激活期（本地/Telnet/串口/VNC/RDP）：SSH 专属能力整体隐藏。
+// 依赖 useLocalShellSession/useTelnetWorkbench/useSerialWorkbench/useVncSession
+// 的会话态（本段之后装配），因此不进 state/useSessionState。
 const localUiMode = computed(() => isLocalMode.value || localShellRestored.value || isTelnetMode.value || isSerialMode.value || isVncMode.value || isRdpMode.value);
 // —— 本地终端偏好/shell 发现/选择器：收口在 composables/useLocalShellPreferences ——
 // （本地终端进程本身仍由本文件 start/close，牵动输出管线状态。）
@@ -1525,14 +1427,6 @@ const {
   closeSessionMenu: () => { sessionMenuOpen.value = false; },
   setShellPickOpen: (open) => { sessionMenuShellPickOpen.value = open; },
 });
-// shell 选择器菜单：打开 shell 选项视图时拉一次 local/shells/list。
-// 会话下拉（新建/复制/命令会话/本地终端/Shell 选项）单入口状态；shell 视图
-// 为同弹层内的视图切换（非独立 popover，Esc/外点由 reka 随弹层整体收口）。
-const sessionMenuOpen = ref(false);
-const sessionMenuShellOpen = ref(false);
-// 「选择 Shell 打开」子视图：同弹层视图切换（dock「+」同款列表），语义是
-// 一次性 override 打开，与设置子视图（radio = 默认偏好）刻意分开。
-const sessionMenuShellPickOpen = ref(false);
 // Dock 面板配色快切 + 工具条隐藏偏好：收口在 composables/useWorkbenchToolbar。
 const {
   panelPaletteOpen,
@@ -1566,7 +1460,7 @@ const {
   t: (key) => t(key),
   showNotice,
   showError,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   isTransferBusy: () => terminalTransferBusy.value,
   frameStream: {
     pendingFrames: pendingTerminalFrames,
@@ -1635,12 +1529,8 @@ const {
   rdpFrames: () => ({ session: rdpSession, state: rdpState, surface: rdpSurface }),
   getDownloadChunkWaiters: () => downloadChunkWaiters,
 });
-// #33/#71 快速输入丢字母的分层计数：keys(onData 实际路由到 PTY 的按键)、
-// sends(提交给宿主桥的帧)、acks(sidecar 确认收到的帧)、errors(桥拒绝)、
-// swallowed(被 zmodem/trzsz 路由吞掉的按键)。宿主开启 localStorage 的
-// dbx-term-diag=1 后每 2s 在控制台输出；始终挂在 window 上便于随时读取。
-const terminalDiag = reactive({ keys: 0, sends: 0, acks: 0, errors: 0, swallowed: 0 });
-const terminalDiagVisible = ref(false);
+// 诊断开关（dbx-term-diag=1）只控制打印频率：计数对象本体在
+// state/useTerminalState，计时器句柄仍由本文件在卸载时清理。
 let terminalDiagTimer = 0;
 if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__dbxTerminalDiag = terminalDiag;
@@ -1662,7 +1552,6 @@ if (typeof window !== "undefined") {
 // SSH/本地/Telnet 与串口的有序输入队列（含通道选择与失败落梯子）随
 // useTerminalInput 迁至 io/useTerminalInput.ts；解构见上方 terminalInputQueue。
 
-const locale = ref("zh-CN");
 const t = (key: string, values: Record<string, string | number> = {}) => workbenchMessage(locale.value, key, values);
 // 宿主用 iframe 的 document.title 命名工作台标签：标题跟随 locale，
 // 中文环境显示「终端」而不是静态的英文插件名。
@@ -1719,7 +1608,7 @@ const {
   clearTerminal,
 } = useTerminalClipboard({
   t,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   terminalCopyCache,
   terminalMenuOpen,
   menuSelectionSnapshot,
@@ -1738,13 +1627,6 @@ const {
   trackPendingInput,
   sendTerminalBytes,
 });
-const connectionId = computed(() => normalizeConnectionText(hostContext.value.connectionId));
-// Host API 1.1 provides a stable workbenchId in the host context; on 1.0 a
-// locally generated id keeps session scoping per workbench instance (A4 W1
-// helper, spec §11: host-authoritative workbenchId; the fallback covers 1.0
-// hosts that omit the injection — see lib/pluginContext.spec.ts).
-const fallbackWorkbenchId = randomUUID();
-const workbenchId = computed(() => resolveWorkbenchId(hostContext.value, fallbackWorkbenchId));
 // RDP 会话生命周期与证书确认：收口在 composables/useRdpSession（rdpSession/
 // rdpState/rdpSurface 等模板共享态留守 App.vue，经 options 注入）。
 const {
@@ -1757,7 +1639,7 @@ const {
   workbenchId,
   connectionId,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
 });
 // —— RDP 工作台专属逻辑（大文本粘贴 + 分辨率入口）：收口在 rdp/useRdpWorkbench，
 // App.vue 只保留薄挂载点（模板绑定经解构同名透出）。 ——
@@ -1780,16 +1662,6 @@ const {
   getBatchBarOpen: () => batchBarOpen,
 });
 
-const restored = computed(() => hostContext.value.restored === true);
-const runtimeEndpoint = computed<RuntimeEndpoint>(() => {
-  const value = hostContext.value.runtime;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const raw = value as Record<string, unknown>;
-  return {
-    host: normalizeConnectionText(raw.host),
-    port: normalizeConnectionPort(raw.port),
-  };
-});
 // VNC 会话生命周期与输入/帧入口：收口在 composables/useVncSession
 // （vncSession/vncState/vncSurface 等模板共享态由组合式函数持有并解构透出）。
 const {
@@ -1803,50 +1675,7 @@ const {
   workbenchId,
   runtimeEndpoint,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
-});
-const connection = computed<ConnectionSummary>(() => {
-  const value = hostContext.value.connection;
-  // 宿主下发的 connection 是配置对象（mockDbxHost 同契约）；对象之外一律视为缺失。
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {} as ConnectionSummary;
-  const raw = value as Record<string, unknown>;
-  // 宿主把插件表单状态放在嵌套的 external_config 里（生命周期推送同构：
-  // model.rs RuntimeEndpoint 即从 connection.external_config 读 protocol）；
-  // 顶层拍平与嵌套两级都读，顶层优先。
-  const ext = raw.external_config && typeof raw.external_config === "object" && !Array.isArray(raw.external_config)
-    ? (raw.external_config as Record<string, unknown>)
-    : {};
-  const field = (key: string): unknown => raw[key] ?? ext[key];
-  // serial/rdp 连接配置（M32-B）：manifest select 存的是字符串值，逐项
-  // 白名单归一，非法/缺失回落各 startXXXSession 的默认值。
-  const resolution = typeof field("rdp_resolution") === "string" ? (field("rdp_resolution") as string).match(/^(\d{3,4})x(\d{3,4})$/) : null;
-  const protocolRaw = typeof field("protocol") === "string" ? (field("protocol") as string) : undefined;
-  return {
-    name: normalizeConnectionText(raw.name),
-    host: normalizeConnectionText(raw.host),
-    port: normalizeConnectionPort(raw.port),
-    username: normalizeConnectionText(raw.username),
-    color: normalizeConnectionText(raw.color),
-    readOnly: raw.readOnly === true,
-    protocol: protocolRaw === "telnet" || protocolRaw === "vnc" || protocolRaw === "serial" || protocolRaw === "rdp" ? protocolRaw : "ssh",
-    serialPort: normalizeConnectionText(field("serial_port")),
-    serialBaud: [9600, 19200, 38400, 57600, 115200, 230400].includes(Number(field("serial_baud"))) ? Number(field("serial_baud")) : undefined,
-    serialDataBits: field("serial_data_bits") === "7" ? "7" : field("serial_data_bits") === "8" ? "8" : undefined,
-    serialParity: field("serial_parity") === "even" || field("serial_parity") === "odd" ? (field("serial_parity") as "even" | "odd") : field("serial_parity") === "none" ? ("none" as const) : undefined,
-    serialStopBits: field("serial_stop_bits") === "1" ? "1" : field("serial_stop_bits") === "2" ? "2" : undefined,
-    serialBackspace: field("serial_backspace") === "ctrl_h" ? "ctrl_h" : field("serial_backspace") === "del" ? "del" : undefined,
-    rdpDomain: normalizeConnectionText(field("rdp_domain")),
-    rdpWidth: resolution ? Number(resolution[1]) : undefined,
-    rdpHeight: resolution ? Number(resolution[2]) : undefined,
-    rdpCertificatePolicy: field("rdp_certificate_policy") === "strict"
-      ? ("strict" as const)
-      : field("rdp_certificate_policy") === "accept-temporarily"
-        ? ("accept-temporarily" as const)
-        : field("rdp_certificate_policy") === "prompt"
-          ? ("prompt" as const)
-          : undefined,
-    rdpClipboard: field("rdp_clipboard") === undefined ? undefined : field("rdp_clipboard") === true || field("rdp_clipboard") === "true",
-  };
+  getTerminal: () => terminal.value,
 });
 // —— VNC 连接路由（连接记录直启）：收口在 composables/useVncWorkbench，
 // App.vue 只保留薄挂载点（模板绑定经解构同名透出）。 ——
@@ -1854,31 +1683,11 @@ const { startVncFromConnection } = useVncWorkbench({
   connection,
   startVncSession,
 });
-// sidecar 查询到的权威协议（connection/protocol）：真实宿主推给 webview 的
-// connection 上下文缺 external_config.protocol，openSession 路由时查询结果必须
-// 写回这里，协议路由与连接级门控才有可靠的事实源——只用于当次路由而不落状态的
-// 话，isRdpConnection 在真实宿主恒为 ssh 形态，SSH 专属入口全部漏出。
-// 连接切换（宿主改推另一连接）即失效，避免把上一连接的协议带给下一个连接。
-const storedConnectionProtocol = ref("");
+// 连接切换（宿主改推另一连接）时失效 sidecar 缓存的协议，避免把上一连接的
+// 协议带给下一个连接（权威协议与 connectionProtocol 派生在 state/useSessionState）。
 watch(connectionId, () => {
   storedConnectionProtocol.value = "";
 });
-// 连接协议（对标 Tabby profile）：sidecar 暂存的权威协议 > 宿主连接表单的
-// protocol 字段，缺省 ssh。非 SSH 连接由 openSession 路由到各自的会话视图，
-// 不建立 SSH 会话。
-const connectionProtocol = computed<"ssh" | "telnet" | "vnc" | "serial" | "rdp">(() => {
-  const protocol = storedConnectionProtocol.value || connection.value.protocol;
-  return protocol === "telnet" || protocol === "vnc" || protocol === "serial" || protocol === "rdp" ? protocol : "ssh";
-});
-// RDP 连接（宿主表单 protocol=rdp）：SSH/SFTP/主机运维整类能力在 RDP 连接上
-// 无处生效，工具条、面板与覆盖层按连接协议整体隐藏（而非置灰）——与 localUiMode
-// 的"local 模式隐藏 SSH 专属动作"惯例一致。区别于 isRdpMode（仅 RDP 会话激活
-// 期），连接级门控让断开态下残留的 SSH 入口也不再出现。并集 isRdpMode 兜住
-// 对话框直连路径（不经 openSession 查询，表单协议无从知晓）与会话已激活、
-// 协议查询尚未返回的窗口期——这两段里 SSH 入口同样一处都不该出现。
-const isRdpConnection = computed(() => connectionProtocol.value === "rdp" || isRdpMode.value);
-const canWrite = computed(() => !connection.value.readOnly && !connectionReadOnly.value);
-const connected = computed(() => terminalState.value === "connected" && !!session.value);
 // 终端分屏：布局树状态与窗格/页签操作收口在 composables/useShellTabs；
 // 「页签上报 cwd」「窗格激活」两个目录跟随入口仍在本文件（结构测试锁定）。
 const {
@@ -2011,31 +1820,6 @@ const connectionAuthMethodLabel = computed(() => formatAuthMethodLabel(connectio
   };
   return labels[method];
 }));
-// 连接色染色按主题分级（light 压低 alpha 保 muted 文字 AA 对比度，P2-4）。
-const toolbarStyle = computed(() => toolbarTintStyle(connection.value.color, appearance.value.colorScheme));
-// 工作台分栏：Docker 固定为终端在上、容器在下（默认终端 67% / 容器 33%），
-// 不受左右/上下偏好与换位影响；SFTP/指标沿用用户轴向与 splitRatio。
-const paneLayout = computed(() => resolveWorkbenchPaneLayout({
-  dockerOpen: dockerPanelOpen.value,
-  pref: paneDirection.value,
-  viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined,
-  splitRatio: splitRatio.value,
-  dockerSplitRatio: dockerSplitRatio.value,
-}));
-// 终端让宽（纯计算在 lib/paneLayout）：右侧栏按当前生效比例让出份额。
-const terminalBasis = computed(() => ({
-  flexBasis: terminalFlexBasis({ sftpOpen: sftpPaneOpen.value, splitRatio: paneLayout.value.ratio }),
-}));
-// 纵向分栏（issue #207）：「始终上下」/ 窄屏断点/ Docker 底栏的两栏高度改由
-// 容器上的 --pane-split 变量消费当前生效比例，CSS 不再钉死。
-// solo（右侧栏收起）不设变量，回落既有 solo 全屏规则。
-const paneSplitStyle = computed(() => paneSplitCssVar({ sftpOpen: sftpPaneOpen.value, splitRatio: paneLayout.value.ratio }));
-const orderedPaneClass = computed(() => [
-  paneOrder.value === "sftp-left" ? "panes panes--reversed" : "panes",
-  paneDirectionClass(paneDirection.value),
-  dockerPanelOpen.value ? "panes--docker-split" : "",
-  sftpPaneOpen.value ? "" : "panes--solo",
-].filter(Boolean).join(" "));
 // Docker 每次打开回到 1/3；拖动只在本次打开期间生效（视图本身不跨重启恢复）。
 watch(dockerPanelOpen, (open) => {
   if (open) dockerSplitRatio.value = DOCKER_SPLIT_RATIO_DEFAULT;
@@ -2125,7 +1909,7 @@ const {
 } = useTerminalAppearance({
   t, showNotice, appearance, terminalAppearance, terminalFontOverride, terminalFontSize,
   terminalWriteThrottle, terminalSyncOutput,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   scheduleFit,
   setTerminalFont: (family, size) => setTerminalFont(family, size),
 });
@@ -2164,7 +1948,7 @@ const {
   closeFileMenu: () => { fileMenu.value = undefined; },
   pasteTerminal,
   adjustTerminalZoom: (delta) => adjustTerminalZoom(delta),
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   getTerminalHost: () => terminalHost.value,
   session,
   sendTerminalBytes,
@@ -2181,7 +1965,7 @@ const {
   applyTerminalFontSettings,
 } = useTerminalFontZoom({
   t, showNotice, appearance, terminalAppearance, terminalFontOverride, terminalFontSize,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   scheduleFit,
   hostTerminalFontFamily,
 });
@@ -2225,7 +2009,7 @@ const {
   handleQuickSelectKey,
 } = useQuickSelect({
   t, showNotice, showError,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   terminalMenuOpen, terminalCopyCache, clipboardDeps,
 });
 
@@ -2281,7 +2065,7 @@ const {
   acceptGhostSuggestionWord,
   syncGhostAnchorOnSettle,
 } = useGhostSuggest({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   sendTerminalBytes,
   getPendingTerminalInput: () => pendingTerminalInput,
   appendToPendingTerminalInput: (data) => { pendingTerminalInput += data; },
@@ -2337,7 +2121,7 @@ const {
   aiAssistFromTerminal: () => aiAssistFromTerminal(),
   showNotice,
   t: (key) => t(key),
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   copyTerminalSelection: () => copyTerminalSelection(),
   selectAllTerminal: () => selectAllTerminal(),
   clearTerminal: () => clearTerminal(),
@@ -2368,7 +2152,7 @@ const {
   consumeFrameViaZmodem,
 } = useZmodem({
   t, showNotice, showError, connected,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   sendTerminalBytes, dispatchTerminalOutput,
   loadDirectory: (path?: string) => loadDirectory(path),
   // 懒引用：save 链/trzszBusy 都在本调用点之后才声明（TDZ），闭包只在传输时执行。
@@ -2409,7 +2193,7 @@ const {
   setTrzszTerminalColumns,
 } = useTrzsz({
   t, showNotice, showError, session, canWrite, zmodemBusy, terminalMenuOpen,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   writeTerminalOutput, sendTerminalBytes,
   probeLocalCapabilities: () => probeLocalCapabilities(),
   saveHostFile: (chunks, fileName) => saveHostFile(chunks, fileName),
@@ -2489,7 +2273,7 @@ const {
   currentPath,
   terminalInputQueue,
   isDisposed: () => disposed,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   createTerminal,
   fitTerminalDimensions,
   scheduleFit,
@@ -2564,7 +2348,7 @@ const { connectCardState, connectLogEntries, reconnect, cancelConnect, startConn
   terminalState,
   connectCancelled, connectSucceeded, connectLog,
   reconnectPending, reconnectAttempt, reconnectTimer,
-  getTerminal: () => terminal,
+  getTerminal: () => terminal.value,
   // gutter 引擎在本文件后段装配（Task 8 抽取）：这里只登记回调，调用发生在连接建立后。
   resetGutterTimestamps: () => resetGutterTimestamps(),
   requestHostReopenConnection,
@@ -2672,11 +2456,8 @@ const {
   runAlertTriage,
   sendSuggestionToTerminal,
   copySuggestions,
-} = useAlertTriage({ t, showError, showNotice, session, terminal: () => terminal, trackPendingInput, sendTerminalBytes, clipboardDeps });
+} = useAlertTriage({ t, showError, showNotice, session, terminal: () => terminal.value, trackPendingInput, sendTerminalBytes, clipboardDeps });
 
-// 端口映射（-L/-R）管理弹窗：全部逻辑在 components/PortForwardDialog.vue，
-// 这里只保留工具栏入口的开关状态。
-const forwardsOpen = ref(false);
 
 // 容器管理：右侧栏第三视图（与 SFTP/指标互斥）；面板本体仍由 DockerPanel
 // 自治（会话解析/轮询/动作/引擎设置都在组件内），切走即卸载停轮询。
@@ -2699,7 +2480,7 @@ const {
 // 关键词高亮的 decoration 渲染引擎收口在 useTerminalHighlight（规则表 CRUD 仍在
 // useHighlightRules）；终端实例经 getter 注入，跟随终端重建。
 const { attachHighlightRender, detachHighlightRender, rescanHighlightViewport } = useTerminalHighlight({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   highlightEnabled,
   compiledHighlightRules,
   highlightDisplayMode,
@@ -2733,7 +2514,7 @@ const {
   handleDockerOpenInTerminal,
   updateActionLinksSettings,
 } = useTerminalActionLinks({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   terminalHost,
   compiledHighlightRules,
   outputGate,
@@ -2765,7 +2546,7 @@ const {
   stampGutterWrittenRows,
   updateGutterSettings,
 } = useTerminalGutter({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   outputGate,
   terminalWriteThrottle,
   scheduleFit,
@@ -3115,8 +2896,6 @@ const {
   refreshAfterCreate: refreshSftpAfterUpload,
 });
 
-const localDownloadDir = ref("");
-const localCanSave = ref(false);
 // 下载落盘链：收口在 composables/useSftpDownload。
 const {
   probeLocalCapabilities,
@@ -3204,7 +2983,7 @@ const {
   sftpViewActive,
   uploadSource, loadTransferConcurrency, loadTransferMaxActive, loadTransferDuplicatePolicy, transferDuplicateState,
   transferTasks,
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   loadDirectory,
   refreshAfterUpload: refreshSftpAfterUpload,
   openTransferPanel,
@@ -3221,7 +3000,7 @@ const {
   searchSelectionOnline,
   searchTextOnline,
 } = useOnlineSearch({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   terminalMenuOpen,
   copyTextToClipboard,
   persistPrefs: (patch) => persistTerminalFeaturePrefs(patch),
@@ -3780,7 +3559,7 @@ const {
   resetPromptHintsQuiet,
   disposePromptHints,
 } = usePromptHints({
-  terminal: () => terminal,
+  terminal: () => terminal.value,
   isLocalMode, session, commandRunning, terminalTransferBusy,
   suggestionOpen, completionOpen, historyPanelOpen, quickSelectOpen, searchOpen,
   aiSearchActive: () => aiSearchState.value.active,
