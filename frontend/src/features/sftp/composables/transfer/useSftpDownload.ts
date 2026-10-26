@@ -104,24 +104,17 @@ function probeLocalCapabilities() {
   return localCapabilities;
 }
 
-/** 单文件/目录下载入口；forceSudo 走 sudo/download/start（M14-C DownloadSudo，
- * root 大文件二进制下载）——start 换方法换参数名（path），分块循环、finish、
- * 取消与进度面板全部复用既有下载管线，取消路径的 sftp/transfer/cancel 对
- * sudo 任务同样生效（sidecar 会顺带清掉远端临时件）。 */
-async function downloadEntry(entry: DownloadListEntry, forceSudo = false) {
-  fileMenu.value = undefined;
-  // 目录条目走递归文件夹下载（tree/start + 同一分块管线）；文件沿用单文件管线。
-  // sudo 下载只覆盖普通文件：root 目录没有对应的暂存语义，明确拒绝。
-  if (forceSudo && entry.kind !== "file") {
-    showError(new Error(t("sudoDownload.filesOnly")));
-    return;
-  }
-  if (entry.kind === "directory") {
-    await downloadDirectoryEntry(entry);
-    return;
-  }
+type DownloadRemoteFileInput = { remotePath: string; name: string; size?: number; forceSudo?: boolean };
+
+/** 通用单文件下载：树条目与容器暂存件共用同一条落盘管线。
+ * forceSudo 走 sudo/download/start（M14-C DownloadSudo，root 大文件二进制
+ * 下载）——start 换方法换参数名（path），分块循环、finish、取消与进度面板
+ * 全部复用既有下载管线，取消路径的 sftp/transfer/cancel 对 sudo 任务同样
+ * 生效（sidecar 会顺带清掉远端临时件）。retry 供调用方提供原入口的重试。 */
+async function downloadRemoteFile(input: DownloadRemoteFileInput, retry?: () => void) {
+  const { remotePath, name, size, forceSudo = false } = input;
   openTransferPanel();
-  if (!session.value || entry.kind !== "file") return;
+  if (!session.value) return;
   // Prefer the sidecar local sink on desktop so completed downloads retain a
   // validated localPath for the reveal/open actions in the transfer panel and
   // persisted history. Fall back to the host file-transfer bridge when a
@@ -133,18 +126,18 @@ async function downloadEntry(entry: DownloadListEntry, forceSudo = false) {
   let dirOverride = "";
   let setDefaultAfter = false;
   if (saveToLocal && !loadDownloadUseDefaultDir()) {
-    const chosen = await askDownloadTarget(entry.name);
+    const chosen = await askDownloadTarget(name);
     if (chosen === undefined) return;
     dirOverride = chosen.dir.trim();
     setDefaultAfter = chosen.setDefault;
   }
   // 冲突策略：ask 且确实撞名时先问，取消则整次下载不发生（仅本地落盘可查本机目录）。
-  const conflict = saveToLocal ? await resolveDownloadConflictFor(dirOverride, entry.name) : undefined;
+  const conflict = saveToLocal ? await resolveDownloadConflictFor(dirOverride, name) : undefined;
   if (saveToLocal && conflict === undefined) return;
   const fileTransfer = saveToLocal || !rpcAvailable() ? undefined : window.dbxPlugin.fileTransfer;
   // Web/Docker mode has no local sink and no host save dialog; the whole file
   // is buffered in browser memory before saving, so warn before large ones.
-  if (!fileTransfer && !saveToLocal && (entry.size || 0) > WEB_DOWNLOAD_WARNING_BYTES && !(await confirmDialog(t("webDownload.largeWarning", { name: entry.name, size: formatBytes(entry.size || 0) }), { danger: false }))) return;
+  if (!fileTransfer && !saveToLocal && (size || 0) > WEB_DOWNLOAD_WARNING_BYTES && !(await confirmDialog(t("webDownload.largeWarning", { name, size: formatBytes(size || 0) }), { danger: false }))) return;
 
   let info: DownloadStartInfo | undefined;
   let target: { handleId: string; chunkBytes: number } | undefined;
@@ -158,8 +151,8 @@ async function downloadEntry(entry: DownloadListEntry, forceSudo = false) {
     };
     // sudo 下载族参数名用 path（与 sudo/stat 等同族一致），sftp 族用 remotePath。
     info = forceSudo
-      ? await rpc<DownloadStartInfo>("sudo/download/start", { ...startParams, path: pathFromUri(entry.uri) })
-      : await rpc<DownloadStartInfo>("sftp/download/start", { ...startParams, remotePath: pathFromUri(entry.uri) });
+      ? await rpc<DownloadStartInfo>("sudo/download/start", { ...startParams, path: remotePath })
+      : await rpc<DownloadStartInfo>("sftp/download/start", { ...startParams, remotePath });
     transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "download", fileName: info.fileName, size: info.size, transferred: 0, status: "queued", joinedAt: Date.now(), compression: info.compression === "gzip" ? "gzip" : undefined };
     // 压缩任务等 prep 就绪（M33）：普通任务（含 sudo/回退）立即返回。
     await waitForDownloadReady(info.taskId, info.compression);
@@ -249,9 +242,29 @@ async function downloadEntry(entry: DownloadListEntry, forceSudo = false) {
       showNotice(t("transferStatus.cancelled"));
     } else {
       // 失败闭环：横幅带「重试」，按原入口完整重跑（含询问/冲突流程）。
-      showError(cause, "sftp", () => void downloadEntry(entry, forceSudo));
+      showError(cause, "sftp", retry);
     }
   }
+}
+
+/** 树条目入口：只做 entry → downloadRemoteFile 参数的适配（目录走递归下载）。 */
+async function downloadEntry(entry: DownloadListEntry, forceSudo = false) {
+  fileMenu.value = undefined;
+  // 目录条目走递归文件夹下载（tree/start + 同一分块管线）；文件沿用单文件管线。
+  // sudo 下载只覆盖普通文件：root 目录没有对应的暂存语义，明确拒绝。
+  if (forceSudo && entry.kind !== "file") {
+    showError(new Error(t("sudoDownload.filesOnly")));
+    return;
+  }
+  if (entry.kind === "directory") {
+    await downloadDirectoryEntry(entry);
+    return;
+  }
+  if (entry.kind !== "file") return;
+  await downloadRemoteFile(
+    { remotePath: pathFromUri(entry.uri), name: entry.name, size: entry.size, forceSudo },
+    () => void downloadEntry(entry, forceSudo),
+  );
 }
 
 // —— 递归文件夹下载（issue #46）：目录条目 → sftp/download/tree/start ——
@@ -449,6 +462,8 @@ async function openTransferTarget(path: string) {
     waitForDownloadReady,
     probeLocalCapabilities,
     downloadEntry,
+    /** 通用单文件下载（容器暂存件等非树条目调用方）：不依赖 entries/fileMenu。 */
+    downloadRemoteFile,
     batchDownload,
     saveHostFile,
     revealTransferTarget,

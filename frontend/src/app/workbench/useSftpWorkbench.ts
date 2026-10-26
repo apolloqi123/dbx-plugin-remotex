@@ -15,7 +15,7 @@ const SFTP_KEYS = [
   "confirmDropUpload", "createDirectory", "createNewFile", "ctxSearchEngines", "currentPath",
   "currentPathHistory", "customEditorCommand", "customEditorOpen", "customEditorPattern", "deleteQuickCommand",
   "deleteSubmitting", "deleteTarget", "deleteTerminalAppearanceTheme", "downloadChunkWaiters", "downloadConflictState",
-  "downloadDirState", "downloadEntry", "downloadPrefsAdapter", "downloadUseDefaultState", "dragActive",
+  "downloadDirState", "downloadEntry", "downloadPrefsAdapter", "downloadRemoteFile", "downloadUseDefaultState", "dragActive",
   "dropCwdTarget", "dropUploadPathInput", "dropUploadPathInputEl", "dropUploadPrompt", "dropUploadTarget",
   "editorConfig", "editorPaneContainsFocus", "editorPaneRef", "editorPrefsAdapter", "editorSplitRatio",
   "editorTabs", "enableSudoModeAndReload", "ensureExternalEditors", "entries", "externalEditBusy",

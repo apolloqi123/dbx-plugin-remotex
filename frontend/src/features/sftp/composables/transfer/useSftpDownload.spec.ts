@@ -82,6 +82,30 @@ describe("useSftpDownload with the host bridge absent", () => {
   });
 });
 
+describe("useSftpDownload downloadRemoteFile", () => {
+  it("直接以 remotePath 发起下载，不依赖树条目", async () => {
+    const starts: Array<Record<string, unknown>> = [];
+    globalWindow.dbxPlugin = {
+      invoke: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "local/capabilities") return { canSaveLocal: false, downloadsDir: "" };
+        if (method === "sftp/download/start") {
+          starts.push(params as Record<string, unknown>);
+          throw new Error("stop");
+        }
+        return {};
+      }),
+    };
+    // 同文件前面用例可能已把本机落盘能力缓存为 true：冲突策略返回 rename 保证走到 start。
+    const { download, showError } = mountDownload({ entries: ref([]), resolveConflict: async () => "rename" });
+
+    await download.downloadRemoteFile({ remotePath: "/tmp/dbx-sshx.1/report.log", name: "report.log", size: 3 });
+
+    expect(starts).toHaveLength(1);
+    expect(starts[0]).toMatchObject({ remotePath: "/tmp/dbx-sshx.1/report.log" });
+    expect(showError).toHaveBeenCalledWith(expect.any(Error), "sftp", undefined);
+  });
+});
+
 describe("useSftpDownload batchDownload", () => {
   const a: DownloadEntry = { uri: "sftp:/a.txt", name: "a.txt", kind: "file", size: 10 };
   const b: DownloadEntry = { uri: "sftp:/sub/b.txt", name: "b.txt", kind: "file", size: 10 };

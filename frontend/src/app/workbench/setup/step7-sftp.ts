@@ -15,6 +15,7 @@ import { useSftpBookmarks } from "../../../features/sftp/composables/actions/use
 import { useSftpCreateDirectory } from "../../../features/sftp/composables/actions/useSftpCreateDirectory";
 import { useSftpDelete } from "../../../features/sftp/composables/actions/useSftpDelete";
 import { useSftpDownload } from "../../../features/sftp/composables/transfer/useSftpDownload";
+import { setDockerTransferBridge } from "../../../features/docker/lib/dockerFileTransfer";
 import { useSftpDropUpload } from "../../../features/sftp/composables/transfer/useSftpDropUpload";
 import { useSftpFolderActions } from "../../../features/sftp/composables/actions/useSftpFolderActions";
 import { useSftpPathHistory } from "../../../features/sftp/composables/listing/useSftpPathHistory";
@@ -369,6 +370,7 @@ export function installWorkbenchSftp(deps: Deps) {
   const {
     probeLocalCapabilities,
     downloadEntry,
+    downloadRemoteFile,
     waitForDownloadChunk,
     waitForDownloadReady,
     batchDownload,
@@ -388,6 +390,11 @@ export function installWorkbenchSftp(deps: Deps) {
     // sudo 模式 + 可写连接时批量下载对普通文件走 sudo 车道（与右键单项一致）。
     sudoDownload: () => sudoMode.value && canWrite.value,
   });
+
+  // 容器文件页的传输桥：容器页 props 固定（t/container/sessionId/connectionId/
+  // canWrite），拿不到本域的 SFTP 下载链与上传队列；setup 期登记一次，供
+  // features/docker 的 useContainerFileTransfer 取用（工作台生命周期内稳定）。
+  setDockerTransferBridge({ downloadRemoteFile, uploadSource });
 
   // —— 断点续传：暂停/恢复 + 可续传上传 ———
 
@@ -524,7 +531,7 @@ export function installWorkbenchSftp(deps: Deps) {
     externalEditors, ensureExternalEditors, availableExternalEditors, mappedEditorIdFor, openWithSystemEntry, openWithKnownEntry, openWithCustomEntry, customEditorOpen,
     customEditorName, customEditorCommand, customEditorRemember, customEditorPattern, beginCustomEditorCommand, commitCustomEditor, symlinkDialog, symlinkDraft,
     symlinkTargetDraft, symlinkSubmitting, linkTargets, beginSymlinkCreate, beginSymlinkEdit, commitSymlink, linkTargetTitle, hydrateLinkTargets,
-    probeLocalCapabilities, downloadEntry, waitForDownloadChunk, waitForDownloadReady, batchDownload, saveHostFile, revealTransferTarget, openTransferTarget,
+    probeLocalCapabilities, downloadEntry, downloadRemoteFile, waitForDownloadChunk, waitForDownloadReady, batchDownload, saveHostFile, revealTransferTarget, openTransferTarget,
     focusSftpPaneOnPointerDown, dragActive, sftpDragDropTarget, onSftpTreeDrop, uploadInput, folderUploadInput, folderUploadSupported, folderUploadProgress,
     fileBatchProgress, dropUploadPrompt, dropUploadTarget, dropCwdTarget, dropCwdTargetWire, dropUploadPathInput, dropUploadPathInputEl, uploadDuplicatePrompt,
     uploadDuplicateApplyAll, resolveUploadDuplicateName, resolveUploadDuplicate, onUploadInput, chooseFolderUpload, onFolderUploadInput, onSftpClipboardPaste, handleHostFileDrop,

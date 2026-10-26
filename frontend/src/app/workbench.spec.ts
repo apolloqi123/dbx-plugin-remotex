@@ -1092,7 +1092,7 @@ describe("issue #93 download fallback policy", () => {
     // beginSave 契约：用户取消原生保存框返回 null。旧代码只判 truthy，
     // null 会让分块循环滑进「只推进度不写盘」分支并最终提示下载成功。
     const entryHaystack = appScript.includes("async function downloadEntry(") ? appScript : `${appScript}\n${composablesScript}`;
-    const start = entryHaystack.indexOf("async function downloadEntry(");
+    const start = entryHaystack.search(/async function (?:downloadRemoteFile|downloadEntry)\(/); // 容器合并后单文件管线（含 beginSave 契约）在 downloadRemoteFile
     const body = entryHaystack.slice(start, entryHaystack.indexOf("\n  } catch (cause)", start));
     expect(body).toContain("?? undefined");
     expect(body).toContain("transferStatus.cancelled");
