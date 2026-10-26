@@ -460,7 +460,8 @@ describe("mockDbxHost fixture", () => {
   });
 
   // 容器管理分屏（spec §4/§9.3）：mock 必须能走查真流式日志的生命周期——
-  // start 立即给 streamId，chunk 经 onEvent 到达，stop 后不再有任何事件。
+  // start 立即给 streamId，chunk 经 onEvent 到达；stop 后不再有新 chunk，
+  // 且与 sidecar/PROTOCOL 一致补发一次 `docker/logs/end {error:"cancelled"}`。
   it("docker/logs/start streams chunks and docker/logs/stop halts them", async () => {
     vi.useFakeTimers();
     const plugin = await loadMock("");
@@ -479,12 +480,17 @@ describe("mockDbxHost fixture", () => {
     }
 
     expect(await plugin.invoke("docker/logs/stop", { streamId: "mock-stream" })).toEqual({ stopped: true });
+    // 主动 stop 也必须收口：恰好一条 cancelled end（无 exitCode）。
+    expect(events.filter((event) => event.method === "docker/logs/end")).toEqual([
+      { method: "docker/logs/end", params: { streamId: "mock-stream", error: "cancelled" } },
+    ]);
     await vi.advanceTimersByTimeAsync(12_000);
     expect(events.filter((event) => event.method === "docker/logs/chunk")).toHaveLength(chunks.length);
-    expect(events.filter((event) => event.method === "docker/logs/end")).toEqual([]);
-    // stop 幂等：已停止/未知 id 返回 stopped:false。
+    expect(events.filter((event) => event.method === "docker/logs/end")).toHaveLength(1);
+    // stop 幂等：已停止/未知 id 返回 stopped:false，且不再补发 end。
     expect(await plugin.invoke("docker/logs/stop", { streamId: "mock-stream" })).toEqual({ stopped: false });
     expect(await plugin.invoke("docker/logs/stop", { streamId: "unknown" })).toEqual({ stopped: false });
+    expect(events.filter((event) => event.method === "docker/logs/end")).toHaveLength(1);
     await expect(plugin.invoke("docker/logs/start", { containerId: "web-nginx" })).rejects.toThrow(/Invalid containerId/);
   });
 
@@ -501,14 +507,16 @@ describe("mockDbxHost fixture", () => {
     expect(events.filter((event) => event.method === "docker/logs/chunk").length).toBeGreaterThan(5);
   });
 
-  // ?docker=sudo：日志流以 needsSudo 收口，供「以 sudo 重试」条的浏览器走查。
-  it("?docker=sudo ends the log stream with needsSudo", async () => {
+  // ?docker=sudo：日志流不推任何 chunk，直接以 needsSudo 收口，供「以 sudo
+  // 重试」条的浏览器走查（sidecar 在 daemon 拒绝时同样没有日志分片）。
+  it("?docker=sudo ends the log stream with needsSudo and no chunk", async () => {
     vi.useFakeTimers();
     const plugin = await loadMock("?docker=sudo");
     const events: RecordedEvent[] = [];
     plugin.onEvent((event) => events.push(event as unknown as RecordedEvent));
     await plugin.invoke("docker/logs/start", { containerId: "d4a7c9f1e2b3" });
     await vi.advanceTimersByTimeAsync(700);
+    expect(events.filter((event) => event.method === "docker/logs/chunk")).toEqual([]);
     const end = events.find((event) => event.method === "docker/logs/end");
     expect(end?.params.streamId).toBe("mock-stream");
     expect(end?.params.needsSudo).toBe(true);
@@ -556,9 +564,15 @@ describe("mockDbxHost fixture", () => {
     expect(exported.location).toBe("remote");
     expect(exported.stagingPath).toMatch(/^\/tmp\/dbx-sshx\./);
 
-    // cleanup 幂等：同一暂存路径重复清理仍返回 removed:true。
+    // cleanup 与 sidecar 一致：本轮生成且未清理的路径 removed:true；重复清理、
+    // 未知（合法前缀）路径、越界前缀分别是 false / false / 报错。
     expect(await plugin.invoke("docker/files/cleanup", { stagingPath: exported.stagingPath })).toEqual({ removed: true });
-    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: exported.stagingPath })).toEqual({ removed: true });
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: exported.stagingPath })).toEqual({ removed: false });
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: "/tmp/dbx-sshx.unknown/file" })).toEqual({ removed: false });
+    await expect(plugin.invoke("docker/files/cleanup", { stagingPath: "/etc/passwd" })).rejects.toThrow(/Staging path must start with/);
+    await expect(
+      plugin.invoke("docker/files/import", { containerId, stagingPath: "/tmp/evil", destPath: "/tmp/x" }),
+    ).rejects.toThrow(/Staging path must start with/);
 
     // SSH 上传：prepareUpload → import（destPath 以 / 结尾保留暂存文件名）。
     const prepared = (await plugin.invoke("docker/files/prepareUpload", { name: "notes.txt" })) as { stagingPath: string; name: string };
@@ -568,6 +582,9 @@ describe("mockDbxHost fixture", () => {
     expect(imported.path).toBe("/tmp/notes.txt");
     const tmp = (await plugin.invoke("docker/files/list", { containerId, path: "/tmp" })) as { entries: Array<{ name: string }> };
     expect(tmp.entries.map((entry) => entry.name)).toContain("notes.txt");
+    // 导入只复制（sidecar 语义），暂存仍可清理一次。
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: prepared.stagingPath })).toEqual({ removed: true });
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: prepared.stagingPath })).toEqual({ removed: false });
 
     // 本机上传：begin/chunk/finish/cancel 形状 + 顺序 offset 校验。
     await expect(plugin.invoke("docker/files/upload/begin", { name: "x.bin" })).rejects.toThrow(/only available for local targets/);
@@ -581,14 +598,20 @@ describe("mockDbxHost fixture", () => {
     expect(finished.size).toBe(15);
     expect(finished.stagingPath).toMatch(/^\/tmp\/dbx-sshx-mock\//);
     expect(await plugin.invoke("docker/files/upload/cancel", { target: "local", uploadId: "mock-upload-404" })).toEqual({ canceled: true });
+    // finish 产出的暂存路径已登记：cleanup 首次 true、再次 false。
+    expect(await plugin.invoke("docker/files/cleanup", { target: "local", stagingPath: finished.stagingPath })).toEqual({ removed: true });
+    expect(await plugin.invoke("docker/files/cleanup", { target: "local", stagingPath: finished.stagingPath })).toEqual({ removed: false });
 
-    // 本机下载：export location=local，saveLocal 落到下载目录。
-    const localExport = (await plugin.invoke("docker/files/export", { target: "local", containerId, path: "/etc/hostname" })) as { location: string };
+    // 本机下载：export location=local，saveLocal 落到下载目录并内部消费暂存。
+    const localExport = (await plugin.invoke("docker/files/export", { target: "local", containerId, path: "/etc/hostname" })) as { location: string; stagingPath: string };
     expect(localExport.location).toBe("local");
-    expect(await plugin.invoke("docker/files/saveLocal", { target: "local", stagingPath: "/tmp/dbx-sshx-mock/0001/hostname", name: "hostname" })).toEqual({
+    expect(await plugin.invoke("docker/files/saveLocal", { target: "local", stagingPath: localExport.stagingPath, name: "hostname" })).toEqual({
       localPath: "/Users/demo/Downloads/hostname",
       name: "hostname",
     });
+    // sidecar 的 saveLocal 成功后已清理暂存 → 随后 cleanup 返回 removed:false。
+    expect(await plugin.invoke("docker/files/cleanup", { target: "local", stagingPath: localExport.stagingPath })).toEqual({ removed: false });
+    await expect(plugin.invoke("docker/files/saveLocal", { target: "local", stagingPath: "/tmp/other/x", name: "x" })).rejects.toThrow(/Staging path must start with/);
     await expect(plugin.invoke("docker/files/saveLocal", { stagingPath: "/tmp/x", name: "x" })).rejects.toThrow(/only available for local targets/);
   });
 

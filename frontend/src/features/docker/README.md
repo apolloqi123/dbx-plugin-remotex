@@ -26,6 +26,7 @@ Composable/lib：
 - `lib/dockerLogBuffer.ts`：纯函数——跨 chunk 拼行、行数/字符裁剪、follow 判定（无 Vue 依赖，可单测）。
 - `lib/dockerLogEvents.ts`：`docker/logs/chunk|end` 的处理器表。
 - `lib/dockerFilePaths.ts`：路径归一、父路径、面包屑、目录优先排序。
+- `lib/dockerFileTransfer.ts`：传输纯逻辑与跨域桥——目标参数、512 MiB 上限、暂存路径拆分、base64 分片编码，以及 `setDockerTransferBridge`/`getDockerTransferBridge`（setup 期注入 SFTP 下载/上传队列，避免 App 级状态进 props）。
 - `composables/useContainerFileTransfer.ts`：SSH（SFTP 暂存）与本机（分片上传/保存）两条传输链路，负责覆盖确认、暂存清理与提示。
 
 事件订阅只有一处：`app/workbench/composables/usePluginEvents.ts` 把
@@ -45,7 +46,9 @@ stop 触发点：切容器 / 关闭容器页 / 组件卸载 / 换 tail / 显式�
 - 打开日志页才 `start`；切到文件页**不**停止流（返回时历史仍在）。切容器、
   关闭页面、卸载组件才停止。
 - `stop` 必须幂等且先摘处理器再发 RPC：先摘监听避免 stop 在途时把迟到的
-  chunk 追加进已清空的视图。
+  chunk 追加进已清空的视图。sidecar 在主动 stop 时补发一次
+  `docker/logs/end {streamId, error:"cancelled"}`（已结束的流不再补发），
+  前端据此把状态机收口到「已停止」。
 - 换 tail：停止当前流 → 清空缓冲 → 以新 tail 重启（事件可能迟到，靠
   `streamId` 过滤丢弃旧流分片）。
 - `end` 后不自动重连。`needsSudo:true` 时展示「以 sudo 重试」（只读连接/本机
@@ -90,8 +93,12 @@ stop 触发点：切容器 / 关闭容器页 / 组件卸载 / 换 tail / 显式�
 ## 夹具与冒烟
 
 - 浏览器夹具：`?docker=files`（补充 `/opt/app` 多级树与零字节文件）、
-  `?docker=off`（CLI 缺失）、`?docker=sudo`（daemon 拒绝，日志流以
-  `needsSudo:true` 收口）。日志流在 mock 中每 700ms 推一行、10s 自然结束，
-  流事件方法名/字段与 sidecar 一致（`docker/logs/chunk {streamId,text}`）。
-- 本机 Docker 冒烟：`python3 scripts/smoke/smoke_docker_files.py`
-  （无 Docker/CLI/镜像或 sidecar 二进制时打印 SKIP 并退出 0）。
+  `?docker=off`（CLI 缺失）、`?docker=sudo`（daemon 拒绝：文件页报权限错误，
+  日志流不推 chunk、直接以 `needsSudo:true` 结束）。日志流在 mock 中每 700ms
+  推一行、10s 自然结束；`stop` 会补发 `error:"cancelled"` 的 end。流事件
+  方法名/字段与 sidecar 一致（`docker/logs/chunk {streamId,text}`）。
+- 本机 Docker 冒烟：`python3 scripts/smoke/smoke_docker_files.py`。
+  仅当 docker CLI、可连通的 daemon 或可用的本机镜像缺失时打印 `SKIP` 并退出 0；
+  未找到 sidecar 二进制时**不算 SKIP**——自动回落到 docker CLI 面执行同一套
+  契约（`exec ls/stat`、`logs -f`、`cp` 往返）并打印 `PASS`。脚本只创建临时
+  容器与临时目录，退出时删除，不改动既有容器/镜像。

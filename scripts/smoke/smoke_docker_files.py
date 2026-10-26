@@ -15,8 +15,12 @@ Two data planes are covered depending on the environment:
   contract directly through the docker CLI (`exec ls/stat`, `logs -f`,
   `cp` out/in, `rm`).
 
-The script SKIPs (exit 0) when the docker CLI, a reachable daemon, or a local
-image with a POSIX shell is unavailable, so offline CI stays green.
+The script SKIPs (exit 0) only when the docker CLI, a reachable daemon, or a
+local image with a POSIX shell is unavailable, so offline CI stays green. A
+missing sidecar binary is *not* a SKIP: the run falls back to the CLI plane and
+still reports PASS. Only a throwaway container and temp directories are created;
+both are removed on exit (unless --keep), and no existing container/image is
+modified.
 
 Usage:
     python3 scripts/smoke/smoke_docker_files.py [--binary path/to/dbx-plugin-sshx]
@@ -180,6 +184,13 @@ def sidecar_smoke(plane: SidecarPlane, cid: str, timeout: float) -> None:
     assert isinstance(params.get("text"), str), params
     stopped = plane.request("docker/logs/stop", {"streamId": stream_id}, timeout=20)
     assert stopped.get("stopped") is True, stopped
+    # A manual stop must close the stream with the same cancelled end event the
+    # workbench state machine consumes (PROTOCOL: error:"cancelled").
+    ended = plane.client.wait_event("docker/logs/end", timeout=min(10, timeout))
+    assert ended is not None, "no docker/logs/end after stop"
+    end_params = ended.get("params", {})
+    assert end_params.get("streamId") == stream_id, end_params
+    assert end_params.get("error") == "cancelled", end_params
     log(f"docker/logs/start|stop ok (streamId={stream_id}, chunk={params['text'].strip()!r})")
 
     # 2) browse: root listing + stat of a known file.
