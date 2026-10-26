@@ -11,10 +11,12 @@
 use super::*;
 
 mod list;
+mod staging;
 mod transfer;
 mod uploads;
 
 pub use list::*;
+pub use staging::*;
 pub use transfer::*;
 pub use uploads::*;
 
