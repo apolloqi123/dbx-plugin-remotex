@@ -385,6 +385,7 @@ fn local_argv_uses_exec_it_and_the_fixed_shell() {
     assert!(local_shell_argv("web-nginx").is_err());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn drive_local_pty_forwards_output_and_exit_code() {
     let (sink, mut chunks) = mpsc::channel(16);
@@ -499,7 +500,7 @@ pub(crate) fn spawn_local_program(
             pixel_height: 0,
         })
         .map_err(|error| format!("Failed to open a pseudo terminal: {error}"))?;
-    let mut command = CommandBuilder::new(program);
+    let mut command = CommandBuilder::new(program.as_os_str());
     command.args(args);
     for (key, value) in env {
         command.env(key, value);
