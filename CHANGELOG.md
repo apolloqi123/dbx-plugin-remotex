@@ -8,6 +8,13 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.35] — 2026-10-26
+
+- **容器管理默认显示「列表 + 日志」分栏**。打开容器管理即自动选中首个运行中的容器并以日志页展开（列表 40%，分隔条仍可拖拽/方向键调整）；收起详情后轮询不会重开，点击容器行或行菜单可重新打开。
+  **Container management now opens with the list + logs split.** The first running container is selected automatically and the Logs tab opens (list 40%, divider still draggable/keyboard-adjustable); polling never reopens a dismissed detail, while a row click or the row menu reopens it.
+- **容器终端改为真正的 PTY 交互式 shell**。终端页在容器内启动常驻 shell（优先 bash，否则 sh）：SSH 复用已认证连接新开 PTY 通道，本机使用本地伪终端；沿用工作台字体与配色，支持方向键/历史、Ctrl+C、vim/top 等全屏程序、窗口自适应、复制粘贴与断开重连。只读连接与未运行容器禁用；并发上限 4、TTL 2 小时，审计只记录固定命令，不记录按键或输出。移除旧的逐条命令控制台与 `docker/exec` 接口。
+  **The container terminal is now a real PTY shell.** The Terminal tab starts a persistent shell inside the container (bash when available, otherwise sh): SSH opens a new PTY channel on the authenticated transport, while local mode uses a local pseudo-terminal. It follows the workbench font/colors and supports arrows/history, Ctrl+C, full-screen apps such as vim/top, resize, copy/paste, and reconnect. Read-only connections and stopped containers are disabled; at most four terminals per sidecar with a two-hour TTL; audit records only the fixed command, never keystrokes or output. The old one-shot command console and `docker/exec` surface were removed.
+
 ## [0.7.9-beta.34] — 2026-10-26
 
 - **容器详情新增命令终端**。日志/文件旁新增「终端」页签，可直接在容器内执行命令：每条命令独立以 `docker exec <id> sh -lc` 运行，支持命令历史（↑/↓）、输出与退出码、清空、只读连接禁用；单条命令 60 秒超时、输出上限 1MiB，命令与失败原因写入审计但不记录输出内容。SSH 与本机 Docker 都支持；不保留 shell 的 cwd/env（长任务仍建议使用主终端）。
