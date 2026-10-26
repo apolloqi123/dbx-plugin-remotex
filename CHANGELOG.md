@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.36] — 2026-10-26
+
+- **修复快速切换容器日志/文件/终端时的 `AdministrativelyProhibited` 失败**。SSH 服务器会限制并发 session channel（`MaxSessions`），快速切换时旧通道尚未关闭，新通道会被拒绝，表现为终端/文件打开失败、轮询连续失败后暂停。现在所有 SSH channel 打开（终端、文件、日志、SFTP、命令执行）对 `AdministrativelyProhibited`/`ResourceShortage` 做有界重试；容器终端关闭会等待旧 PTY 通道释放后再建立新会话，切换容器不再触发该错误。
+  **Fixed `AdministrativelyProhibited` failures when switching container logs/files/terminal quickly.** SSH servers cap concurrent session channels (`MaxSessions`); during rapid switching the previous channel was still closing and the next open was refused, breaking terminal/file panes and pausing polling after repeated failures. All SSH channel opens (terminal, files, logs, SFTP, exec) now retry transient `AdministrativelyProhibited`/`ResourceShortage` refusals with backoff, and closing a container terminal waits for the old PTY channel to be released before the next session opens.
+
 ## [0.7.9-beta.35] — 2026-10-26
 
 - **容器管理默认显示「列表 + 日志」分栏**。打开容器管理即自动选中首个运行中的容器并以日志页展开（列表 40%，分隔条仍可拖拽/方向键调整）；收起详情后轮询不会重开，点击容器行或行菜单可重新打开。
