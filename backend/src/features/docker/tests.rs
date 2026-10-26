@@ -661,3 +661,202 @@ fn local_marker_assembly_feeds_the_shared_parsers() {
         0
     );
 }
+
+// —— Embedded container terminal (`docker/exec`) ——————————————
+
+#[test]
+fn exec_command_renders_engine_and_shell_quotes_the_user_command() {
+    let engine = EngineConfig::default();
+    assert_eq!(
+        exec_ssh_command(&engine, "d4a7c9f1e2b3", "ls -la /app").unwrap(),
+        "docker exec d4a7c9f1e2b3 sh -lc 'ls -la /app'"
+    );
+    // Single quotes inside the command are escaped shell-quote style, so
+    // the remote outer shell hands the exact text to the container's sh.
+    assert_eq!(
+        exec_ssh_command(&engine, "d4a7c9f1e2b3", "echo 'hi'").unwrap(),
+        "docker exec d4a7c9f1e2b3 sh -lc 'echo '\\''hi'\\'''"
+    );
+    // Multi-line commands stay inside the single-quoted argument.
+    assert_eq!(
+        exec_ssh_command(&engine, "d4a7c9f1e2b3", "echo a\necho b").unwrap(),
+        "docker exec d4a7c9f1e2b3 sh -lc 'echo a\necho b'"
+    );
+    // Engine endpoint rides env vars in front of the CLI, never argv.
+    let podman = EngineConfig {
+        cli: "podman".into(),
+        endpoint: Some("tcp://127.0.0.1:2375".into()),
+    };
+    assert_eq!(
+        exec_ssh_command(&podman, "d4a7c9f1e2b3", "id").unwrap(),
+        "export DOCKER_HOST='tcp://127.0.0.1:2375' \
+         CONTAINER_HOST='tcp://127.0.0.1:2375'; podman exec d4a7c9f1e2b3 sh -lc 'id'"
+    );
+    // The audit/approval text stays the short form without the export.
+    assert_eq!(
+        exec_audit_text(&podman, "d4a7c9f1e2b3", "id").unwrap(),
+        "podman exec d4a7c9f1e2b3 sh -lc 'id'"
+    );
+    assert!(!exec_audit_text(&podman, "d4a7c9f1e2b3", "id")
+        .unwrap()
+        .contains("export"));
+    // Container id gate runs before rendering.
+    assert!(exec_ssh_command(&engine, "web-nginx", "id").is_err());
+    assert!(exec_audit_text(&engine, "D4A7C9F1E2B3", "id").is_err());
+    assert!(exec_argv("web-nginx", "id").is_err());
+}
+
+#[test]
+fn exec_command_validates_text_bounds_and_control_characters() {
+    // Empty / whitespace-only is refused with an actionable message.
+    for empty in ["", "   ", "\n\t"] {
+        let error = validate_exec_command(empty).unwrap_err();
+        assert!(error.contains("Missing command"), "{error}");
+    }
+    // Trimmed command is what runs.
+    assert_eq!(validate_exec_command("  id  ").unwrap(), "id");
+    // Newlines and tabs are meaningful (multi-line scripts).
+    assert!(validate_exec_command("echo a\necho b").is_ok());
+    assert!(validate_exec_command("printf '%s\\n' a\tb").is_ok());
+    // CR / NUL / other control chars are refused.
+    for bad in ["ls\r\npwd", "ls\0", "ls\x07"] {
+        let error = validate_exec_command(bad).unwrap_err();
+        assert!(error.contains("control character"), "{error}");
+    }
+    // 8192 characters fit, 8193 do not.
+    assert!(validate_exec_command(&"a".repeat(EXEC_MAX_COMMAND_CHARS)).is_ok());
+    let error = validate_exec_command(&"a".repeat(EXEC_MAX_COMMAND_CHARS + 1)).unwrap_err();
+    assert!(error.contains("too long"), "{error}");
+    assert!(error.contains(&EXEC_MAX_COMMAND_CHARS.to_string()), "{error}");
+    // The builders surface the same validation errors.
+    let engine = EngineConfig::default();
+    assert!(exec_ssh_command(&engine, "d4a7c9f1e2b3", "  ").is_err());
+    // CR is rejected even as a trailing character (checked before trimming).
+    assert!(exec_ssh_command(&engine, "d4a7c9f1e2b3", "x\r").is_err());
+    assert!(exec_ssh_command(&engine, "d4a7c9f1e2b3", "x\rpwd").is_err());
+}
+
+#[test]
+fn exec_argv_is_direct_and_shell_free() {
+    assert_eq!(
+        exec_argv("d4a7c9f1e2b3", "echo 'hi'").unwrap(),
+        vec![
+            "exec".to_string(),
+            "d4a7c9f1e2b3".to_string(),
+            "sh".to_string(),
+            "-lc".to_string(),
+            "echo 'hi'".to_string(),
+        ]
+    );
+    // The command travels as one argv element (no extra quoting layer).
+    assert_eq!(exec_argv("d4a7c9f1e2b3", "a b\nc").unwrap()[4], "a b\nc");
+}
+
+#[test]
+fn exec_output_clips_at_one_mib_on_a_char_boundary() {
+    assert_eq!(exec_output("hello", 0), "hello");
+    // Small failure output is untouched when no signature matches.
+    assert_eq!(exec_output("boom\n", 1), "boom\n");
+    // A multi-byte character straddling the 1 MiB boundary must not be
+    // split: the clip backs off to the previous character boundary.
+    let mut text = "a".repeat(EXEC_MAX_OUTPUT_BYTES - 1);
+    text.push('é');
+    text.push_str("tail");
+    let clipped = clip_exec_output(&text);
+    assert!(clipped.ends_with(EXEC_TRUNCATED_SUFFIX), "{clipped:?}");
+    assert!(!clipped.contains('é'));
+    assert!(clipped.len() <= EXEC_MAX_OUTPUT_BYTES + EXEC_TRUNCATED_SUFFIX.len());
+    // Exactly 1 MiB is not truncated.
+    let exact = "b".repeat(EXEC_MAX_OUTPUT_BYTES);
+    assert_eq!(clip_exec_output(&exact), exact);
+    assert!(!clip_exec_output(&exact).contains("truncated"));
+}
+
+#[test]
+fn exec_output_explains_missing_container_and_missing_sh() {
+    let missing = exec_output(
+        "Error response from daemon: No such container: d4a7c9f1e2b3",
+        125,
+    );
+    assert!(missing.contains("[hint:"), "{missing}");
+    assert!(missing.contains("no longer exists"), "{missing}");
+    let no_shell = exec_output(
+        "OCI runtime exec failed: exec failed: unable to start container process: \
+         exec: \"sh\": executable file not found in $PATH: unknown",
+        126,
+    );
+    assert!(no_shell.contains("/bin/sh"), "{no_shell}");
+    assert!(no_shell.contains("distroless"), "{no_shell}");
+    let stopped = exec_output(
+        "Error response from daemon: Container d4a7c9f1e2b3 is not running",
+        1,
+    );
+    assert!(stopped.contains("not running"), "{stopped}");
+    // Success never carries a hint, and bare failures do not invent one.
+    assert!(!exec_output("Error response from daemon: No such container", 0).contains("[hint:"));
+    assert!(!exec_output("some other failure", 1).contains("[hint:"));
+}
+
+#[test]
+fn exec_failure_reasons_never_record_output_content() {
+    let engine = EngineConfig::default();
+    let reason = exec_failure_reason(&engine, 1, "SECRET-OUTPUT");
+    assert_eq!(reason, "docker exec failed (exit 1)");
+    assert!(!reason.contains("SECRET-OUTPUT"));
+    let hinted = exec_failure_reason(
+        &engine,
+        125,
+        "Error response from daemon: No such container: SECRET-ID",
+    );
+    assert!(hinted.contains("exit 125"), "{hinted}");
+    assert!(!hinted.contains("SECRET-ID"), "{hinted}");
+    // Transport errors collapse daemon-permission output to a label.
+    assert_eq!(
+        exec_error_reason(
+            "docker exec: SECRET-OUTPUT. Local container access needs daemon permission: ..."
+        ),
+        "daemon permission denied"
+    );
+    assert_eq!(
+        exec_error_reason("docker CLI not found on this machine"),
+        "docker CLI not found on this machine"
+    );
+}
+
+#[test]
+fn audit_exec_rows_use_the_exec_tool_and_skip_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path();
+    audit_exec_intent(data_dir, "docker exec d4a7c9f1e2b3 sh -lc 'id'");
+    audit_exec_failure(
+        data_dir,
+        "docker exec d4a7c9f1e2b3 sh -lc 'id'",
+        "docker exec failed (exit 1)",
+        12,
+    );
+    let entries = audit_log::tail(data_dir, 10, None).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].tool, "docker/exec");
+    assert_eq!(entries[0].outcome, audit_log::EntryOutcome::Ok);
+    assert_eq!(
+        entries[0].command.as_deref(),
+        Some("docker exec d4a7c9f1e2b3 sh -lc 'id'")
+    );
+    assert!(entries[0].output.is_none());
+    assert_eq!(entries[1].tool, "docker/exec");
+    assert_eq!(entries[1].outcome, audit_log::EntryOutcome::Error);
+    assert_eq!(
+        entries[1].error.as_deref(),
+        Some("docker exec failed (exit 1)")
+    );
+    assert_eq!(entries[1].duration_ms, 12);
+}
+
+#[tokio::test]
+async fn perform_exec_local_reports_a_missing_cli() {
+    let engine = crate::features::docker::test_engine("dbx-missing-container-cli", None);
+    let error = perform_exec_local(&engine, "d4a7c9f1e2b3", "id")
+        .await
+        .expect_err("missing cli");
+    assert!(error.contains("CLI not found on this machine"), "{error}");
+}

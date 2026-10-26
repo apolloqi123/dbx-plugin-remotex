@@ -61,6 +61,8 @@ const messages = {
       selectContainer: "コンテナを選択すると詳細が表示されます",
       logsTab: "ログ",
       filesTab: "ファイル",
+      terminalTab: "ターミナル", execHint: "各コマンドは新しいシェルで独立して実行され、タイムアウトは 60 秒です。コマンド間でセッション状態は保持されません。", execPlaceholder: "コンテナ内で実行するコマンド", execRun: "実行", execClear: "クリア",
+      execEmpty: "コマンドを実行するとここに出力が表示されます", execRunning: "実行中…", execFailed: "コマンドが失敗しました: {error}", execExitCode: "終了コード {code}", execReadOnly: "この接続は読み取り専用のため、コマンドを実行できません。",
       followLive: "ライブ追従",
       followPaused: "追従を一時停止中",
       followResume: "追従を再開",

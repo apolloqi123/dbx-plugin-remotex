@@ -1,26 +1,29 @@
 <script setup lang="ts">
-// 选中容器详情外壳（Task 7）：页头（名称/状态/关闭）+ 日志/文件页签。
+// 选中容器详情外壳（Task 7）：页头（名称/状态/关闭）+ 日志/文件/终端页签。
 // 页签状态由 ContainerManagerPane 持有（activeTab prop + update:activeTab）。
 //
-// 两个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
-// 切到文件页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
+// 三个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
+// 切到文件/终端页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
 // Wave 2 在页内填充实现，props 契约不变。
-import { FolderOpen, ScrollText, X } from "@lucide/vue";
+import { FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
+import ContainerTerminalTab from "./ContainerTerminalTab.vue";
+
+type DetailTab = "logs" | "files" | "terminal";
 
 defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
   container: DockerContainer;
-  activeTab: "logs" | "files";
+  activeTab: DetailTab;
   sessionId?: string;
   connectionId?: string;
   canWrite?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (e: "update:activeTab", tab: "logs" | "files"): void;
+  (e: "update:activeTab", tab: DetailTab): void;
   /** 页头 X：只表示“收起详情”；分屏整体关闭由 ContainerManagerPane 头部负责。 */
   (e: "close"): void;
 }>();
@@ -67,6 +70,18 @@ const emit = defineEmits<{
       >
         <FolderOpen />
       </button>
+      <button
+        type="button"
+        role="tab"
+        class="container-detail-tab"
+        data-tab="terminal"
+        :aria-selected="activeTab === 'terminal'"
+        :title="t('docker.terminalTab')"
+        :aria-label="t('docker.terminalTab')"
+        @click="emit('update:activeTab', 'terminal')"
+      >
+        <Terminal />
+      </button>
     </div>
     <ContainerLogsTab
       v-show="activeTab === 'logs'"
@@ -79,6 +94,14 @@ const emit = defineEmits<{
     />
     <ContainerFilesTab
       v-show="activeTab === 'files'"
+      :t="t"
+      :container="container"
+      :session-id="sessionId"
+      :connection-id="connectionId"
+      :can-write="canWrite"
+    />
+    <ContainerTerminalTab
+      v-show="activeTab === 'terminal'"
       :t="t"
       :container="container"
       :session-id="sessionId"

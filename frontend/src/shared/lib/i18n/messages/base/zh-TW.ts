@@ -61,6 +61,8 @@ const messages = {
       selectContainer: "選擇一個容器查看詳情",
       logsTab: "日誌",
       filesTab: "檔案",
+      terminalTab: "終端", execHint: "每條命令都會在新的 shell 中獨立執行，逾時 60 秒；命令之間不保留工作階段狀態。", execPlaceholder: "輸入要在容器內執行的命令", execRun: "執行", execClear: "清除",
+      execEmpty: "執行命令後在此顯示輸出", execRunning: "正在執行…", execFailed: "命令執行失敗：{error}", execExitCode: "退出碼 {code}", execReadOnly: "此連線為唯讀，無法執行命令。",
       followLive: "即時跟隨",
       followPaused: "已暫停跟隨",
       followResume: "恢復跟隨",

@@ -2,7 +2,8 @@
 // 容器管理分屏外壳（Task 6 外壳 + Task 7 列表/详情编排）：终端列底部的独立
 // 区域，默认只显示列表。用户从行菜单「Logs」/「Files」显式打开详情后才切成
 // 左右分栏；分栏线可拖拽或方向键调整。本组件只持有选中容器、活动页签与
-// 分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志与文件页）各自自治。
+// 分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志、文件与终端页）
+// 各自自治。
 //
 // props 契约固定：t / sessionId / connectionId / canWrite。sessionId 缺省时
 // 列表回落本机 daemon（与容器面板既有语义一致）。
@@ -28,7 +29,8 @@ const MIN_LIST_WIDTH = 25;
 const MAX_LIST_WIDTH = 70;
 
 const selected = ref<DockerContainer>();
-const activeTab = ref<"logs" | "files">("logs");
+type DetailTab = "logs" | "files" | "terminal";
+const activeTab = ref<DetailTab>("logs");
 
 /** 详情打开时才占分栏宽度；关闭后列表恢复整宽（内联 flex-basis 100%）。 */
 const detailOpen = computed(() => selected.value !== undefined);

@@ -450,6 +450,22 @@ describe("mockDbxHost fixture", () => {
     expect(action.success).toBe(true);
   });
 
+  it("docker/exec echoes the command with exit 0 and rejects invalid input or a missing CLI", async () => {
+    const plugin = await loadMock("");
+    const result = await plugin.invoke("docker/exec", { containerId: "d4a7c9f1e2b3", command: "uname -a" }) as {
+      success: boolean;
+      output: string;
+      exitCode: number;
+    };
+    expect(result).toEqual({ success: true, output: "uname -a\n", exitCode: 0 });
+    // 命令首尾空白裁剪后不得为空；containerId 与 action 同口径校验。
+    await expect(plugin.invoke("docker/exec", { containerId: "d4a7c9f1e2b3", command: "   " })).rejects.toThrow(/must not be empty/);
+    await expect(plugin.invoke("docker/exec", { containerId: "web-nginx", command: "id" })).rejects.toThrow(/Invalid containerId/);
+
+    const off = await loadMock("?docker=off");
+    await expect(off.invoke("docker/exec", { target: "local", containerId: "d4a7c9f1e2b3", command: "id" })).rejects.toThrow(/CLI not found/);
+  });
+
   it("docker fixture knobs switch the probe narrative (off = missing CLI, sudo = denied socket)", async () => {
     const off = await (await loadMock("?docker=off")).invoke("docker/list", {}) as { available: boolean; needsSudo: boolean; containers: unknown[] };
     expect(off).toEqual({ available: false, needsSudo: false, containers: [] });

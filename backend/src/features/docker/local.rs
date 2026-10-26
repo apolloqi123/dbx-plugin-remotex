@@ -430,10 +430,14 @@ pub async fn perform_action_local(
     ))
 }
 
-// —— Audit (workbench docker/action path) ——————————————————
+// —— Audit (workbench docker/action + docker/exec paths) ————————
 
+/// Audit rows for the workbench docker paths. The tool name is a parameter
+/// so `docker/action` and `docker/exec` share one writer (and one shape)
+/// instead of duplicating the entry construction.
 pub(crate) fn audit_row(
     data_dir: &Path,
+    tool: &str,
     command: &str,
     outcome: audit_log::EntryOutcome,
     error: Option<&str>,
@@ -445,7 +449,7 @@ pub(crate) fn audit_row(
         .unwrap_or_default();
     let entry = audit_log::AuditEntry {
         ts_ms,
-        tool: "docker/action".to_string(),
+        tool: tool.to_string(),
         // The workbench path keys on sessionId; the connection column stays
         // empty exactly like MCP rows without a connectionId argument.
         connection_id: String::new(),
@@ -466,20 +470,53 @@ pub(crate) fn audit_row(
 
 /// Mandatory pre-execution audit row: the intent is on the ledger even if
 /// the sidecar dies between the audit write and the remote run.
-pub fn audit_action_intent(data_dir: &Path, command: &str) {
-    audit_row(data_dir, command, audit_log::EntryOutcome::Ok, None, 0);
+pub fn audit_intent(data_dir: &Path, tool: &str, command: &str) {
+    audit_row(
+        data_dir,
+        tool,
+        command,
+        audit_log::EntryOutcome::Ok,
+        None,
+        0,
+    );
 }
 
 /// Post-execution failure row (success is already covered by the intent
 /// row; only failures add a second entry carrying the error text).
-pub fn audit_action_failure(data_dir: &Path, command: &str, error: &str, duration_ms: u64) {
+pub fn audit_failure(data_dir: &Path, tool: &str, command: &str, error: &str, duration_ms: u64) {
     audit_row(
         data_dir,
+        tool,
         command,
         audit_log::EntryOutcome::Error,
         Some(error),
         duration_ms,
     );
+}
+
+pub fn audit_action_intent(data_dir: &Path, command: &str) {
+    audit_intent(data_dir, "docker/action", command);
+}
+
+pub fn audit_action_failure(data_dir: &Path, command: &str, error: &str, duration_ms: u64) {
+    audit_failure(
+        data_dir,
+        "docker/action",
+        command,
+        error,
+        duration_ms,
+    );
+}
+
+/// `docker/exec` intent row. The command text is recorded; output never is.
+pub fn audit_exec_intent(data_dir: &Path, command: &str) {
+    audit_intent(data_dir, "docker/exec", command);
+}
+
+/// `docker/exec` failure/non-zero row. `reason` is a content-free label
+/// (exit code plus a signature hint), never the container output.
+pub fn audit_exec_failure(data_dir: &Path, command: &str, reason: &str, duration_ms: u64) {
+    audit_failure(data_dir, "docker/exec", command, reason, duration_ms);
 }
 
 #[cfg(test)]

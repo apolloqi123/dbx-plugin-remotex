@@ -61,6 +61,8 @@ const messages = {
       selectContainer: "Selecione um contêiner para ver os detalhes",
       logsTab: "Logs",
       filesTab: "Arquivos",
+      terminalTab: "Terminal", execHint: "Cada comando é executado de forma independente em um novo shell com timeout de 60 s; nenhum estado é mantido entre comandos.", execPlaceholder: "Comando para executar no contêiner", execRun: "Executar", execClear: "Limpar",
+      execEmpty: "Execute um comando para ver a saída", execRunning: "Executando…", execFailed: "Falha no comando: {error}", execExitCode: "código de saída {code}", execReadOnly: "Esta conexão é somente leitura, então os comandos não podem ser executados.",
       followLive: "Acompanhar ao vivo",
       followPaused: "Acompanhamento pausado",
       followResume: "Retomar acompanhamento",

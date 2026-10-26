@@ -63,6 +63,8 @@ const messages = {
       selectContainer: "Select a container to view details",
       logsTab: "Logs",
       filesTab: "Files",
+      terminalTab: "Terminal", execHint: "Each command runs independently in a new shell with a 60s timeout; no session state is kept between commands.", execPlaceholder: "Command to run in the container", execRun: "Run", execClear: "Clear",
+      execEmpty: "Run a command to see its output", execRunning: "Running…", execFailed: "Command failed: {error}", execExitCode: "exit code {code}", execReadOnly: "This connection is read-only, so commands cannot be executed.",
       followLive: "Follow live",
       followPaused: "Following paused",
       followResume: "Resume following",

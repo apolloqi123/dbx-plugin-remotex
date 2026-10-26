@@ -133,6 +133,23 @@ describe("container manager layout", () => {
     }
   });
 
+  it("switches an open detail to the terminal tab", async () => {
+    stubHost(rows());
+    const wrapper = mountManager();
+    try {
+      await flushPromises();
+      openFromList(wrapper, "logs");
+      await nextTick();
+      await wrapper.get('[data-tab="terminal"]').trigger("click");
+      expect(wrapper.get('[data-tab="terminal"]').attributes("aria-selected")).toBe("true");
+      expect(wrapper.get('[data-tab="logs"]').attributes("aria-selected")).toBe("false");
+      expect(wrapper.find('[data-tab-panel="terminal"]').exists()).toBe(true);
+      expect((wrapper.get('[data-tab-panel="terminal"]').element as HTMLElement).style.display).toBe("");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("switches an open detail to a clicked row but never opens a closed one", async () => {
     const containers: Row[] = [
       ...rows(),

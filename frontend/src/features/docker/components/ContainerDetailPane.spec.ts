@@ -4,6 +4,7 @@ import { mount } from "@vue/test-utils";
 import ContainerDetailPane from "./ContainerDetailPane.vue";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
+import ContainerTerminalTab from "./ContainerTerminalTab.vue";
 import type { DockerContainer } from "../lib/dockerPanelModel";
 
 const t = (key: string) => key;
@@ -24,9 +25,25 @@ describe("container detail pane", () => {
     expect(wrapper.get('[data-tab="logs"]').find("svg").exists()).toBe(true);
     expect(wrapper.get('[data-tab="files"]').attributes("aria-label")).toBe("docker.filesTab");
     expect(wrapper.get('[data-tab="files"]').find("svg").exists()).toBe(true);
+    // 第三个页签只有图标，title/aria-label 指向 docker.terminalTab。
+    expect(wrapper.get('[data-tab="terminal"]').attributes("aria-label")).toBe("docker.terminalTab");
+    expect(wrapper.get('[data-tab="terminal"]').attributes("title")).toBe("docker.terminalTab");
+    expect(wrapper.get('[data-tab="terminal"]').find("svg").exists()).toBe(true);
     await wrapper.get('[data-tab="files"]').trigger("click");
     expect(wrapper.emitted("update:activeTab")?.[0]).toEqual(["files"]);
+    await wrapper.get('[data-tab="terminal"]').trigger("click");
+    expect(wrapper.emitted("update:activeTab")?.[1]).toEqual(["terminal"]);
     expect(wrapper.find('[data-tab="logs"]').exists()).toBe(true);
+  });
+
+  it("shows the terminal tab panel and hides it when another tab is active", async () => {
+    const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "terminal" } });
+    expect((wrapper.findComponent(ContainerTerminalTab).element as HTMLElement).style.display).toBe("");
+    expect((wrapper.findComponent(ContainerLogsTab).element as HTMLElement).style.display).toBe("none");
+    expect((wrapper.findComponent(ContainerFilesTab).element as HTMLElement).style.display).toBe("none");
+
+    await wrapper.setProps({ activeTab: "logs" });
+    expect((wrapper.findComponent(ContainerTerminalTab).element as HTMLElement).style.display).toBe("none");
   });
 
   it("tells the logs tab when it becomes visible again after Files → Logs", async () => {
@@ -50,10 +67,17 @@ describe("container detail pane", () => {
       connectionId: "c",
       canWrite: false,
     });
-    // 两个页签都挂载（v-show），但只有活动页签可见。
+    // 三个页签都挂载（v-show），但只有活动页签可见。
     expect(wrapper.findComponent(ContainerFilesTab).props()).toMatchObject({ container, canWrite: false });
+    expect(wrapper.findComponent(ContainerTerminalTab).props()).toMatchObject({
+      container,
+      sessionId: "s",
+      connectionId: "c",
+      canWrite: false,
+    });
     expect((wrapper.findComponent(ContainerLogsTab).element as HTMLElement).style.display).toBe("");
     expect((wrapper.findComponent(ContainerFilesTab).element as HTMLElement).style.display).toBe("none");
+    expect((wrapper.findComponent(ContainerTerminalTab).element as HTMLElement).style.display).toBe("none");
   });
 
   it("keeps the logs tab mounted while the files tab is shown", async () => {

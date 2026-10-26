@@ -337,6 +337,16 @@ export async function handleDockerInvoke(method: string, params: unknown): Promi
     if (fixtureParams.get("docker") === "off") throw new Error(`${action} failed: docker CLI not found`);
     return { success: true, output: `${containerId}\n` };
   }
+  // 内嵌容器终端：每条命令都是一次独立 exec，夹具把命令原样回显（= echo 语义）
+  // 并以 0 退出；?docker=off 仍模拟 CLI 缺失，供终端页错误态走查。
+  if (method === "docker/exec") {
+    const cli = cliName(input);
+    requireContainerId(input);
+    const command = String(input.command || "").trim();
+    if (!command) throw new Error("docker exec command must not be empty");
+    if (dockerMode() === "off") throw new Error(`${cli} CLI not found on this host`);
+    return { success: true, output: `${command}\n`, exitCode: 0 };
+  }
 
   // 容器管理分屏：真流式日志（事件 docker/logs/chunk|end）。
   if (method === "docker/logs/start") {
