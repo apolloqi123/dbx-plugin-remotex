@@ -917,8 +917,8 @@ describe("App.vue popover/modal wiring structural guard", () => {
   // Phase 6：弹窗壳为 <Dialog :open="ref"><DialogContent class="modal …>，
   // marker 取 "modal "（尾空格）以排除 replay-modal/-modal 变体类的误命中。
   const modalRefs = templateGuardRefs("modal ");
-  // FolderPickerDialog 内部已迁 reka Dialog，App 侧仍是组件标签上的 v-if 守卫。
-  const folderPickerGuard = appTemplate.match(/<FolderPickerDialog\s+v-if="([A-Za-z_$][\w$]*)/);
+  // FolderPickerDialog 内部已迁 reka Dialog，T32 起壳侧仍是组件标签上的 v-if 守卫（扫描源已含 components 模板联合源）。
+  const folderPickerGuard = appTemplateSurface.match(/<FolderPickerDialog\s+v-if="([A-Za-z_$][\w$]*)/);
   if (folderPickerGuard) modalRefs.push(folderPickerGuard[1]);
   const focusTableRefs = scriptBlockRefs("const modalOpenStates = computed(() => [", "]);");
   const escChainRefs = scriptBlockRefs("function onDocumentKeydown(event: KeyboardEvent)", "\nfunction ");
