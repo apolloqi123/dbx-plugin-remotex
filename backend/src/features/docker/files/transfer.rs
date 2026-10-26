@@ -178,7 +178,13 @@ pub fn parse_mktemp_output(output: &str) -> Result<String, String> {
 /// SFTP or by the local save path.
 pub fn staging_probe_command(path: &str) -> Result<String, String> {
     validate_staging_path(path, StagingLocation::Remote)?;
-    Ok(format!("stat -c '%F|%s' -- {}", exec::shell_quote(path)))
+    // `%F` is localized by GNU coreutils; pin the C locale so the type text
+    // is always English and the regular-file predicate stays meaningful on
+    // SSH hosts with a translated locale.
+    Ok(format!(
+        "LC_ALL=C LANG=C stat -c '%F|%s' -- {}",
+        exec::shell_quote(path)
+    ))
 }
 
 /// Parses [`staging_probe_command`] output into `(GNU %F type, size)`.
@@ -189,10 +195,11 @@ pub fn parse_staging_probe(output: &str) -> Option<(String, u64)> {
 }
 
 /// GNU `%F` text for a plain file — the only type an export/import staging
-/// path may resolve to. Callers parse/trim the field first; the comparison is
-/// exact so any other `%F` value fails closed.
+/// path may resolve to. GNU prints `regular file` for non-empty files and
+/// `regular empty file` for zero-byte ones, so match the shared `regular`
+/// prefix; links, directories and every other type still fail closed.
 pub fn is_regular_file_type(file_type: &str) -> bool {
-    file_type == "regular file"
+    file_type.starts_with("regular")
 }
 
 /// `lstat`s a freshly staged local file (never `stat`, which would follow a
@@ -469,12 +476,16 @@ mod tests {
     fn staging_probe_reads_type_and_size() {
         assert_eq!(
             staging_probe_command("/tmp/dbx-sshx.1/f").unwrap(),
-            "stat -c '%F|%s' -- '/tmp/dbx-sshx.1/f'"
+            "LC_ALL=C LANG=C stat -c '%F|%s' -- '/tmp/dbx-sshx.1/f'"
         );
         assert!(staging_probe_command("/etc/passwd").is_err());
         assert_eq!(
             parse_staging_probe("regular file|42\n"),
             Some(("regular file".to_string(), 42))
+        );
+        assert_eq!(
+            parse_staging_probe("regular empty file|0\n"),
+            Some(("regular empty file".to_string(), 0))
         );
         assert_eq!(
             parse_staging_probe("symbolic link|7\r\n"),

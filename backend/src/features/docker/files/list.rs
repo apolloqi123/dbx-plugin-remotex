@@ -31,7 +31,9 @@ pub fn list_command(
     Ok((ssh, argv))
 }
 
-/// Builds the `stat -c '%F|%s|%Y|%a'` command for both planes.
+/// Builds the `stat -c '%F|%s|%Y|%a'` command for both planes. `LC_ALL`/
+/// `LANG` are pinned to `C` inside the container: GNU `%F` is localized, and
+/// the regular-file gate matches the English `regular …` text.
 pub fn stat_command(
     engine: &EngineConfig,
     container_id: &str,
@@ -40,7 +42,7 @@ pub fn stat_command(
     validate_container_id(container_id)?;
     let path = normalize_container_path(path)?;
     let ssh = format!(
-        "{}{} exec {} stat -c '%F|%s|%Y|%a' -- {}",
+        "{}{} exec -e LC_ALL=C -e LANG=C {} stat -c '%F|%s|%Y|%a' -- {}",
         engine.env_prefix(),
         engine.cli,
         container_id,
@@ -48,6 +50,10 @@ pub fn stat_command(
     );
     let argv = vec![
         "exec".to_string(),
+        "-e".to_string(),
+        "LC_ALL=C".to_string(),
+        "-e".to_string(),
+        "LANG=C".to_string(),
         container_id.to_string(),
         "stat".to_string(),
         "-c".to_string(),
@@ -101,9 +107,24 @@ mod tests {
         assert_eq!(
             ssh,
             "export DOCKER_HOST='unix:///tmp/d.sock' CONTAINER_HOST='unix:///tmp/d.sock'; \
-             docker exec d4a7c9f1e2b3 stat -c '%F|%s|%Y|%a' -- '/tmp/a b'"
+             docker exec -e LC_ALL=C -e LANG=C d4a7c9f1e2b3 stat -c '%F|%s|%Y|%a' -- '/tmp/a b'"
         );
-        assert_eq!(argv[6], "/tmp/a b");
+        assert_eq!(
+            argv,
+            vec![
+                "exec",
+                "-e",
+                "LC_ALL=C",
+                "-e",
+                "LANG=C",
+                "d4a7c9f1e2b3",
+                "stat",
+                "-c",
+                "%F|%s|%Y|%a",
+                "--",
+                "/tmp/a b",
+            ]
+        );
     }
 
     #[test]

@@ -78,7 +78,8 @@ impl Plugin {
             }
 
             // 容器文件 → 暂存。先 stat：目录拒绝（v1 目录不可下载），且
-            // 只放行 `%F == "regular file"`——`docker cp` 会保留符号链接，
+            // 只放行 `%F` 的 `regular …`（`regular file` / 零字节
+            // `regular empty file`）——`docker cp` 会保留符号链接，
             // 容器内指向 /etc/shadow 的链接会变成主机/远端链接，随后被
             // SFTP 或本机保存跟随。SSH 在远端 `mktemp -d
             // /tmp/dbx-sshx.XXXXXX` 后 `docker cp`；本机在系统临时目录建

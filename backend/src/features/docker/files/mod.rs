@@ -48,8 +48,9 @@ pub struct ContainerStat {
 }
 
 impl ContainerStat {
-    /// True only for GNU `%F` == `regular file`. `kind` collapses every
-    /// non-directory into `file`, which would also accept symlinks/FIFOs.
+    /// True only for GNU `%F` `regular file` / `regular empty file`. `kind`
+    /// collapses every non-directory into `file`, which would also accept
+    /// symlinks/FIFOs.
     pub fn is_regular_file(&self) -> bool {
         is_regular_file_type(&self.file_type)
     }
@@ -257,9 +258,19 @@ mod tests {
             assert_eq!(stat.kind, "file");
             assert!(!stat.is_regular_file(), "{file_type} must not be exportable");
         }
-        assert!(is_regular_file_type("regular file"));
-        assert!(!is_regular_file_type("regular file "));
+        let directory = parse_stat_output("directory|4096|0|755").unwrap();
+        assert_eq!(directory.kind, "dir");
+        assert!(!directory.is_regular_file());
         assert!(!is_regular_file_type("directory"));
+        assert!(is_regular_file_type("regular file"));
+        // GNU prints "regular empty file" for zero-byte files; zero-byte
+        // export/import must not be rejected.
+        assert!(is_regular_file_type("regular empty file"));
+        let empty = parse_stat_output("regular empty file|0|0|644").unwrap();
+        assert_eq!(empty.kind, "file");
+        assert!(empty.is_regular_file());
+        assert_eq!(empty.size, 0);
+        assert!(!is_regular_file_type("not regular"));
     }
 
     #[test]
