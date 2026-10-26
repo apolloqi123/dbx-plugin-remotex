@@ -17,9 +17,11 @@ fn count_lines(text: &str) -> usize {
 fn is_test_file(rel: &str) -> bool {
     rel.ends_with("tests.rs")
         || rel.ends_with("_tests.rs")
-        || rel.ends_with("test.rs")
+        || rel == "test.rs"
+        || rel.ends_with("/test.rs")
         || rel.ends_with("_test.rs")
-        || rel.ends_with("test_support.rs")
+        || rel == "test_support.rs"
+        || rel.ends_with("/test_support.rs")
         || rel.contains("/tests/")
         // `core/model/manifest_contract` is declared under `#[cfg(test)]`.
         || rel.contains("/manifest_contract/")
@@ -182,7 +184,9 @@ fn classifies_test_files() {
     assert!(is_test_file("features/mcp/tests/tools.rs"));
     assert!(is_test_file("sessions/ssh/connection/test.rs"));
     assert!(is_test_file("filesystem/sftp/raw/test_support.rs"));
+    assert!(is_test_file("test.rs"));
     assert!(is_test_file("core/model/manifest_contract/fields.rs"));
+    assert!(!is_test_file("features/latest.rs"));
     assert!(!is_test_file("sessions/ssh/mod.rs"));
     assert_eq!(count_lines("a\nb\n"), 2);
 }
@@ -258,6 +262,9 @@ fn non_app_layers_do_not_import_app() {
             let text = fs::read_to_string(manifest.join(&rel)).expect("read layer source");
             for hit in layer_refs(&text, &["app"]) {
                 violations.push(format!("{rel}: {hit}"));
+            }
+            if path_attribute_escapes(&text) {
+                violations.push(format!("{rel}: #[path] escapes the module tree"));
             }
         }
     }
