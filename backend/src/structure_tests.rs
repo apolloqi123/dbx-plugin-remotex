@@ -6,12 +6,7 @@ use std::path::{Path, PathBuf};
 const MAX_SOURCE_LINES: usize = 600;
 const MAX_TEST_LINES: usize = 1_200;
 
-const LINE_ALLOWLIST: &[(&str, usize)] = &[
-    ("sessions/ssh/tests.rs", 5535),
-    ("features/mcp/tests.rs", 3772),
-    ("features/import/tests.rs", 1692),
-    ("core/model/manifest_contract_tests.rs", 1397),
-];
+const LINE_ALLOWLIST: &[(&str, usize)] = &[];
 
 fn count_lines(text: &str) -> usize {
     text.lines().count()

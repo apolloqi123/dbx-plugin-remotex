@@ -6,7 +6,7 @@ mod paths;
 mod terminal;
 
 #[cfg(test)]
-mod manifest_contract_tests;
+mod manifest_contract;
 #[cfg(test)]
 mod tests;
 use serde_json::Value;
