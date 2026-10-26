@@ -394,7 +394,12 @@ export function installWorkbenchSftp(deps: Deps) {
   // 容器文件页的传输桥：容器页 props 固定（t/container/sessionId/connectionId/
   // canWrite），拿不到本域的 SFTP 下载链与上传队列；setup 期登记一次，供
   // features/docker 的 useContainerFileTransfer 取用（工作台生命周期内稳定）。
-  setDockerTransferBridge({ downloadRemoteFile, uploadSource });
+  // 本机 saveLocal 的撞名策略与 SFTP 下载共用同一偏好/询问。
+  setDockerTransferBridge({
+    downloadRemoteFile,
+    uploadSource,
+    resolveDownloadConflict: (name) => resolveDownloadConflictFor("", name),
+  });
 
   // —— 断点续传：暂停/恢复 + 可续传上传 ———
 

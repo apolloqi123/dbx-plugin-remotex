@@ -85,6 +85,9 @@ export interface DockerTransferBridge {
     targetDir: string,
     options: { duplicatePreCheckedAbsent: boolean; displayName?: string },
   ) => Promise<boolean>;
+  /** 本机容器下载的撞名策略：复用 SFTP 下载的偏好与「每次询问」弹窗。
+   * undefined = 用户取消；缺省 = 后端自动让位（rename）。 */
+  resolveDownloadConflict?: (name: string) => Promise<"rename" | "overwrite" | undefined>;
 }
 
 let bridge: DockerTransferBridge | undefined;

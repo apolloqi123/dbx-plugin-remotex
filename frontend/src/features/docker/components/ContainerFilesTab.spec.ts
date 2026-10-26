@@ -59,7 +59,10 @@ beforeEach(() => {
       const path = (params as { path?: string } | undefined)?.path ?? "/";
       return LIST_RESPONSES[path] ?? { path, parent: null, entries: [] };
     }
-    if (method === "docker/files/stat") return { kind: "file", size: 3, mode: "644" };
+    if (method === "docker/files/stat") {
+      // 默认目标不存在：上传的覆盖预检直接放行（stat 失败 = 不存在）。
+      throw new Error("stat: no such file or directory");
+    }
     return {};
   });
 });
@@ -168,6 +171,8 @@ describe("ContainerFilesTab transport wiring", () => {
       expect(rpc).toHaveBeenCalledWith("docker/files/upload/chunk", expect.anything());
     });
     expect(wrapper.find("[data-upload-progress]").exists()).toBe(true);
+    expect(wrapper.get('[data-action="upload"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-action="upload"]').attributes("title")).toBe("docker.filesUploading");
 
     wrapper.unmount();
     releaseChunk?.({ received: 3 });
@@ -177,6 +182,39 @@ describe("ContainerFilesTab transport wiring", () => {
       target: "local",
       uploadId: "u1",
     });
+  });
+
+  it("starts one download when a file is double-clicked again while busy", async () => {
+    const downloadRemoteFile = vi.fn(async () => undefined);
+    setDockerTransferBridge({ downloadRemoteFile, uploadSource: vi.fn(async () => true) });
+    let releaseExport: ((value: unknown) => void) | undefined;
+    const exportGate = new Promise<unknown>((resolve) => {
+      releaseExport = resolve;
+    });
+    rpcMock.mockImplementation(async (method: string) => {
+      if (method === "docker/files/list") return LIST_RESPONSES["/"];
+      if (method === "docker/files/export") return exportGate;
+      if (method === "docker/files/cleanup") return { removed: true };
+      return {};
+    });
+    const wrapper = mountTab();
+    await flushPromises();
+
+    await wrapper.get('[data-name="app.log"]').trigger("dblclick");
+    await wrapper.get('[data-name="app.log"]').trigger("dblclick");
+    releaseExport?.({
+      stagingPath: "/tmp/dbx-sshx.1/app.log",
+      size: 3,
+      name: "app.log",
+      location: "remote",
+    });
+    await flushPromises();
+
+    expect(
+      rpcMock.mock.calls.filter(([method]) => method === "docker/files/export"),
+    ).toHaveLength(1);
+    expect(downloadRemoteFile).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-download="app.log"]').find(".spin").exists()).toBe(false);
   });
 });
 
@@ -250,8 +288,28 @@ describe("ContainerFilesTab browsing", () => {
     await flushPromises();
 
     expect(wrapper.get('[data-files-error]').text()).toBe("docker.filesToolMissing");
-    expect(wrapper.get('[data-action="upload"]').attributes("disabled")).toBeDefined();
+    const upload = wrapper.get('[data-action="upload"]');
+    expect(upload.attributes("disabled")).toBeDefined();
+    expect(upload.attributes("title")).toBe("docker.filesToolMissing");
     expect(wrapper.find(".docker-file-row").exists()).toBe(false);
+  });
+
+  it("labels directory loading separately from downloads", async () => {
+    let releaseList: ((value: unknown) => void) | undefined;
+    const listGate = new Promise<unknown>((resolve) => {
+      releaseList = resolve;
+    });
+    rpcMock.mockImplementation(async (method: string) => {
+      if (method === "docker/files/list") return listGate;
+      return {};
+    });
+    const wrapper = mountTab();
+    await flushPromises();
+
+    expect(wrapper.get("[data-files-loading]").text()).toBe("loading");
+    releaseList?.({ path: "/", parent: null, entries: [] });
+    await flushPromises();
+    expect(wrapper.find("[data-files-loading]").exists()).toBe(false);
   });
 
   it("shows an empty state instead of pretending a failed list succeeded", async () => {

@@ -46,12 +46,15 @@ function oversizedFile(name = "big.bin"): File {
 }
 
 function setup(options: {
-  sessionId?: string;
+  sessionId?: string | (() => string | undefined);
+  containerId?: string | (() => string);
   local?: boolean;
   canWrite?: boolean;
   currentPath?: string;
   confirmOk?: boolean;
   downloadRejects?: Error;
+  engineParams?: Record<string, string>;
+  resolveDownloadConflict?: (name: string) => Promise<"rename" | "overwrite" | undefined>;
 } = {}) {
   const downloadRemoteFile = vi.fn(async () => undefined);
   const uploadSource = vi.fn(async () => true);
@@ -62,7 +65,7 @@ function setup(options: {
   const transfer = useContainerFileTransfer({
     t: (key) => key,
     sessionId: options.local ? undefined : options.sessionId ?? "s",
-    containerId: "cid",
+    containerId: options.containerId ?? "cid",
     currentPath: options.currentPath ?? "/srv/app",
     canWrite: options.canWrite ?? true,
     showError,
@@ -70,6 +73,10 @@ function setup(options: {
     downloadRemoteFile,
     uploadSource,
     confirmDialog,
+    ...(options.engineParams ? { engineParams: () => options.engineParams! } : {}),
+    ...(options.resolveDownloadConflict
+      ? { resolveDownloadConflict: options.resolveDownloadConflict }
+      : {}),
   });
   return { transfer, downloadRemoteFile, uploadSource, confirmDialog, showError, showNotice };
 }
@@ -148,6 +155,54 @@ describe("SSH container downloads", () => {
 
     expect(rpc).not.toHaveBeenCalledWith("docker/files/export", expect.anything());
     expect(showError).toHaveBeenCalled();
+  });
+
+  it("keeps the session captured before export for cleanup", async () => {
+    let session = "s1";
+    let releaseExport: ((value: unknown) => void) | undefined;
+    const exportGate = new Promise<unknown>((resolve) => {
+      releaseExport = resolve;
+    });
+    mockRpc({ "docker/files/export": () => exportGate });
+    const { transfer } = setup({ sessionId: () => session });
+
+    const pending = transfer.download(file);
+    await vi.waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith("docker/files/export", expect.objectContaining({ sessionId: "s1" }));
+    });
+    session = "s2";
+    releaseExport?.(remoteExport());
+    await pending;
+
+    expect(rpc).toHaveBeenCalledWith("docker/files/cleanup", {
+      sessionId: "s1",
+      stagingPath: "/tmp/dbx-sshx.1/report.log",
+    });
+    expect(rpc).not.toHaveBeenCalledWith(
+      "docker/files/cleanup",
+      expect.objectContaining({ sessionId: "s2" }),
+    );
+  });
+
+  it("exports once when the same file is triggered twice", async () => {
+    let releaseExport: ((value: unknown) => void) | undefined;
+    const exportGate = new Promise<unknown>((resolve) => {
+      releaseExport = resolve;
+    });
+    mockRpc({ "docker/files/export": () => exportGate });
+    const { transfer } = setup();
+
+    const first = transfer.download(file);
+    await vi.waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith("docker/files/export", expect.anything());
+    });
+    // 双击的第二次触发：同一路径仍在途，直接忽略。
+    await transfer.download(file);
+    releaseExport?.(remoteExport());
+    await first;
+
+    expect(rpcMock.mock.calls.filter(([method]) => method === "docker/files/export")).toHaveLength(1);
+    expect(rpcMock.mock.calls.filter(([method]) => method === "docker/files/cleanup")).toHaveLength(1);
   });
 });
 
@@ -255,6 +310,51 @@ describe("SSH container uploads", () => {
 
     expect(rpc).not.toHaveBeenCalledWith("docker/files/prepareUpload", expect.anything());
   });
+
+  it("does not import when the upload queue declines the file", async () => {
+    mockRpc({
+      "docker/files/prepareUpload": () => ({ stagingPath: "/tmp/dbx-sshx.1/report.log" }),
+    });
+    const { transfer, uploadSource } = setup();
+    uploadSource.mockResolvedValueOnce(false);
+
+    await transfer.upload(new File(["abc"], "report.log"));
+
+    expect(rpc).not.toHaveBeenCalledWith("docker/files/import", expect.anything());
+    expect(rpc).toHaveBeenCalledWith("docker/files/cleanup", expect.objectContaining({
+      sessionId: "s",
+      stagingPath: "/tmp/dbx-sshx.1/report.log",
+    }));
+  });
+
+  it("keeps the session captured at upload start for import and cleanup", async () => {
+    let session = "s1";
+    let releasePrepare: ((value: unknown) => void) | undefined;
+    const prepareGate = new Promise<unknown>((resolve) => {
+      releasePrepare = resolve;
+    });
+    mockRpc({ "docker/files/prepareUpload": () => prepareGate });
+    const { transfer } = setup({ sessionId: () => session });
+
+    const pending = transfer.upload(new File(["abc"], "report.log"));
+    await vi.waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith(
+        "docker/files/prepareUpload",
+        expect.objectContaining({ sessionId: "s1" }),
+      );
+    });
+    session = "s2";
+    releasePrepare?.({ stagingPath: "/tmp/dbx-sshx.1/report.log" });
+    await pending;
+
+    expect(rpc).toHaveBeenCalledWith("docker/files/import", expect.objectContaining({
+      sessionId: "s1",
+    }));
+    expect(rpc).toHaveBeenCalledWith("docker/files/cleanup", {
+      sessionId: "s1",
+      stagingPath: "/tmp/dbx-sshx.1/report.log",
+    });
+  });
 });
 
 function decodeBase64(encoded: string): Uint8Array {
@@ -301,6 +401,58 @@ describe("local container downloads", () => {
       target: "local",
       stagingPath: "/tmp/dbx-sshx.1/report.log",
     }));
+  });
+});
+
+describe("local download conflict policy", () => {
+  it("passes conflict:overwrite when the shared download choice says overwrite", async () => {
+    mockRpc({
+      "docker/files/export": () => localExport(),
+      "docker/files/saveLocal": () => ({ localPath: "/Users/me/Downloads/report.log" }),
+    });
+    const resolveDownloadConflict = vi.fn(async () => "overwrite" as const);
+    const { transfer } = setup({ local: true, resolveDownloadConflict });
+
+    await transfer.download(file);
+
+    expect(resolveDownloadConflict).toHaveBeenCalledWith("report.log");
+    expect(rpc).toHaveBeenCalledWith("docker/files/saveLocal", {
+      target: "local",
+      stagingPath: "/tmp/dbx-sshx.1/report.log",
+      name: "report.log",
+      conflict: "overwrite",
+    });
+  });
+
+  it("omits conflict when the choice is rename", async () => {
+    mockRpc({
+      "docker/files/export": () => localExport(),
+      "docker/files/saveLocal": () => ({ localPath: "/Users/me/Downloads/report.log" }),
+    });
+    const resolveDownloadConflict = vi.fn(async () => "rename" as const);
+    const { transfer } = setup({ local: true, resolveDownloadConflict });
+
+    await transfer.download(file);
+
+    const call = rpcMock.mock.calls.find(([method]) => method === "docker/files/saveLocal");
+    expect(call?.[1]).toMatchObject({ target: "local", name: "report.log" });
+    expect(call?.[1]).not.toHaveProperty("conflict");
+  });
+
+  it("cancels the save and still cleans up when the conflict prompt is dismissed", async () => {
+    mockRpc({ "docker/files/export": () => localExport() });
+    const resolveDownloadConflict = vi.fn(async () => undefined);
+    const { transfer, showError } = setup({ local: true, resolveDownloadConflict });
+
+    await expect(transfer.download(file)).resolves.toBeUndefined();
+
+    expect(resolveDownloadConflict).toHaveBeenCalledWith("report.log");
+    expect(rpc).not.toHaveBeenCalledWith("docker/files/saveLocal", expect.anything());
+    expect(rpc).toHaveBeenCalledWith("docker/files/cleanup", {
+      target: "local",
+      stagingPath: "/tmp/dbx-sshx.1/report.log",
+    });
+    expect(showError).not.toHaveBeenCalled();
   });
 });
 
@@ -450,6 +602,141 @@ describe("local container uploads", () => {
     expect(rpc).toHaveBeenCalledWith("docker/files/cleanup", expect.objectContaining({
       target: "local",
       stagingPath: "/tmp/dbx-sshx-upload-u5/report.log",
+    }));
+  });
+
+  it("asks before overwriting an existing local destination", async () => {
+    mockRpc({ "docker/files/stat": () => ({ kind: "file", size: 3 }) });
+    const { transfer, confirmDialog } = setup({ local: true, confirmOk: false });
+
+    await transfer.upload(new File(["abc"], "report.log"));
+
+    expect(rpc).toHaveBeenCalledWith("docker/files/stat", expect.objectContaining({
+      path: "/srv/app/report.log",
+    }));
+    expect(confirmDialog).toHaveBeenCalledWith("docker.filesOverwriteConfirm");
+    expect(rpc).not.toHaveBeenCalledWith("docker/files/upload/begin", expect.anything());
+  });
+
+  it("proceeds with a local upload when stat is unavailable", async () => {
+    mockRpc({
+      "docker/files/stat": () => ({ unavailable: true }),
+      "docker/files/upload/begin": () => ({ uploadId: "u10", maxBytes: MAX_BYTES }),
+      "docker/files/upload/chunk": () => ({ received: 3 }),
+      "docker/files/upload/finish": () => ({ stagingPath: "/tmp/dbx-sshx-upload-u10/report.log" }),
+    });
+    const { transfer, confirmDialog } = setup({ local: true, confirmOk: false });
+
+    await transfer.upload(new File(["abc"], "report.log"));
+
+    expect(confirmDialog).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith("docker/files/upload/begin", expect.anything());
+  });
+
+  it("imports into the container and with the engine captured at upload start", async () => {
+    let containerId = "cid";
+    let releaseChunk: ((value: unknown) => void) | undefined;
+    const chunkGate = new Promise<unknown>((resolve) => {
+      releaseChunk = resolve;
+    });
+    mockRpc({
+      "docker/files/upload/begin": () => ({ uploadId: "u11", maxBytes: MAX_BYTES }),
+      "docker/files/upload/chunk": () => chunkGate,
+      "docker/files/upload/finish": () => ({ stagingPath: "/tmp/dbx-sshx-upload-u11/report.log" }),
+    });
+    const engine = { cli: "/opt/podman" };
+    const { transfer } = setup({
+      local: true,
+      containerId: () => containerId,
+      engineParams: engine,
+    });
+
+    const pending = transfer.upload(new File(["abc"], "report.log"));
+    await vi.waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith("docker/files/upload/chunk", expect.anything());
+    });
+    containerId = "other";
+    releaseChunk?.({ received: 3 });
+    await pending;
+
+    expect(rpc).toHaveBeenCalledWith("docker/files/import", expect.objectContaining({
+      target: "local",
+      containerId: "cid",
+      cli: "/opt/podman",
+    }));
+  });
+
+  it("turns away a second upload while one is active", async () => {
+    let releaseChunk: ((value: unknown) => void) | undefined;
+    const chunkGate = new Promise<unknown>((resolve) => {
+      releaseChunk = resolve;
+    });
+    mockRpc({
+      "docker/files/upload/begin": () => ({ uploadId: "u12", maxBytes: MAX_BYTES }),
+      "docker/files/upload/chunk": () => chunkGate,
+      "docker/files/upload/finish": () => ({ stagingPath: "/tmp/dbx-sshx-upload-u12/a.log" }),
+    });
+    const { transfer, showNotice } = setup({ local: true });
+
+    const first = transfer.upload(new File(["abc"], "a.log"));
+    await vi.waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith("docker/files/upload/chunk", expect.anything());
+    });
+    await transfer.upload(new File(["xyz"], "b.log"));
+
+    expect(showNotice).toHaveBeenCalledWith("docker.filesUploading");
+    releaseChunk?.({ received: 3 });
+    await first;
+    expect(
+      rpcMock.mock.calls.filter(([method]) => method === "docker/files/upload/begin"),
+    ).toHaveLength(1);
+  });
+});
+
+describe("local upload engine params", () => {
+  const engine = { cli: "/opt/podman", host: "tcp://127.0.0.1:2375" };
+
+  it("sends engine params on every local download RPC", async () => {
+    mockRpc({
+      "docker/files/export": () => localExport(),
+      "docker/files/saveLocal": () => ({ localPath: "/Users/me/Downloads/report.log" }),
+    });
+    const { transfer } = setup({ local: true, engineParams: engine });
+
+    await transfer.download(file);
+
+    for (const method of ["docker/files/export", "docker/files/saveLocal", "docker/files/cleanup"]) {
+      expect(rpc).toHaveBeenCalledWith(method, expect.objectContaining({
+        target: "local",
+        ...engine,
+      }));
+    }
+  });
+
+  it("sends engine params on every local upload RPC, including import", async () => {
+    mockRpc({
+      "docker/files/upload/begin": () => ({ uploadId: "u13", maxBytes: MAX_BYTES }),
+      "docker/files/upload/chunk": () => ({ received: 3 }),
+      "docker/files/upload/finish": () => ({ stagingPath: "/tmp/dbx-sshx-upload-u13/report.log" }),
+    });
+    const { transfer } = setup({ local: true, engineParams: engine });
+
+    await transfer.upload(new File(["abc"], "report.log"));
+
+    for (const method of [
+      "docker/files/stat",
+      "docker/files/upload/begin",
+      "docker/files/upload/chunk",
+      "docker/files/upload/finish",
+      "docker/files/import",
+      "docker/files/cleanup",
+    ]) {
+      expect(rpc).toHaveBeenCalledWith(method, expect.objectContaining({ ...engine }));
+    }
+    expect(rpc).toHaveBeenCalledWith("docker/files/import", expect.objectContaining({
+      target: "local",
+      containerId: "cid",
+      ...engine,
     }));
   });
 });

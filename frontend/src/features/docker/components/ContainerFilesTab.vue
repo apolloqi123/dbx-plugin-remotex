@@ -58,12 +58,22 @@ const transfer = useContainerFileTransfer({
   uploadSource: bridge?.uploadSource ?? (async () => false),
   confirmDialog: (message) => confirmDialog(message, { danger: false }),
   engineParams: () => dockerEngineParams(loadDockerEngineSettings(props.connectionId || "")),
+  resolveDownloadConflict: bridge?.resolveDownloadConflict,
 });
 
 const canWrite = computed(() => props.canWrite !== false);
-const uploadDisabled = computed(() => !canWrite.value || files.toolMissing.value || !transferReady.value);
+const uploadDisabled = computed(
+  () =>
+    !canWrite.value ||
+    files.toolMissing.value ||
+    !transferReady.value ||
+    transfer.uploadBusy.value,
+);
 const uploadTitle = computed(() => {
-  if (!transferReady.value || !canWrite.value) return props.t("docker.filesUnsupported");
+  if (!canWrite.value) return props.t("docker.filesUnsupported");
+  if (files.toolMissing.value) return props.t("docker.filesToolMissing");
+  if (!transferReady.value) return props.t("docker.filesUnsupported");
+  if (transfer.uploadBusy.value) return props.t("docker.filesUploading");
   return props.t("docker.filesUpload");
 });
 const uploadInput = ref<HTMLInputElement>();
@@ -188,7 +198,7 @@ onUnmounted(() => transfer.dispose());
     </p>
     <p v-else-if="files.loading.value" class="docker-files-status" data-files-loading>
       <Loader2 class="spin" />
-      {{ t("docker.filesDownloading") }}
+      {{ t("loading") }}
     </p>
     <p v-else-if="!files.entries.value.length" class="docker-files-empty" data-files-empty>
       {{ t("docker.filesEmpty") }}
