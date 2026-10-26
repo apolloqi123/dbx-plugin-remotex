@@ -14,7 +14,6 @@ const LINE_ALLOWLIST: Record<string, number> = {
   "../../app/App.vue": 5181,
   "../../features/settings/components/SettingsDialog.vue": 929,
   "../../features/completion/lib/completion/fig/figSourceCore.ts": 737,
-  "../../features/sftp/components/SftpTreePane.spec.ts": 1323,
 };
 
 /** 迁移期方向白名单；W1 结束后必须为空，且每个条目都必须仍然违规。 */
