@@ -1,7 +1,6 @@
 /**
  * Output writer, command markers, clipboard, remote-desktop sessions, shell tabs and session status.
  */
-import { DOCKER_SPLIT_RATIO_DEFAULT } from "../../../shared/lib/paneLayout";
 import { classifyConnectError, connectErrorKey } from "../../../features/connections/lib/connectError";
 import { computed, watch } from "vue";
 import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../../../features/connections/lib/sessionStatus";
@@ -30,7 +29,7 @@ export function installWorkbenchSessionIo(deps: Deps) {
   const {
   aiSearch, appearance, beginAiCommand, canWrite, captureOutputChunk, closeHistoryPanel,
   closeSuggestions, commandMarkerParser, connected, connection, connectionId, currentPath,
-  directoryParser, directoryTrackingSupported, dockerPanelOpen, dockerSplitRatio, downloadChunkWaiters, entries,
+  directoryParser, directoryTrackingSupported, dockerPaneOpen, downloadChunkWaiters, entries,
   followDirectory, followSftpPath, hostContext, isLocalMode, isRdpConnection, isRdpMode,
   isSerialMode, isTelnetMode, lastTerminalCommand, loadDirectory, loadDirectoryFollowPref, localLastCwd,
   localRecentCommands, localSession, localUiMode, locale, maybeOfferAiFix, menuSelectionSnapshot,
@@ -419,9 +418,10 @@ export function installWorkbenchSessionIo(deps: Deps) {
     };
     return labels[method];
   }));
-  // Docker 每次打开回到 1/3；拖动只在本次打开期间生效（视图本身不跨重启恢复）。
-  watch(dockerPanelOpen, (open) => {
-    if (open) dockerSplitRatio.value = DOCKER_SPLIT_RATIO_DEFAULT;
+  // 容器分屏不跨连接存续：切到 RDP（分屏不再适用）或主会话断开时收起，
+  // 避免留下一个不再刷新的容器快照；下次打开回到默认比例。
+  watch([isRdpConnection, connected], ([rdp, online]) => {
+    if (dockerPaneOpen.value && (rdp || !online)) late.closeDockerPane();
   });
   // 把手提示按轴向：纵向拖的是高度、横向拖的是宽度（与 onDividerKeydown 的
   // 方向键映射一致）。

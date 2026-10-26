@@ -1168,13 +1168,13 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   expect(sftpWorkspaceSurface).toMatch(/activeTerminalPaneId\.value = paneId;\s+syncSftpToActivePane\(\);/);
 });
 
-// 右侧栏三视图与终端分屏：指标/容器不再以浮层覆盖终端，分屏入口在终端
-// 右键菜单，新建标签页按钮常驻工具条。
+// 右侧栏指标视图与终端列底部容器分屏：容器不再占用右栏、不再与 SFTP/指标
+// 互斥；分屏入口在工具条鲸鱼按钮，分屏本体渲染在终端栈内。
 it("hosts metrics and docker in the right panel and exposes terminal split controls", () => {
-  // 右侧栏三视图外壳自 T21 起由 components/WorkbenchSidePanel.vue 承载。
+  // 右侧栏外壳自 T21 起由 components/WorkbenchSidePanel.vue 承载；容器视图已迁出。
   expect(sidePanelSource).toContain('rightPanelView === \'metrics\'');
   expect(sidePanelSource).toContain("<ServerMetricsPanel");
-  expect(sidePanelSource).toContain("<DockerPanel");
+  expect(sidePanelSource).not.toContain("<DockerPanel");
   // T21b：终端舞台/布局树随工作区模板迁入 components/，断言改扫模板联合源。
   expect(appTemplateSurface).toContain("openTerminalSplit('row')");
   expect(appTemplateSurface).toContain("openTerminalSplit('column')");

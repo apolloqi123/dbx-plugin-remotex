@@ -42,7 +42,6 @@ export function useWorkbenchContext(options: WorkbenchContextOptions) {
   const layout = useLayoutState({
     paneDirection: options.paneDirection,
     sftpPaneOpen: sftp.sftpPaneOpen,
-    dockerPanelOpen: sftp.dockerPanelOpen,
   });
   const dialogs = useDialogState();
 

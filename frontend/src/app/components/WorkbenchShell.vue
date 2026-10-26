@@ -52,7 +52,7 @@ const {
   copySuggestions, createDirectory, createNewFile, ctxSearchEnginesText, customEditorCommand,
   customEditorName, customEditorOpen, customEditorPattern, customEditorRemember, deleteHighlightRule,
   deleteQuickCommand, deleteSubmitting, deleteTarget, deleteTerminalAppearanceTheme, dismissWatchModified,
-  dissolveQuickCommandGroupById, dockConnections, dockerPanelOpen, downloadConflictPrompt, downloadPrefsAdapter,
+  dissolveQuickCommandGroupById, dockConnections, dockerPaneOpen, downloadConflictPrompt, downloadPrefsAdapter,
   downloadPrompt, dropCwdTarget, dropUploadPathInput, dropUploadPrompt, dropUploadTarget,
   editorPrefsAdapter, externalEditBusy, fileBatchProgress, filteredQuickCommands, folderPickerTarget,
   folderUploadProgress, folderUploadSupported, formatDuration, formatModified, formatRecordedAt,
@@ -167,7 +167,7 @@ const {
       :reconnect-pending="reconnectPending"
       :serial-upload-busy="serialUploadBusy"
       :connection-id="connectionId"
-      :docker-panel-open="dockerPanelOpen"
+      :docker-pane-open="dockerPaneOpen"
       :batch-send-bar-open="batchBarOpen"
       :agent-mode="agentMode"
       :agent-mode-busy="agentModeBusy"

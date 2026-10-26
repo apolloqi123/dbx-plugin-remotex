@@ -1,4 +1,4 @@
-// Docker 容器行「操作」悬浮下拉的开关状态机（DockerPanel 用）。
+// Docker 容器行「操作」悬浮下拉的开关状态机（ContainerListPane 用）。
 // hover 触发器延迟开（防扫行误开）；移出触发器/菜单延迟关（留出跨
 // side-offset 间隙的时间）；进入菜单内容立即取消关闭；click 直接切换
 // （触屏/键盘兜底）。纯状态逻辑，便于假定时器单测。
@@ -20,7 +20,7 @@ export interface RowMenuController {
   /** 当前打开菜单的行 id（空串 = 全关）。 */
   openId: ReturnType<typeof ref<string>>;
   isOpen(id: string): boolean;
-  /** 当前打开的菜单是否由 hover 开启（DockerPanel 据此决定是否迁移焦点）。 */
+  /** 当前打开的菜单是否由 hover 开启（ContainerListPane 据此决定是否迁移焦点）。 */
   openedByHover(): boolean;
   hoverTrigger(id: string): void;
   leaveToClose(): void;

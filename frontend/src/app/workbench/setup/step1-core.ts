@@ -295,7 +295,7 @@ export function installWorkbenchCore(deps: Deps) {
     sftpTreePane,
     sftpPaneOpen,
     rightPanelView,
-    dockerPanelOpen,
+    dockerPaneOpen,
     sftpViewActive,
     sftpViewVisible,
     visibleColumns,
@@ -320,7 +320,9 @@ export function installWorkbenchCore(deps: Deps) {
     paneLayout,
     terminalBasis,
     paneSplitStyle,
+    dockerPaneBasis,
     orderedPaneClass,
+    resetDockerSplitRatio,
   } = ctx.layout;
   const {
     settingsOpen,
@@ -360,10 +362,11 @@ export function installWorkbenchCore(deps: Deps) {
     connectCancelled, connectSucceeded, connectLogsOpen, connectLog, hostKeyPrompt, rememberHostKey, connectionReadOnly, rdpSession,
     rdpDialogOpen, rdpState, rdpScaleMode, rdpSurface, rdpClipboardChunks, isRdpMode, rdpTarget, connectionId,
     restored, runtimeEndpoint, connection, storedConnectionProtocol, connectionProtocol, isRdpConnection, canWrite, connected,
-    toolbarStyle, sftpPane, sftpTreePane, sftpPaneOpen, rightPanelView, dockerPanelOpen, sftpViewActive, sftpViewVisible,
+    toolbarStyle, sftpPane, sftpTreePane, sftpPaneOpen, rightPanelView, dockerPaneOpen, sftpViewActive, sftpViewVisible,
     visibleColumns, sftpColumnWidths, sftpNameWidth, sort, sftpSearch, sftpTypeFilter, sftpShowHidden, batchProgress,
     terminalDragActive, localDownloadDir, localCanSave, SFTP_QUICK_PATHS, splitRatio, dockerSplitRatio, paneOrder, sudoMode,
-    paneContainer, paneLayout, terminalBasis, paneSplitStyle, orderedPaneClass, settingsOpen, auditOpen, profilesOpen,
+    paneContainer, paneLayout, terminalBasis, paneSplitStyle, dockerPaneBasis, orderedPaneClass, resetDockerSplitRatio,
+    settingsOpen, auditOpen, profilesOpen,
     otpPanelOpen, importPanelOpen, forwardsOpen, columnsOpen, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
   };
 }

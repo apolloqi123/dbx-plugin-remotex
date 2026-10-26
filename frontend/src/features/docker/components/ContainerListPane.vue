@@ -1,0 +1,485 @@
+<script setup lang="ts">
+// 容器列表列（Task 7，自 DockerPanel 拆出）：10s 轮询（3 连败自动停）+
+// 生命周期动作（start/stop/restart 直发；kill/rm 强制确认）+ 引擎设置 +
+// 「在终端打开」。列表还持有本列的选中规则：首次加载后选中第一个 running
+// 容器（否则第一个），轮询后选中项消失则按同一规则回退；只在选中变化时
+// 向上 emit（父组件只保存 selected，不重复推导）。
+//
+// 状态/轮询/动作在 composables/useDockerContainers，纯逻辑在 lib/dockerPanelModel，
+// 三个 UI 块在 DockerEnginePopover / DockerRowMenu / DockerConfirmDialog。
+import { onScopeDispose, onUnmounted, ref, watch } from "vue";
+import { Loader2, RefreshCw } from "@lucide/vue";
+import type { DockerEngineSettings } from "../lib/dockerEngine";
+import type { DockerActionName } from "../lib/dockerActions";
+import {
+  dockerExecCommand,
+  dockerStateClass,
+  isDockerContainerRunning,
+  type DockerContainer,
+} from "../lib/dockerPanelModel";
+import { createRowMenuController } from "../lib/dockerRowMenu";
+import { useDockerContainers } from "../composables/useDockerContainers";
+import DockerEnginePopover from "./DockerEnginePopover.vue";
+import DockerRowMenu from "./DockerRowMenu.vue";
+import DockerConfirmDialog from "./DockerConfirmDialog.vue";
+
+const props = defineProps<{
+  t: (key: string, values?: Record<string, string | number>) => string;
+  /** 工作台当前连接的 SSH 会话；缺省时回落“最近存活会话 → 本机 daemon”。 */
+  sessionId?: string;
+  connectionId?: string;
+}>();
+
+const emit = defineEmits<{
+  (e: "select", container: DockerContainer): void;
+  /** 用户显式刷新（或轮询重试）：父组件可据此刷新容器计数等只读展示。 */
+  (e: "refresh"): void;
+  /** 行菜单「Logs」：选中该容器并切到日志页。 */
+  (e: "logs", container: DockerContainer): void;
+}>();
+
+const {
+  mode,
+  engineSettings,
+  engineOpen,
+  engineDraft,
+  toggleEngineSettings,
+  applyEngineSettings,
+  containers,
+  available,
+  needsSudo,
+  loading,
+  listError,
+  pollPaused,
+  refresh,
+  retryPolling,
+  actionError,
+  rowBusy,
+  confirmTarget,
+  confirmBusy,
+  requestAction,
+  confirmAction,
+} = useDockerContainers({
+  sessionId: () => props.sessionId,
+  connectionId: () => props.connectionId,
+});
+
+/** 齿轮弹层开合：只在关闭时落状态（与 reka 的 update:open 语义一致）。 */
+function setEngineOpen(open: boolean): void {
+  if (!open) engineOpen.value = false;
+}
+
+function setEngineDraft(draft: DockerEngineSettings): void {
+  engineDraft.value = draft;
+}
+
+// —— 选中规则：首个 running，否则首个；消失则回退同一规则 —————————————
+const selectedId = ref("");
+/** 最近一次上抛的容器 id：轮询重复命中同一容器时不重复 emit。 */
+let lastEmittedId = "";
+
+function emitSelection(container: DockerContainer): void {
+  if (container.id === lastEmittedId) return;
+  lastEmittedId = container.id;
+  emit("select", container);
+}
+
+function applySelection(rows: DockerContainer[]): void {
+  if (!rows.length) {
+    selectedId.value = "";
+    return;
+  }
+  const current = rows.find((container) => container.id === selectedId.value)
+    ?? rows.find((container) => isDockerContainerRunning(container))
+    ?? rows[0];
+  selectedId.value = current.id;
+  emitSelection(current);
+}
+
+watch(containers, (rows) => applySelection(rows), { flush: "post" });
+// 连接切换：旧连接的选中项/去重标记立即失效；等新列表落地（watch containers）
+// 再按规则选中，避免把上一台机器的容器重新抛给父组件。
+watch([() => props.sessionId, () => props.connectionId], () => {
+  selectedId.value = "";
+  lastEmittedId = "";
+});
+
+function selectRow(container: DockerContainer): void {
+  selectedId.value = container.id;
+  emitSelection(container);
+}
+
+// —— 行操作悬浮下拉（hover 开合，状态机在 lib/dockerRowMenu）———————————
+const rowMenu = createRowMenuController();
+onScopeDispose(() => rowMenu.close());
+
+/** 菜单选项统一入口：先收菜单再派发（kill/rm 仍走确认弹层）。 */
+function runMenuAction(container: DockerContainer, action: DockerActionName): void {
+  rowMenu.close();
+  requestAction(container, action);
+}
+
+function menuOpenLogs(container: DockerContainer): void {
+  rowMenu.close();
+  selectedId.value = container.id;
+  emit("logs", container);
+}
+
+function menuOpenInTerminal(container: DockerContainer): void {
+  rowMenu.close();
+  openInTerminal(container);
+}
+
+/** 显式刷新：先让父组件感知，再拉列表（loading 互斥由 composable 保证）。 */
+async function refreshList(): Promise<void> {
+  emit("refresh");
+  await refresh();
+}
+
+async function retryList(): Promise<void> {
+  emit("refresh");
+  await retryPolling();
+}
+
+// —— 「在终端打开」（window 事件 → App.vue 填入输入行，不回车）——————————
+const DOCKER_OPEN_IN_TERMINAL_EVENT = "dbx:docker-open-in-terminal";
+
+const fillRequestedId = ref("");
+let fillReset: ReturnType<typeof setTimeout> | undefined;
+
+function openInTerminal(container: DockerContainer): void {
+  window.dispatchEvent(
+    new CustomEvent(DOCKER_OPEN_IN_TERMINAL_EVENT, { detail: { command: dockerExecCommand(engineSettings.value.cli, container.id) } }),
+  );
+  fillRequestedId.value = container.id;
+  if (fillReset) clearTimeout(fillReset);
+  fillReset = setTimeout(() => {
+    fillRequestedId.value = "";
+  }, 2000);
+}
+
+onUnmounted(() => {
+  if (fillReset) clearTimeout(fillReset);
+});
+
+const running = (container: DockerContainer): boolean => isDockerContainerRunning(container);
+</script>
+
+<template>
+  <div class="container-list-pane">
+    <header class="container-list-head">
+      <strong class="container-list-title">{{ props.t("docker.title") }}</strong>
+      <span v-if="mode === 'local'" class="docker-source-badge">{{ props.t("docker.localSource") }}</span>
+      <span v-if="available && containers.length" class="docker-count">{{ containers.length }}</span>
+      <span class="container-list-spacer" />
+      <button
+        v-if="engineSettings.cli"
+        type="button"
+        class="docker-engine-badge"
+        :title="props.t('docker.engineBadge', { cli: engineSettings.cli })"
+        :aria-label="props.t('docker.engineBadge', { cli: engineSettings.cli })"
+        @click="toggleEngineSettings"
+      >
+        {{ engineSettings.cli }}
+      </button>
+      <button
+        v-if="pollPaused"
+        type="button"
+        class="docker-link-button"
+        :title="props.t('docker.pollStopped')"
+        :aria-label="props.t('docker.pollStopped')"
+        @click="retryList"
+      >
+        {{ props.t("docker.refresh") }}
+      </button>
+      <button
+        v-else
+        type="button"
+        class="icon-button compact container-refresh"
+        :title="props.t('docker.refresh')"
+        :aria-label="props.t('docker.refresh')"
+        @click="refreshList"
+      >
+        <Loader2 v-if="loading" class="spinning" />
+        <RefreshCw v-else />
+      </button>
+      <DockerEnginePopover
+        :t="props.t"
+        :open="engineOpen"
+        :draft="engineDraft"
+        @update:open="setEngineOpen"
+        @update:draft="setEngineDraft"
+        @toggle="toggleEngineSettings"
+        @apply="applyEngineSettings"
+      />
+    </header>
+
+    <p v-if="pollPaused" class="docker-hint docker-hint-warn">{{ props.t("docker.pollStopped") }}</p>
+    <p v-if="listError && !pollPaused" class="docker-hint docker-hint-warn" :title="listError">
+      {{ props.t("docker.listFailed") }}
+    </p>
+    <p v-if="actionError" class="docker-hint docker-hint-error" :title="actionError">
+      {{ props.t("docker.actionFailed", { error: actionError }) }}
+    </p>
+
+    <!-- 加载中 -->
+    <p v-if="loading && available === null" class="docker-empty"><Loader2 class="spinning" />{{ props.t("docker.loading") }}</p>
+
+    <!-- Docker 不可用：弱化空态，按探针结果解释原因（本机 daemon 拒绝走本地文案） -->
+    <div v-else-if="available === false" class="docker-empty">
+      <p class="docker-empty-title">{{ props.t("docker.unavailableTitle") }}</p>
+      <p class="docker-empty-hint">
+        <template v-if="!needsSudo">{{ props.t("docker.unavailableMissing") }}</template>
+        <template v-else-if="mode === 'local'">{{ props.t("docker.unavailableSudoLocal") }}</template>
+        <template v-else>{{ props.t("docker.unavailableSudo") }}</template>
+      </p>
+    </div>
+
+    <!-- 空列表 -->
+    <p v-else-if="!containers.length" class="docker-empty">{{ props.t("docker.empty") }}</p>
+
+    <!-- 容器行：名称 + 状态徽标在上，镜像/端口/状态文案在下（窄列可读） -->
+    <ul v-else class="container-rows" role="listbox" :aria-label="props.t('docker.title')">
+      <li v-for="container in containers" :key="container.id" class="container-row-item">
+        <button
+          type="button"
+          role="option"
+          class="container-row"
+          :class="{ 'is-selected': selectedId === container.id }"
+          :aria-selected="selectedId === container.id"
+          :data-container-id="container.id"
+          @click="selectRow(container)"
+        >
+          <span class="container-row-line">
+            <strong class="mono container-row-name" :title="container.id">{{ container.name || container.id.slice(0, 12) }}</strong>
+            <span class="docker-badge" :class="dockerStateClass(container.state)">{{ container.state }}</span>
+          </span>
+          <span class="mono container-row-meta" :title="container.image">{{ container.image }}</span>
+          <span v-if="container.ports" class="mono container-row-meta" :title="container.ports">{{ container.ports }}</span>
+          <small v-if="container.status" class="container-row-status" :title="container.status">{{ container.status }}</small>
+        </button>
+        <DockerRowMenu
+          :t="props.t"
+          :container="container"
+          :menu="rowMenu"
+          :fill-requested="fillRequestedId === container.id"
+          :busy="rowBusy(container)"
+          :running="running(container)"
+          :can-open-terminal="mode === 'ssh'"
+          @action="(action) => runMenuAction(container, action)"
+          @logs="menuOpenLogs(container)"
+          @terminal="menuOpenInTerminal(container)"
+        />
+      </li>
+    </ul>
+    <p v-if="mode === 'ssh' && containers.length" class="docker-hint">{{ props.t("docker.terminalHint") }}</p>
+
+    <!-- kill/rm 强制确认 -->
+    <DockerConfirmDialog
+      :t="props.t"
+      :target="confirmTarget"
+      :busy="confirmBusy"
+      :cli="engineSettings.cli"
+      @resolve="confirmAction"
+    />
+  </div>
+</template>
+
+<style scoped>
+.container-list-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.container-list-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.container-list-title {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.container-list-spacer {
+  flex: 1;
+}
+
+.docker-count {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.docker-source-badge,
+.docker-engine-badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
+  background: rgba(90, 140, 220, 0.22);
+  white-space: nowrap;
+}
+
+.docker-engine-badge {
+  border: none;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.container-rows {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+}
+
+.container-row-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.15));
+}
+
+.container-row-item:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+.container-row {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  padding: 4px 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.container-row.is-selected {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.container-row-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.container-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.container-row-meta,
+.container-row-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.container-row-status {
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+.docker-badge {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: rgba(128, 128, 128, 0.18);
+}
+
+.docker-state-running {
+  background: rgba(34, 160, 94, 0.22);
+}
+
+.docker-state-paused,
+.docker-state-restarting {
+  background: rgba(217, 154, 35, 0.25);
+}
+
+.docker-state-dead {
+  background: rgba(214, 69, 69, 0.25);
+}
+
+.docker-empty {
+  opacity: 0.65;
+  font-size: 12px;
+  padding: 8px 4px;
+}
+
+.docker-empty-title {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.docker-empty-hint {
+  margin-top: 2px;
+}
+
+.docker-hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.docker-hint-warn {
+  opacity: 0.85;
+}
+
+.docker-hint-error {
+  color: var(--danger, #d64545);
+  opacity: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-link-button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px;
+}
+
+.spinning {
+  animation: docker-spin 1s linear infinite;
+}
+
+@keyframes docker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

@@ -37,6 +37,12 @@
 .editor-divider { position: relative; z-index: 4; height: 1px; flex: 0 0 1px; background: var(--border); cursor: row-resize; touch-action: none; }
 .editor-divider::after { content: ""; position: absolute; top: -3px; bottom: -3px; left: 0; right: 0; }
 .editor-divider:hover, .editor-divider:focus-visible { background: color-mix(in srgb, var(--primary) 55%, var(--border)); }
+/* 容器管理底部分屏（容器页 + 把手）：容器页高度走内联 flex-basis（100 - 终端占比，
+   默认 33%），把手是 5px 命中区，视觉线只画中间 1px。 */
+.docker-pane-surface { flex: 0 0 auto; min-height: 120px; overflow: hidden; }
+.docker-divider { position: relative; z-index: 4; height: 5px; flex: 0 0 5px; cursor: row-resize; touch-action: none; }
+.docker-divider::after { content: ""; position: absolute; inset: 2px 0; background: var(--border); }
+.docker-divider:hover, .docker-divider:focus-visible { background: color-mix(in srgb, var(--primary) 22%, transparent); }
 .terminal-pane.drag-active { background: color-mix(in srgb, var(--primary) 5%, var(--ssh-terminal-background)); }
 .terminal-pane .drop-overlay strong { max-width: min(62vw, 460px); font-size: 12px; }
 /* 工作台内终端页签条：主/额外 PTY 同列展示，+ 新建当前连接内的终端。 */

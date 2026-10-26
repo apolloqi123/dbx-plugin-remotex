@@ -4,7 +4,7 @@
  * sidecar docker/list|logs|action 的可选 cli/socket/host 参数一一对应：
  * 端点由 sidecar 经 DOCKER_HOST/CONTAINER_HOST 环境变量下发，Docker 与
  * Podman 各取所需，一处设置两个引擎通用。本模块只做纯逻辑与 pluginStore
- * 持久化（宿主 host.storage，Host API 1.2；RPC 调用留在 DockerPanel）。
+ * 持久化（宿主 host.storage，Host API 1.2；RPC 调用留在 ContainerListPane/useDockerContainers）。
  */
 
 import { pluginStore } from "../../../shared/lib/pluginStore";

@@ -64,7 +64,7 @@ export function useWorkbenchModals(options: {
   metricsOpen: ReadonlyValue<boolean>;
   recordingsOpen: Ref<boolean>;
   batchSaveMode: ReadonlyValue<boolean>;
-  dockerPanelOpen: ReadonlyValue<boolean>;
+  dockerPaneOpen: ReadonlyValue<boolean>;
   settingsDialog: ReadonlyValue<InlineEscConsumer | undefined>;
   recordCountdown: ReadonlyValue<number | null>;
   hasEditorTabs: ReadonlyValue<boolean>;
@@ -81,6 +81,7 @@ export function useWorkbenchModals(options: {
   resolveUploadDuplicate: (choice: "overwrite" | "rename" | undefined) => void;
   closeAttributes: () => void;
   cancelBatchBarSave: () => void;
+  closeDockerPane: () => void;
   closeRightPanel: () => void;
 }) {
   const {
@@ -94,12 +95,12 @@ export function useWorkbenchModals(options: {
     auditClearOpen, settingsOpen, alertTriageOpen, hostKeyPrompt, agentPromptHead,
     spawnSessionDialogOpen,
     batchDeleteSubmitting, recordingDeleteSubmitting, recordingClearAllSubmitting,
-    auditClearSubmitting, metricsOpen, recordingsOpen, batchSaveMode, dockerPanelOpen,
+    auditClearSubmitting, metricsOpen, recordingsOpen, batchSaveMode, dockerPaneOpen,
     settingsDialog, recordCountdown, hasEditorTabs,
     editorPaneContainsFocus, saveActive, cancelRecordCountdown, closePreview,
     resolvePasteConfirm, resolvePendingConfirmDialog, resolveDropUpload,
     resolveDownloadPrompt, resolveDownloadConflict, resolveUploadDuplicate,
-    closeAttributes, cancelBatchBarSave, closeRightPanel,
+    closeAttributes, cancelBatchBarSave, closeDockerPane, closeRightPanel,
   } = options;
 
   /**
@@ -362,10 +363,13 @@ export function useWorkbenchModals(options: {
     }
     // 右键菜单与九个工具栏 popover 均已迁移 reka（ContextMenu/Popover）：Esc 与外点
     // 由 reka 自行消费（见上方 content 守卫），不再占 Esc 链一层。本层只剩
-    // 指标/录制、容器右侧栏与批量保存态（带草稿清理）。
-    if (metricsOpen.value || recordingsOpen.value || batchSaveMode.value || dockerPanelOpen.value) {
+    // 指标/录制、容器分屏与批量保存态（带草稿清理）。容器分屏与右侧栏可同时
+    // 打开，一次 Esc 只收一层：先容器分屏，再右侧栏。容器页内部确认弹层/引擎
+    // popover 自带 Esc 消费（捕获并 stopPropagation），不会落到这一层。
+    if (metricsOpen.value || recordingsOpen.value || batchSaveMode.value || dockerPaneOpen.value) {
       if (batchSaveMode.value) cancelBatchBarSave();
-      if (metricsOpen.value || dockerPanelOpen.value) closeRightPanel();
+      if (dockerPaneOpen.value) closeDockerPane();
+      else if (metricsOpen.value) closeRightPanel();
       if (recordingsOpen.value) recordingsOpen.value = false;
     }
   }

@@ -94,7 +94,7 @@ const props = defineProps<{
   reconnectPending: boolean;
   serialUploadBusy: boolean;
   connectionId: string;
-  dockerPanelOpen: boolean;
+  dockerPaneOpen: boolean;
   /** 批量发送条开合（props 名避开 "batch-bar-open" 子串：结构守卫据此
    *  断言批量条 DOM 已移出终端 pane，工具条只传状态）。 */
   batchSendBarOpen: boolean;
@@ -207,7 +207,7 @@ const {
   reconnectNow,
   sendSudoRefresh,
   openAlertTriage,
-  toggleDockerPanel,
+  toggleDockerPane,
   openCommandDialog,
   toggleBatchBar,
   toggleAgentModeMenu,
@@ -343,10 +343,10 @@ const {
       <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('alertTriage.title')" :aria-label="t('alertTriage.title')" @click="openAlertTriage"><Siren /></button>
       <!-- main 新增的端口转发入口同属 SSH 专属：沿用 A4 惯例在本地模式整体隐藏。 -->
       <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><Network /></button>
-      <!-- 容器管理右侧栏视图（鲸鱼 logo 独立入口）：与 SFTP/指标互斥切换；
-           SFTP 面板关闭时也可达；local 模式保留——本机 daemon（Docker
-           Desktop/OrbStack）场景照常可用。面板自治，切走即卸载停轮询。 -->
-      <button class="icon-button icon-blue" :class="{ 'is-active': dockerPanelOpen }" :title="t('docker.toolbarTitle')" :aria-label="t('docker.toolbarTitle')" :aria-pressed="dockerPanelOpen" @click.stop="toggleDockerPanel"><DockerWhaleLogo /></button>
+      <!-- 容器管理底部分屏入口（鲸鱼 logo）：独立开关，不占用右侧栏、不与
+           SFTP/指标互斥；local 模式保留——本机 daemon（Docker
+           Desktop/OrbStack）场景照常可用。面板自治，收起即卸载停轮询。 -->
+      <button class="icon-button icon-blue" :class="{ 'is-active': dockerPaneOpen }" :title="t('docker.toolbarTitle')" :aria-label="t('docker.toolbarTitle')" :aria-pressed="dockerPaneOpen" @click.stop="toggleDockerPane"><DockerWhaleLogo /></button>
       <span class="toolbar-separator" aria-hidden="true" />
       <button v-if="!localUiMode" class="icon-button icon-neutral" :title="t('commandTitle')" :aria-label="t('commandTitle')" :disabled="!connected" @click="openCommandDialog"><SquareTerminal /></button>
       <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><ListChecks /></button>

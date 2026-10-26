@@ -7,7 +7,7 @@ import {
 import type { SftpTypeFilter } from "../../../features/sftp/lib/entries/sftpFileFilters";
 import type { BatchProgressState } from "../../../features/transfers/lib/sftpBatchProgress";
 
-type RightPanelView = "sftp" | "metrics" | "docker";
+type RightPanelView = "sftp" | "metrics";
 
 // 列类型移到 lib/sftpEntries（issue #34：owner/group 属主/属组列，默认关）。
 type SftpSortColumn = "name" | "size" | "modified";
@@ -36,16 +36,17 @@ export function useSftpState(options: { initialPaneOpen: boolean }) {
   // 目录跟随的"目标目录置顶"需要命令式滚动到树内指定路径。
   const sftpTreePane = ref<SftpTreePaneApi | null>(null);
 
-  // 右侧栏可见性：SFTP / 指标 / 容器三视图互斥，sftpPaneOpen 表示右侧栏
+  // 右侧栏可见性：SFTP / 指标两视图互斥，sftpPaneOpen 表示右侧栏
   // 整体开合（沿用既有 workbenchState 持久化），rightPanelView 决定当前内容。
-  // 指标/容器视图不跨重启恢复，避免启动即触发轮询。
+  // 指标视图不跨重启恢复，避免启动即触发轮询。
   const sftpPaneOpen = ref(options.initialPaneOpen);
   const rightPanelView = ref<RightPanelView>("sftp");
-  // 容器视图：关闭/切换后即卸载停轮询。Docker 打开期间分栏固定为上下。
-  const dockerPanelOpen = computed(() => sftpPaneOpen.value && rightPanelView.value === "docker");
+  // 容器管理分屏：终端列底部的独立分屏，与右侧栏开合/视图完全解耦；
+  // 关闭即卸载停轮询，不跨重启恢复（不落盘）。
+  const dockerPaneOpen = ref(false);
   const sftpViewActive = computed(() => rightPanelView.value === "sftp");
   // 终端拖放的“面板抢落点”门控：只有 SFTP 树真的可见时才把拖入交给面板；
-  // 指标/容器视图不应阻止终端接收拖拽。
+  // 指标视图不应阻止终端接收拖拽。
   const sftpViewVisible = computed(() => sftpPaneOpen.value && sftpViewActive.value);
 
   const visibleColumns = ref<SftpColumn[]>([...DEFAULT_VISIBLE_COLUMNS]);
@@ -77,7 +78,7 @@ export function useSftpState(options: { initialPaneOpen: boolean }) {
     sftpTreePane,
     sftpPaneOpen,
     rightPanelView,
-    dockerPanelOpen,
+    dockerPaneOpen,
     sftpViewActive,
     sftpViewVisible,
     visibleColumns,

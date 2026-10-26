@@ -16,16 +16,6 @@
 .panes--vertical .divider::after { top: -3px; bottom: -3px; left: 0; right: 0; }
 .panes--vertical.panes--solo .terminal-stack { height: 100%; }
 
-/* Docker 底部分屏：容器视图固定在终端下方（默认终端 67% / 面板 33%），
-   不受左右/上下偏好与换位影响；--pane-split 由 App 的 dockerSplitRatio 写入，
-   把手仍可拖动/键盘微调。 */
-.panes--docker-split, .panes--docker-split.panes--reversed { flex-direction: column; }
-.panes--docker-split .terminal-stack { width: 100%; height: var(--pane-split, 67%); flex-basis: auto !important; flex-shrink: 0; }
-.panes--docker-split .terminal-stack > .terminal-workspace { height: 100%; flex: 1 1 auto; }
-.panes--docker-split .terminal-pane-surface > .terminal-pane { height: 100%; flex: 1 1 auto; }
-.panes--docker-split .sftp-pane { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
-.panes--docker-split .divider { width: 100%; height: 1px; flex-basis: 1px; cursor: row-resize; }
-.panes--docker-split .divider::after { top: -3px; bottom: -3px; left: 0; right: 0; }
 /* SFTP 收起（solo）时栈占满工作台高度；页签高度仍按内联比例。 */
 .panes--solo .terminal-stack { height: 100%; }
 

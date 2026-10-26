@@ -105,7 +105,7 @@ export interface WorkbenchToolbarActions
   reconnectNow(): void;
   sendSudoRefresh(): void;
   openAlertTriage(): void;
-  toggleDockerPanel(): void;
+  toggleDockerPane(): void;
   openCommandDialog(): void;
   toggleBatchBar(): void;
   toggleAgentModeMenu(): void;

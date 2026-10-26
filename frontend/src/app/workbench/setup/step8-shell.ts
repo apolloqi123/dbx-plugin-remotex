@@ -26,9 +26,9 @@ export function installWorkbenchShell(deps: Deps) {
   agentModeOpen, agentPromptHead, agentPromptQueue, agentRunning, alertTriageOpen, appearance,
   applyChosenDirAsDefault, askDownloadTarget, attrsMode, attrsTarget, auditClearOpen, auditClearSubmitting,
   auditOpen, batchDeleteOpen, batchDeleteSubmitting, bookmarkSaveOpen, canWrite, clearSftpDetailCache,
-  closeAttributes, closePreview, closeRightPanel, columnsOpen, commandHistory, commandOpen,
+  closeAttributes, closeDockerPane, closePreview, closeRightPanel, columnsOpen, commandHistory, commandOpen,
   confirmRiskyPaste, connectLog, connected, connectionReadOnly, currentPath, customEditorOpen,
-  deleteTarget, diskUsage, dockerPanelOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
+  deleteTarget, diskUsage, dockerPaneOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
   editorPaneContainsFocus, fileMenu, folderPickerTarget, handleWatchModified, hasEditorTabs, hostKeyPrompt,
   hostTerminalFontFamily, importPanelOpen, isLocalMode, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir,
   localOpenConfirmOpen, localSession, localShellRestored, localShellSurfaceOpen, locale, markLocalExited,
@@ -439,7 +439,7 @@ export function installWorkbenchShell(deps: Deps) {
     metricsOpen,
     recordingsOpen,
     batchSaveMode,
-    dockerPanelOpen,
+    dockerPaneOpen,
     settingsDialog,
     recordCountdown,
     hasEditorTabs,
@@ -455,6 +455,7 @@ export function installWorkbenchShell(deps: Deps) {
     resolveUploadDuplicate,
     closeAttributes,
     cancelBatchBarSave,
+    closeDockerPane,
     closeRightPanel,
   });
 

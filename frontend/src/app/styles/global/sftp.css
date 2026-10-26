@@ -1,12 +1,11 @@
-/* 右侧栏统一容器：SFTP 树 / 服务器指标 / 容器管理三视图互斥。视图头部
-   固定，内容区各自滚动；容器面板自己管理内部滚动。 */
+/* 右侧栏统一容器：SFTP 树 / 服务器指标两视图互斥（容器管理已迁到终端列底部
+   的独立分屏，见 .docker-pane-surface）。视图头部固定，内容区各自滚动。 */
 .right-panel { display: flex; flex-direction: column; background: var(--background); }
 .side-panel-head { display: flex; min-height: 34px; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding: 3px 4px 3px 12px; }
 .side-panel-head h2 { display: flex; min-width: 0; margin: 0; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .side-panel-head h2 .metrics-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .side-panel-head-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .metrics-side-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px 12px; }
-.right-panel > .right-panel-docker { flex: 1 1 auto; min-height: 0; }
 .sftp-pane.drag-active { background: color-mix(in srgb, var(--primary) 4%, var(--background)); }
 
 /* SFTP 面板主体：单栏文件树（旧侧栏已移除），树组件自带滚动/虚拟窗口。 */

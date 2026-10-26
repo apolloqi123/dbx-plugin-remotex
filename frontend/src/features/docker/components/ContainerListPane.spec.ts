@@ -9,9 +9,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 // @ts-expect-error — Same Node-only test dependency as above.
 import { join } from "node:path";
-import DockerPanel from "./DockerPanel.vue";
+import ContainerListPane from "./ContainerListPane.vue";
 import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
+
+type Row = { id: string; name: string; state: string; image?: string; status?: string; ports?: string };
 
 const directories: string[] = [];
 const shells = ["bash", "zsh", "fish", "ash", "sh"];
@@ -23,21 +25,80 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function terminalCommand(cli = ""): Promise<string> {
-  saveDockerEngineSettings("test-connection", { cli, socket: "", host: "" });
-  // Only the external host bridge is replaced; use the real panel/menu/event path.
+/** Only the external host bridge is replaced; the real list/action/menu path runs. */
+function stubHost(rows: Row[]): void {
   vi.stubGlobal("dbxPlugin", {
     invoke: async (method: string) => {
       if (method === "ssh/sessions/list") {
         return { sessions: [{ sessionId: "test-session", connectionId: "test-connection", connected: true }] };
       }
-      if (method === "docker/list") {
-        return { available: true, containers: [{ id: "abc123", name: "test", state: "running" }] };
-      }
+      if (method === "docker/list") return { available: true, containers: rows };
       throw new Error(`Unexpected host call: ${method}`);
     },
   });
-  const wrapper = mount(DockerPanel, { attachTo: document.body, props: { t: (key: string) => key } });
+}
+
+function mountList() {
+  return mount(ContainerListPane, {
+    attachTo: document.body,
+    props: { t: (key: string) => key, sessionId: "test-session", connectionId: "test-connection" },
+  });
+}
+
+describe("container list selection", () => {
+  it("selects the first running container after the first load", async () => {
+    stubHost([
+      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27", ports: "0.0.0.0:8080->80/tcp" },
+    ]);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "web-nginx", state: "running" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("falls back to the first container when the selection disappears", async () => {
+    const rows: Row[] = [
+      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27" },
+    ];
+    stubHost(rows);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "web-nginx" });
+      rows.splice(1, 1);
+      await wrapper.get(".container-refresh").trigger("click");
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "db" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("emits the clicked container", async () => {
+    stubHost([
+      { id: "db111", name: "db", state: "exited" },
+      { id: "web222", name: "web-nginx", state: "running" },
+    ]);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      await wrapper.get('[data-container-id="db111"]').trigger("click");
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "db" });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+});
+
+async function terminalCommand(cli = ""): Promise<string> {
+  saveDockerEngineSettings("test-connection", { cli, socket: "", host: "" });
+  stubHost([{ id: "abc123", name: "test", state: "running" }]);
+  const wrapper = mountList();
   let command = "";
   const capture = (event: Event) => { command = (event as CustomEvent<{ command: string }>).detail.command; };
   window.addEventListener("dbx:docker-open-in-terminal", capture);

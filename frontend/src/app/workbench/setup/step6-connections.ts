@@ -261,9 +261,8 @@ export function installWorkbenchConnections(deps: Deps) {
   } = useAlertTriage({ t, showError, showNotice, session, terminal: () => terminal.value, trackPendingInput, sendTerminalBytes, clipboardDeps });
 
 
-  // 容器管理：右侧栏第三视图（与 SFTP/指标互斥）；面板本体仍由 DockerPanel
-  // 自治（会话解析/轮询/动作/引擎设置都在组件内），切走即卸载停轮询。
-  // 打开期间的分栏轴向/比例由上方 dockerPanelOpen + paneLayout 接管。
+  // 容器管理已改为终端列底部的独立分屏（ContainerManagerPane），不再占用
+  // 右侧栏；本步骤不再涉及容器视图。
 
   // 关键词高亮：规则表 CRUD 收口在 composables/useHighlightRules（渲染引擎在下方）。
   const {

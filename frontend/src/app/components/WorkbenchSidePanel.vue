@@ -7,18 +7,18 @@ import ServerMetricsPanel, {
   type MetricsProcessSortKey,
   type ServerMetricsView,
 } from "../../features/metrics/components/ServerMetricsPanel.vue";
-import DockerPanel from "../../features/docker/components/DockerPanel.vue";
 import type { SftpSanitizedEntry } from "../../features/sftp/lib/entries/sftpEntries";
 import type { SftpTypeFilter } from "../../features/sftp/lib/entries/sftpFileFilters";
 import type { SftpBookmark } from "../../features/sftp/lib/paths/sftpBookmarks";
 import type { SftpFileTreeNode } from "../../features/sftp/lib/tree/sftpFileTree";
 import type { CustomEditor, KnownEditor } from "../../features/sftp/lib/editor/editorRules";
 
-/** 右侧栏外壳（T21 自 App.vue 模板迁入）：SFTP / 指标 / 容器三视图互斥的
+/** 右侧栏外壳（T21 自 App.vue 模板迁入）：SFTP / 指标两视图互斥的
  *  `<section class="sftp-pane right-panel">` 整段，含面板根 ref（sftpPane 经
- *  defineExpose 回传 App，保持 focusSftpPaneOnPointerDown 的既有语义）、三视图
- *  切换、SFTP 工作区与指标/容器视图包裹。可见性门与分隔条仍由 App 持有：
- *  分隔条的拖拽比例属于外层 pane 布局，不随本组件迁移。
+ *  defineExpose 回传 App，保持 focusSftpPaneOnPointerDown 的既有语义）、两视图
+ *  切换、SFTP 工作区与指标视图包裹。可见性门与分隔条仍由 App 持有：
+ *  分隔条的拖拽比例属于外层 pane 布局，不随本组件迁移。容器管理已迁到终端列
+ *  底部的独立分屏（features/docker/components/ContainerManagerPane.vue）。
  *
  *  数据面全部显式下传：只读态走 props（SFTP 工作区按组件 props 形状整体传递），
  *  可写模型（路径/编辑态/弹层开关/搜索草稿/列过滤/右键菜单负载…）走 v-model
@@ -46,14 +46,14 @@ type SftpReadonlyProps = Omit<
 >;
 
 type SidePanelShell = {
-  /** 右侧栏整体开合（SFTP / 指标 / 容器共用）。 */
+  /** 右侧栏整体开合（SFTP / 指标共用）。 */
   open: boolean;
   isRdpConnection: boolean;
-  rightPanelView: "sftp" | "metrics" | "docker";
+  rightPanelView: "sftp" | "metrics";
   localUiMode: boolean;
   /** 终端拖入的高亮态（面板根 drag-active）。 */
   dragActive: boolean;
-  /** SFTP 视图可见：面板根才接收粘贴/拖放（指标/容器不应抢终端的落点）。 */
+  /** SFTP 视图可见：面板根才接收粘贴/拖放（指标不应抢终端的落点）。 */
   sftpViewActive: boolean;
 };
 
@@ -68,13 +68,12 @@ type SftpFileMenu = { entry: SftpSanitizedEntry; selection: string[] };
 
 // 响应式 props 解构（Vue 3.5）：模板里沿用迁移前的绑定名（t/sftp/metrics…），
 // 同时保持 prop 更新时的实时求值（编译器改写为 __props.xxx 访问）。
-const { t, locale, shell, sftp, metrics, docker } = defineProps<{
+const { t, locale, shell, sftp, metrics } = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
   locale: string;
   shell: SidePanelShell;
   sftp: SftpReadonlyProps;
   metrics: SidePanelMetrics;
-  docker: { sessionId: string; connectionId: string };
 }>();
 
 const emit = defineEmits<{
@@ -159,7 +158,7 @@ defineExpose({ sftpPane });
 
 <template>
   <section
-    v-if="shell.open && !shell.isRdpConnection && (shell.rightPanelView === 'docker' || !shell.localUiMode)"
+    v-if="shell.open && !shell.isRdpConnection && !shell.localUiMode"
     ref="sftpPane"
     class="sftp-pane right-panel"
     tabindex="-1"
@@ -259,15 +258,6 @@ defineExpose({ sftpPane });
         @kill-process="(row, signal) => emit('kill-process', row, signal)"
         @update:sort="(key) => emit('update:sort', key)"
       />
-    </template>
-    <template v-else>
-      <header class="side-panel-head">
-        <h2>{{ t("docker.toolbarTitle") }}</h2>
-        <span class="side-panel-head-actions">
-          <button class="icon-button compact" :title="t('close')" :aria-label="t('close')" @click="emit('close-panel')"><X /></button>
-        </span>
-      </header>
-      <DockerPanel class="right-panel-docker" :t="t" :session-id="docker.sessionId" :connection-id="docker.connectionId" />
     </template>
   </section>
 </template>

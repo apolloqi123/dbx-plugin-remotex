@@ -37,12 +37,12 @@ export function installWorkbenchSftp(deps: Deps) {
   applyChosenDirAsDefault, askDownloadTarget, batchDeleteOpen, batchDeleteSubmitting, batchProgress, canWrite,
   cancelledTransferTasks, commandHistory, commandHistoryBackup, commandHistoryIndex, commandHistoryTimes, commandRunning,
   connected, connectionId, copyTextToClipboard, currentPath, deleteSubmitting, deleteTarget,
-  dockerPanelOpen, dockerSplitRatio, downloadChunkWaiters, entries, fileMenu, isRdpConnection,
+  dockerPaneOpen, dockerSplitRatio, downloadChunkWaiters, entries, fileMenu, isRdpConnection,
   lastClickedUri, listSftpDirectory, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir, loadTransferConcurrency,
   loadTransferDuplicatePolicy, loadTransferMaxActive, localCanSave, localDownloadDir, localUiMode, mkdirTargetDir,
   openNewFileDialog, paneContainer, paneLayout, paneOrder, pasteBusy, persistCommandHistory,
   persistCommandHistoryTimes, persistState, persistTerminalFeaturePrefs, pushTerminalCommandHistory, refreshExpandedSftpTree, refreshSftpAfterMutation,
-  remoteBasename, resolveDownloadConflictFor, revealSftpPath, rightPanelView, scheduleFit, selectedEntries,
+  remoteBasename, resetDockerSplitRatio, resolveDownloadConflictFor, revealSftpPath, rightPanelView, scheduleFit, selectedEntries,
   selectedPath, selectedUriSet, selectedUris, session, sftpClipboard, sftpHomePath,
   sftpNameEncodingState, sftpPane, sftpPaneOpen, sftpShowHidden, sftpTreeEntries, sftpTreeRoot,
   sftpViewActive, sftpViewVisible, showError, showNotice, splitRatio, sudoMode,
@@ -85,44 +85,30 @@ export function installWorkbenchSftp(deps: Deps) {
   // SFTP 目录导航（loadDirectory 枢纽/sudo/路径跳转）随工作区收口到
   // composables/listing/useSftpWorkspace，解构点见 setup 早期。
 
-  // 右侧栏三视图/分栏顺序开关：收口在 composables/useWorkbenchPanels。
-  // 指标视图的 open/close 由后段 useMetricsPanel 提供，按 getter 惰性求值。
+  // 右侧栏两视图（SFTP/指标）与终端列底部容器分屏开关：收口在
+  // composables/useWorkbenchPanels。指标视图的 open/close 由后段
+  // useMetricsPanel 提供，按 getter 惰性求值；容器分屏比例重置由布局域提供。
   const {
     togglePaneOrder,
     openRightPanel,
     closeRightPanel,
     toggleSftpPane,
     toggleMetricsPanel,
-    toggleDockerPanel,
+    toggleDockerPane,
+    closeDockerPane,
   } = useWorkbenchPanels({
-    paneOrder, sftpPaneOpen, rightPanelView, localUiMode, isRdpConnection, connected,
+    paneOrder, sftpPaneOpen, rightPanelView, dockerPaneOpen, localUiMode, isRdpConnection, connected,
     metricsOpen: () => late.metricsOpen.value,
     openMetrics: () => late.openMetrics(),
     closeMetrics: () => late.closeMetrics(),
     persistState, scheduleFit,
+    resetDockerSplitRatio: () => resetDockerSplitRatio(),
   });
 
   // 下载/传输/命令建议偏好与水合、下载目标/冲突询问链已收口在
   // composables/useWorkbenchPrefs（见上方早期声明点）。视图/终端行为偏好
   // （SFTP 默认/自动连接、目录跟随、终端行为与快捷键）已收口在
   // composables/useWorkbenchViewPrefs（见早期声明点）。
-
-  // 分栏把手的拖拽/键盘微调收口在 composables/useSplitDivider；
-  // splitRatio / dockerSplitRatio 仍是 App 的权威态，经 getter/setter 注入。
-  const {
-    startDividerDrag,
-    onDividerKeydown,
-    nudgeSplitDivider,
-  } = useSplitDivider({
-    paneContainer,
-    paneLayout,
-    paneOrder,
-    dockerPanelOpen,
-    splitRatio: { get: () => splitRatio.value, set: (value) => { splitRatio.value = value; } },
-    dockerSplitRatio: { get: () => dockerSplitRatio.value, set: (value) => { dockerSplitRatio.value = value; } },
-    scheduleFit,
-    persistState,
-  });
 
   // 文件预览与保存：状态机收口在 composables/editor/useFilePreview。
   const {
@@ -169,6 +155,27 @@ export function installWorkbenchSftp(deps: Deps) {
     onEditorDividerKeydown,
     editorPaneContainsFocus,
   } = useEditorSplitPane({ hasEditorTabs, scheduleFit });
+
+  // 分栏把手的拖拽/键盘微调收口在 composables/useSplitDivider；
+  // splitRatio / dockerSplitRatio 仍是 App 的权威态，经 getter/setter 注入。
+  // 容器分屏把手以终端栈（terminalStackRef）为坐标系，必须在本段之后接线。
+  const {
+    startDividerDrag,
+    onDividerKeydown,
+    nudgeSplitDivider,
+    startDockerDividerDrag,
+    onDockerDividerKeydown,
+    nudgeDockerDivider,
+  } = useSplitDivider({
+    paneContainer,
+    terminalStackRef,
+    paneLayout,
+    paneOrder,
+    splitRatio: { get: () => splitRatio.value, set: (value) => { splitRatio.value = value; } },
+    dockerSplitRatio: { get: () => dockerSplitRatio.value, set: (value) => { dockerSplitRatio.value = value; } },
+    scheduleFit,
+    persistState,
+  });
 
   // 压缩/解压：行内归档与解包收口在 composables/useSftpArchive。
   const {
@@ -501,7 +508,8 @@ export function installWorkbenchSftp(deps: Deps) {
 
   return {
     onFileAreaContextMenu, folderMenuAction, refreshSftpFolder, refreshSftpAfterUpload, togglePaneOrder, openRightPanel, closeRightPanel, toggleSftpPane,
-    toggleMetricsPanel, toggleDockerPanel, startDividerDrag, onDividerKeydown, nudgeSplitDivider, previewOpen, previewTitle, previewText,
+    toggleMetricsPanel, toggleDockerPane, closeDockerPane, startDividerDrag, onDividerKeydown, nudgeSplitDivider, startDockerDividerDrag,
+    onDockerDividerKeydown, nudgeDockerDivider, previewOpen, previewTitle, previewText,
     previewLoading, previewPath, previewSize, previewEditable, previewDraft, previewSaving, previewMode, previewImageUrl,
     previewImageZoomed, previewTruncated, previewDirty, previewEditableAllowed, jsonPreviewState, openEntry, openImagePreview, closePreview,
     beginPreviewEdit, cancelPreviewEdit, savePreview, MAX_INLINE_PREVIEW_BYTES, editorTabs, activeEditorId, hasEditorTabs, openEditorTab,

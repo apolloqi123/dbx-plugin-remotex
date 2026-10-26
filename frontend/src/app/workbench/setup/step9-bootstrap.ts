@@ -52,7 +52,7 @@ export function installWorkbenchBootstrap(deps: Deps) {
   showTransferHistoryMenu, sort, splitRatio, startLocalTerminal, stopAgentPromptTimer, stopCommandMarkerTick,
   sudoMode, suggestionOpen, t, telnetLastSequence, telnetPendingFrames, telnetSession,
   telnetState, terminal, terminalError, terminalHost, terminalHotkeys, terminalState,
-  terminalTransferBusy, toggleAgentModeMenu, toggleBatchBar, toggleColumnsMenu, toggleConnectionInfo, toggleDockerPanel,
+  terminalTransferBusy, toggleAgentModeMenu, toggleBatchBar, toggleColumnsMenu, toggleConnectionInfo, toggleDockerPane,
   toggleLocalTerminal, toggleMetricsPanel, togglePaneOrder, togglePanelPaletteMenu, togglePanelToolbar, toggleQuickExpand,
   toggleQuickGroupCollapse, toggleQuickMenu, toggleRdpPasteMenu, toggleRdpResolutionMenu, toggleRecording, toggleRecordings,
   toggleSessionMenu, toggleSftpAutoConnect, toggleSftpPane, toggleSftpPaneDefaultOpen, toggleTransferPanel, toggleTransferPause,
@@ -181,7 +181,7 @@ export function installWorkbenchBootstrap(deps: Deps) {
     reconnectNow,
     sendSudoRefresh,
     openAlertTriage,
-    toggleDockerPanel,
+    toggleDockerPane,
     openCommandDialog,
     toggleBatchBar,
     toggleAgentModeMenu,
@@ -242,11 +242,11 @@ export function installWorkbenchBootstrap(deps: Deps) {
     pickPanelScheme,
   };
 
-  // 右侧栏组件的数据面（T21 侧栏拆分）：模板里原先直接读取的 SFTP / 指标 / 容器
-  // 绑定在 setup 尾部一次性收敛成类型化对象，经 :shell / :sftp / :metrics / :docker
+  // 右侧栏组件的数据面（T21 侧栏拆分）：模板里原先直接读取的 SFTP / 指标
+  // 绑定在 setup 尾部一次性收敛成类型化对象，经 :shell / :sftp / :metrics
   // 下发到 WorkbenchSidePanel；可写模型（路径/编辑态/弹层开关/右键菜单负载…）仍走
   // v-model 链，动作经类型化 emit 上抛。状态权威仍在本文件，组件不 inject、不持有
-  // 会话逻辑。
+  // 会话逻辑。容器管理已改为终端列底部独立分屏（ContainerManagerPane），不再下传。
   const sidePanelShell = computed(() => ({
     open: sftpPaneOpen.value,
     isRdpConnection: isRdpConnection.value,
@@ -306,14 +306,10 @@ export function installWorkbenchBootstrap(deps: Deps) {
     onTreePane: bindSftpWorkspaceTreePane,
   }));
 
-  const sidePanelDocker = computed(() => ({
-    sessionId: session.value?.sessionId ?? "",
-    connectionId: connectionId.value,
-  }));
   return {
     hostDrag, mount, unmount, dismissPromptHints, promptHintsEnabled, promptHintsLineEmpty, promptHintsAnchor, markTerminalOutputActive,
     promptHintsHistoryKey, promptHintsCompletionsKey, promptHintsVisible, setPromptHintsEnabled, dismissPromptHintsNow, interactivePromptGatePending, resetPromptHintsQuiet, disposePromptHints,
-    toolbarActions, sidePanelShell, sidePanelMetrics, sidePanelSftp, sidePanelDocker,
+    toolbarActions, sidePanelShell, sidePanelMetrics, sidePanelSftp,
   };
 }
 

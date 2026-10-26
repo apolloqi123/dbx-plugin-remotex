@@ -2,6 +2,7 @@
 // 终端/编辑区/右侧栏工作区（T21b 自 App.vue 模板迁出，模板逐行保持原样；
 // 绑定经 `bindings` 传入，模板 ref 仍由 state 工厂持有，直接 :ref 回填）。
 import BatchBar from "./BatchBar.vue";
+import ContainerManagerPane from "../../features/docker/components/ContainerManagerPane.vue";
 import EditorPane from "../../features/sftp/components/EditorPane.vue";
 import TerminalContextMenu from "../../features/terminal/components/TerminalContextMenu.vue";
 import TerminalLayoutTree from "../../features/terminal/components/TerminalLayoutTree.vue";
@@ -25,15 +26,16 @@ const {
   bookmarkSaveOpen, broadcastBatchBarState, browseBatchHistoryDown, browseBatchHistoryUp, canOpenShellTab,
   canSplitTerminal, canWrite, cancelBatchBarSave, cancelPathBarEdit, chooseTrzszUpload,
   chooseZmodem, clearRowSelection, clearSftpSearch, clearTerminal, closeEditorTab,
-  closePane, closePaneTab, closeRightPanel, closeTerminalSplit, commitTreeRename,
+  closeDockerPane, closePane, closePaneTab, closeRightPanel, closeTerminalSplit, commitTreeRename,
   confirmBatchBarSave, confirmBookmarkSave, connected, connectionId, copySelectedEntries,
   copySelectedPaths, copyTerminalSelection, copyTextToClipboard, createPaneTab, ctxSearchEngines,
-  currentPath, deleteTarget, dismissBatchResult, dividerResizeHint, downloadEntry,
+  currentPath, deleteTarget, dismissBatchResult, dividerResizeHint, dockerPaneBasis,
+  dockerPaneOpen, dockerSplitRatio, downloadEntry,
   editorPaneRef, editorSplitRatio, editorTabs, ensureExternalEditors, extractEntry,
   fileMenu, filteredBatchQuickCommands, focusSftpPaneOnPointerDown, folderMenuAction, goParent,
   goToPath, groupedBatchQuickCommands, hasEditorTabs, importPanelOpen, isLocalMode,
   isRdpConnection, killProcessRow, loadDirectory, loadHome, localRecentCommands,
-  localUiMode, locale, nudgeSplitDivider, onDividerKeydown, onDrop,
+  localUiMode, locale, nudgeSplitDivider, onDividerKeydown, onDockerDividerKeydown, onDrop,
   onEditorDividerKeydown, onFileAreaContextMenu, onFileRowKeydown, onPaneActivated, onSftpClipboardPaste,
   onSftpDragEnter, onSftpDragLeave, onSftpTreeDrop, onShellTabCwd, onShellTabOpened,
   onTerminalDragEnter, onTerminalDragLeave, onTerminalDrop, openAttributes, openBatchBarSave,
@@ -43,12 +45,12 @@ const {
   pathHistoryOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
   quickCommands, quickGroupName, quickHasRealGroups, refreshBatchTargets, refreshMetrics,
   refreshProcessList, refreshSftpFolder, removeBookmark, renamingPath, rerunLocalCommand,
-  rightPanelView, saveEditorTab, searchSelectionOnline, searchTextOnline, selectAllTerminal,
+  saveEditorTab, searchSelectionOnline, searchTextOnline, selectAllTerminal,
   selectTreeEntry, sendBatchCommand, sendSudoRefresh, session, setDirectoryTracking,
   setMetricsProcessSort, sftpDragDropTarget, sftpPaneOpen, sftpSearchDraft, sftpTypeFilter,
-  showFileMenu, showNotice, sidePanelDocker, sidePanelMetrics, sidePanelSftp,
+  showFileMenu, showNotice, sidePanelMetrics, sidePanelSftp,
   sidePanelShell, splitTerminalFont, splitTerminalPane, splitTerminalTheme, startDividerDrag,
-  startEditorDividerDrag, submitPathInput, t, terminal, terminalBasis,
+  startDockerDividerDrag, startEditorDividerDrag, submitPathInput, t, terminal, terminalBasis,
   terminalHasSplit, terminalLayout, terminalMenuOpen, terminalStackRef, terminalTransferBusy,
   toggleBatchQuickPopover, toggleBatchTargetId, toggleBatchTargetsPopover, toggleBookmarkSave, togglePathHistoryMenu,
   toggleProcessPanel, toggleQuickGroupCollapse, toggleSftpShowHidden, toggleSftpTreeNode, toggleSudoMode,
@@ -240,10 +242,36 @@ onBeforeUnmount(() => {
           @cancel-save="cancelBatchBarSave"
         />
       </div>
+      <!-- 容器管理底部分屏（Task 6）：终端列内部堆叠，与右侧栏开合/视图无关。
+           比例语义 = 终端+编辑器占比（dockerSplitRatio 40-80），容器页高度取余量。
+           RDP 连接下整体不渲染；本地模式可用（本机 daemon）。 -->
+      <template v-if="dockerPaneOpen && !isRdpConnection">
+        <div
+          class="docker-divider"
+          role="separator"
+          aria-orientation="horizontal"
+          :aria-valuenow="Math.round(dockerSplitRatio)"
+          aria-valuemin="40"
+          aria-valuemax="80"
+          :title="t('docker.dockerResizeHint')"
+          tabindex="0"
+          @pointerdown="startDockerDividerDrag"
+          @keydown="onDockerDividerKeydown"
+        />
+        <ContainerManagerPane
+          class="docker-pane-surface"
+          :style="dockerPaneBasis"
+          :t="t"
+          :session-id="session?.sessionId"
+          :connection-id="connectionId || undefined"
+          :can-write="canWrite"
+          @close="closeDockerPane"
+        />
+      </template>
       </section>
 
       <div
-        v-if="sftpPaneOpen && !isRdpConnection && (rightPanelView === 'docker' || !localUiMode)"
+        v-if="sftpPaneOpen && !isRdpConnection && !localUiMode"
         class="divider"
         role="separator"
         :aria-orientation="paneLayout.direction === 'column' ? 'horizontal' : 'vertical'"
@@ -280,7 +308,6 @@ onBeforeUnmount(() => {
         :shell="sidePanelShell"
         :sftp="sidePanelSftp"
         :metrics="sidePanelMetrics"
-        :docker="sidePanelDocker"
         @focus-pane="focusSftpPaneOnPointerDown"
         @sftp-paste="onSftpClipboardPaste"
         @sftp-drag-enter="onSftpDragEnter"
