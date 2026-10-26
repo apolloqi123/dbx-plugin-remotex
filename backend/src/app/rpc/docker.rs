@@ -194,9 +194,11 @@ impl Plugin {
             }
 
             // 真流式日志跟随（容器管理分屏）：start 立即返回 streamId，分片
-            // 走 `docker/logs/chunk`，收口走 `docker/logs/end`（exitCode 或
-            // error；daemon 权限签名时 needsSudo）。注册表上限 4 条、单条
-            // TTL 30 分钟；stop 幂等。sudo 仅 SSH 连接可用且要求连接可写、
+            // 走 `docker/logs/chunk`，收口走 `docker/logs/end`（自然结束给
+            // exitCode，daemon 权限签名时 needsSudo；取消统一
+            // `error:"cancelled"`（SSH 与本机同一形状），TTL 到期
+            // `error:"stream timed out"`）。注册表上限 4 条、单条 TTL 30
+            // 分钟；stop 幂等。sudo 仅 SSH 连接可用且要求连接可写、
             // 已启用 Quick Sudo —— 在开出流之前拒绝，避免前端拿到 streamId
             // 后才在 end 事件里看到权限错误。
             "docker/logs/start" => {

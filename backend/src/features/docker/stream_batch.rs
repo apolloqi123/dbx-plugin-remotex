@@ -47,6 +47,54 @@ impl Default for ChunkBatcher {
     }
 }
 
+/// Incremental UTF-8 decoding for streamed output. Decoding each pipe read or
+/// batch on its own with `from_utf8_lossy` would turn a multibyte character
+/// split across the boundary into U+FFFD, so an incomplete trailing sequence
+/// is carried into the next [`push`](Self::push).
+#[derive(Default)]
+pub struct StreamText {
+    pending: Vec<u8>,
+}
+
+impl StreamText {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Decodes the next fragment and returns the text that is complete now.
+    /// It is empty when the fragment ends inside a character.
+    pub fn push(&mut self, bytes: &[u8]) -> String {
+        self.pending.extend_from_slice(bytes);
+        match std::str::from_utf8(&self.pending) {
+            Ok(text) => {
+                let text = text.to_string();
+                self.pending.clear();
+                text
+            }
+            // Genuinely invalid bytes: degrade exactly like `from_utf8_lossy`.
+            Err(error) if error.error_len().is_some() => {
+                let text = String::from_utf8_lossy(&self.pending).into_owned();
+                self.pending.clear();
+                text
+            }
+            // Truncated at the end: hold the suffix for the next push.
+            Err(error) => {
+                let suffix = self.pending.split_off(error.valid_up_to());
+                let text = String::from_utf8_lossy(&self.pending).into_owned();
+                self.pending = suffix;
+                text
+            }
+        }
+    }
+
+    /// Flushes a stream that ended inside a character, lossily. `None` when
+    /// nothing is pending.
+    pub fn finish(&mut self) -> Option<String> {
+        (!self.pending.is_empty())
+            .then(|| String::from_utf8_lossy(&std::mem::take(&mut self.pending)).into_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +123,33 @@ mod tests {
     #[test]
     fn flush_returns_none_when_empty() {
         assert!(ChunkBatcher::new().flush().is_none());
+    }
+
+    #[test]
+    fn stream_text_keeps_a_split_multibyte_character() {
+        let mut text = StreamText::new();
+        // "é" is C3 A9: the batch boundary falls between its two bytes.
+        assert_eq!(text.push(b"caf\xC3"), "caf");
+        assert_eq!(text.push(b"\xA9!"), "é!");
+        assert_eq!(text.finish(), None);
+    }
+
+    #[test]
+    fn stream_text_keeps_a_split_cjk_character() {
+        let mut text = StreamText::new();
+        // "日" (U+65E5) is E6 97 A5, split one byte at a time.
+        assert_eq!(text.push(b"\xE6"), "");
+        assert_eq!(text.push(b"\x97"), "");
+        assert_eq!(text.push(b"\xA5\n"), "日\n");
+        assert_eq!(text.finish(), None);
+    }
+
+    #[test]
+    fn stream_text_replaces_invalid_bytes_and_flushes_a_dangling_tail() {
+        let mut text = StreamText::new();
+        assert_eq!(text.push(b"a\xFFb"), "a\u{FFFD}b");
+        assert_eq!(text.push(b"\xC3"), "");
+        assert_eq!(text.finish().as_deref(), Some("\u{FFFD}"));
+        assert_eq!(text.finish(), None);
     }
 }

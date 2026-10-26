@@ -243,13 +243,67 @@ pub async fn collect_logs_local(
 /// Read size for streamed log pipes: one chunk per pipe read, coalesced
 /// later by the registry's batcher.
 const STREAM_CHUNK_BYTES: usize = 8 * 1024;
+/// Exit code reported by [`spawn_logs_stream`] when cancellation kills the
+/// child. The registry normalizes it into the shared `error:"cancelled"`
+/// end payload.
+const STREAM_CANCELLED_EXIT: i32 = 130;
+
+/// Why a fragment send stopped early.
+enum SendStop {
+    Cancelled,
+    /// The registry/forwarder is gone; nothing drains the sink anymore.
+    ReceiverClosed,
+}
+
+impl SendStop {
+    /// Terminal outcome of a stopped send: cancellation maps to the cancelled
+    /// exit code, a vanished consumer to an error.
+    fn into_result(self) -> Result<i32, String> {
+        match self {
+            Self::Cancelled => Ok(STREAM_CANCELLED_EXIT),
+            Self::ReceiverClosed => Err("Log stream consumer went away".to_string()),
+        }
+    }
+}
+
+/// Resolves once cancellation is requested. A dropped sender counts as
+/// "never" (the SSH exec helper of the same name): the sender is dropped only
+/// after the registry entry is removed, which already implies the stream
+/// ended.
+async fn wait_cancelled(cancel: &mut tokio::sync::watch::Receiver<bool>) {
+    loop {
+        if *cancel.borrow() {
+            return;
+        }
+        if cancel.changed().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    }
+}
+
+/// Forwards one fragment, racing the (possibly back-pressured) bounded send
+/// against cancellation. `docker logs -f` blocks while its pipe is not
+/// drained, so a stalled send would otherwise keep the child — and `stop` —
+/// alive forever.
+async fn send_or_cancel(
+    sink: &tokio::sync::mpsc::Sender<Vec<u8>>,
+    bytes: Vec<u8>,
+    cancel: &mut tokio::sync::watch::Receiver<bool>,
+) -> Result<(), SendStop> {
+    tokio::select! {
+        biased;
+        _ = wait_cancelled(cancel) => Err(SendStop::Cancelled),
+        sent = sink.send(bytes) => sent.map_err(|_| SendStop::ReceiverClosed),
+    }
+}
 
 /// `docker logs -f` as a local child process: argv-only direct exec, both
 /// pipes streamed to `sink`, and cancellation kills the child so no orphan
 /// follower survives a stopped pane. The endpoint rides the same two env
-/// vars as [`run_local`] (never argv, never a shell). Exit code 130 reports
-/// a cancelled stream; otherwise the child's own code is returned (-1 for
-/// signal deaths, like the remote parse path).
+/// vars as [`run_local`] (never argv, never a shell). Exit code
+/// [`STREAM_CANCELLED_EXIT`] reports a cancelled stream; otherwise the
+/// child's own code is returned (-1 for signal deaths, like the remote parse
+/// path).
 pub async fn spawn_logs_stream(
     engine: &EngineConfig,
     container_id: &str,
@@ -283,22 +337,35 @@ pub async fn spawn_logs_stream(
         .map_err(|error| format!("Failed to start {} logs: {error}", engine.cli))?;
     let mut stdout = child.stdout.take().expect("piped stdout");
     let mut stderr = child.stderr.take().expect("piped stderr");
+    // The pending read arm cannot borrow the same receiver as the cancel arm,
+    // so cancellation is watched through a second handle on the same channel.
+    let mut read_cancel = cancel.clone();
     let mut stdout_done = false;
     let mut stderr_done = false;
     while !(stdout_done && stderr_done) {
         tokio::select! {
             biased;
-            _ = cancel.changed() => {
+            _ = wait_cancelled(&mut read_cancel) => {
                 let _ = child.kill().await;
-                return Ok(130);
+                return Ok(STREAM_CANCELLED_EXIT);
             }
             read = read_chunk(&mut stdout), if !stdout_done => match read? {
                 None => stdout_done = true,
-                Some(bytes) => { let _ = sink.send(bytes).await; }
+                Some(bytes) => {
+                    if let Err(stop) = send_or_cancel(&sink, bytes, &mut cancel).await {
+                        let _ = child.kill().await;
+                        return stop.into_result();
+                    }
+                }
             },
             read = read_chunk(&mut stderr), if !stderr_done => match read? {
                 None => stderr_done = true,
-                Some(bytes) => { let _ = sink.send(bytes).await; }
+                Some(bytes) => {
+                    if let Err(stop) = send_or_cancel(&sink, bytes, &mut cancel).await {
+                        let _ = child.kill().await;
+                        return stop.into_result();
+                    }
+                }
             },
         }
     }
@@ -439,5 +506,39 @@ mod tests {
             .await
             .expect_err("missing cli");
         assert!(error.contains("CLI not found on this machine"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn send_or_cancel_beats_a_saturated_sink() {
+        let (sink, _chunks) = tokio::sync::mpsc::channel(1);
+        // Fill the only slot so the next send would block indefinitely.
+        sink.send(b"first".to_vec()).await.unwrap();
+        let (cancel_tx, mut cancel) = tokio::sync::watch::channel(false);
+        let signalled = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let _ = cancel_tx.send(true);
+        });
+
+        let started = std::time::Instant::now();
+        let stop = send_or_cancel(&sink, b"second".to_vec(), &mut cancel)
+            .await
+            .expect_err("blocked send must lose to cancel");
+        assert!(matches!(stop, SendStop::Cancelled));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        signalled.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn send_or_cancel_reports_a_closed_consumer() {
+        let (sink, chunks) = tokio::sync::mpsc::channel(1);
+        drop(chunks);
+        let (_cancel_tx, mut cancel) = tokio::sync::watch::channel(false);
+        let stop = send_or_cancel(&sink, b"lost".to_vec(), &mut cancel)
+            .await
+            .expect_err("closed receiver");
+        assert!(matches!(
+            stop.into_result(),
+            Err(error) if error.contains("consumer went away")
+        ));
     }
 }

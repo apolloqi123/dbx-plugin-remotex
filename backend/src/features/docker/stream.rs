@@ -23,12 +23,21 @@ use crate::sessions::ssh::SshRuntime;
 pub const MAX_ACTIVE_STREAMS: usize = 4;
 /// Hard lifetime of one stream. `docker logs -f` never exits on its own, so
 /// a forgotten pane would otherwise follow forever; the forwarder expires
-/// the stream and emits its end event.
+/// the stream, cancels the runner and emits its end event.
 pub const STREAM_TTL: Duration = Duration::from_secs(30 * 60);
 
 /// How often the forwarder checks [`STREAM_TTL`]. The check rides the same
 /// task as the chunk pump, so it cannot outlive the registry entry.
 const TTL_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+/// How long a stopped runner gets to wind down before its task is aborted.
+/// A runner that ignores cancellation (a wedged child or channel) must never
+/// keep the registry slot or the end event hostage.
+const STOP_GRACE: Duration = Duration::from_secs(5);
+/// End-event error for a stream that hit [`STREAM_TTL`].
+const TIMEOUT_ERROR: &str = "stream timed out";
+/// End-event error for both transports' cancellation (SSH errors, the local
+/// runner exits 130 — the payload is normalized so the host sees one shape).
+const CANCELLED_ERROR: &str = "cancelled";
 /// Bound on the runner→forwarder channel; a slow host bridge back-pressures
 /// the reader instead of buffering an unbounded log backlog in memory.
 const STREAM_CHANNEL_CAPACITY: usize = 64;
@@ -36,6 +45,41 @@ const STREAM_CHANNEL_CAPACITY: usize = 64;
 /// the end event. Only the last few chunks matter for the hint; the log text
 /// itself is never retained.
 const PERMISSION_TAIL_BYTES: usize = 4096;
+
+/// Tunables of one stream. Production uses [`StreamLimits::default`]; tests
+/// shorten both durations so expiry is observable in milliseconds.
+#[derive(Clone, Copy)]
+struct StreamLimits {
+    ttl: Duration,
+    stop_grace: Duration,
+}
+
+impl Default for StreamLimits {
+    fn default() -> Self {
+        Self {
+            ttl: STREAM_TTL,
+            stop_grace: STOP_GRACE,
+        }
+    }
+}
+
+impl StreamLimits {
+    /// TTL probe cadence: the production interval, shortened for a short TTL
+    /// so even a test-sized lifetime is checked more than once.
+    fn tick(&self) -> Duration {
+        self.ttl
+            .min(TTL_CHECK_INTERVAL)
+            .max(Duration::from_millis(1))
+    }
+}
+
+/// Why a stream ended; decides the end-event payload shape.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EndReason {
+    Natural,
+    Cancelled,
+    Expired,
+}
 
 const LOCAL_PERMISSION_HINT: &str = "Local container access needs daemon permission: start \
      Docker Desktop/OrbStack/Podman Desktop, or add your user to the docker group.";
@@ -149,11 +193,16 @@ impl DockerStreams {
             command.contains(&format!("--tail {}", clamp_tail(tail))),
             "logs follow command must carry the clamped tail: {command}"
         );
-        self.start_tracked(emitter, false, move |sink, cancel| async move {
-            runtime
-                .exec_stream(&session_id, &command, sudo, cancel, sink)
-                .await
-        })
+        self.start_tracked(
+            emitter,
+            false,
+            StreamLimits::default(),
+            move |sink, cancel| async move {
+                runtime
+                    .exec_stream(&session_id, &command, sudo, cancel, sink)
+                    .await
+            },
+        )
     }
 
     /// Starts following a container's logs on the sidecar's own daemon.
@@ -165,17 +214,26 @@ impl DockerStreams {
         tail: u64,
     ) -> Result<String, String> {
         validate_container_id(&container_id)?;
-        self.start_tracked(emitter, true, move |sink, cancel| async move {
-            spawn_logs_stream(&engine, &container_id, tail, sink, cancel).await
-        })
+        self.start_tracked(
+            emitter,
+            true,
+            StreamLimits::default(),
+            move |sink, cancel| async move {
+                spawn_logs_stream(&engine, &container_id, tail, sink, cancel).await
+            },
+        )
     }
 
-    /// Cancels one stream and drops its slot. Returns false for unknown ids
-    /// (already finished or never started), so the RPC can answer
-    /// `stopped: false` without treating it as an error.
+    /// Signals cancellation for one stream and reports whether it was live.
+    /// Returns false for unknown ids (already finished or never started), so
+    /// the RPC can answer `stopped: false` without treating it as an error.
+    ///
+    /// The entry keeps its cap slot until its forwarder exits: a cancelled
+    /// child or SSH channel is still being reaped, and admitting a new stream
+    /// before that would exceed [`MAX_ACTIVE_STREAMS`].
     pub fn stop(&self, stream_id: &str) -> bool {
-        let entry = self.lock().remove(stream_id);
-        match entry {
+        let inner = self.lock();
+        match inner.get(stream_id) {
             Some(entry) => {
                 let _ = entry.cancel.send(true);
                 true
@@ -184,8 +242,9 @@ impl DockerStreams {
         }
     }
 
-    /// Cancels every live stream. The runners wind down through their own
-    /// cancel paths, so remote processes are reaped instead of abandoned.
+    /// Cancels and drops every registered stream. This is the teardown path
+    /// (registry `Drop`): the runners wind down through their own cancel
+    /// paths, so remote processes are reaped instead of abandoned.
     pub fn stop_all(&self) {
         let entries: Vec<StreamEntry> = {
             let mut inner = self.lock();
@@ -202,6 +261,7 @@ impl DockerStreams {
         self: &Arc<Self>,
         emitter: PluginEmitter,
         is_local: bool,
+        limits: StreamLimits,
         runner: F,
     ) -> Result<String, String>
     where
@@ -216,7 +276,9 @@ impl DockerStreams {
         tokio::spawn(async move {
             let runner: JoinHandle<Result<i32, String>> = tokio::spawn(runner(sink, cancel_rx));
             registry
-                .forward(forward_id, emitter, cancel, chunks, runner, is_local)
+                .forward(
+                    forward_id, emitter, cancel, chunks, runner, is_local, limits,
+                )
                 .await;
         });
         Ok(stream_id)
@@ -224,6 +286,8 @@ impl DockerStreams {
 
     /// Drains runner chunks into batched `docker/logs/chunk` events, enforces
     /// the TTL, then emits `docker/logs/end` and unregisters the stream.
+    /// Expiry terminates the stream by itself: it stops the pump, cancels the
+    /// runner and releases the slot even when the runner never returns.
     async fn forward(
         self: Arc<Self>,
         stream_id: String,
@@ -232,10 +296,12 @@ impl DockerStreams {
         mut chunks: mpsc::Receiver<Vec<u8>>,
         runner: JoinHandle<Result<i32, String>>,
         is_local: bool,
+        limits: StreamLimits,
     ) {
         let started = self.started_at(&stream_id);
         let mut batcher = ChunkBatcher::new();
-        let mut ticker = tokio::time::interval(TTL_CHECK_INTERVAL);
+        let mut text = StreamText::new();
+        let mut ticker = tokio::time::interval(limits.tick());
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut recent: Vec<u8> = Vec::new();
         let mut expired = false;
@@ -243,16 +309,17 @@ impl DockerStreams {
             tokio::select! {
                 biased;
                 _ = ticker.tick() => {
-                    if !expired && started.elapsed() >= STREAM_TTL {
+                    if started.elapsed() >= limits.ttl {
                         expired = true;
                         let _ = cancel.send(true);
+                        break;
                     }
                 }
                 received = chunks.recv() => match received {
                     Some(bytes) => {
                         remember_tail(&mut recent, &bytes);
                         if let Some(batch) = batcher.push(&bytes, Instant::now()) {
-                            emit_chunk(&emitter, &stream_id, &batch);
+                            emit_text(&emitter, &stream_id, &mut text, &batch);
                         }
                     }
                     // Every sink holder lives inside the runner, so a closed
@@ -262,13 +329,20 @@ impl DockerStreams {
             }
         }
         if let Some(batch) = batcher.flush() {
-            emit_chunk(&emitter, &stream_id, &batch);
+            emit_text(&emitter, &stream_id, &mut text, &batch);
         }
-        let result = match runner.await {
-            Ok(result) => result,
-            Err(error) => Err(format!("Log stream task failed: {error}")),
+        if let Some(tail) = text.finish() {
+            emit_chunk(&emitter, &stream_id, &tail);
+        }
+        let result = stop_runner(runner, limits.stop_grace).await;
+        let reason = if expired {
+            EndReason::Expired
+        } else if *cancel.borrow() {
+            EndReason::Cancelled
+        } else {
+            EndReason::Natural
         };
-        let payload = end_payload(&stream_id, result, &recent, is_local, expired);
+        let payload = end_payload(&stream_id, result, &recent, is_local, reason);
         let _ = emitter.event("docker/logs/end", payload);
         self.lock().remove(&stream_id);
     }
@@ -289,14 +363,41 @@ impl Drop for DockerStreams {
     }
 }
 
-fn emit_chunk(emitter: &PluginEmitter, stream_id: &str, batch: &[u8]) {
+fn emit_chunk(emitter: &PluginEmitter, stream_id: &str, text: &str) {
+    if text.is_empty() {
+        return;
+    }
     let _ = emitter.event(
         "docker/logs/chunk",
         json!({
             "streamId": stream_id,
-            "text": String::from_utf8_lossy(batch),
+            "text": text,
         }),
     );
+}
+
+/// Batch bytes through the stream's UTF-8 carry-over, then forward whatever
+/// is complete.
+fn emit_text(emitter: &PluginEmitter, stream_id: &str, text: &mut StreamText, batch: &[u8]) {
+    emit_chunk(emitter, stream_id, &text.push(batch));
+}
+
+/// Waits out a runner after the pump ends, bounded by `grace`. A runner that
+/// ignores cancellation (`docker logs -f` stuck in an uninterruptible read, a
+/// wedged SSH channel) is aborted instead of awaited forever: the local child
+/// is `kill_on_drop`, so aborting the task still reaps the process.
+async fn stop_runner(
+    mut runner: JoinHandle<Result<i32, String>>,
+    grace: Duration,
+) -> Result<i32, String> {
+    match tokio::time::timeout(grace, &mut runner).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => Err(format!("Log stream task failed: {error}")),
+        Err(_) => {
+            runner.abort();
+            Err("Log stream did not stop in time".to_string())
+        }
+    }
 }
 
 fn remember_tail(recent: &mut Vec<u8>, bytes: &[u8]) {
@@ -307,17 +408,27 @@ fn remember_tail(recent: &mut Vec<u8>, bytes: &[u8]) {
     }
 }
 
-/// End-event payload: the runner outcome plus the daemon-permission hint.
-/// Remote streams advertise `needsSudo` for the explicit sudo retry; local
-/// streams have no Quick Sudo pipeline, so they carry the docker-group
-/// guidance as the error instead.
+/// End-event payload, normalized so the host keys on one shape per outcome:
+/// expiry is `{streamId, error:"stream timed out"}`, cancellation is
+/// `{streamId, error:"cancelled"}` for both transports (the SSH runner
+/// errors, the local runner exits 130), and a natural end keeps the exit
+/// code, the error text, and the daemon-permission hint.
 fn end_payload(
     stream_id: &str,
     result: Result<i32, String>,
     recent: &[u8],
     is_local: bool,
-    expired: bool,
+    reason: EndReason,
 ) -> Value {
+    match reason {
+        EndReason::Expired => {
+            return json!({ "streamId": stream_id, "error": TIMEOUT_ERROR });
+        }
+        EndReason::Cancelled => {
+            return json!({ "streamId": stream_id, "error": CANCELLED_ERROR });
+        }
+        EndReason::Natural => {}
+    }
     let mut payload = json!({ "streamId": stream_id });
     let scan_text = match &result {
         Ok(code) => {
@@ -341,241 +452,9 @@ fn end_payload(
             payload["needsSudo"] = json!(true);
         }
     }
-    if expired {
-        payload["error"] = json!("Log stream ended after the 30 minute limit");
-    }
     payload
 }
 
 #[cfg(test)]
-impl DockerStreams {
-    /// Inserts a placeholder entry so cap tests do not need live runners.
-    pub(crate) fn insert_test(&self, stream_id: String) {
-        let (cancel, _receiver) = watch::channel(false);
-        self.lock().insert(
-            stream_id,
-            StreamEntry {
-                cancel,
-                started: Instant::now(),
-            },
-        );
-    }
-
-    pub(crate) fn active_count(&self) -> usize {
-        self.lock().len()
-    }
-
-    /// Test runner: emits the given fragments, then reports `result`.
-    pub(crate) fn start_fake(
-        self: &Arc<Self>,
-        emitter: PluginEmitter,
-        is_local: bool,
-        chunks: Vec<&'static str>,
-        result: Result<i32, String>,
-    ) -> Result<String, String> {
-        self.start_tracked(emitter, is_local, move |sink, _cancel| async move {
-            for chunk in chunks {
-                let _ = sink.send(chunk.as_bytes().to_vec()).await;
-            }
-            result
-        })
-    }
-
-    /// Test runner that follows until the registry cancels it, like a real
-    /// `logs -f` process whose command is killed by `stop`.
-    pub(crate) fn start_fake_until_cancelled(
-        self: &Arc<Self>,
-        emitter: PluginEmitter,
-    ) -> Result<String, String> {
-        self.start_tracked(emitter, false, move |sink, mut cancel| async move {
-            let _ = sink.send(b"before stop".to_vec()).await;
-            let _ = cancel.changed().await;
-            Ok(130)
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use dbx_plugin_sdk::PluginTransport;
-    use std::io::Write;
-
-    struct SharedSink(Arc<Mutex<Vec<u8>>>);
-
-    impl Write for SharedSink {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    fn emitter_for_test() -> (PluginEmitter, Arc<Mutex<Vec<u8>>>) {
-        let sink = Arc::new(Mutex::new(Vec::new()));
-        (
-            PluginEmitter::for_tests(
-                Arc::new(Mutex::new(Box::new(SharedSink(sink.clone())))),
-                PluginTransport::JsonLines,
-            ),
-            sink,
-        )
-    }
-
-    fn events(sink: &Arc<Mutex<Vec<u8>>>) -> Vec<Value> {
-        String::from_utf8(sink.lock().unwrap().clone())
-            .unwrap()
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect()
-    }
-
-    async fn wait_for_event(sink: &Arc<Mutex<Vec<u8>>>, method: &str) -> Vec<Value> {
-        for _ in 0..200 {
-            let events = events(sink);
-            if events.iter().any(|event| event["method"] == method) {
-                return events;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("event {method} was not emitted: {:?}", events(sink));
-    }
-
-    async fn wait_for_empty(registry: &Arc<DockerStreams>) {
-        for _ in 0..200 {
-            if registry.active_count() == 0 {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("stream registry did not drain: {}", registry.active_count());
-    }
-
-    fn chunk_text(events: &[Value], stream_id: &str) -> String {
-        events
-            .iter()
-            .filter(|event| event["method"] == "docker/logs/chunk")
-            .inspect(|event| {
-                assert_eq!(
-                    event["params"]["streamId"], stream_id,
-                    "chunk carries its stream id: {event}"
-                );
-            })
-            .map(|event| {
-                event["params"]["text"]
-                    .as_str()
-                    .expect("chunk text is a string")
-                    .to_string()
-            })
-            .collect()
-    }
-
-    #[tokio::test]
-    async fn forwards_batched_chunks_then_stream_end() {
-        let (emitter, sink) = emitter_for_test();
-        let registry = Arc::new(DockerStreams::new());
-        let stream_id = registry
-            .start_fake(emitter, false, vec!["hello ", "world\n"], Ok(0))
-            .expect("start stream");
-
-        let events = wait_for_event(&sink, "docker/logs/end").await;
-        assert_eq!(chunk_text(&events, &stream_id), "hello world\n");
-        let end = events
-            .iter()
-            .find(|event| event["method"] == "docker/logs/end")
-            .expect("end event");
-        assert_eq!(end["params"]["streamId"], stream_id);
-        assert_eq!(end["params"]["exitCode"], 0);
-        assert!(end["params"].get("error").is_none(), "{end}");
-        wait_for_empty(&registry).await;
-    }
-
-    #[tokio::test]
-    async fn end_event_marks_remote_permission_failures_as_needs_sudo() {
-        let (emitter, sink) = emitter_for_test();
-        let registry = Arc::new(DockerStreams::new());
-        let stream_id = registry
-            .start_fake(
-                emitter,
-                false,
-                vec!["permission denied while trying to connect to the Docker daemon socket\n"],
-                Ok(1),
-            )
-            .expect("start stream");
-
-        let events = wait_for_event(&sink, "docker/logs/end").await;
-        assert!(chunk_text(&events, &stream_id).contains("permission denied"));
-        let end = events
-            .iter()
-            .find(|event| event["method"] == "docker/logs/end")
-            .expect("end event");
-        assert_eq!(end["params"]["exitCode"], 1);
-        assert_eq!(end["params"]["needsSudo"], true);
-        wait_for_empty(&registry).await;
-    }
-
-    #[tokio::test]
-    async fn local_permission_failures_point_at_the_docker_group() {
-        let (emitter, sink) = emitter_for_test();
-        let registry = Arc::new(DockerStreams::new());
-        registry
-            .start_fake(
-                emitter,
-                true,
-                vec!["permission denied while trying to connect to the Docker daemon socket\n"],
-                Ok(1),
-            )
-            .expect("start stream");
-
-        let events = wait_for_event(&sink, "docker/logs/end").await;
-        let end = events
-            .iter()
-            .find(|event| event["method"] == "docker/logs/end")
-            .expect("end event");
-        assert!(end["params"].get("needsSudo").is_none(), "{end}");
-        let error = end["params"]["error"].as_str().expect("error text");
-        assert!(error.contains("docker group"), "{error}");
-        wait_for_empty(&registry).await;
-    }
-
-    #[tokio::test]
-    async fn caps_active_streams_at_the_limit() {
-        let (emitter, _sink) = emitter_for_test();
-        let registry = Arc::new(DockerStreams::new());
-        for index in 0..MAX_ACTIVE_STREAMS {
-            registry.insert_test(format!("s{index}"));
-        }
-        let error = registry
-            .start_fake(emitter, false, vec![], Ok(0))
-            .expect_err("fifth stream is refused");
-        assert!(error.contains("Too many active log streams"), "{error}");
-        assert_eq!(registry.active_count(), MAX_ACTIVE_STREAMS);
-        registry.stop_all();
-        assert_eq!(registry.active_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn stop_cancels_the_runner_and_unregisters_the_stream() {
-        let (emitter, sink) = emitter_for_test();
-        let registry = Arc::new(DockerStreams::new());
-        let stream_id = registry
-            .start_fake_until_cancelled(emitter)
-            .expect("start stream");
-        assert_eq!(registry.active_count(), 1);
-
-        assert!(registry.stop(&stream_id));
-        assert_eq!(registry.active_count(), 0);
-        assert!(!registry.stop(&stream_id), "stop is idempotent");
-
-        let events = wait_for_event(&sink, "docker/logs/end").await;
-        assert_eq!(chunk_text(&events, &stream_id), "before stop");
-        let end = events
-            .iter()
-            .find(|event| event["method"] == "docker/logs/end")
-            .expect("end event");
-        assert_eq!(end["params"]["streamId"], stream_id);
-        assert_eq!(end["params"]["exitCode"], 130);
-    }
-}
+#[path = "stream_tests.rs"]
+mod stream_tests;
