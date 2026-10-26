@@ -126,18 +126,24 @@ pub(crate) fn is_transient_channel_open_failure(error: &russh::Error) -> bool {
 pub(crate) async fn open_session_channel(
     handle: &Handle<SshClient>,
 ) -> Result<russh::Channel<client::Msg>, russh::Error> {
-    let mut delay = Duration::from_millis(60);
-    for attempt in 0..3u32 {
+    // A transient refusal means the server is still counting sessions that
+    // our previous panes closed; give those closes up to ~2.6s to land.
+    const DELAYS_MS: [u64; 4] = [100, 300, 700, 1_500];
+    for (attempt, delay_ms) in DELAYS_MS.iter().enumerate() {
         match handle.channel_open_session().await {
             Ok(channel) => return Ok(channel),
-            Err(error) if attempt < 2 && is_transient_channel_open_failure(&error) => {
-                tokio::time::sleep(delay).await;
-                delay = delay.saturating_mul(3);
+            Err(error) if is_transient_channel_open_failure(&error) => {
+                let attempt = attempt + 1;
+                eprintln!(
+                    "[dbx-plugin-sshx] SSH channel open refused ({error}); retry {attempt}/{} in {delay_ms}ms",
+                    DELAYS_MS.len()
+                );
+                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
             }
             Err(error) => return Err(error),
         }
     }
-    unreachable!("open_session_channel returns on the last attempt")
+    handle.channel_open_session().await
 }
 
 mod dial;

@@ -105,6 +105,7 @@ const emit = defineEmits<{
       :session-id="sessionId"
       :connection-id="connectionId"
       :can-write="canWrite"
+      :visible="activeTab === 'files'"
     />
     <ContainerTerminalTab
       v-show="activeTab === 'terminal'"

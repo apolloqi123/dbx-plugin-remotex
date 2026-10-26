@@ -271,6 +271,21 @@ describe("ContainerFilesTab browsing", () => {
     expect(dirDownload.attributes("title")).toBe("docker.filesDirNotDownloadable");
   });
 
+  it("defers the root load until the tab is visible", async () => {
+    const wrapper = mountTab({ visible: false });
+    await flushPromises();
+    expect(rpcMock.mock.calls.filter((call) => call[0] === "docker/files/list")).toHaveLength(0);
+
+    await wrapper.setProps({ visible: true });
+    await flushPromises();
+    expect(rpcMock.mock.calls.filter((call) => call[0] === "docker/files/list")).toHaveLength(1);
+    expect(wrapper.findAll(".docker-file-row").map((row) => row.attributes("data-name"))).toEqual([
+      "etc",
+      "var",
+      "app.log",
+    ]);
+  });
+
   it("disables upload and import on read-only connections", async () => {
     const wrapper = mountTab({ canWrite: false });
     await flushPromises();

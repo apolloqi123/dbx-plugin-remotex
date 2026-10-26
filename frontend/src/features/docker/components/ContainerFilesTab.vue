@@ -14,19 +14,25 @@ import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngin
 import { formatBytes } from "../../../shared/lib/format";
 import { confirmDialog } from "../../../shared/lib/confirmDialog";
 
-const props = defineProps<{
-  t: (key: string, values?: Record<string, string | number>) => string;
-  container: DockerContainer;
-  sessionId?: string;
-  connectionId?: string;
-  canWrite?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    t: (key: string, values?: Record<string, string | number>) => string;
+    container: DockerContainer;
+    sessionId?: string;
+    connectionId?: string;
+    canWrite?: boolean;
+    /** 页签可见性：隐藏时不发列表请求（避免切容器时堆积 SSH channel）。 */
+    visible?: boolean;
+  }>(),
+  { visible: true },
+);
 
 const files = useContainerFiles({
   t: props.t,
   containerId: () => props.container.id,
   sessionId: () => props.sessionId,
   connectionId: () => props.connectionId,
+  visible: () => props.visible,
 });
 
 const transferError = ref("");

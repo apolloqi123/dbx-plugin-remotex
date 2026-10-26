@@ -32,6 +32,8 @@ export interface UseContainerFilesOptions {
   sessionId?: () => string | undefined;
   /** 引擎设置（cli/socket/host）按连接持久化的键。 */
   connectionId?: () => string | undefined;
+  /** 文件页是否可见；隐藏时只复位状态、不发 docker/files/list。 */
+  visible?: () => boolean;
 }
 
 function errorMessage(cause: unknown): string {
@@ -57,6 +59,7 @@ export function containerStatPayload(raw: unknown): ContainerFileStat {
 export function useContainerFiles(options: UseContainerFilesOptions) {
   const readSessionId = options.sessionId ?? (() => undefined);
   const readConnectionId = options.connectionId ?? (() => undefined);
+  const isVisible = options.visible ?? (() => true);
 
   const path = ref("/");
   const entries = ref<ContainerFileEntry[]>([]);
@@ -72,6 +75,15 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
   /** 单调请求序号：慢链路下过期响应整体丢弃，不把 UI 回跳到旧目录。 */
   let listSeq = 0;
   let statSeq = 0;
+  /** 列表请求串行合并：同一时刻最多一个 docker/files/list channel，
+   *  快速切容器时只保留最新目标（SSH MaxSessions 压力来源之一）。 */
+  let queuedTarget: string | undefined;
+  let listRunner: Promise<void> | undefined;
+  let loadedKey = "";
+
+  function targetKey(): string {
+    return `${options.containerId()}\u0000${readSessionId() ?? ""}\u0000${readConnectionId() ?? ""}`;
+  }
 
   function requestParams(target: string): Record<string, unknown> {
     const sessionId = readSessionId();
@@ -90,7 +102,22 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     statSeq += 1;
   }
 
-  async function load(target: string): Promise<void> {
+  function scheduleLoad(target: string): Promise<void> {
+    queuedTarget = target;
+    if (listRunner) return listRunner;
+    listRunner = (async () => {
+      while (queuedTarget !== undefined) {
+        const next = queuedTarget;
+        queuedTarget = undefined;
+        await loadNow(next);
+      }
+    })().finally(() => {
+      listRunner = undefined;
+    });
+    return listRunner;
+  }
+
+  async function loadNow(target: string): Promise<void> {
     const seq = ++listSeq;
     loading.value = true;
     error.value = "";
@@ -120,17 +147,17 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     );
     if (typeof target !== "string" && target.kind !== "dir") return;
     clearSelected();
-    await load(next);
+    await scheduleLoad(next);
   }
 
   async function parent(): Promise<void> {
     clearSelected();
-    await load(parentPath(path.value));
+    await scheduleLoad(parentPath(path.value));
   }
 
   async function refresh(): Promise<void> {
     clearSelected();
-    await load(path.value);
+    await scheduleLoad(path.value);
   }
 
   /** 选中条目：文件懒加载 stat；`unavailable`/失败都不改变选中与下载能力。 */
@@ -153,23 +180,38 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     }
   }
 
-  /** 容器或目标会话变化：回到根目录并重载（旧选中项不属于新容器）。 */
+  /** 容器或目标会话变化：回到根目录；只有可见时才重载。 */
   function reset(): void {
+    listSeq += 1;
+    queuedTarget = undefined;
     path.value = "/";
     entries.value = [];
+    loading.value = false;
     error.value = "";
     toolMissing.value = false;
     clearSelected();
-    void load("/");
+    loadedKey = targetKey();
+    if (isVisible()) void scheduleLoad("/");
   }
 
   watch(
-    () => [options.containerId(), readSessionId()] as const,
+    () => [options.containerId(), readSessionId(), readConnectionId()] as const,
     () => reset(),
   );
 
+  watch(isVisible, (visible) => {
+    if (!visible) return;
+    if (loadedKey !== targetKey()) {
+      loadedKey = targetKey();
+      reset();
+      return;
+    }
+    if (!entries.value.length) void scheduleLoad(path.value);
+  });
+
   onMounted(() => {
-    void load(path.value);
+    loadedKey = targetKey();
+    if (isVisible()) void scheduleLoad(path.value);
   });
 
   return {

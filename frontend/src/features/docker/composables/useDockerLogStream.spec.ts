@@ -303,16 +303,20 @@ describe("useDockerLogStream", () => {
     const fastB = stream.start("bbb222bbb222");
     await nextTick();
 
+    // 启动串行化：A 在途时 B 排队，不同时打两条 start（避免 channel 堆积）。
     const starts = calls.filter((call) => call.method === "docker/logs/start");
-    expect(starts.map((call) => call.params.containerId)).toEqual(["aaa111aaa111", "bbb222bbb222"]);
+    expect(starts.map((call) => call.params.containerId)).toEqual(["aaa111aaa111"]);
 
-    // B 先返回并注册；随后 A 才返回——A 必须作废并收掉自己的后端流。
-    starts[1].resolve?.({ streamId: "stream-b" });
-    await fastB;
-    expect(stream.status.value).toBe("streaming");
-
+    // A 返回时代际已过期：收掉 A 的流，随后排队的 B 才真正启动。
     starts[0].resolve?.({ streamId: "stream-a" });
     await slowA;
+    await vi.waitFor(() =>
+      expect(calls.filter((call) => call.method === "docker/logs/start")).toHaveLength(2),
+    );
+    const latest = calls.filter((call) => call.method === "docker/logs/start")[1];
+    latest.resolve?.({ streamId: "stream-b" });
+    await fastB;
+    expect(stream.status.value).toBe("streaming");
 
     expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-a")).toBe(true);
     expect(stream.status.value).toBe("streaming");

@@ -73,6 +73,8 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   let detachHandler: (() => void) | undefined;
   /** 启动代际：stop 或新 start 会让仍在途的 start 响应作废并立即收流。 */
   let generation = 0;
+  /** 启动串行链：同一时刻最多一个 stop/start RPC 在途，快速切容器只保留最新目标。 */
+  let startChain: Promise<void> = Promise.resolve();
 
   watch(follow, (value) => options.onFollowChange?.(value));
 
@@ -144,7 +146,7 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   }
 
   /** 启动一条新流：先收掉旧的；旧缓冲保留（清空由调用方显式决定）。 */
-  async function start(containerId: string, conditions: DockerLogStartOptions = {}): Promise<void> {
+  function start(containerId: string, conditions: DockerLogStartOptions = {}): Promise<void> {
     // 代际与目标必须在入口同步快照：await 期间的 stop/新 start 会让本次启动作废，
     // 且 payload 不能等到 await 之后再读可变的 target。
     const token = ++generation;
@@ -159,7 +161,14 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     needsSudo.value = false;
     exitCode.value = null;
     setFollow(true);
+    // 串行执行：A→B→C 三次快速切换只保留 C，前两次在链上看到代际过期直接退出，
+    // 避免并发 stop/start 把 SSH channel 瞬时堆到服务器 MaxSessions 上限。
+    startChain = startChain.then(() => runStart(token, next)).catch(() => undefined);
+    return startChain;
+  }
 
+  async function runStart(token: number, next: StreamTarget): Promise<void> {
+    if (token !== generation) return;
     // 先收旧流；不调用 stop()，否则它递增代际会把本次 token 立刻作废。
     const previousStreamId = takeCurrentStream();
     if (previousStreamId) await stopStream(previousStreamId);
