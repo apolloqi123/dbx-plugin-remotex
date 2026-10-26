@@ -120,7 +120,7 @@ describe("container list selection", () => {
     }
   });
 
-  it("emits the clicked container", async () => {
+  it("emits the clicked container as an explicit selection", async () => {
     stubHost([
       { id: "db111", name: "db", state: "exited" },
       { id: "web222", name: "web-nginx", state: "running" },
@@ -128,8 +128,11 @@ describe("container list selection", () => {
     const wrapper = mountList();
     try {
       await flushPromises();
+      // 首载的自动选中不是显式动作：管理器不据此重开被收起的详情。
+      expect(wrapper.emitted("select")?.[0]?.[1]).toBeUndefined();
       await wrapper.get('[data-container-id="db111"]').trigger("click");
       expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "db" });
+      expect(wrapper.emitted("select")?.at(-1)?.[1]).toBe(true);
     } finally {
       wrapper.unmount();
     }

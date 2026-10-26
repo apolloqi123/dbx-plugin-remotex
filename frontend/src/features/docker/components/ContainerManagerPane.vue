@@ -25,25 +25,47 @@ const emit = defineEmits<{ (e: "close"): void }>();
 const selected = ref<DockerContainer>();
 const activeTab = ref<"logs" | "files">("logs");
 
-/** 列表只在选中签名变化或清空时 emit（清空传 null）。 */
-function select(container: DockerContainer | null): void {
-  selected.value = container ?? undefined;
+/**
+ * 详情被手动收起后置 true，直到用户显式选择容器才恢复。
+ *
+ * 规则（最简单且无惊喜）：列表的自动选中（首载/轮询/刷新，`explicit` 缺省）
+ * 只能更新已有选中项的快照，不能重建被收起的详情；只有用户显式动作
+ * （行点击、行菜单 Logs，`explicit === true`）才清除该标记并重新打开详情。
+ * 列表清空（`null`）只清选中项，不重置标记——「空 → 重新出现」同样属于
+ * 列表自动变化，不该替用户把详情再弹出来。
+ */
+const dismissed = ref(false);
+
+/** 列表只在选中签名变化或清空时 emit（清空传 null；显式选择带 explicit）。 */
+function select(container: DockerContainer | null, explicit = false): void {
+  if (explicit) dismissed.value = false;
+  if (!container) {
+    selected.value = undefined;
+    return;
+  }
+  // 已收起且当前没有选中项：自动选中不重建详情，只保留列表高亮。
+  if (dismissed.value && !selected.value) return;
+  selected.value = container;
 }
 
 /** 详情页头 X：只收起详情，不关闭整个分屏（分屏头部的 X 才 emit close）。 */
 function clearSelection(): void {
   selected.value = undefined;
+  dismissed.value = true;
 }
 
 /** 行菜单「Logs」：选中并切到日志页（当前容器也可从文件页跳回）。 */
 function showLogs(container: DockerContainer): void {
+  dismissed.value = false;
   selected.value = container;
   activeTab.value = "logs";
 }
 
-// 连接切换：旧选中项不属于新目标，先清空避免详情短暂显示别的机器。
+// 连接切换：旧选中项不属于新目标，先清空避免详情短暂显示别的机器；新连接
+// 按初始规则重新自动选中，所以收起标记一并复位。
 watch([() => props.sessionId, () => props.connectionId], () => {
   selected.value = undefined;
+  dismissed.value = false;
   activeTab.value = "logs";
 });
 </script>

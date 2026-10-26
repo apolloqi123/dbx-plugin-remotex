@@ -31,8 +31,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** `null` = 列表已清空（rm/刷新后无容器），父组件必须收起详情。 */
-  (e: "select", container: DockerContainer | null): void;
+  /** `null` = 列表已清空（rm/刷新后无容器），父组件必须收起详情。
+   *  `explicit` = 用户显式选择（行点击/行菜单 Logs），区别于轮询/刷新自动选中；
+   *  父组件据此恢复被手动收起的详情。 */
+  (e: "select", container: DockerContainer | null, explicit?: boolean): void;
   /** 行菜单「Logs」：选中该容器并切到日志页。 */
   (e: "logs", container: DockerContainer): void;
 }>();
@@ -85,13 +87,13 @@ function identitySignature(container: DockerContainer | null): string {
     : "";
 }
 
-/** `force`：用户显式点击/行菜单总是上抛，即使签名未变（详情被手动收起后
- *  再点当前高亮行必须能重新打开）。 */
+/** `force`：用户显式点击/行菜单总是上抛（即使签名未变），并标记为 explicit —
+ *  详情被手动收起后再点当前高亮行必须能重新打开。 */
 function emitSelection(container: DockerContainer | null, force = false): void {
   const signature = identitySignature(container);
   if (!force && signature === lastSignature) return;
   lastSignature = signature;
-  emit("select", container);
+  emit("select", container, force || undefined);
 }
 
 function applySelection(rows: DockerContainer[]): void {
