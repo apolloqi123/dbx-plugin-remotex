@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-// 容器终端页：每条命令一次独立 docker/exec（60s 超时）、命令回显 + 输出 + 退出码、
-// ↑/↓ 历史（上限 50）、清空、只读拦截、容器切换清空、错误内联与忙碌期防重复提交。
+// 容器终端页：每条命令一次独立 docker/exec（65s 客户端超时，后端 60s 封顶）、
+// 命令回显 + 输出 + 退出码、↑/↓ 历史（上限 50）、清空、只读拦截、容器切换清空、
+// 错误内联与忙碌期防重复提交、旧容器请求在新容器运行中返回时不抢忙碌态/焦点。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
@@ -85,7 +86,7 @@ describe("ContainerTerminalTab", () => {
       containerId: "abc123def456",
       command: "uname -a",
     });
-    expect(calls[0].options).toEqual({ timeoutMs: 60_000 });
+    expect(calls[0].options).toEqual({ timeoutMs: 65_000 });
 
     const output = wrapper.get("[data-exec-output]").text();
     expect(output).toContain("$ uname -a");
@@ -237,5 +238,45 @@ describe("ContainerTerminalTab", () => {
     expect(calls).toHaveLength(1);
     expect(wrapper.get("[data-exec-output]").text()).toContain("slow done");
     expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+  });
+
+  it("does not clear the new container's busy state when the old command settles", async () => {
+    const pending: Array<{ resolve: (value: unknown) => void }> = [];
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (_method: string, params: Record<string, unknown>) =>
+        new Promise((resolve) => {
+          pending.push({ resolve });
+        }),
+    });
+    const wrapper = mountTab();
+    await submit(wrapper, "old-command");
+    expect(pending).toHaveLength(1);
+    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+
+    // 切容器时 watcher 清 busy，允许在新容器里继续执行。
+    await wrapper.setProps({ container: container({ id: "def456abc789", name: "db" }) });
+    await nextTick();
+    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+
+    await submit(wrapper, "new-command");
+    expect(pending).toHaveLength(2);
+    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+
+    // 旧容器的响应在新命令仍在运行时返回：不得清 busy、不得写入新容器输出。
+    pending[0].resolve({ success: true, output: "old output\n", exitCode: 0 });
+    await flushPromises();
+    await nextTick();
+    expect(wrapper.find("[data-exec-busy]").exists()).toBe(true);
+    const output = wrapper.get("[data-exec-output]").text();
+    expect(output).not.toContain("old output");
+    expect(output).toContain("$ new-command");
+
+    // 新命令收尾后才允许清 busy 并把焦点交回输入框。
+    pending[1].resolve({ success: true, output: "new output\n", exitCode: 0 });
+    await flushPromises();
+    await nextTick();
+    expect(wrapper.find("[data-exec-busy]").exists()).toBe(false);
+    expect(wrapper.get("[data-exec-output]").text()).toContain("new output");
+    expect(document.activeElement).toBe(wrapper.get("[data-exec-input]").element);
   });
 });

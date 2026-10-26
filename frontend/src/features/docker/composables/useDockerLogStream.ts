@@ -10,7 +10,6 @@ import { computed, onScopeDispose, ref, watch } from "vue";
 import { rpc } from "../../../shared/lib/rpc";
 import { LogBuffer } from "../lib/dockerLogBuffer";
 import { clearPendingDockerLogEvents, registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
-import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { LOGS_TIMEOUT_MS } from "../lib/dockerPanelModel";
 
 export type DockerLogStreamStatus = "idle" | "starting" | "streaming" | "ended" | "error";
@@ -23,8 +22,8 @@ const STOP_TIMEOUT_MS = 10_000;
 export interface DockerLogStreamOptions {
   /** 工作台绑定的 SSH 会话；缺省时按 target:"local" 查询本机 daemon。 */
   sessionId?: () => string | undefined;
-  /** 引擎设置（cli/socket/host）按连接持久化的键。 */
-  connectionId?: () => string | undefined;
+  /** 每次开流附带的引擎设置（cli/socket/host），与 list/files/exec 同口径。 */
+  engineParams?: () => Record<string, string>;
   /** follow 由 UI 切换；这里只做变更通知（例如埋点/外部同步）。 */
   onFollowChange?: (follow: boolean) => void;
 }
@@ -57,7 +56,6 @@ interface StreamTarget {
 
 export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   const readSessionId = options.sessionId ?? (() => undefined);
-  const readConnectionId = options.connectionId ?? (() => undefined);
 
   const buffer = new LogBuffer();
   const text = ref("");
@@ -108,13 +106,12 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
 
   function startPayload(current: StreamTarget): Record<string, unknown> {
     const sessionId = readSessionId();
-    const connectionId = readConnectionId() || "";
     return {
       ...(sessionId ? { sessionId } : { target: "local" as const }),
       containerId: current.containerId,
       tail: current.tail,
       ...(current.sudo ? { sudo: true } : {}),
-      ...dockerEngineParams(loadDockerEngineSettings(connectionId)),
+      ...(options.engineParams?.() ?? {}),
     };
   }
 

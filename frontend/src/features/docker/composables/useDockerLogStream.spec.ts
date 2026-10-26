@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { effectScope, nextTick } from "vue";
 import { useDockerLogStream } from "./useDockerLogStream";
 import { clearPendingDockerLogEvents, dispatchDockerLogEvent } from "../lib/dockerLogEvents";
-import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
+import {
+  DOCKER_ENGINE_STORE_KEY,
+  dockerEngineParams,
+  loadDockerEngineSettings,
+  saveDockerEngineSettings,
+} from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 
 type Call = { method: string; params: Record<string, unknown> };
@@ -44,7 +49,7 @@ afterEach(() => {
 describe("useDockerLogStream", () => {
   it("starts an SSH stream, appends chunks and stops on scope dispose", async () => {
     const calls = stubHost();
-    const { stream, scope } = createStream({ sessionId: () => "sess-1", connectionId: () => "conn-1" });
+    const { stream, scope } = createStream({ sessionId: () => "sess-1" });
     await stream.start("abc123def456", { tail: "200" });
 
     expect(calls[0]).toEqual({
@@ -69,12 +74,30 @@ describe("useDockerLogStream", () => {
     scope.stop();
   });
 
-  it("carries the per-connection engine settings", async () => {
+  it("spreads the caller's engine params into the start payload", async () => {
     saveDockerEngineSettings("conn-1", { cli: "podman", socket: "/run/podman.sock", host: "" });
     const calls = stubHost();
-    const { stream, scope } = createStream({ sessionId: () => "sess-1", connectionId: () => "conn-1" });
+    const { stream, scope } = createStream({
+      sessionId: () => "sess-1",
+      engineParams: () => dockerEngineParams(loadDockerEngineSettings("conn-1")),
+    });
     await stream.start("abc123def456");
-    expect(calls[0].params).toMatchObject({ sessionId: "sess-1", cli: "podman", socket: "/run/podman.sock" });
+    expect(calls[0]).toEqual({
+      method: "docker/logs/start",
+      params: {
+        sessionId: "sess-1",
+        containerId: "abc123def456",
+        tail: 200,
+        cli: "podman",
+        socket: "/run/podman.sock",
+      },
+    });
+    // restart 复用同一目标时也重新读取引擎参数。
+    await stream.restart();
+    expect(calls.filter((call) => call.method === "docker/logs/start").at(-1)?.params).toMatchObject({
+      cli: "podman",
+      socket: "/run/podman.sock",
+    });
     scope.stop();
   });
 

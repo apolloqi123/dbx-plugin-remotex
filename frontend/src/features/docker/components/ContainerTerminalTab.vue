@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // 容器命令终端页：每条命令都是一次独立的 `docker exec <id> sh -lc <command>`
-// （无常驻 shell，cwd/env 不跨命令保留），前端 60s 超时。输出是只读文本缓冲，
-// 超过上限按头部裁剪；命令历史只在本页签内记忆（↑/↓，最多 50 条）。
-// 只读连接（canWrite === false）直接禁用输入与执行；undefined 表示未限制。
+// （无常驻 shell，cwd/env 不跨命令保留）。前端超时略长于后端 60s 上限，
+// 让后端的结构化超时/退出结果先返回；只有传输层卡死才由前端兜底中断。
+// 输出是只读文本缓冲，超过上限按头部裁剪；命令历史只在本页签内记忆
+// （↑/↓，最多 50 条）。只读连接（canWrite === false）直接禁用输入与执行；
+// undefined 表示未限制。
 import { computed, nextTick, ref, watch } from "vue";
 import { Loader2 } from "@lucide/vue";
 import { rpc } from "../../../shared/lib/rpc";
@@ -11,7 +13,8 @@ import type { DockerContainer } from "../lib/dockerPanelModel";
 
 const MAX_HISTORY = 50;
 const MAX_OUTPUT_CHARS = 200_000;
-const EXEC_TIMEOUT_MS = 60_000;
+/** 后端 docker/exec 上限 60s：客户端多等 5s，让结构化超时结果优先落盘。 */
+const EXEC_TIMEOUT_MS = 65_000;
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -116,8 +119,12 @@ async function run(): Promise<void> {
     if (props.container.id !== containerId) return;
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {
-    busy.value = false;
-    focusInput();
+    // 切容器后旧请求的 finally 不能清掉新容器请求的忙碌态/抢焦点：
+    // 只在自己仍是当前容器的请求时收尾（容器切换时 watcher 已清 busy）。
+    if (props.container.id === containerId) {
+      busy.value = false;
+      focusInput();
+    }
   }
 }
 

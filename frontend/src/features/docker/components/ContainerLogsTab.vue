@@ -8,6 +8,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { FOLLOW_PAUSE_PX, MAX_LOG_CHARS, MAX_LOG_LINES, shouldFollow } from "../lib/dockerLogBuffer";
 import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
+import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
 
 const props = defineProps<{
@@ -22,7 +23,8 @@ const props = defineProps<{
 
 const stream = useDockerLogStream({
   sessionId: () => props.sessionId,
-  connectionId: () => props.connectionId,
+  // 引擎设置与 list/files/exec 同口径按连接附带；缺省走默认 docker/本机 daemon。
+  engineParams: () => dockerEngineParams(loadDockerEngineSettings(props.connectionId || "")),
 });
 
 const {
