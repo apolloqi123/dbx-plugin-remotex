@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 import { initialSerialUploadState, type SerialUploadUiState } from "../../../features/serial/lib/serialUpload";
+import { registerDockerLogStream } from "../../../features/docker/lib/dockerLogEvents";
 import { usePluginEvents } from "./usePluginEvents";
 
 /** issue #193a 回归锁：会话生命周期事件按 sessionId 严格隔离。关闭/断开某个
@@ -101,5 +102,30 @@ describe("usePluginEvents session lifecycle isolation (issue #193a)", () => {
     expect(markLocalExited).not.toHaveBeenCalled();
     handlePluginEvent(backendEvent("local/session/state", { sessionId: "local-1", state: "exited", exitCode: 0 }));
     expect(markLocalExited).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePluginEvents docker log routing", () => {
+  it("hands chunk/end events to the stream handler table without other branches", () => {
+    const handler = vi.fn();
+    const dispose = registerDockerLogStream("stream-1", handler);
+    try {
+      const { handlePluginEvent } = buildHarness();
+      handlePluginEvent(backendEvent("docker/logs/chunk", { streamId: "stream-1", text: "hello" }));
+      expect(handler).toHaveBeenCalledWith({
+        method: "docker/logs/chunk",
+        params: { streamId: "stream-1", text: "hello" },
+      });
+      handlePluginEvent(backendEvent("docker/logs/end", { streamId: "stream-1", exitCode: 0 }));
+      expect(handler).toHaveBeenLastCalledWith({
+        method: "docker/logs/end",
+        params: { streamId: "stream-1", exitCode: 0 },
+      });
+      // 快照类 method 不走这条路由（语义保留）。
+      handlePluginEvent(backendEvent("docker/logs", { streamId: "stream-1" }));
+      expect(handler).toHaveBeenCalledTimes(2);
+    } finally {
+      dispose();
+    }
   });
 });

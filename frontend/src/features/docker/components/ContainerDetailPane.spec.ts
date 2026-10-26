@@ -35,7 +35,20 @@ describe("container detail pane", () => {
       connectionId: "c",
       canWrite: false,
     });
-    expect(wrapper.findComponent(ContainerFilesTab).exists()).toBe(false);
+    // 两个页签都挂载（v-show），但只有活动页签可见。
+    expect(wrapper.findComponent(ContainerFilesTab).props()).toMatchObject({ container, canWrite: false });
+    expect((wrapper.findComponent(ContainerLogsTab).element as HTMLElement).style.display).toBe("");
+    expect((wrapper.findComponent(ContainerFilesTab).element as HTMLElement).style.display).toBe("none");
+  });
+
+  it("keeps the logs tab mounted while the files tab is shown", async () => {
+    const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "logs" } });
+    await wrapper.get('[data-tab="files"]').trigger("click");
+    await wrapper.setProps({ activeTab: "files" });
+    // 页签切换不卸载日志页：流不中断（停止只发生在容器切换/关闭/卸载）。
+    expect(wrapper.findComponent(ContainerLogsTab).exists()).toBe(true);
+    expect((wrapper.findComponent(ContainerLogsTab).element as HTMLElement).style.display).toBe("none");
+    expect((wrapper.findComponent(ContainerFilesTab).element as HTMLElement).style.display).toBe("");
   });
 
   it("shows the container identity and emits close from the header", async () => {

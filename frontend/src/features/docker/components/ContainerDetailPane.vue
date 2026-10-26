@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // 选中容器详情外壳（Task 7）：页头（名称/状态/关闭）+ 日志/文件页签。
-// 页签状态由 ContainerManagerPane 持有（activeTab prop + update:activeTab）；
-// 本组件只把容器与连接上下文原样下传给两个页，Wave 2 在页内填充实现，
-// props 契约不变。
+// 页签状态由 ContainerManagerPane 持有（activeTab prop + update:activeTab）。
+//
+// 两个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
+// 切到文件页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
+// Wave 2 在页内填充实现，props 契约不变。
 import { X } from "@lucide/vue";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
@@ -63,7 +65,7 @@ const emit = defineEmits<{
       </button>
     </div>
     <ContainerLogsTab
-      v-if="activeTab === 'logs'"
+      v-show="activeTab === 'logs'"
       :t="t"
       :container="container"
       :session-id="sessionId"
@@ -71,7 +73,7 @@ const emit = defineEmits<{
       :can-write="canWrite"
     />
     <ContainerFilesTab
-      v-else
+      v-show="activeTab === 'files'"
       :t="t"
       :container="container"
       :session-id="sessionId"

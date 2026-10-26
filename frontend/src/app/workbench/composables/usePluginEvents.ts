@@ -13,6 +13,7 @@ import {
 } from "../../../features/remote-desktop/lib/rdpFrame";
 import type { RdpCertPromptView } from "../../../features/remote-desktop/composables/useRdpSession";
 import type { ConnectLog } from "../../../features/connections/lib/connectLog";
+import { dispatchDockerLogEvent } from "../../../features/docker/lib/dockerLogEvents";
 import {
   decodeAgentFinishPayload,
   decodeAgentNoticePayload,
@@ -135,6 +136,13 @@ export function usePluginEvents(options: {
     // env（locale/theme）由 shared/frontend/hostThemeRuntime 的订阅分发；
     // 此处只做窄化排除，后端事件走下方 method 分派。
     if (event.type === "env") return;
+    // 容器日志流（docker/logs/chunk|end）：不按工作台会话过滤（本机 target 无
+    // sessionId），交给 dockerLogEvents 的处理器表按 streamId 分派给当前活跃的
+    // useDockerLogStream；未注册的流静默丢弃。
+    if (event.method === "docker/logs/chunk" || event.method === "docker/logs/end") {
+      dispatchDockerLogEvent(event.method, event.params);
+      return;
+    }
     if (event.method === "ssh/terminal/inputAck") {
       terminalDiag.acks += 1;
       return;
