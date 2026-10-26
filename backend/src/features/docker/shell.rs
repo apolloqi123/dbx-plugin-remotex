@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use dbx_plugin_sdk::PluginEmitter;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Notify};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -43,6 +43,8 @@ const INPUT_QUEUE: usize = 256;
 const RESIZE_QUEUE: usize = 32;
 /// How long a cancelled runner gets to wind down before its task is aborted.
 const STOP_GRACE: Duration = Duration::from_secs(5);
+/// Upper bound an explicit close waits for the runner to release its channel.
+const CLOSE_WAIT: Duration = Duration::from_secs(2);
 /// State-event error for a terminal that hit [`TERMINAL_TTL`].
 const TIMEOUT_ERROR: &str = "Container terminal timed out";
 
@@ -80,6 +82,8 @@ struct TerminalEntry {
     resize: mpsc::Sender<(u32, u32)>,
     closed: Arc<AtomicBool>,
     started: Instant,
+    /// Signalled once the forwarder has removed this entry.
+    done: Arc<Notify>,
 }
 
 /// The receivers handed to a runner once its slot is reserved.
@@ -89,6 +93,7 @@ struct Reserved {
     input_rx: mpsc::Receiver<Vec<u8>>,
     resize_rx: mpsc::Receiver<(u32, u32)>,
     closed: Arc<AtomicBool>,
+    done: Arc<Notify>,
 }
 
 /// The fixed remote command for one container shell: engine endpoint export
@@ -164,6 +169,7 @@ impl DockerTerminals {
         let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
         let (resize_tx, resize_rx) = mpsc::channel(RESIZE_QUEUE);
         let closed = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(Notify::new());
         inner.insert(
             terminal_id.to_string(),
             TerminalEntry {
@@ -172,6 +178,7 @@ impl DockerTerminals {
                 resize: resize_tx,
                 closed: Arc::clone(&closed),
                 started: Instant::now(),
+                done: Arc::clone(&done),
             },
         );
         Ok(Reserved {
@@ -180,6 +187,7 @@ impl DockerTerminals {
             input_rx,
             resize_rx,
             closed,
+            done,
         })
     }
 
@@ -212,6 +220,7 @@ impl DockerTerminals {
             input_rx,
             resize_rx,
             closed,
+            done,
         } = self.reserve(&terminal_id)?;
         let (sink, sink_rx) = mpsc::channel(OUTPUT_QUEUE);
         let runner_id = terminal_id.clone();
@@ -228,6 +237,7 @@ impl DockerTerminals {
                     runner_id,
                     emitter,
                     closed,
+                    done,
                     cancel,
                     handle,
                     sink_rx,
@@ -258,6 +268,7 @@ impl DockerTerminals {
             input_rx,
             resize_rx,
             closed,
+            done,
         } = self.reserve(&terminal_id)?;
         let pty = match spawn_local_pty(&engine, container_id, cols, rows) {
             Ok(pty) => pty,
@@ -278,6 +289,7 @@ impl DockerTerminals {
                     runner_id,
                     emitter,
                     closed,
+                    done,
                     cancel,
                     handle,
                     sink_rx,
@@ -298,6 +310,7 @@ impl DockerTerminals {
         terminal_id: String,
         emitter: PluginEmitter,
         closed: Arc<AtomicBool>,
+        done: Arc<Notify>,
         cancel: watch::Sender<bool>,
         mut runner: JoinHandle<Result<Option<i32>, String>>,
         mut sink: mpsc::Receiver<Vec<u8>>,
@@ -333,6 +346,7 @@ impl DockerTerminals {
             }
         }
         self.lock().remove(&terminal_id);
+        done.notify_one();
         // An explicit close is not a state transition the UI has to handle.
         if closed.load(Ordering::Relaxed) {
             return;
@@ -393,16 +407,26 @@ impl DockerTerminals {
 
     /// Cancels one terminal. Unknown/expired ids answer `false`, never an
     /// error, so the RPC stays idempotent.
-    pub fn close(&self, terminal_id: &str) -> bool {
-        let inner = self.lock();
-        match inner.get(terminal_id) {
-            Some(entry) => {
-                entry.closed.store(true, Ordering::Relaxed);
-                let _ = entry.cancel.send(true);
-                true
+    /// Cancels a terminal and waits (briefly) for its runner to release the
+    /// SSH channel. Serialising close→open avoids tripping the server's
+    /// `MaxSessions` guard when the user switches containers quickly.
+    pub async fn close_and_wait(&self, terminal_id: &str) -> bool {
+        let (cancel, closed, done) = {
+            let inner = self.lock();
+            match inner.get(terminal_id) {
+                Some(entry) => (
+                    entry.cancel.clone(),
+                    Arc::clone(&entry.closed),
+                    Arc::clone(&entry.done),
+                ),
+                None => return false,
             }
-            None => false,
-        }
+        };
+        closed.store(true, Ordering::Relaxed);
+        let notified = done.notified();
+        let _ = cancel.send(true);
+        let _ = tokio::time::timeout(CLOSE_WAIT, notified).await;
+        true
     }
 
     /// Cancels every registered terminal (registry teardown). The runners wind
@@ -503,6 +527,7 @@ impl DockerTerminals {
             input_rx,
             resize_rx,
             closed,
+            done,
         } = self.reserve(&terminal_id)?;
         let (sink, sink_rx) = mpsc::channel(OUTPUT_QUEUE);
         let handle = tokio::spawn(async move {
@@ -529,7 +554,7 @@ impl DockerTerminals {
         tokio::spawn(async move {
             registry
                 .forward(
-                    forward_id, emitter, closed, cancel, handle, sink_rx, limits,
+                    forward_id, emitter, closed, done, cancel, handle, sink_rx, limits,
                 )
                 .await;
         });

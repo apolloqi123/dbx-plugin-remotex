@@ -2,7 +2,23 @@
 //! input, resize and cancellation without touching russh.
 
 use super::container_terminal::{drive_pty_channel, PtyChannel, PtyMessage};
+use super::is_transient_channel_open_failure;
 use tokio::sync::{mpsc, watch};
+
+#[test]
+fn transient_channel_open_failures_are_recognized() {
+    use russh::{ChannelOpenFailure, Error};
+    assert!(is_transient_channel_open_failure(&Error::ChannelOpenFailure(
+        ChannelOpenFailure::AdministrativelyProhibited
+    )));
+    assert!(is_transient_channel_open_failure(&Error::ChannelOpenFailure(
+        ChannelOpenFailure::ResourceShortage
+    )));
+    assert!(!is_transient_channel_open_failure(&Error::ChannelOpenFailure(
+        ChannelOpenFailure::UnknownChannelType
+    )));
+    assert!(!is_transient_channel_open_failure(&Error::Disconnect));
+}
 
 #[derive(Default)]
 struct FakeChannel {

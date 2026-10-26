@@ -37,7 +37,7 @@ export interface UseContainerTerminal {
   status: Ref<ContainerTerminalStatus>;
   errorMessage: Ref<string>;
   open(cols: number, rows: number): Promise<void>;
-  close(): void;
+  close(): Promise<void>;
   retry(cols: number, rows: number): Promise<void>;
   sendInput(data: string): void;
   resize(cols: number, rows: number): void;
@@ -46,6 +46,8 @@ export interface UseContainerTerminal {
 
 const OPEN_TIMEOUT_MS = 35_000;
 const INPUT_SEND_TIMEOUT_MS = 8_000;
+/** close 等待 runner 释放 channel 的上限（后端 2s + 桥开销）。 */
+const CLOSE_TIMEOUT_MS = 4_000;
 const OUTPUT_CHANNEL_PREFIX = "docker/terminal/out/";
 const INPUT_CHANNEL_PREFIX = "docker/terminal/in/";
 
@@ -64,6 +66,8 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
   let lastResizeRows = 0;
   /** 后端 resize 队列满时回 false：最多补发一次，避免静默卡在旧尺寸。 */
   let resizeRetries = 0;
+  /** 最近一次 close RPC；后续 open 必须等它完成再建新 channel。 */
+  let pendingClose: Promise<void> = Promise.resolve();
 
   const encoder = new TextEncoder();
 
@@ -91,8 +95,10 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     unsubscribeBinary = undefined;
   }
 
-  /** 释放本实例持有的一切：递增代际、退订、清空输入队列、尽力关闭远端 PTY。 */
-  function teardown(): void {
+  /** 释放本实例持有的一切：递增代际、退订、清空输入队列、关闭远端 PTY。
+   *  返回的 Promise 在 close RPC 返回后完成（后端会等 channel 释放），
+   *  open 必须先 await 它，避免旧 channel 未关就开新会话触发 MaxSessions。 */
+  function teardown(): Promise<void> {
     generation += 1;
     stopped = true;
     stopListening();
@@ -102,10 +108,16 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     live = false;
     lastResizeCols = 0;
     lastResizeRows = 0;
-    if (!target) return;
+    resizeRetries = 0;
+    // No new target, but an earlier close may still be in flight.
+    if (!target) return pendingClose;
     const api = window.dbxPlugin;
-    if (!api) return;
-    void api.invoke("docker/terminal/close", { terminalId: target }).catch(() => undefined);
+    if (!api) return pendingClose;
+    pendingClose = api
+      .invoke("docker/terminal/close", { terminalId: target }, { timeoutMs: CLOSE_TIMEOUT_MS })
+      .then(() => undefined)
+      .catch(() => undefined);
+    return pendingClose;
   }
 
   function handleBinary(event: DbxPluginBinaryEvent): void {
@@ -122,7 +134,7 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
   }
 
   async function open(cols: number, rows: number): Promise<void> {
-    teardown();
+    await teardown();
     const current = generation;
     stopped = false;
     errorMessage.value = "";
@@ -191,14 +203,17 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       terminalId = "";
       live = false;
       if (failedId) {
-        void api.invoke("docker/terminal/close", { terminalId: failedId }).catch(() => undefined);
+        void api
+          .invoke("docker/terminal/close", { terminalId: failedId }, { timeoutMs: CLOSE_TIMEOUT_MS })
+          .catch(() => undefined);
       }
     }
   }
 
-  function close(): void {
-    teardown();
+  function close(): Promise<void> {
+    const closing = teardown();
     if (status.value !== "idle") status.value = "idle";
+    return closing;
   }
 
   async function retry(cols: number, rows: number): Promise<void> {

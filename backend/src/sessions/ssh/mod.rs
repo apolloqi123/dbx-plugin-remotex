@@ -58,7 +58,7 @@ use russh::client::{self, AuthResult, Handle};
 use russh::keys::agent::{client::AgentClient, AgentIdentity};
 use russh::keys::ssh_key::HashAlg;
 use russh::keys::{decode_secret_key, key::PrivateKeyWithHashAlg};
-use russh::{ChannelMsg, Disconnect, MethodKind, MethodSet};
+use russh::{ChannelMsg, ChannelOpenFailure, Disconnect, MethodKind, MethodSet};
 use russh_sftp::client::{Config as SftpConfig, SftpSession};
 use russh_sftp::protocol::FileType;
 use serde_json::{json, Value};
@@ -106,6 +106,39 @@ use crate::features::terminal::startup_commands;
 use crate::features::transfer::compress::CompressionMode;
 use crate::features::transfer::throttle::Throttle;
 use crate::filesystem::sftp::name::NameEncoding;
+
+/// True when a channel-open refusal is the server's transient concurrency
+/// guard rather than a policy denial. OpenSSH reports `MaxSessions` exhaustion
+/// as `AdministrativelyProhibited`; rapid container/tab switching can hit it
+/// while the previous channels are still winding down.
+pub(crate) fn is_transient_channel_open_failure(error: &russh::Error) -> bool {
+    matches!(
+        error,
+        russh::Error::ChannelOpenFailure(
+            ChannelOpenFailure::AdministrativelyProhibited | ChannelOpenFailure::ResourceShortage
+        )
+    )
+}
+
+/// Opens a session channel, retrying transient concurrency refusals with a
+/// short backoff so the previous pane's close can land. Permanent policy
+/// denials fall through unchanged after the bounded retries.
+pub(crate) async fn open_session_channel(
+    handle: &Handle<SshClient>,
+) -> Result<russh::Channel<client::Msg>, russh::Error> {
+    let mut delay = Duration::from_millis(60);
+    for attempt in 0..3u32 {
+        match handle.channel_open_session().await {
+            Ok(channel) => return Ok(channel),
+            Err(error) if attempt < 2 && is_transient_channel_open_failure(&error) => {
+                tokio::time::sleep(delay).await;
+                delay = delay.saturating_mul(3);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("open_session_channel returns on the last attempt")
+}
 
 mod dial;
 mod handler;

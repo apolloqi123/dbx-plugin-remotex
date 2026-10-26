@@ -143,7 +143,7 @@ pub async fn exec_plain_cancellable(
     let mut channel = tokio::select! {
         biased;
         _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = handle.channel_open_session() =>
+        opened = open_session_channel(handle) =>
             opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
     };
     // env/exec start: the command may have been accepted by the time the
@@ -491,8 +491,7 @@ pub(super) async fn maybe_answer_prompt(
 /// Validates a cached sudo timestamp without prompting; used by the
 /// background keepalive loop.
 pub async fn validate_sudo_timestamp(handle: &Handle<SshClient>) -> Result<(), String> {
-    let mut channel = handle
-        .channel_open_session()
+    let mut channel = open_session_channel(handle)
         .await
         .map_err(|error| format!("Failed to open sudo keepalive channel: {error}"))?;
     channel

@@ -341,7 +341,7 @@ describe("ContainerTerminalTab", () => {
     await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(2));
     expect(openCalls(harness)[1]).toMatchObject({ containerId: "def456abc789" });
     expect(first?.resets).toBeGreaterThan(0);
-    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID });
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID }, expect.anything());
   });
 
   it("closes the PTY and disposes xterm on unmount", async () => {
@@ -352,7 +352,7 @@ describe("ContainerTerminalTab", () => {
 
     wrapper.unmount();
     wrappers.splice(wrappers.indexOf(wrapper), 1);
-    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID });
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID }, expect.anything());
     expect(instance?.disposed).toBe(true);
   });
 });

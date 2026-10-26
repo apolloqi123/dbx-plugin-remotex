@@ -160,7 +160,7 @@ where
 }
 
 pub(super) async fn detect_remote_shell_inner(handle: &Handle<SshClient>) -> RemoteShell {
-    let Ok(mut channel) = handle.channel_open_session().await else {
+    let Ok(mut channel) = open_session_channel(handle).await else {
         return RemoteShell::Other;
     };
     if channel.exec(true, "printf '%s' \"$SHELL\"").await.is_err() {

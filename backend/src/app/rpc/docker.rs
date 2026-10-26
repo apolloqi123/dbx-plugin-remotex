@@ -330,8 +330,14 @@ impl Plugin {
 
             "docker/terminal/close" => {
                 // 幂等：未知/已结束的 terminalId 返回 stopped:false，不报错。
+                // 已存在的终端会短暂等待 runner 释放 SSH channel，避免快速
+                // 切换容器时“关闭未完成就重开”触发服务器 MaxSessions 限制。
                 let terminal_id = required_string(&params, "terminalId")?;
-                Ok(json!({ "stopped": self.docker_terminals.close(terminal_id) }))
+                Ok(json!({
+                    "stopped": self
+                        .runtime
+                        .block_on(self.docker_terminals.close_and_wait(terminal_id))
+                }))
             }
 
             "docker/action" => {

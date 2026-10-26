@@ -58,26 +58,21 @@ async fn registry_enforces_the_concurrency_cap() {
 async fn close_and_resize_are_idempotent() {
     let (emitter, _sink) = emitter_for_test();
     let registry = std::sync::Arc::new(DockerTerminals::new());
-    assert!(!registry.close("missing"));
+    assert!(!registry.close_and_wait("missing").await);
     assert!(!registry.resize("missing", 80, 24));
     let terminal_id = registry
         .start_cancellable_fake_for_test(emitter)
         .expect("start fake terminal");
     assert!(registry.resize(&terminal_id, 80, 24));
-    assert!(registry.close(&terminal_id));
-    for _ in 0..200 {
-        if registry.active_for_test() == 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    assert!(!registry.close(&terminal_id));
+    assert!(registry.close_and_wait(&terminal_id).await);
+    assert_eq!(registry.active_for_test(), 0);
+    assert!(!registry.close_and_wait(&terminal_id).await);
 }
 
 /// Review regression: a failed local spawn must release the slot it reserved
 /// (and keep the client-supplied id reusable), never leak a PTY.
-#[test]
-fn local_spawn_failure_releases_the_reserved_slot() {
+#[tokio::test]
+async fn local_spawn_failure_releases_the_reserved_slot() {
     let (emitter, _sink) = emitter_for_test();
     let registry = std::sync::Arc::new(DockerTerminals::new());
     let engine = test_engine("dbx-missing-container-cli", None);
@@ -93,7 +88,7 @@ fn local_spawn_failure_releases_the_reserved_slot() {
         .expect_err("missing CLI");
     assert!(error.contains("CLI not found on this machine"), "{error}");
     assert_eq!(registry.active_for_test(), 0);
-    assert!(!registry.close("term-00000000"));
+    assert!(!registry.close_and_wait("term-00000000").await);
 }
 
 #[tokio::test]
@@ -131,13 +126,7 @@ async fn explicit_close_emits_no_state_event() {
     let terminal_id = registry
         .start_cancellable_fake_for_test(emitter)
         .expect("start fake terminal");
-    assert!(registry.close(&terminal_id));
-    for _ in 0..200 {
-        if registry.active_for_test() == 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    assert!(registry.close_and_wait(&terminal_id).await);
     assert_eq!(registry.active_for_test(), 0, "close must release the slot");
     assert!(
         state_events(&sink).is_empty(),

@@ -16,9 +16,7 @@ impl SshRuntime {
         if let Some(sftp) = current.as_ref() {
             return Ok(sftp.clone());
         }
-        let channel = session
-            .handle
-            .channel_open_session()
+        let channel = open_session_channel(&session.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
         channel
@@ -553,9 +551,7 @@ impl SshRuntime {
     /// 打开一条独立 sftp 子系统通道并跑裸包客户端（严格串行请求/响应）。
     pub(crate) async fn raw_sftp_client(&self, session_id: &str) -> Result<RawSftpClient, String> {
         let session = self.session(session_id).await?;
-        let channel = session
-            .handle
-            .channel_open_session()
+        let channel = open_session_channel(&session.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
         channel

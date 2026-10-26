@@ -26,8 +26,7 @@ impl SshRuntime {
     ) -> Result<(RemoteShell, bool, TerminalChannel), String> {
         let remote_shell = RemoteShell::Unknown;
         let directory_tracking_supported = true;
-        let mut channel = handle
-            .channel_open_session()
+        let mut channel = open_session_channel(handle)
             .await
             .map_err(|error| channel_open_error(reused_transport, error))?;
         channel

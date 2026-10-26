@@ -151,9 +151,7 @@ impl SshRuntime {
         rows: u32,
     ) -> Result<TerminalChannel, String> {
         let entry = self.session(session_id).await?;
-        let channel = entry
-            .handle
-            .channel_open_session()
+        let channel = open_session_channel(&entry.handle)
             .await
             .map_err(|error| format!("Failed to open the container terminal channel: {error}"))?;
         channel

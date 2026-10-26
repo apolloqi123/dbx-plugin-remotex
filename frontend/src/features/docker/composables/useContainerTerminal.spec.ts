@@ -93,7 +93,7 @@ describe("useContainerTerminal", () => {
 
     const opening = terminal.open(80, 24);
     // open 之前必须已经订阅：open RPC 返回前的首屏输出（提示符）不能丢。
-    expect(harness.binaryListeners).toHaveLength(1);
+    await vi.waitFor(() => expect(harness.binaryListeners).toHaveLength(1));
     await opening;
 
     expect(harness.invoke).toHaveBeenCalledWith(
@@ -172,11 +172,42 @@ describe("useContainerTerminal", () => {
     expect(terminal.status.value).toBe("error");
     expect(terminal.errorMessage.value).toContain("no shell");
     // A lost response may hide an admitted PTY: the speculative id is closed.
-    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: "term-12345678" });
+    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: "term-12345678" }, expect.anything());
 
     await terminal.retry(80, 24);
     expect(terminal.status.value).toBe("connected");
     expect(terminal.errorMessage.value).toBe("");
+  });
+
+  it("waits for an in-flight close before reopening", async () => {
+    const harness = installHarness();
+    const terminal = useContainerTerminal(options());
+    await terminal.open(80, 24);
+
+    let releaseClose: (() => void) | undefined;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    harness.invoke.mockImplementation(async (method: string) => {
+      if (method === "docker/terminal/open") return { terminalId: "term-12345678" };
+      if (method === "docker/terminal/close") {
+        await closeGate;
+        return { stopped: true };
+      }
+      if (method === "docker/terminal/resize") return { resized: true };
+      return {};
+    });
+    const ok = (method: string) => harness.invoke.mock.calls.filter((call) => call[0] === method).length;
+
+    const closing = terminal.close();
+    const reopening = terminal.open(80, 24);
+    await vi.waitFor(() => expect(ok("docker/terminal/close")).toBe(1));
+    expect(ok("docker/terminal/open")).toBe(1);
+
+    releaseClose?.();
+    await closing;
+    await reopening;
+    expect(ok("docker/terminal/open")).toBe(2);
   });
 
   it("maps state events for the current terminal only", async () => {
@@ -210,7 +241,7 @@ describe("useContainerTerminal", () => {
     terminal.close();
     terminal.close();
     await vi.waitFor(() => expect(harness.invoke).toHaveBeenCalledTimes(2));
-    expect(harness.invoke).toHaveBeenLastCalledWith("docker/terminal/close", { terminalId: "term-12345678" });
+    expect(harness.invoke).toHaveBeenLastCalledWith("docker/terminal/close", { terminalId: "term-12345678" }, expect.anything());
     expect(terminal.status.value).toBe("idle");
     expect(harness.binaryListeners).toHaveLength(0);
   });

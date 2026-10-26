@@ -23,7 +23,7 @@ pub(super) async fn exec_with_sudo_inner(
         let mut channel = tokio::select! {
             biased;
             _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-            opened = handle.channel_open_session() =>
+            opened = open_session_channel(handle) =>
                 opened.map_err(|error| format!("Failed to open sudo channel: {error}"))?,
         };
         tokio::select! {
@@ -58,7 +58,7 @@ pub(super) async fn exec_with_sudo_inner(
     let mut channel = tokio::select! {
         biased;
         _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = handle.channel_open_session() =>
+        opened = open_session_channel(handle) =>
             opened.map_err(|error| format!("Failed to open sudo channel: {error}"))?,
     };
     if use_pty {
@@ -152,7 +152,7 @@ pub async fn exec_plain_stream(
     let mut channel = tokio::select! {
         biased;
         _ = wait_cancelled(&mut cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = handle.channel_open_session() =>
+        opened = open_session_channel(handle) =>
             opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
     };
     // env/exec start: the command may have been accepted by the time the
