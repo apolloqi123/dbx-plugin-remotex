@@ -8,6 +8,15 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.32] — 2026-10-26
+
+- **容器管理改为终端底部独立分屏**。容器页不再占用 SFTP 右栏：点击工具栏容器按钮在终端列下方打开可拖拽分屏（默认 33%，范围 20%–60%），右侧 SFTP 的视图、宽度与开合完全不受影响；关闭容器页也不会关闭 SFTP。RDP 连接自动关闭容器页，刷新后默认关闭。
+  **Container management moves to an independent bottom split.** The container pane no longer shares the SFTP right panel: the toolbar button opens a draggable split below the terminal (33% by default, 20%–60% range) while the SFTP view, width and open state stay untouched; closing the container pane does not close SFTP. RDP connections close it automatically and it stays closed after reload.
+- **容器日志真流式跟随**。日志由 sidecar 后台任务读取 `docker logs -f` 并通过事件推送，默认“实时跟随”；向上滚动暂停自动滚动但继续接收，滚回底部或点“实时跟随”立即跳到最新并恢复。支持 tail 切换、清空、流结束重开与权限不足时以 sudo 重试；每 sidecar 最多 4 条流，单流最长 30 分钟。
+  **True streaming container logs.** A sidecar task reads `docker logs -f` and pushes events; the view follows live by default. Scrolling up pauses auto-scroll while logs keep buffering, and returning to the bottom or pressing “Follow live” jumps to the newest output. Tail switching, clear, restart after the stream ends and sudo retry on permission denial are supported; up to four streams per sidecar, each capped at 30 minutes.
+- **容器文件浏览与上传下载**。新增文件页：浏览容器目录、查看条目详情、下载文件、上传单个文件（含覆盖确认、进度与取消）。SSH 目标用 `docker cp` 暂存后复用现有 SFTP 传输队列；本机目标复用本机落盘与分片上传；暂存路径只按服务端生成的前缀清理。目录可浏览但不可下载，符号链接/非普通文件拒绝，单文件上限 512MiB。
+  **Container file browsing and transfers.** The new Files tab browses container directories, shows entry details, downloads files and uploads a single file (with overwrite confirmation, progress and cancel). SSH targets stage with `docker cp` and reuse the existing SFTP queue; local targets reuse local save and chunked upload; staging paths are cleaned only under server-generated prefixes. Directories are browsable but not downloadable, symlinks/non-regular files are rejected, and the per-file cap is 512 MiB.
+
 ## [0.7.9-beta.31] — 2026-10-26
 
 - **重构收尾修复：样式作用域与面板焦点（无行为/文案变更）**。修复外壳拆分后 `app.css` 作为 scoped 样式挂在工作区组件、实际选择器却指向子组件 DOM 导致录制列表、终端 ghost 建议与指标/进程面板样式整体失效的问题——规则现随 DOM 归入各自组件；SFTP 面板根元素改为持续跟踪子组件暴露的 ref，关闭再打开后点击面板仍能把焦点落到面板本身。
