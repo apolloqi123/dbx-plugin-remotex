@@ -79,6 +79,47 @@ describe("container list selection", () => {
     }
   });
 
+  it("emits null when the list empties", async () => {
+    const rows: Row[] = [
+      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27" },
+    ];
+    stubHost(rows);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ name: "web-nginx" });
+      rows.splice(0);
+      await wrapper.get(".container-refresh").trigger("click");
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toBeNull();
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("re-emits the selected row when polling changes its identity fields", async () => {
+    const rows: Row[] = [
+      { id: "web222", name: "web-nginx", state: "running", status: "Up 1 minute", image: "nginx:1.27", ports: "0.0.0.0:8080->80/tcp" },
+    ];
+    stubHost(rows);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({ state: "running" });
+      rows[0] = { ...rows[0], state: "exited", status: "Exited (0) 1 second ago" };
+      await wrapper.get(".container-refresh").trigger("click");
+      await flushPromises();
+      expect(wrapper.emitted("select")?.at(-1)?.[0]).toMatchObject({
+        name: "web-nginx",
+        state: "exited",
+        status: "Exited (0) 1 second ago",
+      });
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it("emits the clicked container", async () => {
     stubHost([
       { id: "db111", name: "db", state: "exited" },

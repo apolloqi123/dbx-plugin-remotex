@@ -2,8 +2,8 @@
 // 容器列表列（Task 7，自 DockerPanel 拆出）：10s 轮询（3 连败自动停）+
 // 生命周期动作（start/stop/restart 直发；kill/rm 强制确认）+ 引擎设置 +
 // 「在终端打开」。列表还持有本列的选中规则：首次加载后选中第一个 running
-// 容器（否则第一个），轮询后选中项消失则按同一规则回退；只在选中变化时
-// 向上 emit（父组件只保存 selected，不重复推导）。
+// 容器（否则第一个），轮询后选中项消失则按同一规则回退；选中签名（id +
+// state/status/image/ports）变化或列表清空（上抛 null）时向上 emit。
 //
 // 状态/轮询/动作在 composables/useDockerContainers，纯逻辑在 lib/dockerPanelModel，
 // 三个 UI 块在 DockerEnginePopover / DockerRowMenu / DockerConfirmDialog。
@@ -31,9 +31,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "select", container: DockerContainer): void;
-  /** 用户显式刷新（或轮询重试）：父组件可据此刷新容器计数等只读展示。 */
-  (e: "refresh"): void;
+  /** `null` = 列表已清空（rm/刷新后无容器），父组件必须收起详情。 */
+  (e: "select", container: DockerContainer | null): void;
   /** 行菜单「Logs」：选中该容器并切到日志页。 */
   (e: "logs", container: DockerContainer): void;
 }>();
@@ -75,18 +74,31 @@ function setEngineDraft(draft: DockerEngineSettings): void {
 
 // —— 选中规则：首个 running，否则首个；消失则回退同一规则 —————————————
 const selectedId = ref("");
-/** 最近一次上抛的容器 id：轮询重复命中同一容器时不重复 emit。 */
-let lastEmittedId = "";
+/** 最近一次上抛的选中签名（id + 身份字段）。轮询重复命中同一容器时不重复
+ *  emit；但 state/status/image/ports 变化必须重发，否则父组件手里一直是首次
+ *  选中的旧快照（启停后详情页头/页签看到过期状态）。 */
+let lastSignature = "";
 
-function emitSelection(container: DockerContainer): void {
-  if (container.id === lastEmittedId) return;
-  lastEmittedId = container.id;
+function identitySignature(container: DockerContainer | null): string {
+  return container
+    ? [container.id, container.state, container.status, container.image, container.ports].join("\u0000")
+    : "";
+}
+
+/** `force`：用户显式点击/行菜单总是上抛，即使签名未变（详情被手动收起后
+ *  再点当前高亮行必须能重新打开）。 */
+function emitSelection(container: DockerContainer | null, force = false): void {
+  const signature = identitySignature(container);
+  if (!force && signature === lastSignature) return;
+  lastSignature = signature;
   emit("select", container);
 }
 
 function applySelection(rows: DockerContainer[]): void {
   if (!rows.length) {
     selectedId.value = "";
+    // 空列表也要上抛：删掉最后一个容器后父组件必须收起详情。
+    emitSelection(null);
     return;
   }
   const current = rows.find((container) => container.id === selectedId.value)
@@ -101,12 +113,12 @@ watch(containers, (rows) => applySelection(rows), { flush: "post" });
 // 再按规则选中，避免把上一台机器的容器重新抛给父组件。
 watch([() => props.sessionId, () => props.connectionId], () => {
   selectedId.value = "";
-  lastEmittedId = "";
+  lastSignature = "";
 });
 
 function selectRow(container: DockerContainer): void {
   selectedId.value = container.id;
-  emitSelection(container);
+  emitSelection(container, true);
 }
 
 // —— 行操作悬浮下拉（hover 开合，状态机在 lib/dockerRowMenu）———————————
@@ -122,6 +134,7 @@ function runMenuAction(container: DockerContainer, action: DockerActionName): vo
 function menuOpenLogs(container: DockerContainer): void {
   rowMenu.close();
   selectedId.value = container.id;
+  emitSelection(container, true);
   emit("logs", container);
 }
 
@@ -130,15 +143,13 @@ function menuOpenInTerminal(container: DockerContainer): void {
   openInTerminal(container);
 }
 
-/** 显式刷新：先让父组件感知，再拉列表（loading 互斥由 composable 保证）。 */
-async function refreshList(): Promise<void> {
-  emit("refresh");
-  await refresh();
+/** 显式刷新：拉列表，选中项变化（含清空/状态变化）经 watch → select 上抛。 */
+function refreshList(): Promise<void> {
+  return refresh();
 }
 
-async function retryList(): Promise<void> {
-  emit("refresh");
-  await retryPolling();
+function retryList(): Promise<void> {
+  return retryPolling();
 }
 
 // —— 「在终端打开」（window 事件 → App.vue 填入输入行，不回车）——————————

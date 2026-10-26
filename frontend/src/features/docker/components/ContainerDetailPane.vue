@@ -19,6 +19,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: "update:activeTab", tab: "logs" | "files"): void;
+  /** 页头 X：只表示“收起详情”；分屏整体关闭由 ContainerManagerPane 头部负责。 */
   (e: "close"): void;
 }>();
 </script>

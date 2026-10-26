@@ -25,9 +25,14 @@ const emit = defineEmits<{ (e: "close"): void }>();
 const selected = ref<DockerContainer>();
 const activeTab = ref<"logs" | "files">("logs");
 
-/** 列表只在选中变化时 emit；选中消失时列表自行回退并重新 emit。 */
-function select(container: DockerContainer): void {
-  selected.value = container;
+/** 列表只在选中签名变化或清空时 emit（清空传 null）。 */
+function select(container: DockerContainer | null): void {
+  selected.value = container ?? undefined;
+}
+
+/** 详情页头 X：只收起详情，不关闭整个分屏（分屏头部的 X 才 emit close）。 */
+function clearSelection(): void {
+  selected.value = undefined;
 }
 
 /** 行菜单「Logs」：选中并切到日志页（当前容器也可从文件页跳回）。 */
@@ -77,11 +82,11 @@ watch([() => props.sessionId, () => props.connectionId], () => {
           :connection-id="connectionId"
           :can-write="canWrite"
           @update:active-tab="activeTab = $event"
-          @close="emit('close')"
+          @close="clearSelection"
         />
       </div>
       <div v-else class="container-manager-empty">
-        <p>{{ t("docker.empty") }}</p>
+        <p>选择一个容器查看详情</p>
       </div>
     </div>
   </section>

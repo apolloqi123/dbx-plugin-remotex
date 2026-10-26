@@ -18,7 +18,7 @@ const container: DockerContainer = {
 };
 
 describe("container detail pane", () => {
-  it("switches tabs without unmounting the pane", async () => {
+  it("switches tabs and keeps the tab strip mounted", async () => {
     const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "logs" } });
     await wrapper.get('[data-tab="files"]').trigger("click");
     expect(wrapper.emitted("update:activeTab")?.[0]).toEqual(["files"]);
@@ -38,7 +38,7 @@ describe("container detail pane", () => {
     expect(wrapper.findComponent(ContainerFilesTab).exists()).toBe(false);
   });
 
-  it("shows the container identity and closes the whole pane", async () => {
+  it("shows the container identity and emits close from the header", async () => {
     const wrapper = mount(ContainerDetailPane, { props: { t, container, activeTab: "files" } });
     expect(wrapper.text()).toContain("web-nginx");
     await wrapper.get(".container-detail-close").trigger("click");
