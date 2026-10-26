@@ -459,6 +459,154 @@ describe("mockDbxHost fixture", () => {
     await expect((await loadMock("?docker=off")).invoke("docker/action", { containerId: "d4a7c9f1e2b3", action: "stop" })).rejects.toThrow(/docker CLI not found/);
   });
 
+  // 容器管理分屏（spec §4/§9.3）：mock 必须能走查真流式日志的生命周期——
+  // start 立即给 streamId，chunk 经 onEvent 到达，stop 后不再有任何事件。
+  it("docker/logs/start streams chunks and docker/logs/stop halts them", async () => {
+    vi.useFakeTimers();
+    const plugin = await loadMock("");
+    const events: RecordedEvent[] = [];
+    plugin.onEvent((event) => events.push(event as unknown as RecordedEvent));
+
+    const started = (await plugin.invoke("docker/logs/start", { containerId: "d4a7c9f1e2b3", tail: 200 })) as { streamId: string };
+    expect(started.streamId).toBe("mock-stream");
+    await vi.advanceTimersByTimeAsync(1400);
+    const chunks = events.filter((event) => event.method === "docker/logs/chunk");
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    for (const chunk of chunks) {
+      expect(chunk.params.streamId).toBe("mock-stream");
+      expect(typeof chunk.params.text).toBe("string");
+      expect(String(chunk.params.text).endsWith("\n")).toBe(true);
+    }
+
+    expect(await plugin.invoke("docker/logs/stop", { streamId: "mock-stream" })).toEqual({ stopped: true });
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(events.filter((event) => event.method === "docker/logs/chunk")).toHaveLength(chunks.length);
+    expect(events.filter((event) => event.method === "docker/logs/end")).toEqual([]);
+    // stop 幂等：已停止/未知 id 返回 stopped:false。
+    expect(await plugin.invoke("docker/logs/stop", { streamId: "mock-stream" })).toEqual({ stopped: false });
+    expect(await plugin.invoke("docker/logs/stop", { streamId: "unknown" })).toEqual({ stopped: false });
+    await expect(plugin.invoke("docker/logs/start", { containerId: "web-nginx" })).rejects.toThrow(/Invalid containerId/);
+  });
+
+  it("docker/logs/start ends naturally after 10s with an exit code", async () => {
+    vi.useFakeTimers();
+    const plugin = await loadMock("");
+    const events: RecordedEvent[] = [];
+    plugin.onEvent((event) => events.push(event as unknown as RecordedEvent));
+    await plugin.invoke("docker/logs/start", { containerId: "d4a7c9f1e2b3", tail: 50 });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events.filter((event) => event.method === "docker/logs/end")).toEqual([
+      { method: "docker/logs/end", params: { streamId: "mock-stream", exitCode: 0 } },
+    ]);
+    expect(events.filter((event) => event.method === "docker/logs/chunk").length).toBeGreaterThan(5);
+  });
+
+  // ?docker=sudo：日志流以 needsSudo 收口，供「以 sudo 重试」条的浏览器走查。
+  it("?docker=sudo ends the log stream with needsSudo", async () => {
+    vi.useFakeTimers();
+    const plugin = await loadMock("?docker=sudo");
+    const events: RecordedEvent[] = [];
+    plugin.onEvent((event) => events.push(event as unknown as RecordedEvent));
+    await plugin.invoke("docker/logs/start", { containerId: "d4a7c9f1e2b3" });
+    await vi.advanceTimersByTimeAsync(700);
+    const end = events.find((event) => event.method === "docker/logs/end");
+    expect(end?.params.streamId).toBe("mock-stream");
+    expect(end?.params.needsSudo).toBe(true);
+    expect(end?.params.exitCode).toBe(1);
+  });
+
+  // 容器文件家族（spec §5.2）的响应形状：list/stat/export/暂存/上传/清理。
+  it("docker/files family mirrors the sidecar list/stat/export/staging/upload contract", async () => {
+    const plugin = await loadMock("");
+    const containerId = "d4a7c9f1e2b3";
+
+    const root = (await plugin.invoke("docker/files/list", { containerId, path: "/" })) as {
+      path: string;
+      parent: string;
+      entries: Array<{ name: string; path: string; kind: string }>;
+    };
+    expect(root.path).toBe("/");
+    expect(root.parent).toBe("/");
+    const names = root.entries.map((entry) => entry.name);
+    expect(names).toEqual(expect.arrayContaining(["etc", "var", "tmp"]));
+    // 目录优先：排在前面的全是 dir。
+    const firstFile = root.entries.findIndex((entry) => entry.kind === "file");
+    expect(root.entries.slice(0, firstFile).every((entry) => entry.kind === "dir")).toBe(true);
+    for (const entry of root.entries) expect(entry.path).toBe(`/${entry.name}`);
+
+    const etc = (await plugin.invoke("docker/files/list", { containerId, path: "/etc" })) as { parent: string; entries: Array<{ name: string; kind: string }> };
+    expect(etc.parent).toBe("/");
+    expect(etc.entries.map((entry) => entry.name)).toEqual(["nginx", "hostname", "hosts"]);
+
+    const stat = (await plugin.invoke("docker/files/stat", { containerId, path: "/etc/hosts" })) as { kind: string; size: number; mtime: number; mode: string };
+    expect(stat).toEqual({ kind: "file", size: 221, mtime: expect.any(Number), mode: "0644" });
+
+    // 目录不可下载（v1 限制）；缺失路径给出 ls/stat 风格错误。
+    await expect(plugin.invoke("docker/files/export", { containerId, path: "/etc" })).rejects.toThrow(/目录暂不支持下载/);
+    await expect(plugin.invoke("docker/files/list", { containerId, path: "/nope" })).rejects.toThrow(/No such file or directory/);
+
+    const exported = (await plugin.invoke("docker/files/export", { containerId, path: "/etc/hosts" })) as {
+      stagingPath: string;
+      size: number;
+      name: string;
+      location: string;
+    };
+    expect(exported.name).toBe("hosts");
+    expect(exported.size).toBe(221);
+    expect(exported.location).toBe("remote");
+    expect(exported.stagingPath).toMatch(/^\/tmp\/dbx-sshx\./);
+
+    // cleanup 幂等：同一暂存路径重复清理仍返回 removed:true。
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: exported.stagingPath })).toEqual({ removed: true });
+    expect(await plugin.invoke("docker/files/cleanup", { stagingPath: exported.stagingPath })).toEqual({ removed: true });
+
+    // SSH 上传：prepareUpload → import（destPath 以 / 结尾保留暂存文件名）。
+    const prepared = (await plugin.invoke("docker/files/prepareUpload", { name: "notes.txt" })) as { stagingPath: string; name: string };
+    expect(prepared.name).toBe("notes.txt");
+    expect(prepared.stagingPath.endsWith("/notes.txt")).toBe(true);
+    const imported = (await plugin.invoke("docker/files/import", { containerId, stagingPath: prepared.stagingPath, destPath: "/tmp/" })) as { path: string };
+    expect(imported.path).toBe("/tmp/notes.txt");
+    const tmp = (await plugin.invoke("docker/files/list", { containerId, path: "/tmp" })) as { entries: Array<{ name: string }> };
+    expect(tmp.entries.map((entry) => entry.name)).toContain("notes.txt");
+
+    // 本机上传：begin/chunk/finish/cancel 形状 + 顺序 offset 校验。
+    await expect(plugin.invoke("docker/files/upload/begin", { name: "x.bin" })).rejects.toThrow(/only available for local targets/);
+    const begun = (await plugin.invoke("docker/files/upload/begin", { target: "local", name: "payload.bin" })) as { uploadId: string; maxBytes: number };
+    expect(begun.maxBytes).toBe(512 * 1024 * 1024);
+    const data = btoa("hello container");
+    const chunk = (await plugin.invoke("docker/files/upload/chunk", { target: "local", uploadId: begun.uploadId, offset: 0, dataBase64: data })) as { received: number };
+    expect(chunk.received).toBe(15);
+    await expect(plugin.invoke("docker/files/upload/chunk", { target: "local", uploadId: begun.uploadId, offset: 0, dataBase64: data })).rejects.toThrow(/does not match received/);
+    const finished = (await plugin.invoke("docker/files/upload/finish", { target: "local", uploadId: begun.uploadId })) as { stagingPath: string; size: number };
+    expect(finished.size).toBe(15);
+    expect(finished.stagingPath).toMatch(/^\/tmp\/dbx-sshx-mock\//);
+    expect(await plugin.invoke("docker/files/upload/cancel", { target: "local", uploadId: "mock-upload-404" })).toEqual({ canceled: true });
+
+    // 本机下载：export location=local，saveLocal 落到下载目录。
+    const localExport = (await plugin.invoke("docker/files/export", { target: "local", containerId, path: "/etc/hostname" })) as { location: string };
+    expect(localExport.location).toBe("local");
+    expect(await plugin.invoke("docker/files/saveLocal", { target: "local", stagingPath: "/tmp/dbx-sshx-mock/0001/hostname", name: "hostname" })).toEqual({
+      localPath: "/Users/demo/Downloads/hostname",
+      name: "hostname",
+    });
+    await expect(plugin.invoke("docker/files/saveLocal", { stagingPath: "/tmp/x", name: "x" })).rejects.toThrow(/only available for local targets/);
+  });
+
+  // ?docker=files 追加 /opt/app 多级树（含零字节文件）；?docker=off 模拟 CLI 缺失。
+  it("?docker=files exposes the extra tree and ?docker=off refuses file calls", async () => {
+    const files = await loadMock("?docker=files");
+    const root = (await files.invoke("docker/files/list", { containerId: "d4a7c9f1e2b3", path: "/" })) as { entries: Array<{ name: string }> };
+    expect(root.entries.map((entry) => entry.name)).toContain("opt");
+    const app = (await files.invoke("docker/files/list", { containerId: "d4a7c9f1e2b3", path: "/opt/app" })) as { entries: Array<{ name: string; kind: string }> };
+    expect(app.entries.map((entry) => entry.name)).toEqual(["bin", "config.yml", "empty.txt"]);
+    const empty = (await files.invoke("docker/files/stat", { containerId: "d4a7c9f1e2b3", path: "/opt/app/empty.txt" })) as { size: number };
+    expect(empty.size).toBe(0);
+
+    const off = await loadMock("?docker=off");
+    await expect(off.invoke("docker/files/list", { containerId: "d4a7c9f1e2b3", path: "/" })).rejects.toThrow(/CLI not found/);
+    await expect(off.invoke("docker/logs/start", { containerId: "d4a7c9f1e2b3" })).rejects.toThrow(/CLI not found/);
+  });
+
   it("throws for unimplemented methods instead of silently succeeding (strictness)", async () => {
     const plugin = await loadMock("");
     // 严格化（docs/plans/MOCK_HOST_STRICTNESS_PLAN.zh-CN.md）：未实现方法显式
