@@ -57,12 +57,16 @@ const {
 
 /** 侧栏根元素经 defineExpose 回传；模板 ref 跨组件不会自动绑定到父级 ref，
  *  且子组件根节点的 `v-if` 切换不会重新触发函数 ref，必须持续跟踪暴露值。 */
+let boundSidePanel: InstanceType<typeof WorkbenchSidePanel> | null = null;
 let stopSidePanelSync: (() => void) | undefined;
 
 function bindSidePanel(el: Element | ComponentPublicInstance | null) {
+  const panel = el as InstanceType<typeof WorkbenchSidePanel> | null;
+  // 函数 ref 在父组件每次 patch 时都会重入；实例未变时保持现有 watcher。
+  if (panel === boundSidePanel) return;
+  boundSidePanel = panel;
   stopSidePanelSync?.();
   stopSidePanelSync = undefined;
-  const panel = el as InstanceType<typeof WorkbenchSidePanel> | null;
   if (!panel) {
     props.bindings.sftpPane.value = undefined;
     return;
