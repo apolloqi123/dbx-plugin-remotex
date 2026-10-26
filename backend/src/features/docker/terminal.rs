@@ -103,12 +103,52 @@ pub fn exec_argv(container_id: &str, command: &str) -> Result<Vec<String>, Strin
     ])
 }
 
+/// True when the container command failed because the CLI could not reach
+/// the daemon socket (daemon down or socket permission denied) — the only
+/// failure shape the terminal treats as a transport error. Ordinary command
+/// failures that merely mention "permission denied" (`cat /etc/shadow`,
+/// `su`, `find /`) must stay normal responses with their own output/exit.
+pub fn is_daemon_connect_failure(exit_code: i32, output: &str) -> bool {
+    if exit_code == 0 {
+        return false;
+    }
+    let lower = output.to_ascii_lowercase();
+    // "error during connect" / "Cannot connect to the Docker daemon" — the
+    // CLI never reached the daemon at all.
+    lower.contains("error during connect")
+        || lower.contains("cannot connect to the docker daemon")
+        || lower.contains("cannot connect to the podman socket")
+        || lower.contains("is the docker daemon running")
+        // Socket permission denial, in docker's and podman's wordings.
+        || lower.contains("permission denied while trying to connect")
+        || lower.contains("got permission denied while trying to connect")
+        || (lower.contains("permission denied")
+            && (lower.contains("daemon socket") || lower.contains("podman socket")))
+}
+
+/// True only for the daemon socket permission denial (not for a daemon that
+/// is merely unreachable). Used for the actionable docker-group / Quick Sudo
+/// hint, so ordinary command output containing "permission denied" never
+/// gets daemon guidance.
+fn is_daemon_socket_permission_denied(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    lower.contains("permission denied while trying to connect")
+        || lower.contains("got permission denied while trying to connect")
+        || (lower.contains("permission denied")
+            && (lower.contains("daemon socket") || lower.contains("podman socket")))
+}
+
 /// Actionable hint for the failure signatures the terminal must explain
 /// instead of dumping raw docker stderr only. Pure and content-free: the
 /// hint never embeds command output, so it is safe for audit rows too.
 pub fn exec_failure_hint(output: &str) -> Option<&'static str> {
     let lower = output.to_ascii_lowercase();
-    if lower.contains("no such container") {
+    if is_daemon_socket_permission_denied(output) {
+        Some(
+            "the Docker daemon socket denied access; add your user to the docker group \
+             on the host, or enable Quick Sudo for this connection",
+        )
+    } else if lower.contains("no such container") {
         Some("the container no longer exists; refresh the container list and reopen the terminal")
     } else if lower.contains("is not running") || lower.contains("container is paused") {
         Some("the container is not running; start it before running commands")
@@ -171,8 +211,8 @@ pub fn exec_error_reason(error: &str) -> String {
 /// `docker/exec` for `target: "local"`: argv-only direct exec with a 60s
 /// cap and the engine endpoint as env vars. A non-zero container exit is a
 /// normal response (`success: true` plus `exitCode`); only transport and
-/// daemon-permission failures become RPC errors, the latter with the same
-/// actionable guidance as the other local docker actions.
+/// genuine daemon-socket failures become RPC errors, the latter with the
+/// same actionable guidance as the other local docker actions.
 pub async fn perform_exec_local(
     engine: &EngineConfig,
     container_id: &str,
@@ -184,7 +224,7 @@ pub async fn perform_exec_local(
     let args: Vec<&str> = argv.iter().map(String::as_str).collect();
     let (exit_code, output) =
         run_local(&cli, &args, EXEC_TIMEOUT, engine.endpoint.as_deref()).await?;
-    if exit_code != 0 && is_daemon_permission_failure(exit_code, &output) {
+    if is_daemon_connect_failure(exit_code, &output) {
         return Err(format!(
             "{} exec: {output}. Local container access needs daemon permission: \
              start Docker Desktop/OrbStack/Podman Desktop, or add your user to \

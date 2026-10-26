@@ -456,6 +456,46 @@ fn daemon_permission_signature_gates_the_sudo_fallback() {
 }
 
 #[test]
+fn exec_daemon_classification_matches_only_connect_signatures() {
+    // Genuine daemon/socket signatures: the CLI never reached the daemon, or
+    // the socket rejected the connection.
+    assert!(is_daemon_connect_failure(
+        1,
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. \
+         Is the docker daemon running?"
+    ));
+    assert!(is_daemon_connect_failure(
+        1,
+        "error during connect: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.24/version\": \
+         dial unix /var/run/docker.sock: connect: no such file or directory"
+    ));
+    assert!(is_daemon_connect_failure(
+        125,
+        "permission denied while trying to connect to the Docker daemon socket \
+         at unix:///var/run/docker.sock"
+    ));
+    assert!(is_daemon_connect_failure(
+        1,
+        "docker: Got permission denied while trying to connect to the Docker daemon socket"
+    ));
+    // Ordinary command failures that merely print "permission denied" stay
+    // normal responses with their own output and exit code.
+    for output in [
+        "cat: /etc/shadow: Permission denied",
+        "su: Authentication failure",
+        "find: '/root': Permission denied",
+        "bash: /root/.ssh: Permission denied",
+    ] {
+        assert!(!is_daemon_connect_failure(1, output), "{output}");
+    }
+    // Success is never a daemon failure.
+    assert!(!is_daemon_connect_failure(
+        0,
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
+    ));
+}
+
+#[test]
 fn sudo_fallback_error_points_at_configuration() {
     let error = sudo_fallback_error("sudo exited 1: boom".to_string());
     assert!(error.contains("Quick Sudo"), "{error}");
@@ -798,6 +838,32 @@ fn exec_output_explains_missing_container_and_missing_sh() {
 }
 
 #[test]
+fn exec_hint_only_explains_daemon_socket_denials() {
+    let raw = "docker: Got permission denied while trying to connect to the Docker \
+               daemon socket at unix:///var/run/docker.sock";
+    let rendered = exec_output(raw, 125);
+    assert!(rendered.contains("[hint:"), "{rendered}");
+    assert!(rendered.contains("docker group"), "{rendered}");
+    assert!(rendered.contains("Quick Sudo"), "{rendered}");
+    // Ordinary permission-denied command output keeps its own text and gets
+    // no daemon guidance.
+    for output in [
+        "cat: /etc/shadow: Permission denied",
+        "su: Permission denied",
+        "find: '/root': Permission denied",
+    ] {
+        assert_eq!(exec_output(output, 1), output);
+        assert!(exec_failure_hint(output).is_none(), "{output}");
+    }
+    // The audit reason may name the daemon hint but never the socket path or
+    // any other command output.
+    let engine = EngineConfig::default();
+    let reason = exec_failure_reason(&engine, 125, raw);
+    assert!(reason.contains("Quick Sudo"), "{reason}");
+    assert!(!reason.contains("unix:///var/run/docker.sock"), "{reason}");
+}
+
+#[test]
 fn exec_failure_reasons_never_record_output_content() {
     let engine = EngineConfig::default();
     let reason = exec_failure_reason(&engine, 1, "SECRET-OUTPUT");
@@ -859,4 +925,68 @@ async fn perform_exec_local_reports_a_missing_cli() {
         .await
         .expect_err("missing cli");
     assert!(error.contains("CLI not found on this machine"), "{error}");
+}
+
+/// Writes an executable shell stub so the local plane can be exercised
+/// without a real docker CLI.
+#[cfg(unix)]
+fn fake_local_cli(dir: &tempfile::TempDir, script: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.path().join("docker");
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn perform_exec_local_keeps_a_normal_permission_denied_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let cli = fake_local_cli(
+        &dir,
+        "#!/bin/sh\necho 'cat: /etc/shadow: Permission denied' >&2\nexit 1\n",
+    );
+    let engine = crate::features::docker::test_engine(cli.to_str().unwrap(), None);
+    let payload = perform_exec_local(&engine, "d4a7c9f1e2b3", "cat /etc/shadow")
+        .await
+        .expect("a normal command failure stays a response");
+    assert_eq!(payload["success"], true);
+    assert_eq!(payload["exitCode"], 1);
+    let output = payload["output"].as_str().unwrap();
+    assert!(output.contains("Permission denied"), "{output}");
+    assert!(!output.contains("docker group"), "{output}");
+    assert!(!output.contains("daemon permission"), "{output}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn perform_exec_local_reports_a_daemon_connect_denial() {
+    let dir = tempfile::tempdir().unwrap();
+    let cli = fake_local_cli(
+        &dir,
+        "#!/bin/sh\necho 'docker: Got permission denied while trying to connect to \
+         the Docker daemon socket at unix:///var/run/docker.sock' >&2\nexit 125\n",
+    );
+    let engine = crate::features::docker::test_engine(cli.to_str().unwrap(), None);
+    let error = perform_exec_local(&engine, "d4a7c9f1e2b3", "id")
+        .await
+        .expect_err("daemon socket denial is actionable");
+    assert!(error.contains("daemon permission"), "{error}");
+    assert!(error.contains("docker group"), "{error}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn perform_exec_local_reports_an_unreachable_daemon() {
+    let dir = tempfile::tempdir().unwrap();
+    let cli = fake_local_cli(
+        &dir,
+        "#!/bin/sh\necho 'Cannot connect to the Docker daemon at \
+         unix:///var/run/docker.sock. Is the docker daemon running?' >&2\nexit 1\n",
+    );
+    let engine = crate::features::docker::test_engine(cli.to_str().unwrap(), None);
+    let error = perform_exec_local(&engine, "d4a7c9f1e2b3", "id")
+        .await
+        .expect_err("unreachable daemon is a transport error");
+    assert!(error.contains("daemon permission"), "{error}");
 }
