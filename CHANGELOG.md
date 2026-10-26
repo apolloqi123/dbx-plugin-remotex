@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.33] — 2026-10-26
+
+- **容器页默认只显示容器列表**。打开容器管理时不再自动展开详情；从行菜单选择「日志」或「文件」才出现左右分栏，中间分隔线支持鼠标拖拽与左右方向键调整（列表默认 40%，25%–70%）；关闭详情后列表恢复整宽。日志/文件页签改为图标显示，保留悬停提示与无障碍名称。
+  **The container page defaults to the list only.** Opening container management no longer auto-expands a detail; choosing Logs or Files from the row menu opens the horizontal split, whose divider can be dragged or moved with the arrow keys (list 40% by default, 25%–70%); closing the detail restores the full-width list. The Logs/Files tabs are now icons with tooltips and accessible names.
+
 ## [0.7.9-beta.32] — 2026-10-26
 
 - **容器管理改为终端底部独立分屏**。容器页不再占用 SFTP 右栏：点击工具栏容器按钮在终端列下方打开可拖拽分屏（默认 33%，范围 20%–60%），右侧 SFTP 的视图、宽度与开合完全不受影响；关闭容器页也不会关闭 SFTP。RDP 连接自动关闭容器页，刷新后默认关闭。
