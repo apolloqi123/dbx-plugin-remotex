@@ -20,12 +20,15 @@ export function useLayoutState(options: {
   paneDirection: { readonly value: PaneDirectionPref };
   sftpPaneOpen: { readonly value: boolean };
 }) {
-  const splitRatio = ref(58);
-  // 容器底部分屏的独立比例：默认终端 67% / 容器 33%，每次打开容器页重置。
+  // splitRatio 是终端占比：默认终端 75% / SFTP 面板 25%。
+  const splitRatio = ref(75);
+  // 容器底部分屏的独立比例：默认终端 50% / 容器 50%，每次打开容器页重置。
   const dockerSplitRatio = ref(DOCKER_SPLIT_RATIO_DEFAULT);
   const paneOrder = ref<SshWorkbenchPaneOrder>("terminal-left");
   const sudoMode = ref(false);
   const paneContainer = ref<HTMLElement>();
+  // 工作台外层列（终端+SFTP 上区 + 容器全宽底部行）；容器分屏把手以它为坐标系。
+  const workbenchSplitRef = ref<HTMLElement>();
 
   // 工作台分栏只由用户轴向偏好的右栏（SFTP/指标）决定；容器分屏在终端列
   // 内部独立堆叠，不影响左右/上下比例。
@@ -52,7 +55,7 @@ export function useLayoutState(options: {
     options.sftpPaneOpen.value ? "" : "panes--solo",
   ].filter(Boolean).join(" "));
 
-  /** 打开容器页时回到默认 33%（关闭不重置，下次打开再回默认）。 */
+  /** 打开容器页时回到默认 50%（关闭不重置，下次打开再回默认）。 */
   function resetDockerSplitRatio() {
     dockerSplitRatio.value = DOCKER_SPLIT_RATIO_DEFAULT;
   }
@@ -63,6 +66,7 @@ export function useLayoutState(options: {
     paneOrder,
     sudoMode,
     paneContainer,
+    workbenchSplitRef,
     paneLayout,
     terminalBasis,
     paneSplitStyle,

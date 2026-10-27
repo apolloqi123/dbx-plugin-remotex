@@ -17,12 +17,13 @@ const DIVIDER_KEY_STEP_PX = 16;
  * 工作台分栏把手：指针拖拽与键盘方向键微调。两个比例 ref 的所有权仍在 App
  * （模板样式/持久化同源消费），这里只按「当前拖的是哪一栏」选读写端。
  *
- * 右侧栏把手用 `paneContainer`（工作台根），容器分屏把手用 `terminalStackRef`
- * （终端列，含编辑器页签），后者比例语义是「终端+编辑器」占比。
+ * 右侧栏把手用 `paneContainer`（上区终端+SFTP 行），容器分屏把手用
+ * `workbenchSplitRef`（工作台外层列，含全宽底部行），后者比例语义是
+ * 上区（终端+SFTP）占比。
  */
 export function useSplitDivider(options: {
   paneContainer: Ref<HTMLElement | undefined>;
-  terminalStackRef: Ref<HTMLElement | null>;
+  workbenchSplitRef: Ref<HTMLElement | undefined>;
   paneLayout: Ref<{ direction: "column" | "row" }>;
   paneOrder: Ref<SshWorkbenchPaneOrder>;
   splitRatio: SplitRatioAccess;
@@ -31,7 +32,7 @@ export function useSplitDivider(options: {
   persistState: () => void;
 }) {
   const {
-    paneContainer, terminalStackRef, paneLayout, paneOrder,
+    paneContainer, workbenchSplitRef, paneLayout, paneOrder,
     splitRatio, dockerSplitRatio, scheduleFit, persistState,
   } = options;
 
@@ -106,7 +107,7 @@ export function useSplitDivider(options: {
     persistState();
   }
 
-  /** 容器分屏把手：ratio = 终端列中终端+编辑器占比（40-80），不落盘。 */
+  /** 容器分屏把手：ratio = 外层列中上区（终端+SFTP）占比（40-80），不落盘。 */
   function setDockerRatioFromPointer(pointerY: number, stack: HTMLElement) {
     const bounds = stack.getBoundingClientRect();
     if (!bounds.height) return;
@@ -116,7 +117,7 @@ export function useSplitDivider(options: {
   }
 
   function startDockerDividerDrag(event: PointerEvent) {
-    const stack = terminalStackRef.value;
+    const stack = workbenchSplitRef.value;
     const divider = event.currentTarget as HTMLElement | null;
     if (!stack || !divider) return;
     event.preventDefault();
@@ -142,7 +143,7 @@ export function useSplitDivider(options: {
   }
 
   function nudgeDockerDivider(deltaPx: number) {
-    const stack = terminalStackRef.value;
+    const stack = workbenchSplitRef.value;
     if (!stack) return;
     const bounds = stack.getBoundingClientRect();
     if (!bounds.height) return;

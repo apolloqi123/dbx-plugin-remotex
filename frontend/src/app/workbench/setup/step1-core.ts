@@ -314,6 +314,7 @@ export function installWorkbenchCore(deps: Deps) {
     paneOrder,
     sudoMode,
     paneContainer,
+    workbenchSplitRef,
     paneLayout,
     terminalBasis,
     paneSplitStyle,
@@ -361,7 +362,7 @@ export function installWorkbenchCore(deps: Deps) {
     toolbarStyle, sftpPane, sftpTreePane, sftpPaneOpen, rightPanelView, dockerPaneOpen, sftpViewActive, sftpViewVisible,
     visibleColumns, sftpColumnWidths, sftpNameWidth, sort, sftpSearch, sftpTypeFilter, sftpShowHidden, batchProgress,
     terminalDragActive, localDownloadDir, localCanSave, SFTP_QUICK_PATHS, splitRatio, dockerSplitRatio, paneOrder, sudoMode,
-    paneContainer, paneLayout, terminalBasis, paneSplitStyle, dockerPaneBasis, orderedPaneClass, resetDockerSplitRatio,
+    paneContainer, workbenchSplitRef, paneLayout, terminalBasis, paneSplitStyle, dockerPaneBasis, orderedPaneClass, resetDockerSplitRatio,
     settingsOpen, auditOpen, profilesOpen,
     otpPanelOpen, importPanelOpen, forwardsOpen, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
   };

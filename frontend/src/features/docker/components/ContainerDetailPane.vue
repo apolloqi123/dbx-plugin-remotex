@@ -41,7 +41,6 @@ const emit = defineEmits<{
       <span class="ui-icon-tile ui-tone-emerald container-detail-logo"><Box /></span>
       <strong class="container-detail-name mono" :title="container.id">{{ container.name || container.id.slice(0, 12) }}</strong>
       <span class="docker-badge" :class="dockerStateClass(container.state)">{{ container.state }}</span>
-      <span class="container-detail-spacer" />
       <div class="container-detail-tabs" role="tablist">
         <button
           type="button"
@@ -80,6 +79,7 @@ const emit = defineEmits<{
           <Terminal />
         </button>
       </div>
+      <span class="container-detail-spacer" />
       <button
         type="button"
         class="icon-button compact container-detail-close"

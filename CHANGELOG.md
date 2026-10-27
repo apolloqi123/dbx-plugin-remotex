@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.50] — 2026-10-27
+
+- **布局细化：SFTP 默认四分之一宽、容器页全宽底部一半高、页签左对齐**。SFTP 面板默认宽度改为 25%（终端 75%），旧工作台自动落盘的 58% 通过 `splitRatioV2` 标记一次性迁移，用户后续拖拽仍按新值持久化。容器管理从终端列内部移到工作台级全宽底部行：SFTP 面板打开时，容器页横跨终端与 SFTP 下方；打开即重置为上下各 50%，拖拽/键盘调整仍可用。容器详情的日志/文件/终端图标从右端移到容器名称与状态之后，关闭按钮固定在右缘。SFTP 树图标同步宿主 14px 尺寸（描边 2），不再比宿主偏大。
+  **Layout refinements: 25% SFTP default width, full-width half-height container pane, and left-aligned tabs.** The SFTP panel now defaults to 25% width (terminal 75%); old auto-persisted 58% ratios migrate once via the `splitRatioV2` marker, while later user drags persist normally. The container manager moved from inside the terminal column to a workbench-level full-width bottom row: with the SFTP panel open it spans beneath both terminal and SFTP, resets to a 50/50 vertical split on open, and remains draggable via pointer or keyboard. The container detail Logs/Files/Terminal icons moved from the right edge to just after the container name and status, with the close button pinned right. SFTP tree icons now match the host's 14px size (stroke 2) instead of running larger.
+
 ## [0.7.9-beta.49] — 2026-10-27
 
 - **工具栏右缘按使用习惯重排，SFTP 文件树改用宿主同款图标**。顶部工具栏从右往左固定为「设置 → 审计 → SFTP 面板 → SFTP 传输 → 容器管理 → 服务器指标」，SFTP 面板与传输紧邻；左侧依次为视图（分栏/字号）、会话、连接运维、效率工具、录制。dock 面板精简组也把传输与 SFTP 面板放在一起。SFTP 文件树的文件夹/文件/符号链接图标改为与宿主 DBX 相同的 Lucide `FolderClosed`/`FolderOpen`/`File`/`Link2` 线性图标：琥珀色文件夹、蓝色文件、青色符号链接，去掉彩色底块，保持 18px 内容尺寸与 28px 行高。

@@ -64,7 +64,7 @@
   box-shadow: none;
 }
 /* 卡片之间只留 2px 缝隙：间隙由分屏线本身承担，不再叠加 gap。 */
-.workbench > .panes {
+.workbench > .workbench-split-column {
   gap: 0;
   padding: 2px;
   margin-top: 0;

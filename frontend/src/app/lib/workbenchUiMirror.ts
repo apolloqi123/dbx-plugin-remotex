@@ -19,6 +19,8 @@ export interface WorkbenchUiMirror {
   followDefaultOn?: boolean;
   sudoMode?: boolean;
   splitRatio?: number;
+  /** SFTP 面板默认 25% 宽度的迁移标记。 */
+  splitRatioV2?: boolean;
   paneOrder?: "sftp-left" | "terminal-left";
   sftpPaneOpen?: boolean;
   visibleColumns?: string[];

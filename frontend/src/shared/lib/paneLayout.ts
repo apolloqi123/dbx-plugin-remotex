@@ -2,8 +2,8 @@
 // SFTP/指标视图按用户分栏比例；Docker 视图固定为底部分屏，其比例常数
 // DOCKER_SPLIT_RATIO_DEFAULT 由工作台布局状态直接持有。
 
-/** Docker 底部分屏默认终端占比：终端 67% / 容器 33%（约 1/3 高度）。 */
-export const DOCKER_SPLIT_RATIO_DEFAULT = 67;
+/** Docker 底部分屏默认终端占比：终端 50% / 容器 50%（上下各一半）。 */
+export const DOCKER_SPLIT_RATIO_DEFAULT = 50;
 
 /** 终端 flex-basis：SFTP 分栏开时按用户拖拽比例让出份额，
  *  SFTP flex:1 吸收剩余——两栏同显，谁也不挤没谁。 */

@@ -22,7 +22,7 @@ const SESSIONS_KEYS = [
   "localShellRestored", "localShellSurfaceOpen", "localShells", "localShellsLoading", "localState",
   "localUiMode", "locale", "markLocalExited", "markTelnetClosed", "onPaneActivated",
   "onShellTabCwd", "openConnectionSurface", "openLocalShellPrefs", "openReplay", "openSession",
-  "openSessionShellPick", "openSessionShellPrefs", "paneContainer", "paneLayout", "paneOrder",
+  "openSessionShellPick", "openSessionShellPrefs", "paneContainer", "workbenchSplitRef", "paneLayout", "paneOrder",
   "paneSplitStyle", "panelCpuPercent", "panelMetricsFailed", "panelNetRates", "panelSchemeChoices",
   "panelSurface", "pickLocalShell", "rdpCertPrompt", "rdpCertRemaining", "rdpCertRemember",
   "rdpClipboardChunks", "rdpClosedTitle", "rdpCustomHeight", "rdpCustomWidth", "rdpDesktopSize",

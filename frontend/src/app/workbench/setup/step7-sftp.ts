@@ -39,7 +39,7 @@ export function installWorkbenchSftp(deps: Deps) {
   dockerPaneOpen, dockerSplitRatio, downloadChunkWaiters, entries, fileMenu, isRdpConnection,
   lastClickedUri, listSftpDirectory, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir, loadTransferConcurrency,
   loadTransferDuplicatePolicy, loadTransferMaxActive, localCanSave, localDownloadDir, localUiMode, mkdirTargetDir,
-  openNewFileDialog, paneContainer, paneLayout, paneOrder, pasteBusy, persistCommandHistory,
+  openNewFileDialog, paneContainer, workbenchSplitRef, paneLayout, paneOrder, pasteBusy, persistCommandHistory,
   persistCommandHistoryTimes, persistState, persistTerminalFeaturePrefs, pushTerminalCommandHistory, refreshExpandedSftpTree, refreshSftpAfterMutation,
   remoteBasename, resetDockerSplitRatio, resolveDownloadConflictFor, revealSftpPath, rightPanelView, scheduleFit, selectedEntries,
   selectedPath, selectedUriSet, selectedUris, session, sftpClipboard, sftpHomePath,
@@ -157,7 +157,7 @@ export function installWorkbenchSftp(deps: Deps) {
 
   // 分栏把手的拖拽/键盘微调收口在 composables/useSplitDivider；
   // splitRatio / dockerSplitRatio 仍是 App 的权威态，经 getter/setter 注入。
-  // 容器分屏把手以终端栈（terminalStackRef）为坐标系，必须在本段之后接线。
+  // 容器分屏把手以工作台外层列为坐标系（容器页是全宽底部行）。
   const {
     startDividerDrag,
     onDividerKeydown,
@@ -167,7 +167,7 @@ export function installWorkbenchSftp(deps: Deps) {
     nudgeDockerDivider,
   } = useSplitDivider({
     paneContainer,
-    terminalStackRef,
+    workbenchSplitRef,
     paneLayout,
     paneOrder,
     splitRatio: { get: () => splitRatio.value, set: (value) => { splitRatio.value = value; } },

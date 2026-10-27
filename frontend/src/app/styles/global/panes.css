@@ -5,6 +5,15 @@
   flex: 1;
   overflow: hidden;
 }
+/* 工作台外层列：上区终端+SFTP，下区容器全宽底栏。 */
+.workbench-split-column {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
 .panes--reversed { flex-direction: row-reverse; }
 .terminal-pane, .sftp-pane { display: flex; height: 100%; min-width: 0; min-height: 0; flex-direction: column; background: var(--background); }
 .terminal-pane { position: relative; flex-grow: 0; flex-shrink: 0; overflow: hidden; background: var(--ssh-terminal-background); }

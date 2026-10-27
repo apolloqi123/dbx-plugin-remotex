@@ -80,6 +80,8 @@ export interface WorkbenchLayoutPrefs {
   /** 布局方向偏好（issue #187）：auto/vertical/horizontal，缺省不覆盖。 */
   paneDirection?: PaneDirectionPref;
   splitRatio?: number;
+  /** SFTP 面板默认 25% 宽度的迁移标记：旧偏好无此标记时不采用其 splitRatio。 */
+  splitRatioV2?: boolean;
   sftpPaneOpen?: boolean;
   visibleColumns?: string[];
   sftpColumnWidths?: Record<string, number>;
@@ -101,6 +103,7 @@ export function sanitizeWorkbenchLayoutPrefs(raw: unknown): WorkbenchLayoutPrefs
   if (source.paneOrder === "terminal-left" || source.paneOrder === "sftp-left") prefs.paneOrder = source.paneOrder;
   if (source.paneDirection === "auto" || source.paneDirection === "vertical" || source.paneDirection === "horizontal") prefs.paneDirection = source.paneDirection;
   if (typeof source.splitRatio === "number" && Number.isFinite(source.splitRatio) && source.splitRatio >= 35 && source.splitRatio <= 80) prefs.splitRatio = source.splitRatio;
+  if (source.splitRatioV2 === true) prefs.splitRatioV2 = true;
   if (typeof source.sftpPaneOpen === "boolean") prefs.sftpPaneOpen = source.sftpPaneOpen;
   if (Array.isArray(source.visibleColumns) && source.visibleColumns.every((column): column is string => typeof column === "string")) prefs.visibleColumns = source.visibleColumns;
   if (source.sftpColumnWidths && typeof source.sftpColumnWidths === "object" && !Array.isArray(source.sftpColumnWidths)) {

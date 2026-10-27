@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 import { useWorkbenchPanels } from "./composables/useWorkbenchPanels";
+import { useLayoutState } from "./state/useLayoutState";
 import workspaceSource from "../components/WorkbenchWorkspace.vue?raw";
 import type { SshWorkbenchPaneOrder } from "../lib/workbenchLayout";
 
@@ -52,6 +53,26 @@ describe("workbench panels", () => {
     const panels = useWorkbenchPanels(input);
     panels.toggleDockerPane();
     expect(input.dockerPaneOpen.value).toBe(false);
+  });
+});
+
+describe("container split defaults", () => {
+  it("opens the container pane at a 50/50 split and resets to it", () => {
+    const layout = useLayoutState({ paneDirection: ref("auto"), sftpPaneOpen: ref(false) });
+    expect(layout.dockerSplitRatio.value).toBe(50);
+    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "50%" });
+    layout.dockerSplitRatio.value = 72;
+    layout.resetDockerSplitRatio();
+    expect(layout.dockerSplitRatio.value).toBe(50);
+    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "50%" });
+  });
+});
+
+describe("SFTP panel default width", () => {
+  it("gives the terminal 75% and the SFTP panel 25% by default", () => {
+    const layout = useLayoutState({ paneDirection: ref("auto"), sftpPaneOpen: ref(true) });
+    expect(layout.splitRatio.value).toBe(75);
+    expect(layout.terminalBasis.value).toEqual({ flexBasis: "75%" });
   });
 });
 

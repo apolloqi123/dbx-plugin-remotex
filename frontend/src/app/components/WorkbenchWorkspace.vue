@@ -40,7 +40,7 @@ const {
   onSftpDragEnter, onSftpDragLeave, onSftpTreeDrop, onShellTabCwd, onShellTabOpened,
   onTerminalDragEnter, onTerminalDragLeave, onTerminalDrop, openAttributes, openBatchBarSave,
   openEntry, openSftpTreeNode, openTerminalSearch, openTerminalSplit, openWithCustomEntry,
-  openWithKnownEntry, openWithSystemEntry, orderedPaneClass, otpPanelOpen, paneContainer,
+  openWithKnownEntry, openWithSystemEntry, orderedPaneClass, otpPanelOpen, paneContainer, workbenchSplitRef,
   paneLayout, paneSplitStyle, pasteClipboard, pasteTerminal, pathBarEditing,
   bookmarksOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
   quickCommands, quickGroupName, quickHasRealGroups, refreshBatchTargets, refreshMetrics,
@@ -97,7 +97,8 @@ function dockerTerminalStateEvents(
 </script>
 
 <template>
-    <section ref="paneContainer" :class="orderedPaneClass" :style="paneSplitStyle">
+    <section ref="workbenchSplitRef" class="workbench-split-column">
+      <section ref="paneContainer" :class="orderedPaneClass" :style="paneSplitStyle">
       <!-- 终端栈：编辑器页签在上、终端在下。SFTP 分栏比（terminalBasis）施加
            在栈容器上，内层终端 pane 只负责填满栈内剩余高度；无页签时编辑器
            与把手不渲染，终端回到整栈高度。 -->
@@ -257,36 +258,6 @@ function dockerTerminalStateEvents(
           @cancel-save="cancelBatchBarSave"
         />
       </div>
-      <!-- 容器管理底部分屏（Task 6）：终端列内部堆叠，与右侧栏开合/视图无关。
-           比例语义 = 终端+编辑器占比（dockerSplitRatio 40-80），容器页高度取余量。
-           RDP 连接下整体不渲染；本地模式可用（本机 daemon）。 -->
-      <template v-if="dockerPaneOpen && !isRdpConnection">
-        <div
-          class="docker-divider"
-          role="separator"
-          aria-orientation="horizontal"
-          :aria-valuenow="Math.round(dockerSplitRatio)"
-          aria-valuemin="40"
-          aria-valuemax="80"
-          :title="t('dividerResizeHintHeight')"
-          tabindex="0"
-          @pointerdown="startDockerDividerDrag"
-          @keydown="onDockerDividerKeydown"
-        />
-        <ContainerManagerPane
-          class="docker-pane-surface"
-          :style="dockerPaneBasis"
-          :t="t"
-          :session-id="session?.sessionId"
-          :connection-id="connectionId || undefined"
-          :can-write="canWrite"
-          :theme="splitTerminalTheme"
-          :font-family="splitTerminalFont.fontFamily"
-          :font-size="splitTerminalFont.fontSize"
-          :terminal-state-events="dockerTerminalStateEvents"
-          @close="closeDockerPane"
-        />
-      </template>
       </section>
 
       <div
@@ -383,5 +354,37 @@ function dockerTerminalStateEvents(
         @archive-entry="archiveEntry"
         @extract-entry="extractEntry"
       />
+      </section>
+
+      <!-- 容器管理底部分屏：工作台级全宽底部行，覆盖终端与 SFTP 面板下方。
+           上区（终端+SFTP）占比 = dockerSplitRatio（40-80），容器页高度取余量；
+           RDP 连接下整体不渲染；本地模式可用（本机 daemon）。 -->
+      <template v-if="dockerPaneOpen && !isRdpConnection">
+        <div
+          class="docker-divider"
+          role="separator"
+          aria-orientation="horizontal"
+          :aria-valuenow="Math.round(dockerSplitRatio)"
+          aria-valuemin="40"
+          aria-valuemax="80"
+          :title="t('dividerResizeHintHeight')"
+          tabindex="0"
+          @pointerdown="startDockerDividerDrag"
+          @keydown="onDockerDividerKeydown"
+        />
+        <ContainerManagerPane
+          class="docker-pane-surface"
+          :style="dockerPaneBasis"
+          :t="t"
+          :session-id="session?.sessionId"
+          :connection-id="connectionId || undefined"
+          :can-write="canWrite"
+          :theme="splitTerminalTheme"
+          :font-family="splitTerminalFont.fontFamily"
+          :font-size="splitTerminalFont.fontSize"
+          :terminal-state-events="dockerTerminalStateEvents"
+          @close="closeDockerPane"
+        />
+      </template>
     </section>
 </template>

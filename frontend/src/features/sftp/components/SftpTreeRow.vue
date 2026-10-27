@@ -204,16 +204,15 @@ function onDrop(event: DragEvent) {
   height: 14px;
 }
 
-/* 宿主同款 Lucide 线性文件夹/文件：无彩色底块，18px 内容尺寸（20px 槽位），
-   琥珀色文件夹 + 蓝色文件 + 青色符号链接；描边与宿主树保持一致。 */
+/* 宿主同款 Lucide 线性文件夹/文件：与宿主树一致的 14px 尺寸（无彩色底块），
+   琥珀色文件夹 + 蓝色文件 + 青色符号链接；描边也沿用 Lucide 默认 2。 */
 .sftp-tree-row > svg.sftp-tree-dir-icon,
 .sftp-tree-row > svg.sftp-tree-file-icon {
-  box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  padding: 1px;
-  stroke-width: 1.8;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  padding: 0;
+  stroke-width: 2;
 }
 
 .sftp-tree-row > svg.sftp-tree-dir-icon { color: var(--tone-amber); }

@@ -34,6 +34,8 @@ export interface WorkbenchState {
   followDefaultOn?: boolean;
   sudoMode?: boolean;
   splitRatio?: number;
+  /** SFTP 面板默认 25% 宽度的迁移标记：旧状态无此标记时忽略其 splitRatio。 */
+  splitRatioV2?: boolean;
   paneOrder?: SshWorkbenchPaneOrder;
   sftpPaneOpen?: boolean;
   visibleColumns?: SftpColumn[];
@@ -107,7 +109,9 @@ export function useWorkbenchPersistence(options: {
     if (!prefs) return;
     if (prefs.paneOrder) paneOrder.value = prefs.paneOrder;
     if (prefs.paneDirection) paneDirection.value = sanitizePaneDirection(prefs.paneDirection);
-    if (prefs.splitRatio !== undefined) splitRatio.value = prefs.splitRatio;
+    // splitRatioV2 缺失 = 旧默认 58%（SFTP 42%），不采用；统一回到新的
+    // 75/25 默认，待用户拖拽后再按新标记持久化。
+    if (prefs.splitRatioV2 === true && prefs.splitRatio !== undefined) splitRatio.value = prefs.splitRatio;
     // 面板开合记的是用户最近一次的手动切换；偏好里没有时维持设置页的
     // 「默认打开」偏好（sftpPaneOpen ref 的初始值即来自它）。
     if (prefs.sftpPaneOpen !== undefined) sftpPaneOpen.value = prefs.sftpPaneOpen;
@@ -133,7 +137,11 @@ export function useWorkbenchPersistence(options: {
     applyWorkbenchLayoutPrefs();
     const state = { ...readWorkbenchUiMirror(), ...initialState() };
     currentPath.value = typeof state.sftpPath === "string" ? normalizeRemotePath(state.sftpPath) : "/";
-    splitRatio.value = typeof state.splitRatio === "number" && state.splitRatio >= 35 && state.splitRatio <= 80 ? state.splitRatio : splitRatio.value;
+    // 旧工作台状态没有 splitRatioV2 标记时，其中自动落盘的 58 不再生效；
+    // 保持全局偏好/新默认（75/25），用户后续拖拽会写入标记。
+    if (state.splitRatioV2 === true && typeof state.splitRatio === "number" && state.splitRatio >= 35 && state.splitRatio <= 80) {
+      splitRatio.value = state.splitRatio;
+    }
     paneOrder.value = state.paneOrder === "sftp-left" ? "sftp-left" : state.paneOrder === "terminal-left" ? "terminal-left" : paneOrder.value;
     // Dock panel surface：SFTP 面板默认不开（不自动列目录/不自动建 SFTP 会话，
     // dock 保持轻量）；需要文件面板时用 panel-actions 的开关手动打开（连接建立时
@@ -190,6 +198,7 @@ export function useWorkbenchPersistence(options: {
       followDefaultOn: true,
       sudoMode: sudoMode.value,
       splitRatio: splitRatio.value,
+      splitRatioV2: true,
       paneOrder: paneOrder.value,
       sftpPaneOpen: sftpPaneOpen.value,
       visibleColumns: visibleColumns.value,
@@ -209,6 +218,7 @@ export function useWorkbenchPersistence(options: {
         paneOrder: paneOrder.value,
         paneDirection: paneDirection.value,
         splitRatio: splitRatio.value,
+        splitRatioV2: true,
         sftpPaneOpen: sftpPaneOpen.value,
         visibleColumns: visibleColumns.value,
         sftpColumnWidths: { ...sftpColumnWidths },
