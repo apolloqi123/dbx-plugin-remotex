@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ArrowLeft, ChevronDown, Copy, ListPlus, Loader2, Plus, SquarePlus, Terminal as TerminalIcon, Trash2 } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import type { DockConnectionEntry, LocalShellEntry, SessionMenuActions } from "../lib/workbenchToolbarActions";
 
 /** 工具条「会话」下拉（T19 自 App.vue 模板迁入）：新建 / 复制 / 命令会话 /
- *  本地终端 / Shell 选项收敛为单入口，Popover 内三视图（主菜单 / 选择 shell /
- *  shell 设置）仍是同一弹层的状态切换。会话与 shell 偏好状态、Shell 发现懒加载
+ *  本地终端 / Shell 选项 / 导入会话收敛为单入口，Popover 内三视图（主菜单 /
+ *  选择 shell / shell 设置）仍是同一弹层的状态切换。会话与 shell 偏好状态、Shell 发现懒加载
  *  逻辑全部留在 App/composables：本组件只渲染并上抛动作，开合态走 v-model 链。 */
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -38,6 +39,11 @@ const sessionMenuShellOpen = defineModel<boolean>("sessionMenuShellOpen", { requ
 const sessionMenuShellPickOpen = defineModel<boolean>("sessionMenuShellPickOpen", { required: true });
 const localShellSurfaceOpen = defineModel<boolean>("localShellSurfaceOpen", { required: true });
 
+const emit = defineEmits<{
+  /** 导入会话弹窗（原 SFTP 工具栏入口，归位会话工具组）。 */
+  (e: "open-import"): void;
+}>();
+
 const t = props.t;
 // 动作名与迁移前 App 模板里的绑定名逐字一致，模板不需要改写。
 const {
@@ -68,7 +74,7 @@ const {
   <div>
     <Popover :open="sessionMenuOpen" @update:open="(open) => { if (!open) sessionMenuOpen = false; }">
       <PopoverAnchor as-child>
-        <button class="icon-button icon-emerald" :class="{ 'is-active': sessionMenuOpen }" :title="t('sessionMenu.title')" :aria-label="t('sessionMenu.title')" :aria-expanded="sessionMenuOpen" @pointerdown.stop @click.stop="toggleSessionMenu"><ChevronDown /></button>
+        <button class="icon-button icon-emerald" :class="{ 'is-active': sessionMenuOpen }" :title="t('sessionMenu.title')" :aria-label="t('sessionMenu.title')" :aria-expanded="sessionMenuOpen" @pointerdown.stop @click.stop="toggleSessionMenu"><WorkbenchGlyph name="sessions" /></button>
       </PopoverAnchor>
       <PopoverContent class="popover session-menu-popover" :class="{ 'session-menu-shell': sessionMenuShellOpen || sessionMenuShellPickOpen }" align="start" :side-offset="5">
         <template v-if="!sessionMenuShellOpen && !sessionMenuShellPickOpen">
@@ -83,6 +89,8 @@ const {
           <button class="session-menu-item" @click="sessionMenuOpen = false; toggleLocalTerminal();"><TerminalIcon />{{ isRdpMode ? t("rdp.disconnect") : isVncMode ? t("vnc.disconnect") : isSerialMode ? t("serial.disconnect") : isTelnetMode ? t("telnet.disconnect") : localUiMode && !localShellRestored ? t("localTerminal.close") : t("localTerminal.open") }}</button>
           <button v-if="!isTelnetMode && !isSerialMode && !isVncMode && !isRdpMode" class="session-menu-item" @click="openSessionShellPick"><ChevronDown />{{ t("localTerminal.pickShell") }}</button>
           <button v-if="!isTelnetMode && !isSerialMode && !isVncMode && !isRdpMode" class="session-menu-item" @click="openSessionShellPrefs"><ChevronDown />{{ t("localTerminal.settings") }}</button>
+          <hr class="session-menu-separator" />
+          <button class="session-menu-item" @click="sessionMenuOpen = false; emit('open-import')"><WorkbenchGlyph name="import-sessions" />{{ t("importWizard.title") }}</button>
         </template>
         <template v-else-if="sessionMenuShellPickOpen">
           <header class="session-shell-head">

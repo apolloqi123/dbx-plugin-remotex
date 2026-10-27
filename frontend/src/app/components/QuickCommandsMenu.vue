@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Braces, ChevronDown, ChevronRight, Search, Zap } from "@lucide/vue";
+import { Braces, ChevronDown, ChevronRight, Search } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import type { QuickCommand, QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
 import type { QuickCommandsMenuActions } from "../lib/workbenchToolbarActions";
 
@@ -40,7 +41,7 @@ const {
   <div>
     <Popover :open="quickMenuOpen" @update:open="(open) => { if (!open) quickMenuOpen = false; }">
       <PopoverAnchor as-child>
-        <button class="icon-button icon-amber" :title="t('quickCommands')" :aria-label="t('quickCommands')" :disabled="!connected" @pointerdown.stop @click.stop="toggleQuickMenu"><Zap /></button>
+        <button class="icon-button icon-amber" :title="t('quickCommands')" :aria-label="t('quickCommands')" :disabled="!connected" @pointerdown.stop @click.stop="toggleQuickMenu"><WorkbenchGlyph name="quick-commands" /></button>
       </PopoverAnchor>
       <PopoverContent class="popover quick-commands-popover" align="end" :side-offset="5">
       <!-- M32-A3 后工具条只留"列表 + 搜索 + 执行"（Termius Snippets 式）：

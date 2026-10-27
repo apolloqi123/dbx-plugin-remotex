@@ -2,28 +2,6 @@
 import type { CSSProperties } from "vue";
 import { AGENT_MODES } from "../../features/agent/lib/agentTerminal";
 import type { AgentTerminalMode } from "../../features/agent/lib/agentTerminal";
-import {
-  ArrowLeftRight,
-  ArrowUpDown,
-  Bot,
-  ChevronUp,
-  Disc,
-  ExternalLink,
-  FileText,
-  FileUp,
-  Film,
-  FolderOpen,
-  Gauge,
-  ListChecks,
-  Network,
-  PanelRightClose,
-  PlugZap,
-  Settings,
-  ShieldCheck,
-  Siren,
-  SlidersHorizontal,
-  SquareTerminal,
-} from "@lucide/vue";
 import type { QuickCommand, QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
 import type { FolderUploadProgress } from "../../features/sftp/lib/transfer/folderUpload";
 import type { TerminalColorScheme } from "../../features/terminal/lib/appearance/terminalScheme";
@@ -32,6 +10,7 @@ import type { ResumableUploadTask } from "../../features/transfers/lib/transferR
 import type { BatchUploadSummary, TransferTask } from "../../features/transfers/lib/transferQueue";
 import DockerWhaleLogo from "../../features/docker/components/DockerWhaleLogo.vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import AppearanceMenu from "./AppearanceMenu.vue";
 import ConnectionInfoPopover from "./ConnectionInfoPopover.vue";
 import DockMetricsStrip from "./DockMetricsStrip.vue";
@@ -104,8 +83,6 @@ const props = defineProps<{
   recordingActive: boolean;
   recordingTarget: { kind: "ssh" | "local"; sessionId: string } | undefined;
   recordingsOpen: boolean;
-  sftpPaneDefaultOpen: boolean;
-  sftpAutoConnect: boolean;
   activeTransfers: number;
   // dock 面板系统信息带
   panelMetricsVisible: boolean;
@@ -170,7 +147,7 @@ const props = defineProps<{
 // 可写开关（App 持有状态）：v-model 链，赋值即上抛 update，行为与迁移前的直接赋值一致。
 const connectionInfoOpen = defineModel<boolean>("connectionInfoOpen", { required: true });
 const agentModeOpen = defineModel<boolean>("agentModeOpen", { required: true });
-const columnsOpen = defineModel<boolean>("columnsOpen", { required: true });
+const importPanelOpen = defineModel<boolean>("importPanelOpen", { required: true });
 const transferPanelOpen = defineModel<boolean>("transferPanelOpen", { required: true });
 const transferHistoryClearOpen = defineModel<boolean>("transferHistoryClearOpen", { required: true });
 const serialUploadDialogOpen = defineModel<boolean>("serialUploadDialogOpen", { required: true });
@@ -208,7 +185,6 @@ const {
   sendSudoRefresh,
   openAlertTriage,
   toggleDockerPane,
-  openCommandDialog,
   toggleBatchBar,
   toggleAgentModeMenu,
   applyAgentMode,
@@ -217,9 +193,6 @@ const {
   toggleRecordings,
   openSettings,
   openAuditLog,
-  toggleColumnsMenu,
-  toggleSftpPaneDefaultOpen,
-  toggleSftpAutoConnect,
   toggleTransferPanel,
   showTransferHistoryMenu,
   toggleTransferPause,
@@ -263,14 +236,13 @@ const {
       />
     </div>
     <div v-if="!panelSurface" class="toolbar-actions">
-      <!-- —— SSH 工具组·视图段（分栏/字号）：连接协议门控（!isRdpConnection）
-           在组级判一次，组内按钮只保留各自其余条件（localUiMode/panelSurface）；
-           RDP 连接下整组不渲染，不产生孤儿按钮。 -->
+      <!-- —— 视图段（分栏互换 / SFTP 面板 / 字号）：连接协议门控（!isRdpConnection）
+           在组级判一次；RDP 连接下整组不渲染，不产生孤儿按钮。 -->
       <template v-if="!isRdpConnection">
-        <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :disabled="panelSurface" @click="togglePaneOrder"><ArrowLeftRight /></button>
+        <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :disabled="panelSurface" @click="togglePaneOrder"><WorkbenchGlyph name="pane-swap" /></button>
         <!-- Local terminal UI hides SSH-only actions outright (not disabled): the local
              shell has no SSH session to act on. -->
-        <button v-if="!localUiMode" class="icon-button icon-cyan" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" :disabled="panelSurface" @click="toggleSftpPane"><FolderOpen v-if="!(sftpPaneOpen && sftpViewActive)" /><PanelRightClose v-else /></button>
+        <button v-if="!localUiMode" class="icon-button icon-cyan" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" :disabled="panelSurface" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
         <button class="icon-button" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
         <button class="icon-button" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
       </template>
@@ -295,11 +267,11 @@ const {
         :actions="actions"
       />
       <!-- 工具条语义分组分隔线：两侧（视图段/会话菜单）在 SSH 与 RDP 两种形态
-           下都各有一侧可见，永远不会成为孤儿分隔符；其余分隔线全部收进 SSH 组。 -->
+           下都各有一侧可见，永远不会成为孤儿分隔符。 -->
       <span class="toolbar-separator" aria-hidden="true" />
-      <!-- 会话下拉：新建 / 复制 / 命令会话 / 本地终端 / Shell 选项收敛为单入口，
-           工具条不再平铺五个会话类按钮（视觉走查）。Shell 选项为同弹层视图切换
-           （数据与 local/shells/list 懒加载逻辑不变）。 -->
+      <!-- 会话下拉：新建 / 复制 / 命令会话 / 本地终端 / Shell 选项 / 导入会话
+           收敛为单入口。Shell 选项为同弹层视图切换（数据与 local/shells/list
+           懒加载逻辑不变）。 -->
       <SessionMenu
         v-model:session-menu-open="sessionMenuOpen"
         v-model:session-menu-shell-open="sessionMenuShellOpen"
@@ -327,29 +299,29 @@ const {
         :can-open-local-tab="canOpenLocalTab"
         :dock-connections="dockConnections"
         :actions="actions"
+        @open-import="importPanelOpen = true"
       />
-      <!-- —— SSH 工具组·运维/命令/记录/SFTP 工具段：组级 !isRdpConnection 判
-           一次，段内三条语义分隔线随组渲染，RDP 连接下不会再出现孤儿分隔符。
-           组内按钮只保留 localUiMode/isSerialMode/panelSurface 等自身条件。 -->
+      <!-- —— SSH 工具组·运维 / 效率 / 监控 / 文件与系统：组级 !isRdpConnection
+           判一次，段内三条语义分隔线随组渲染；组内按钮只保留
+           localUiMode/isSerialMode 等自身条件。 -->
       <template v-if="!isRdpConnection">
+      <span class="toolbar-separator" aria-hidden="true" />
+      <!-- 连接与运维 -->
       <!-- 串口文件上传入口（NyaTerm 对齐 P0-3）：仅串口模式可用；传输中禁发。 -->
-      <button v-if="isSerialMode" class="icon-button icon-emerald" :title="t('serial.upload.open')" :aria-label="t('serial.upload.open')" :disabled="serialUploadBusy" @click="serialUploadDialogOpen = true"><FileUp /></button>
-      <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('reconnect')" :aria-label="t('reconnect')" :disabled="terminalState === 'connecting' && !reconnectPending" @click="reconnectNow"><PlugZap /></button>
+      <button v-if="isSerialMode" class="icon-button icon-emerald" :title="t('serial.upload.open')" :aria-label="t('serial.upload.open')" :disabled="serialUploadBusy" @click="serialUploadDialogOpen = true"><WorkbenchGlyph name="upload-file" /></button>
+      <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('reconnect')" :aria-label="t('reconnect')" :disabled="terminalState === 'connecting' && !reconnectPending" @click="reconnectNow"><WorkbenchGlyph name="reconnect" /></button>
       <!-- 一键 sudo -v：向当前 PTY 写入命令刷新 sudo 凭据缓存；quick sudo 自动应答
            是否启用由连接设置决定（设置弹窗），工作台不再提供开关。 -->
-      <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('sudoRefresh.title')" :aria-label="t('sudoRefresh.title')" :disabled="!connected" @click="sendSudoRefresh"><ShieldCheck /></button>
-      <!-- quick sudo profiles 管理入口（M32-A）已归位设置·sudo：工具条不再放
-           管理类按钮，sudoRefresh 保留为会话内即时动作。 -->
-      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('alertTriage.title')" :aria-label="t('alertTriage.title')" @click="openAlertTriage"><Siren /></button>
+      <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('sudoRefresh.title')" :aria-label="t('sudoRefresh.title')" :disabled="!connected" @click="sendSudoRefresh"><WorkbenchGlyph name="sudo-shield" /></button>
       <!-- main 新增的端口转发入口同属 SSH 专属：沿用 A4 惯例在本地模式整体隐藏。 -->
-      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><Network /></button>
+      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><WorkbenchGlyph name="forwards" /></button>
+      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('alertTriage.title')" :aria-label="t('alertTriage.title')" @click="openAlertTriage"><WorkbenchGlyph name="alert" /></button>
       <!-- 容器管理底部分屏入口（鲸鱼 logo）：独立开关，不占用右侧栏、不与
            SFTP/指标互斥；local 模式保留——本机 daemon（Docker
            Desktop/OrbStack）场景照常可用。面板自治，收起即卸载停轮询。 -->
       <button class="icon-button icon-blue" :class="{ 'is-active': dockerPaneOpen }" :title="t('docker.toolbarTitle')" :aria-label="t('docker.toolbarTitle')" :aria-pressed="dockerPaneOpen" @click.stop="toggleDockerPane"><DockerWhaleLogo /></button>
       <span class="toolbar-separator" aria-hidden="true" />
-      <button v-if="!localUiMode" class="icon-button icon-neutral" :title="t('commandTitle')" :aria-label="t('commandTitle')" :disabled="!connected" @click="openCommandDialog"><SquareTerminal /></button>
-      <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><ListChecks /></button>
+      <!-- 效率工具：快命令 → 批量发送 → Agent 模式 -->
       <QuickCommandsMenu
         v-model:quick-menu-open="quickMenuOpen"
         v-model:quick-search="quickSearch"
@@ -364,10 +336,11 @@ const {
         :quick-command-group-summary="quickCommandGroupSummary"
         :actions="actions"
       />
+      <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><WorkbenchGlyph name="batch-send" /></button>
       <div>
         <Popover :open="agentModeOpen" @update:open="(open) => { if (!open) agentModeOpen = false; }">
           <PopoverAnchor as-child>
-            <button class="icon-button" :class="agentMode === 'off' ? 'icon-neutral' : 'icon-emerald is-active'" :title="t('agentTerminalQuickHint')" :aria-label="t('agentTerminalQuickHint')" :aria-pressed="agentMode !== 'off'" :disabled="!connected" @pointerdown.stop @click.stop="toggleAgentModeMenu"><Bot /></button>
+            <button class="icon-button" :class="agentMode === 'off' ? 'icon-neutral' : 'icon-emerald is-active'" :title="t('agentTerminalQuickHint')" :aria-label="t('agentTerminalQuickHint')" :aria-pressed="agentMode !== 'off'" :disabled="!connected" @pointerdown.stop @click.stop="toggleAgentModeMenu"><WorkbenchGlyph name="agent" /></button>
           </PopoverAnchor>
           <PopoverContent class="popover agent-mode-popover" align="end" :side-offset="5">
           <h3>{{ t("agentTerminalSection") }}</h3>
@@ -379,38 +352,22 @@ const {
           </PopoverContent>
         </Popover>
       </div>
-      <!-- 高亮规则管理（M32-A2）已归位设置·终端（HighlightRulesSection）：
-           工具条不再放配置编辑器，渲染扫描（compiledHighlightRules）仍在。 -->
       <span class="toolbar-separator" aria-hidden="true" />
-      <button class="icon-button icon-emerald" :class="{ 'is-active': sftpPaneOpen && rightPanelView === 'metrics' }" :title="t('metrics')" :aria-label="t('metrics')" :aria-pressed="sftpPaneOpen && rightPanelView === 'metrics'" :disabled="!connected" @click="toggleMetricsPanel"><Gauge /></button>
-      <button class="icon-button" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><Disc /></button>
-      <button class="icon-button" :class="{ 'is-active': recordingsOpen }" :title="t('recordingsTitle')" :aria-label="t('recordingsTitle')" :aria-pressed="recordingsOpen" @click="toggleRecordings"><Film /></button>
-      <!-- 设置弹窗承载 SSH/SFTP/终端专属分节（sudo/agent/安全/命名编码…），
-           RDP 连接下整类不适用——入口随之隐藏（RDP 实验开关在非 RDP tab 的
-           设置·终端里仍可达）；审计日志只记录 SSH/SFTP 操作，RDP 从不入审计。 -->
-      <button class="icon-button icon-violet" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><Settings /></button>
-      <button class="icon-button icon-amber" :title="t('auditLog.title')" :aria-label="t('auditLog.title')" @click="openAuditLog"><FileText /></button>
+      <!-- 监控与记录 -->
+      <button class="icon-button icon-emerald" :class="{ 'is-active': sftpPaneOpen && rightPanelView === 'metrics' }" :title="t('metrics')" :aria-label="t('metrics')" :aria-pressed="sftpPaneOpen && rightPanelView === 'metrics'" :disabled="!connected" @click="toggleMetricsPanel"><WorkbenchGlyph name="metrics" /></button>
+      <button class="icon-button" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><WorkbenchGlyph name="record" /></button>
+      <button class="icon-button" :class="{ 'is-active': recordingsOpen }" :title="t('recordingsTitle')" :aria-label="t('recordingsTitle')" :aria-pressed="recordingsOpen" @click="toggleRecordings"><WorkbenchGlyph name="recordings" /></button>
       <span class="toolbar-separator" aria-hidden="true" />
-      <div>
-        <Popover :open="columnsOpen" @update:open="(open) => { if (!open) columnsOpen = false; }">
-          <PopoverAnchor as-child>
-            <button class="icon-button icon-violet" :title="t('sftpPane.preferences')" :aria-label="t('sftpPane.preferences')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleColumnsMenu"><SlidersHorizontal /></button>
-          </PopoverAnchor>
-          <PopoverContent class="popover columns-popover" align="end" :side-offset="5">
-          <!-- 单栏树不再有表头多列：这里只保留 SFTP 面板的默认开合/自动
-               连接偏好，不再声称可自定义列（visibleColumns 仅作持久化兼容）。 -->
-          <label :title="t('sftpPane.defaultOpenHint')"><input type="checkbox" :checked="sftpPaneDefaultOpen" @change="toggleSftpPaneDefaultOpen" />{{ t("sftpPane.defaultOpen") }}</label>
-          <label :title="t('sftpPane.autoConnectHint')"><input type="checkbox" :checked="sftpAutoConnect" @change="toggleSftpAutoConnect" />{{ t("sftpPane.autoConnect") }}</label>
-          </PopoverContent>
-        </Popover>
-      </div>
+      <!-- 文件与系统：传输 → 审计 → 设置（设置固定在右缘） -->
       <div>
         <!-- 历史卡右键菜单（ContextMenu）打开时忽略弹层的外点关闭请求：
              菜单项 pointerdown 相对弹层是"外部"，不加守卫会在 select 前把宿主弹层
              连同菜单一起卸载，动作丢失。 -->
-        <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
-
+        <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
       </div>
+      <!-- 设置弹窗承载 SSH/SFTP/终端专属分节；审计日志只记录 SSH/SFTP 操作。 -->
+      <button class="icon-button icon-amber" :title="t('auditLog.title')" :aria-label="t('auditLog.title')" @click="openAuditLog"><WorkbenchGlyph name="audit" /></button>
+      <button class="icon-button icon-violet" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
       </template>
     </div>
     <!-- dock 面板左组：系统信息带（CPU/内存/网速，5s 轮询），flex:1 把
@@ -431,14 +388,13 @@ const {
          关闭/收起/最大化，这里只留终端快捷操作——字号、录屏、传输、配色快切、
          设置与工具条收起，密度对齐底部栏（紧凑 30px 工具条 + 透明 ghost 按钮）。 -->
     <div v-if="panelSurface" class="toolbar-actions panel-actions">
-      <!-- 在 tab 打开当前连接（宿主 openWorkbench → 新 tab，panel 自己保持轻量）。 -->
-      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><ExternalLink /></button>
-      <!-- SFTP 文件面板开关：dock 默认不开，手动开合（连接后列表已就绪）。 -->
-      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><FolderOpen v-if="!(sftpPaneOpen && sftpViewActive)" /><PanelRightClose v-else /></button>
-      <button v-if="!isRdpConnection" class="icon-button compact" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><Disc /></button>
-      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><ArrowUpDown /><span v-if="activeTransfers" class="activity-dot" /></button>
+      <!-- 面板紧凑组：新标签 → SFTP → 字号 → 录制/传输 → 配色 → 设置 → 收起。 -->
+      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><WorkbenchGlyph name="new-tab" /></button>
+      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
       <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
       <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
+      <button v-if="!isRdpConnection" class="icon-button compact" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><WorkbenchGlyph name="record" /></button>
+      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
       <AppearanceMenu
         v-model:panel-palette-open="panelPaletteOpen"
         :t="t"
@@ -447,8 +403,8 @@ const {
         :panel-active-scheme-id="panelActiveSchemeId"
         :actions="actions"
       />
-      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><Settings /></button>
-      <button class="icon-button compact" :title="t('panel.hideToolbar')" :aria-label="t('panel.hideToolbar')" :aria-pressed="panelToolbarHidden" @click="togglePanelToolbar"><ChevronUp /></button>
+      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
+      <button class="icon-button compact" :title="t('panel.hideToolbar')" :aria-label="t('panel.hideToolbar')" :aria-pressed="panelToolbarHidden" @click="togglePanelToolbar"><WorkbenchGlyph name="collapse-up" /></button>
     </div>
     <!-- 传输弹层单实例（tab/panel 两表面共用）：Popover 挂在 header 层，锚点是
          工具条右缘下的隐形定位点（.transfer-popover-anchor，固定定位不随表面

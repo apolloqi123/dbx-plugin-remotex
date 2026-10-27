@@ -1,7 +1,6 @@
 // SFTP 行详情/整包覆盖、终端分屏与右侧栏增强文案。
 const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
   en: {
-    "sftpPane.preferences": "SFTP panel preferences",
     "sftpDetails.title": "Details",
     "sftpDetails.path": "Path",
     "sftpDetails.type": "Type",
@@ -24,7 +23,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "Opening split terminal…",
   },
   "zh-CN": {
-    "sftpPane.preferences": "SFTP 面板偏好",
     "sftpDetails.title": "详细信息",
     "sftpDetails.path": "路径",
     "sftpDetails.type": "类型",
@@ -47,7 +45,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "正在打开分屏终端…",
   },
   "zh-TW": {
-    "sftpPane.preferences": "SFTP 面板偏好",
     "sftpDetails.title": "詳細資訊",
     "sftpDetails.path": "路徑",
     "sftpDetails.type": "類型",
@@ -70,7 +67,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "正在開啟分割終端機…",
   },
   es: {
-    "sftpPane.preferences": "Preferencias del panel SFTP",
     "sftpDetails.title": "Detalles",
     "sftpDetails.path": "Ruta",
     "sftpDetails.type": "Tipo",
@@ -93,7 +89,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "Abriendo terminal dividida…",
   },
   it: {
-    "sftpPane.preferences": "Preferenze pannello SFTP",
     "sftpDetails.title": "Dettagli",
     "sftpDetails.path": "Percorso",
     "sftpDetails.type": "Tipo",
@@ -116,7 +111,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "Apertura terminale diviso…",
   },
   ja: {
-    "sftpPane.preferences": "SFTP パネル設定",
     "sftpDetails.title": "詳細",
     "sftpDetails.path": "パス",
     "sftpDetails.type": "種類",
@@ -139,7 +133,6 @@ const sftpWorkbenchEnhancements: Record<string, Record<string, string>> = {
     "terminalSplit.connecting": "分割ターミナルを開いています…",
   },
   "pt-BR": {
-    "sftpPane.preferences": "Preferências do painel SFTP",
     "sftpDetails.title": "Detalhes",
     "sftpDetails.path": "Caminho",
     "sftpDetails.type": "Tipo",

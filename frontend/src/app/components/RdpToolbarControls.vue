@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ClipboardPaste, PlugZap, Proportions, Scan, StretchHorizontal } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import type { RdpToolbarActions } from "../lib/workbenchToolbarActions";
 
 /** RDP 独立工具组（T19 自 App.vue 模板迁入）：缩放三档 + 桌面分辨率 +
@@ -44,14 +44,14 @@ const {
 
 <template>
   <div class="rdp-scale-group" role="group" :aria-label="t('rdp.scaleMode')">
-    <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'fit' }" :title="t('rdp.scaleMode.fit')" :aria-label="t('rdp.scaleMode.fit')" :aria-pressed="rdpScaleMode === 'fit'" @click="rdpScaleMode = 'fit'"><Scan /></button>
+    <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'fit' }" :title="t('rdp.scaleMode.fit')" :aria-label="t('rdp.scaleMode.fit')" :aria-pressed="rdpScaleMode === 'fit'" @click="rdpScaleMode = 'fit'"><WorkbenchGlyph name="rdp-fit" /></button>
     <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'actual' }" :title="t('rdp.scaleMode.actual')" :aria-label="t('rdp.scaleMode.actual')" :aria-pressed="rdpScaleMode === 'actual'" @click="rdpScaleMode = 'actual'"><span class="font-step-label" aria-hidden="true">1:1</span></button>
-    <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'stretch' }" :title="t('rdp.scaleMode.stretch')" :aria-label="t('rdp.scaleMode.stretch')" :aria-pressed="rdpScaleMode === 'stretch'" @click="rdpScaleMode = 'stretch'"><StretchHorizontal /></button>
+    <button class="icon-button rdp-scale-button" :class="{ 'is-active': rdpScaleMode === 'stretch' }" :title="t('rdp.scaleMode.stretch')" :aria-label="t('rdp.scaleMode.stretch')" :aria-pressed="rdpScaleMode === 'stretch'" @click="rdpScaleMode = 'stretch'"><WorkbenchGlyph name="rdp-stretch" /></button>
   </div>
   <div>
     <Popover :open="rdpResolutionOpen" @update:open="(open) => { if (!open) rdpResolutionOpen = false; }">
       <PopoverAnchor as-child>
-        <button class="icon-button icon-cyan" :class="{ 'is-active': rdpResolutionOpen }" :title="t('rdp.resolution.title')" :aria-label="t('rdp.resolution.title')" :aria-expanded="rdpResolutionOpen" @pointerdown.stop @click.stop="toggleRdpResolutionMenu"><Proportions /></button>
+        <button class="icon-button icon-cyan" :class="{ 'is-active': rdpResolutionOpen }" :title="t('rdp.resolution.title')" :aria-label="t('rdp.resolution.title')" :aria-expanded="rdpResolutionOpen" @pointerdown.stop @click.stop="toggleRdpResolutionMenu"><WorkbenchGlyph name="rdp-resolution" /></button>
       </PopoverAnchor>
       <PopoverContent class="popover rdp-resolution-popover" align="start" :side-offset="5">
         <h3>{{ t("rdp.resolution.title") }}</h3>
@@ -75,7 +75,7 @@ const {
   <div>
     <Popover :open="rdpPasteOpen" @update:open="(open) => { if (!open) rdpPasteOpen = false; }">
       <PopoverAnchor as-child>
-        <button class="icon-button icon-cyan" :class="{ 'is-active': rdpPasteOpen }" :title="t('rdp.paste.title')" :aria-label="t('rdp.paste.title')" :aria-expanded="rdpPasteOpen" @pointerdown.stop @click.stop="toggleRdpPasteMenu"><ClipboardPaste /></button>
+        <button class="icon-button icon-cyan" :class="{ 'is-active': rdpPasteOpen }" :title="t('rdp.paste.title')" :aria-label="t('rdp.paste.title')" :aria-expanded="rdpPasteOpen" @pointerdown.stop @click.stop="toggleRdpPasteMenu"><WorkbenchGlyph name="paste" /></button>
       </PopoverAnchor>
       <PopoverContent class="popover rdp-paste-popover" align="start" :side-offset="5">
         <h3>{{ t("rdp.paste.title") }}</h3>
@@ -89,7 +89,7 @@ const {
       </PopoverContent>
     </Popover>
   </div>
-  <button class="icon-button icon-emerald" :title="t('rdp.disconnect')" :aria-label="t('rdp.disconnect')" @click="closeRdpSession"><PlugZap /></button>
+  <button class="icon-button icon-emerald" :title="t('rdp.disconnect')" :aria-label="t('rdp.disconnect')" @click="closeRdpSession"><WorkbenchGlyph name="power" /></button>
 </template>
 
 <style scoped>

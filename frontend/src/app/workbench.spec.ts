@@ -9,13 +9,12 @@ import { advanceBatchProgress, batchProgressPercent, createBatchProgress } from 
 import { sampleTransferSpeed } from "../features/transfers/lib/transferSpeed";
 import { DANGEROUS_COMMAND_PATTERNS, buildPasteConfirmation, inspect } from "../features/terminal/lib/behavior/dangerousCommands";
 import { clampFontSize } from "../features/terminal/lib/appearance/terminalZoom";
-import { pushPathHistory, sanitizePathHistories } from "../features/sftp/lib/paths/sftpPathHistory";
 import { formatBytes, formatRate } from "../shared/lib/format";
 import { expandSelection, filterSftpEntries } from "../features/sftp/lib/entries/sftpFileFilters";
 import { getSshWorkbenchSplitLayout, resolveSftpPaneOpen, sanitizeSftpPaneDefaultOpen, resolveDirectoryFollow, sanitizeDirectoryFollowPref, sanitizeSftpAutoConnectPref, shouldLazyLoadSftpListing, sanitizeWorkbenchLayoutPrefs } from "./lib/workbenchLayout";
 import { commandMarkerTooltip, formatCommandDuration, getOsc633ParserState, Osc633CommandParser, parseOsc633StreamChunk, runningCommandElapsedMs } from "../features/terminal/lib/panels/terminalCommandMarkers";
 import { describeWorkbenchSessionStatus, isUsableSshSession, normalizeSshSessionStatus } from "../features/connections/lib/sessionStatus";
-import { sanitizeCommandOutput, stripCommandEcho, stripHiddenCommandEchoes, stripTerminalControlSequences } from "../features/terminal/lib/behavior/terminalOutputText";
+import { stripCommandEcho, stripHiddenCommandEchoes, stripTerminalControlSequences } from "../features/terminal/lib/behavior/terminalOutputText";
 import { browseCommandHistory, isPersistableCommand, pushCommandHistory, sanitizeCommandHistory } from "../features/terminal/lib/panels/commandHistory";
 import { formatAuthMethodLabel, formatLatency } from "../features/connections/lib/connectionInfo";
 import { normalizeQuickCommands, removeQuickCommand, upsertQuickCommand, QUICK_COMMANDS_LIMIT, type QuickCommand } from "../features/quick-commands/lib/quickCommands";
@@ -252,15 +251,12 @@ describe("workbench localization", () => {
       "sftpNewFile.action",
       "sftpAttrs.action",
       "sftpAttrs.kind.directory",
-      "sftpPathHistory.title",
       "sftpQuickPath.title",
       "sftpCopy.copy",
       "sftpPaste.action",
       "connectionInactive",
       "sftpPane.open",
       "sftpPane.close",
-      "sftpPane.defaultOpen",
-      "sftpPane.defaultOpenHint",
     ];
     for (const locale of locales) {
       for (const key of sftpKeys) expect(workbenchMessage(locale, key)).not.toBe(key);
@@ -447,46 +443,6 @@ describe("batch-3 extracted helpers", () => {
     expect(clampFontSize(13, 0)).toBe(13);
   });
 
-  it("keeps per-connection path histories deduplicated, newest first, and bounded", () => {
-    expect(pushPathHistory({}, "c1", "/var/log")).toEqual({ c1: ["/var/log"] });
-
-    const histories = { c1: ["/a", "/b", "/c"] };
-    expect(pushPathHistory(histories, "c1", "/b")).toEqual({ c1: ["/b", "/a", "/c"] });
-
-    const rotated = { c1: ["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9", "/10"] };
-    expect(pushPathHistory(rotated, "c1", "/11")["c1"]).toHaveLength(10);
-    expect(pushPathHistory(rotated, "c1", "/11")["c1"][0]).toBe("/11");
-
-    expect(pushPathHistory(histories, "", "/x")).toEqual(histories);
-    expect(pushPathHistory(histories, "c1", "")).toEqual(histories);
-    expect(pushPathHistory({ c1: ["/a"] }, "c2", "/y", 2)).toEqual({ c1: ["/a"], c2: ["/y"] });
-    expect(pushPathHistory({ c2: ["/y", "/z"] }, "c2", "/w", 2)).toEqual({ c2: ["/w", "/y"] });
-  });
-
-  it("sanitizes corrupted persisted path histories instead of trusting them", () => {
-    // Well-formed input survives unchanged.
-    expect(sanitizePathHistories({ c1: ["/a", "/b"] })).toEqual({ c1: ["/a", "/b"] });
-    // Non-objects (arrays, primitives, null, garbage JSON) collapse to {}.
-    expect(sanitizePathHistories(["/a"])).toEqual({});
-    expect(sanitizePathHistories("junk")).toEqual({});
-    expect(sanitizePathHistories(42)).toEqual({});
-    expect(sanitizePathHistories(null)).toEqual({});
-    expect(sanitizePathHistories(undefined)).toEqual({});
-    // Per-connection values that are not string arrays are dropped; string
-    // entries are kept, non-string elements filtered, and length re-capped.
-    expect(
-      sanitizePathHistories({
-        ok: ["/keep", 5, null, "/also-kept"],
-        broken: "not-an-array",
-        numeric: 7,
-        empty: [],
-      }),
-    ).toEqual({ ok: ["/keep", "/also-kept"] });
-    expect(
-      sanitizePathHistories({ c1: ["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9", "/10", "/11"] }, 10)["c1"],
-    ).toHaveLength(10);
-  });
-
   it("formats byte sizes and transfer rates", () => {
     expect(formatBytes(0)).toBe("0 B");
     expect(formatBytes(512)).toBe("512 B");
@@ -670,14 +626,9 @@ describe("terminal output text sanitization (ported from tiny-rdm)", () => {
     expect(result.remainingCommands).toEqual([command]);
   });
 
-  it("renders exec output as plain text with trailing control noise removed", () => {
-    expect(sanitizeCommandOutput("\u001b[32mOK\u001b[0m\n\u001b]633;D;0\u0007\r\n")).toBe("OK");
-    expect(sanitizeCommandOutput(undefined)).toBe("");
-    expect(sanitizeCommandOutput("value \u0000")).toBe("value");
-  });
 });
 
-describe("command history ring buffer (command dialog)", () => {
+describe("command history ring buffer (batch bar / history panel)", () => {
   it("deduplicates, keeps newest first and clamps to the limit", () => {
     let history = pushCommandHistory([], "ls -la", 3);
     history = pushCommandHistory(history, "df -h", 3);
@@ -927,7 +878,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
     // 提取逻辑本身失效（模板改写导致 regex 不再匹配）时先在这里暴露，
     // 避免后续断言因空集合而静默通过。
     // M32-A2：highlightMenuOpen 弹层已随高亮规则管理迁设置·终端而下线。
-    for (const ref of ["quickMenuOpen", "connectionInfoOpen", "agentModeOpen", "bookmarkSaveOpen", "columnsOpen", "transferPanelOpen", "batchTargetsOpen", "pathHistoryOpen", "sessionMenuOpen"]) {
+    for (const ref of ["quickMenuOpen", "connectionInfoOpen", "agentModeOpen", "bookmarkSaveOpen", "bookmarksOpen", "transferPanelOpen", "batchTargetsOpen", "sessionMenuOpen"]) {
       expect(popoverRefs, `popover 提取丢失 ${ref}`).toContain(ref);
     }
     // settingsDialog 抽出独立组件后，settingsOpen/profilesOpen 的 Dialog 模板
@@ -953,7 +904,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
 
   it("routes every toolbar popover toggle through closeToolbarPopovers", () => {
     // M32-A2：toggleHighlightMenu 已随高亮弹层迁设置·终端而下线。
-    for (const name of ["toggleQuickMenu", "toggleConnectionInfo", "toggleAgentModeMenu", "toggleBookmarkSave", "toggleColumnsMenu", "toggleTransferPanel", "togglePathHistoryMenu", "toggleSessionMenu", "toggleRdpResolutionMenu", "toggleRdpPasteMenu", "togglePanelPaletteMenu"]) {
+    for (const name of ["toggleQuickMenu", "toggleConnectionInfo", "toggleAgentModeMenu", "toggleBookmarkSave", "toggleBookmarksMenu", "toggleTransferPanel", "toggleSessionMenu", "toggleRdpResolutionMenu", "toggleRdpPasteMenu", "togglePanelPaletteMenu"]) {
       // toggle 可能随模块化迁入 composables/：App.vue 找不到时到联合源里找。
       const haystack = appScript.includes(`function ${name}(`) ? appScript : `${appScript}\n${composablesScript}\n${workbenchSetupScript}`;
       const start = haystack.indexOf(`function ${name}(`);
@@ -1157,8 +1108,8 @@ it("puts the directory-follow toggle in the SFTP path toolbar", () => {
   // 旧的主工具条文字+Switch 入口已移除（跟随开关现在是独立图标按钮）。
   expect(appTemplateSurface).not.toContain('@update:model-value="setDirectoryTracking"');
   expect(appTemplateSurface).toContain("emit('set-directory-tracking', !followDirectory)");
-  expect(appTemplateSurface).toContain("<LocateFixed v-if=\"followDirectory\" />");
-  expect(appTemplateSurface).toContain("<LocateOff v-else />");
+  // 跟随开关使用工作台自有图标：follow / follow-off 两态。
+  expect(appTemplateSurface).toContain("followDirectory ? 'follow' : 'follow-off'");
   // 跟随在真实 cwd 变化或用户切换到别的窗格/页签时同步；同一窗格内重复
   // 点击终端不触发，避免反复重置滚动位置。
   expect(sftpWorkspaceSurface).toContain("watch(terminalCwd");

@@ -26,14 +26,14 @@ export function installWorkbenchShell(deps: Deps) {
   agentModeOpen, agentPromptHead, agentPromptQueue, agentRunning, alertTriageOpen, appearance,
   applyChosenDirAsDefault, askDownloadTarget, attrsMode, attrsTarget, auditClearOpen, auditClearSubmitting,
   auditOpen, batchDeleteOpen, batchDeleteSubmitting, bookmarkSaveOpen, canWrite, clearSftpDetailCache,
-  closeAttributes, closeDockerPane, closePreview, closeRightPanel, columnsOpen, commandHistory, commandOpen,
+  closeAttributes, closeDockerPane, closePreview, closeRightPanel, commandHistory,
   confirmRiskyPaste, connectLog, connected, connectionReadOnly, currentPath, customEditorOpen,
   deleteTarget, diskUsage, dockerPaneOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
   editorPaneContainsFocus, fileMenu, folderPickerTarget, handleWatchModified, hasEditorTabs, hostKeyPrompt,
   hostTerminalFontFamily, importPanelOpen, isLocalMode, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir,
   localOpenConfirmOpen, localSession, localShellRestored, localShellSurfaceOpen, locale, markLocalExited,
   markSerialClosed, markTelnetClosed, markVncClosed, newFileDialog, openLocalShellPrefs, openTransferTarget,
-  operationDialog, otpPanelOpen, panelPaletteOpen, panelSurface, pasteConfirm, pathHistoryOpen,
+  operationDialog, otpPanelOpen, panelPaletteOpen, panelSurface, pasteConfirm, bookmarksOpen,
   pendingConfirmDialog, persistCommandHistory, previewOpen, probeLocalCapabilities, profilesOpen, pushTerminalCommandHistory,
   quickCommands, quickMenuOpen, rdpCertPrompt, rdpCertRemember, rdpClipboardChunks, rdpDialogOpen,
   rdpPasteOpen, rdpResolutionOpen, rdpSession, rdpState, rdpSurface, reconnectPending,
@@ -373,8 +373,7 @@ export function installWorkbenchShell(deps: Deps) {
     terminalMenuOpen.value = false;
     transferHistoryMenu.value = undefined;
     transferPanelOpen.value = false;
-    columnsOpen.value = false;
-    pathHistoryOpen.value = false;
+    bookmarksOpen.value = false;
     quickMenuOpen.value = false;
     connectionInfoOpen.value = false;
     agentModeOpen.value = false;
@@ -423,7 +422,6 @@ export function installWorkbenchShell(deps: Deps) {
     symlinkDialog,
     watchModifiedQueue,
     customEditorOpen,
-    commandOpen,
     profilesOpen,
     auditOpen,
     auditClearOpen,

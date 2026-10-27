@@ -8,7 +8,7 @@ SFTP 域按“数据入口 → 树/传输 → 编辑器/动作”分层。跨子
 | 子域 | 职责 |
 | --- | --- |
 | `entries/` | 条目清洗、筛选、名称编码、错误文案（`sftpEntries` / `sftpFileFilters` / `sftpName` / `sftpErrors`） |
-| `paths/` | 远端路径输入、历史、书签、路径拼接（`remotePathInput` / `sftpPathHistory` / `sftpBookmarks` / `sftpRemotePaths`） |
+| `paths/` | 远端路径输入、书签、路径拼接（`remotePathInput` / `sftpBookmarks` / `sftpRemotePaths`） |
 | `tree/` | 树模型、虚拟窗口、拖放条目、行键盘语义（`sftpFileTree` / `virtualWindow` / `dropEntries` / `fileRowKeydown`） |
 | `transfer/` | 文件夹上传/压缩/覆盖策略、下载清洗、冲突偏好、宿主拖放映射（`folderUpload` / `folderArchive` / `folderOverwrite` / `sanitizedDownload` / `sftpFolderDownload` / `downloadPrefs` / `hostFileDrop` / `hostDragMapping`） |
 | `editor/` | 编辑器规则、主题、文本嗅探、JSON 预览、外部改动监听（`editorRules` / `editorTheme` / `textSniff` / `jsonPreview` / `watchEdits`） |
@@ -18,7 +18,7 @@ SFTP 域按“数据入口 → 树/传输 → 编辑器/动作”分层。跨子
 
 | 子域 | 职责 |
 | --- | --- |
-| `listing/` | 目录导航、列表布局、单栏树工作区、路径历史；**唯一允许发起 `sftp/list` 的位置** |
+| `listing/` | 目录导航、列表布局、单栏树工作区；**唯一允许发起 `sftp/list` 的位置** |
 | `tree/` | 树虚拟滚动、详情卡、宿主文件拖放目标 |
 | `transfer/` | 上传链、重复策略、文件夹上传、宿主拖放、下载、归档 |
 | `editor/` | 编辑页签、打开方式、分屏、预览、外部改动 |

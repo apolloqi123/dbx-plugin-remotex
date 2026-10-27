@@ -36,12 +36,9 @@
   .panes--solo .terminal-stack { height: 100%; }
 }
 
-/* Quick sudo command dialog */
+/* Quick sudo 控件（命令条/配置档共用） */
 .quick-sudo-control { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
-.command-modal { width: min(640px, 100%); }
-.command-modal > textarea { min-height: 96px; resize: vertical; font-family: var(--terminal-font-family); line-height: 1.45; }
 .command-output { display: flex; min-height: 96px; max-height: 40vh; overflow: auto; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0; border: 1px solid var(--border); border-radius: 6px; padding: 12px; background: color-mix(in srgb, var(--muted) 45%, transparent); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.command-exit { color: var(--muted-foreground); font-size: 10px; }
 
 /* 批量发送命令条（Electerm quick-command bar 风格）：工作区底部独立一行，
    不覆盖终端内容；上下分屏时位于下屏终端之下（FitAddon 随高度变化重排）。 */

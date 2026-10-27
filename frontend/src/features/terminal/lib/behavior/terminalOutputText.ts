@@ -57,7 +57,3 @@ export function stripHiddenCommandEchoes(output: unknown, commands: readonly unk
   };
 }
 
-/** Plain-text rendering for exec output: no OSC/CSI noise, trailing blank lines trimmed. */
-export function sanitizeCommandOutput(output: unknown): string {
-  return stripTerminalControlSequences(output).replace(/[\s\u0000]+$/u, "");
-}

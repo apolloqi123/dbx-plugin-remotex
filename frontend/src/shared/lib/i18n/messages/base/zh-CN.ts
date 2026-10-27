@@ -377,7 +377,6 @@ const messages = {
       save: "应用权限",
       sizeLimit: "文件超过 4 MiB，无法直接保存，请使用下载/上传。",
     },
-    sftpPathHistory: { title: "最近路径", empty: "暂无最近路径" },
     sftpBookmark: {
       add: "收藏此路径",
       title: "书签",

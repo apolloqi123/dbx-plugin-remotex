@@ -61,16 +61,8 @@ export function useWorkbenchViewPrefs(options: {
   // 后者为恢复的 tab 提供更精确的状态；这里是新 tab 的缺省来源）。
   const followDirectory = ref(loadDirectoryFollowPref());
 
-  // 全局偏好只影响新工作台的初始面板状态；当前工作台不被连带切换。
-  function toggleSftpPaneDefaultOpen() {
-    sftpPaneDefaultOpen.value = !sftpPaneDefaultOpen.value;
-    try {
-      pluginStore.setItem(SFTP_PANE_OPEN_KEY, sftpPaneDefaultOpen.value ? "true" : "false");
-    } catch {
-      // localStorage 不可用时偏好仅对当前会话生效。
-    }
-  }
-
+  // SFTP 面板开合与自动连接现在是只读初始偏好（工具条不再提供偏好弹层）；
+  // 已持久化的旧值继续生效，新装环境走下方缺省。
   function loadSftpPaneDefaultOpen(): boolean {
     try {
       return sanitizeSftpPaneDefaultOpen(pluginStore.getItem(SFTP_PANE_OPEN_KEY));
@@ -79,16 +71,7 @@ export function useWorkbenchViewPrefs(options: {
     }
   }
 
-  // SFTP 自动连接全局偏好：关闭后连接成功不再自动加载 SFTP 目录（#179）。
-  function toggleSftpAutoConnect() {
-    sftpAutoConnect.value = !sftpAutoConnect.value;
-    try {
-      pluginStore.setItem(SFTP_AUTO_CONNECT_KEY, sftpAutoConnect.value ? "true" : "false");
-    } catch {
-      // localStorage 不可用时偏好仅对当前会话生效。
-    }
-  }
-
+  // SFTP 自动连接：仅读取既有持久化值（默认开）。
   function loadSftpAutoConnect(): boolean {
     try {
       return sanitizeSftpAutoConnectPref(pluginStore.getItem(SFTP_AUTO_CONNECT_KEY));
@@ -164,9 +147,7 @@ export function useWorkbenchViewPrefs(options: {
     termSelectCopy,
     terminalHotkeys,
     followDirectory,
-    toggleSftpPaneDefaultOpen,
     loadSftpPaneDefaultOpen,
-    toggleSftpAutoConnect,
     loadSftpAutoConnect,
     loadDirectoryFollowPref,
     persistDirectoryFollowPref,

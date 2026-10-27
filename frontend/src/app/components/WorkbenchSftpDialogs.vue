@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/dialog/index";
 import { Switch } from "../../shared/ui/switch/index";
-import { FolderOpen, Loader2, SquareTerminal, Trash2, X } from "@lucide/vue";
+import { FolderOpen, Loader2, Trash2, X } from "@lucide/vue";
 import { formatBytes } from "../../shared/lib/format";
 import type { BatchProgressState } from "../../features/transfers/lib/sftpBatchProgress";
 
 /** SFTP 文件操作弹窗组：新建目录/符号链接、外部编辑器回传、自定义编辑器命令、
- *  命令会话执行、权限/删除/批量删除、下载目录与冲突询问、上传重复询问、
- *  新建文件、文件属性。状态与 RPC 仍由 App 的 SFTP composables 持有；
- *  弹窗壳/骨架走全局 modal 样式（reka portal），组件只渲染并上抛动作。 */
+ *  权限/删除/批量删除、下载目录与冲突询问、上传重复询问、新建文件、文件属性。
+ *  状态与 RPC 仍由 App 的 SFTP composables 持有；弹窗壳/骨架走全局 modal 样式
+ *  （reka portal），组件只渲染并上抛动作。 */
 type PermRole = { readonly who: number; readonly key: string };
 type PermColumn = { readonly bit: number; readonly key: string };
 type SymlinkDialogState = { mode: "create" | "edit"; name: string; linkPath: string };
@@ -32,14 +32,6 @@ const props = defineProps<{
   customEditorCommand: string;
   customEditorRemember: boolean;
   customEditorPattern: string;
-  commandOpen: boolean;
-  commandDraft: string;
-  commandRunning: boolean;
-  commandHistory: string[];
-  commandUseSudo: boolean;
-  commandResult: { exitCode: number } | undefined;
-  commandOutputText: string;
-  commandError: string;
   chmodTarget: { name: string } | undefined;
   chmodDraft: string;
   chmodSubmitting: boolean;
@@ -82,9 +74,6 @@ const emit = defineEmits<{
   (e: "update:customEditorName", value: string): void;
   (e: "update:customEditorCommand", value: string): void;
   (e: "update:customEditorRemember", value: boolean): void;
-  (e: "update:commandOpen", value: boolean): void;
-  (e: "update:commandDraft", value: string): void;
-  (e: "update:commandUseSudo", value: boolean): void;
   (e: "update:chmodTarget", value: { name: string } | undefined): void;
   (e: "update:chmodDraft", value: string): void;
   (e: "update:deleteTarget", value: { name: string } | undefined): void;
@@ -100,11 +89,6 @@ const emit = defineEmits<{
   (e: "upload-watched-always"): void;
   (e: "upload-watched-single"): void;
   (e: "commit-custom-editor"): void;
-  (e: "command-input-keydown", event: KeyboardEvent): void;
-  (e: "clear-command-history"): void;
-  (e: "rerun-history-command", item: string): void;
-  (e: "cancel-command"): void;
-  (e: "run-command"): void;
   (e: "confirm-chmod"): void;
   (e: "confirm-delete"): void;
   (e: "confirm-batch-delete"): void;
@@ -174,53 +158,6 @@ const t = props.t;
           <span>{{ t("sftpEdit.rememberAssociation", { pattern: customEditorPattern }) }}</span>
         </label>
         <footer><button @click="emit('update:customEditorOpen', false)">{{ t("cancel") }}</button><button class="primary-button" :disabled="!customEditorCommand.trim()" @click="emit('commit-custom-editor')">{{ t("sftpEdit.customCommandRun") }}</button></footer>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="commandOpen" @update:open="(open) => { if (!open) emit('update:commandOpen', false); }">
-      <DialogContent class="modal command-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("commandTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:commandOpen', false)"><X /></button></header>
-        <textarea
-          :value="commandDraft" @input="emit('update:commandDraft', ($event.target as HTMLTextAreaElement).value)"
-          class="mono"
-          rows="5"
-          spellcheck="false"
-          autofocus
-          :placeholder="t('commandPlaceholder')"
-          :disabled="commandRunning"
-          @keydown="emit('command-input-keydown', $event)"
-        />
-        <div v-if="commandHistory.length" class="command-history">
-          <div class="command-history-header">
-            <span>{{ t("commandHistoryTitle") }}</span>
-            <button class="link-button" @click="emit('clear-command-history')">{{ t("commandHistoryClear") }}</button>
-          </div>
-          <div class="command-history-list">
-            <button
-              v-for="item in commandHistory"
-              :key="item"
-              class="command-history-item mono"
-              :title="t('commandHistoryResend')" :aria-label="t('commandHistoryResend')"
-              @click="emit('rerun-history-command', item)"
-            >{{ item }}</button>
-          </div>
-        </div>
-        <label class="quick-sudo-control" :title="t('quickSudoHint')">
-          <Switch :model-value="commandUseSudo" size="sm" :disabled="commandRunning" @update:model-value="emit('update:commandUseSudo', $event)" />
-          <span>{{ t("quickSudo") }}</span>
-        </label>
-        <div v-if="commandRunning" class="command-output"><Loader2 class="spinning" /><span>{{ t("commandRunning") }}</span></div>
-        <pre v-else-if="commandResult" class="command-output mono">{{ commandOutputText || t("commandNoOutput") }}<span class="command-exit">exit {{ commandResult.exitCode }}</span></pre>
-        <p v-if="commandError" class="task-error">{{ commandError }}</p>
-        <footer>
-          <button @click="emit('update:commandOpen', false)">{{ t("close") }}</button>
-          <button v-if="commandRunning" @click="emit('cancel-command')"><X />{{ t("commandCancel") }}</button>
-          <button class="primary-button" :disabled="!commandDraft.trim() || commandRunning" @click="emit('run-command')">
-            <Loader2 v-if="commandRunning" class="spinning" />
-            <SquareTerminal v-else />
-            {{ t("commandRun") }}
-          </button>
-        </footer>
       </DialogContent>
     </Dialog>
 
@@ -383,12 +320,6 @@ const t = props.t;
 .perm-matrix-role { color: var(--muted-foreground); white-space: nowrap; }
 .perm-matrix-cell { display: flex; justify-content: center; }
 .perm-matrix-cell input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
-/* 命令历史下拉（命令弹窗内）：↑↓ 浏览 + 点击一键重发 */
-.command-history { display: flex; flex-direction: column; gap: 4px; }
-.command-history-header { display: flex; align-items: center; justify-content: space-between; color: var(--muted-foreground); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.command-history-list { display: flex; max-height: 168px; flex-direction: column; gap: 1px; overflow: auto; }
-.command-history-item { display: block; width: 100%; overflow: hidden; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; background: transparent; color: var(--foreground); font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.command-history-item:hover { background: var(--accent); border-color: var(--border); }
 /* 批量删除进度行（与 SFTP 面板批量条共用同名规则，App 侧保留）。 */
 .batch-progress-bar { flex: 0 1 140px; height: 6px; min-width: 80px; accent-color: var(--primary); }
 .batch-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }

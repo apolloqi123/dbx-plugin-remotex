@@ -47,7 +47,6 @@ export function useWorkbenchModals(options: {
   symlinkDialog: DialogState;
   watchModifiedQueue: ReadonlyValue<unknown[]>;
   customEditorOpen: ReadonlyValue<boolean>;
-  commandOpen: Ref<boolean>;
   profilesOpen: Ref<boolean>;
   auditOpen: Ref<boolean>;
   auditClearOpen: Ref<boolean>;
@@ -91,7 +90,7 @@ export function useWorkbenchModals(options: {
     downloadPrompt, downloadConflictPrompt, uploadDuplicatePrompt, attrsTarget,
     deleteTarget, batchDeleteOpen, recordingDeleteTarget, recordingClearAllOpen,
     transferHistoryClearOpen, chmodTarget, newFileDialog, operationDialog, symlinkDialog,
-    watchModifiedQueue, customEditorOpen, commandOpen, profilesOpen, auditOpen,
+    watchModifiedQueue, customEditorOpen, profilesOpen, auditOpen,
     auditClearOpen, settingsOpen, alertTriageOpen, hostKeyPrompt, agentPromptHead,
     spawnSessionDialogOpen,
     batchDeleteSubmitting, recordingDeleteSubmitting, recordingClearAllSubmitting,
@@ -172,7 +171,6 @@ export function useWorkbenchModals(options: {
     watchModifiedQueue.value.length > 0,
     // 自定义编辑器命令弹窗（编辑器映射增强），模板顺序在 watch 确认弹窗之后。
     customEditorOpen.value,
-    commandOpen.value,
     profilesOpen.value,
     auditOpen.value,
     auditClearOpen.value,
@@ -331,10 +329,6 @@ export function useWorkbenchModals(options: {
     }
     if (operationDialog.value) {
       operationDialog.value = null;
-      return;
-    }
-    if (commandOpen.value) {
-      commandOpen.value = false;
       return;
     }
     if (alertTriageOpen.value) {

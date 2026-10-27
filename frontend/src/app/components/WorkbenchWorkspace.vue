@@ -33,7 +33,7 @@ const {
   dockerPaneOpen, dockerSplitRatio, downloadEntry,
   editorPaneRef, editorSplitRatio, editorTabs, ensureExternalEditors, extractEntry,
   fileMenu, filteredBatchQuickCommands, focusSftpPaneOnPointerDown, folderMenuAction, goParent,
-  goToPath, groupedBatchQuickCommands, hasEditorTabs, importPanelOpen, isLocalMode,
+  goToPath, groupedBatchQuickCommands, hasEditorTabs, isLocalMode,
   isRdpConnection, killProcessRow, loadDirectory, loadHome, localRecentCommands,
   localUiMode, locale, nudgeSplitDivider, onDividerKeydown, onDockerDividerKeydown, onDrop,
   onEditorDividerKeydown, onFileAreaContextMenu, onFileRowKeydown, onPaneActivated, onSftpClipboardPaste,
@@ -42,7 +42,7 @@ const {
   openEntry, openSftpTreeNode, openTerminalSearch, openTerminalSplit, openWithCustomEntry,
   openWithKnownEntry, openWithSystemEntry, orderedPaneClass, otpPanelOpen, paneContainer,
   paneLayout, paneSplitStyle, pasteClipboard, pasteTerminal, pathBarEditing,
-  pathHistoryOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
+  bookmarksOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
   quickCommands, quickGroupName, quickHasRealGroups, refreshBatchTargets, refreshMetrics,
   refreshProcessList, refreshSftpFolder, removeBookmark, renamingPath, rerunLocalCommand,
   saveEditorTab, searchSelectionOnline, searchTextOnline, selectAllTerminal,
@@ -52,7 +52,7 @@ const {
   sidePanelShell, splitTerminalFont, splitTerminalPane, splitTerminalTheme, startDividerDrag,
   startDockerDividerDrag, startEditorDividerDrag, submitPathInput, t, terminal, terminalBasis,
   terminalHasSplit, terminalLayout, terminalMenuOpen, terminalStackRef, terminalTransferBusy,
-  toggleBatchQuickPopover, toggleBatchTargetId, toggleBatchTargetsPopover, toggleBookmarkSave, togglePathHistoryMenu,
+  toggleBatchQuickPopover, toggleBatchTargetId, toggleBatchTargetsPopover, toggleBookmarkSave, toggleBookmarksMenu,
   toggleProcessPanel, toggleQuickGroupCollapse, toggleSftpShowHidden, toggleSftpTreeNode, toggleSudoMode,
   updateEditorText, workbenchId,
 } = props.bindings;
@@ -312,7 +312,7 @@ function dockerTerminalStateEvents(
         v-model:pathBarEditing="pathBarEditing"
         v-model:bookmarkSaveOpen="bookmarkSaveOpen"
         v-model:bookmarkLabelDraft="bookmarkLabelDraft"
-        v-model:pathHistoryOpen="pathHistoryOpen"
+        v-model:bookmarksOpen="bookmarksOpen"
         v-model:sftpSearchDraft="sftpSearchDraft"
         v-model:sftpTypeFilter="sftpTypeFilter"
         v-model:fileMenu="fileMenu"
@@ -321,7 +321,6 @@ function dockerTerminalStateEvents(
         v-model:renamingPath="renamingPath"
         v-model:sftpDragDropTarget="sftpDragDropTarget"
         v-model:otpPanelOpen="otpPanelOpen"
-        v-model:importPanelOpen="importPanelOpen"
         :t="t"
         :locale="locale"
         :shell="sidePanelShell"
@@ -348,7 +347,7 @@ function dockerTerminalStateEvents(
         @go-to-path="goToPath"
         @toggle-bookmark-save="toggleBookmarkSave"
         @confirm-bookmark-save="confirmBookmarkSave"
-        @toggle-path-history-menu="togglePathHistoryMenu"
+        @toggle-bookmarks-menu="toggleBookmarksMenu"
         @remove-bookmark="removeBookmark"
         @paste-clipboard="pasteClipboard"
         @toggle-sudo-mode="toggleSudoMode"

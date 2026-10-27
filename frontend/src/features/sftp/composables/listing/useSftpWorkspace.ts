@@ -66,8 +66,7 @@ export function useSftpWorkspace(options: {
   persistDirectoryFollowPref: (value: boolean) => void;
   resetLinkTargets: () => void;
   hydrateLinkTargets: (list: SftpSanitizedEntry[], isCurrent: () => boolean) => void;
-  rememberPathHistory: (path: string) => void;
-  closePathHistoryMenu: () => void;
+  closeBookmarksMenu: () => void;
   clearSftpSearch: () => void;
   clearRowSelection: () => void;
   selectFile: (entry: SftpSanitizedEntry, event: MouseEvent) => void;
@@ -159,8 +158,7 @@ export function useSftpWorkspace(options: {
     persistDirectoryFollowPref: (value) => options.persistDirectoryFollowPref(value),
     resetLinkTargets: () => options.resetLinkTargets(),
     hydrateLinkTargets: (list, isCurrent) => options.hydrateLinkTargets(list, isCurrent),
-    rememberPathHistory: (path) => options.rememberPathHistory(path),
-    closePathHistoryMenu: () => options.closePathHistoryMenu(),
+    closeBookmarksMenu: () => options.closeBookmarksMenu(),
     onListingLoaded: () => { sftpListingLoaded.value = true; },
   });
 

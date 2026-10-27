@@ -379,7 +379,6 @@ const messages = {
       save: "Aplicar permisos",
       sizeLimit: "Los archivos de más de 4 MiB no se pueden guardar en línea; use subir/descargar.",
     },
-    sftpPathHistory: { title: "Rutas recientes", empty: "Sin rutas recientes" },
     sftpBookmark: {
       add: "Añadir marcador",
       title: "Marcadores",

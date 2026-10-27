@@ -29,7 +29,7 @@ type SftpModelKey =
   | "pathBarEditing"
   | "bookmarkSaveOpen"
   | "bookmarkLabelDraft"
-  | "pathHistoryOpen"
+  | "bookmarksOpen"
   | "sftpSearchDraft"
   | "sftpTypeFilter"
   | "fileMenu"
@@ -98,7 +98,7 @@ const emit = defineEmits<{
   (e: "go-to-path", path: string): void;
   (e: "toggle-bookmark-save"): void;
   (e: "confirm-bookmark-save"): void;
-  (e: "toggle-path-history-menu"): void;
+  (e: "toggle-bookmarks-menu"): void;
   (e: "remove-bookmark", bookmark: SftpBookmark): void;
   (e: "paste-clipboard"): void;
   (e: "toggle-sudo-mode"): void;
@@ -139,7 +139,7 @@ const currentPath = defineModel<string>("currentPath", { required: true });
 const pathBarEditing = defineModel<boolean>("pathBarEditing", { required: true });
 const bookmarkSaveOpen = defineModel<boolean>("bookmarkSaveOpen", { required: true });
 const bookmarkLabelDraft = defineModel<string>("bookmarkLabelDraft", { required: true });
-const pathHistoryOpen = defineModel<boolean>("pathHistoryOpen", { required: true });
+const bookmarksOpen = defineModel<boolean>("bookmarksOpen", { required: true });
 const sftpSearchDraft = defineModel<string>("sftpSearchDraft", { required: true });
 const sftpTypeFilter = defineModel<SftpTypeFilter>("sftpTypeFilter", { required: true });
 const fileMenu = defineModel<SftpFileMenu | undefined>("fileMenu", { required: true });
@@ -148,7 +148,6 @@ const deleteTarget = defineModel<SftpSanitizedEntry | undefined>("deleteTarget",
 const renamingPath = defineModel<string>("renamingPath", { required: true });
 const sftpDragDropTarget = defineModel<string>("sftpDragDropTarget", { required: true });
 const otpPanelOpen = defineModel<boolean>("otpPanelOpen", { required: true });
-const importPanelOpen = defineModel<boolean>("importPanelOpen", { required: true });
 
 /** 面板根包装元素：App 的 focusSftpPaneOnPointerDown 经 defineExpose 回填使用。 */
 const sftpPane = ref<HTMLElement>();
@@ -177,7 +176,7 @@ defineExpose({ sftpPane });
       v-model:pathBarEditing="pathBarEditing"
       v-model:bookmarkSaveOpen="bookmarkSaveOpen"
       v-model:bookmarkLabelDraft="bookmarkLabelDraft"
-      v-model:pathHistoryOpen="pathHistoryOpen"
+      v-model:bookmarksOpen="bookmarksOpen"
       v-model:sftpSearchDraft="sftpSearchDraft"
       v-model:sftpTypeFilter="sftpTypeFilter"
       v-model:renamingPath="renamingPath"
@@ -189,7 +188,6 @@ defineExpose({ sftpPane });
       @update:batchDeleteOpen="batchDeleteOpen = true"
       @update:deleteTarget="deleteTarget = $event"
       @update:otpPanelOpen="otpPanelOpen = true"
-      @update:importPanelOpen="importPanelOpen = true"
       @go-parent="emit('go-parent')"
       @load-home="emit('load-home')"
       @load-directory="emit('load-directory')"
@@ -200,7 +198,7 @@ defineExpose({ sftpPane });
       @go-to-path="emit('go-to-path', $event)"
       @toggle-bookmark-save="emit('toggle-bookmark-save')"
       @confirm-bookmark-save="emit('confirm-bookmark-save')"
-      @toggle-path-history-menu="emit('toggle-path-history-menu')"
+      @toggle-bookmarks-menu="emit('toggle-bookmarks-menu')"
       @remove-bookmark="emit('remove-bookmark', $event)"
       @paste-clipboard="emit('paste-clipboard')"
       @toggle-sudo-mode="emit('toggle-sudo-mode')"

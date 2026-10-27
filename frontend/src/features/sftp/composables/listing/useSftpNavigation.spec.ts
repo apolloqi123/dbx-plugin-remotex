@@ -62,8 +62,7 @@ function setupHarness() {
     persistDirectoryFollowPref: () => undefined,
     resetLinkTargets: () => undefined,
     hydrateLinkTargets: () => undefined,
-    rememberPathHistory: () => undefined,
-    closePathHistoryMenu: () => undefined,
+    closeBookmarksMenu: () => undefined,
   });
 
   return {

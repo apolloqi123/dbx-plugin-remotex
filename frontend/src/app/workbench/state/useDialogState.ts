@@ -2,7 +2,7 @@ import { ref } from "vue";
 
 /**
  * UI 开关域状态（Task 21b）：设置/审计/配置档弹窗、OTP 与导入面板、端口转发、
- * 会话下拉与幽灵键帽菜单、列设置弹层。
+ * 会话下拉与幽灵键帽菜单。
  *
  * 纯本地工厂：弹窗内容与 Esc 链（useWorkbenchModals）仍由 App 接线，这里只
  * 保留开关声明与初始值（全部默认关闭）。
@@ -17,7 +17,6 @@ export function useDialogState() {
   // 端口映射（-L/-R）管理弹窗：全部逻辑在 components/PortForwardDialog.vue，
   // 这里只保留工具栏入口的开关状态。
   const forwardsOpen = ref(false);
-  const columnsOpen = ref(false);
   // 键位胶囊（Warp accept-autosuggestion-hint 同位）的下拉菜单与展示标签。
   const ghostKeycapMenuOpen = ref(false);
   // 会话下拉（新建/复制/命令会话/本地终端/Shell 选项）单入口状态；shell 视图
@@ -35,7 +34,6 @@ export function useDialogState() {
     otpPanelOpen,
     importPanelOpen,
     forwardsOpen,
-    columnsOpen,
     ghostKeycapMenuOpen,
     sessionMenuOpen,
     sessionMenuShellOpen,

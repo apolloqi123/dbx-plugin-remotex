@@ -3,7 +3,6 @@
  */
 import { joinRemote, pathFromUri } from "../../../features/sftp/lib/paths/sftpRemotePaths";
 import { type EditorConfig } from "../../../features/sftp/lib/editor/editorRules";
-import { useCommandDialog } from "../../../features/terminal/composables/ui/useCommandDialog";
 import { useEditorOpenWith } from "../../../features/sftp/composables/editor/useEditorOpenWith";
 import { useEditorSplitPane } from "../../../features/sftp/composables/editor/useEditorSplitPane";
 import { useEditorTabs } from "../../../features/sftp/composables/editor/useEditorTabs";
@@ -18,7 +17,6 @@ import { useSftpDownload } from "../../../features/sftp/composables/transfer/use
 import { setDockerTransferBridge } from "../../../features/docker/lib/dockerFileTransfer";
 import { useSftpDropUpload } from "../../../features/sftp/composables/transfer/useSftpDropUpload";
 import { useSftpFolderActions } from "../../../features/sftp/composables/actions/useSftpFolderActions";
-import { useSftpPathHistory } from "../../../features/sftp/composables/listing/useSftpPathHistory";
 import { useFilePreview } from "../../../features/sftp/composables/editor/useFilePreview";
 import { useSftpSelectionClipboard } from "../../../features/sftp/composables/actions/useSftpSelectionClipboard";
 import { useSplitDivider } from "../composables/useSplitDivider";
@@ -219,23 +217,15 @@ export function installWorkbenchSftp(deps: Deps) {
 
 
   // ---------------------------------------------------------------------------
-  // SFTP 面板：搜索/多选/批量/新建文件/属性/路径历史/复制粘贴
+  // SFTP 面板：搜索/多选/批量/新建文件/属性/书签/复制粘贴
   // ---------------------------------------------------------------------------
 
-  // 路径历史：存储/记录/弹层开关收口在 composables/useSftpPathHistory。
-  const {
-    pathHistoryOpen,
-    pathHistories,
-    currentPathHistory,
-    rememberPathHistory,
-    togglePathHistoryMenu,
-  } = useSftpPathHistory({ connectionId, closeToolbarPopovers: () => late.closeToolbarPopovers() });
-
-  // ---------------------------------------------------------------------------
-  // SFTP 路径书签：存储迁移/收藏/删除收口在 composables/useSftpBookmarks。
-  // ---------------------------------------------------------------------------
+  // SFTP 路径书签：存储迁移/收藏/删除与书签弹层开合收口在
+  // composables/useSftpBookmarks。
   const {
     sftpBookmarks,
+    bookmarksOpen,
+    toggleBookmarksMenu,
     bookmarkSaveOpen,
     bookmarkSaving,
     bookmarkLabelDraft,
@@ -244,7 +234,7 @@ export function installWorkbenchSftp(deps: Deps) {
     confirmBookmarkSave,
     removeBookmark,
   } = useSftpBookmarks({
-    t, showNotice, showError, connected, currentPath, pathHistoryOpen, closeToolbarPopovers: () => late.closeToolbarPopovers(),
+    t, showNotice, showError, connected, currentPath, closeToolbarPopovers: () => late.closeToolbarPopovers(),
   });
 
 
@@ -494,28 +484,6 @@ export function installWorkbenchSftp(deps: Deps) {
     zmodemInput.value?.click();
   }
 
-
-  // 命令执行弹窗：状态/执行/历史浏览收口在 composables/useCommandDialog。
-  const {
-    commandOpen,
-    commandDraft,
-    commandUseSudo,
-    commandExecId,
-    commandResult,
-    commandError,
-    openCommandDialog,
-    handleCommandInputKeydown,
-    browseCommandHistoryUp,
-    browseCommandHistoryDown,
-    rerunHistoryCommand,
-    clearCommandHistory,
-    runCommand,
-    cancelCommand,
-  } = useCommandDialog({
-    showError, session, commandRunning, commandHistory, commandHistoryIndex, commandHistoryBackup, persistCommandHistory,
-    commandHistoryTimes, pushTerminalCommandHistory, persistCommandHistoryTimes,
-  });
-
   // 批量发送：状态/发送/跨工作台广播收口在 composables/useBatchSend。
 
   return {
@@ -527,8 +495,8 @@ export function installWorkbenchSftp(deps: Deps) {
     beginPreviewEdit, cancelPreviewEdit, savePreview, MAX_INLINE_PREVIEW_BYTES, editorTabs, activeEditorId, hasEditorTabs, openEditorTab,
     activateEditorTab, updateEditorText, saveEditorTab, saveActive, closeEditorTab, handleEditorRename, closeEditorTabsUnder, editorPaneRef,
     terminalStackRef, editorSplitRatio, startEditorDividerDrag, onEditorDividerKeydown, editorPaneContainsFocus, archiveBusy, isArchiveName, archiveDirectoryName,
-    archiveEntry, extractEntry, editorPrefsAdapter, operationDialog, operationDraft, createDirectory, pathHistoryOpen, pathHistories,
-    currentPathHistory, rememberPathHistory, togglePathHistoryMenu, sftpBookmarks, bookmarkSaveOpen, bookmarkSaving, bookmarkLabelDraft, refreshBookmarks,
+    archiveEntry, extractEntry, editorPrefsAdapter, operationDialog, operationDraft, createDirectory, bookmarksOpen,
+    toggleBookmarksMenu, sftpBookmarks, bookmarkSaveOpen, bookmarkSaving, bookmarkLabelDraft, refreshBookmarks,
     toggleBookmarkSave, confirmBookmarkSave, removeBookmark, confirmDelete, confirmBatchDelete, batchArchive, attrsTarget, attrsInfo,
     attrsOwnerDisplay, attrsLoading, attrsMode, attrsSubmitting, openAttributes, closeAttributes, saveAttributesPermissions, clearRowSelection,
     selectFile, copySelectedEntries, pasteClipboard, externalEditBusy, activeExternalWatches, watchModifiedQueue, watchModifiedPrompt, alwaysUploadWatches,
@@ -541,9 +509,7 @@ export function installWorkbenchSftp(deps: Deps) {
     fileBatchProgress, dropUploadPrompt, dropUploadTarget, dropCwdTarget, dropCwdTargetWire, dropUploadPathInput, dropUploadPathInputEl, uploadDuplicatePrompt,
     uploadDuplicateApplyAll, resolveUploadDuplicateName, resolveUploadDuplicate, onUploadInput, chooseFolderUpload, onFolderUploadInput, onSftpClipboardPaste, handleHostFileDrop,
     onDrop, onSftpDragEnter, onSftpDragLeave, onTerminalDragEnter, onTerminalDragLeave, onTerminalDrop, chooseUpload, confirmDropUpload,
-    resolveDropUpload, ctxSearchEnginesText, ctxSearchEngines, updateCtxSearchEngines, searchSelectionOnline, searchTextOnline, chooseZmodem, commandOpen,
-    commandDraft, commandUseSudo, commandExecId, commandResult, commandError, openCommandDialog, handleCommandInputKeydown, browseCommandHistoryUp,
-    browseCommandHistoryDown, rerunHistoryCommand, clearCommandHistory, runCommand, cancelCommand,
+    resolveDropUpload, ctxSearchEnginesText, ctxSearchEngines, updateCtxSearchEngines, searchSelectionOnline, searchTextOnline, chooseZmodem,
   };
 }
 

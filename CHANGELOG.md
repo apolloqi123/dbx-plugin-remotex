@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.45] — 2026-10-27
+
+- **精简两处工具栏并按使用习惯重排，图标改为自绘图形**。顶部工具栏移除「运行命令」与「SFTP 面板偏好」两个入口（命令弹窗、`useCommandDialog`、列偏好弹层与相关接线/文案一并删除；`ssh/exec` 仍保留给容器、sudo 等内部功能）；剩余按钮按「视图 → 会话 → 连接与运维 → 效率工具 → 监控与记录 → 文件与系统」分组重排，设置固定在右缘。SFTP 路径工具栏移除「最近路径」与「导入会话」：路径历史模块整体删除，书签与快捷路径合并为「书签」弹层；导入会话入口迁到顶部「会话」菜单（功能保留）。两处工具栏（含 RDP 工具组、dock 面板精简组、连接信息与配色快切）的图标统一改为工作台自有图标集：24×24 栅格、1.7 描边、统一圆角端点，12–14px 下保持笔画间距。
+  **Simplified and reordered both toolbars, with a purpose-built icon set.** The top toolbar drops the Run command and SFTP panel preferences entries (the command dialog, `useCommandDialog`, the column/preference popover and all related wiring/strings are deleted; `ssh/exec` remains for containers, sudo and other internal callers). The remaining buttons are regrouped as view → session → connection/ops → productivity → monitoring/recording → files/system, with Settings pinned to the right edge. The SFTP path toolbar drops Recent paths and Import sessions: the path-history module is deleted and bookmarks + quick paths share one Bookmarks popover; Import sessions moved to the top Session menu (feature preserved). Every icon in both toolbars (including the RDP group, dock compact strip, connection info and palette switch) now uses the workbench glyph set: 24×24 grid, 1.7 stroke, rounded joins, tuned to stay legible at 12–14px.
+
 ## [0.7.9-beta.44] — 2026-10-27
 
 - **根据现场通道账本定位并修复日志流 `docker logs -f` 的子进程不退出**。beta.43 的 `channel-debug.log` 显示：服务端开始拒绝时，插件自身只剩 2–3 条通道（终端 PTY + SFTP），此前的日志流通道都已记录 `CLOSE`，但服务器仍按旧数量拒绝——说明远端 `docker logs -f` 进程没有被回收，sshd 一直保留这些会话。原因是 SSH `signal` 请求并不保证送达真正的 docker 进程（登录 shell 分叉、docker 包装脚本、或服务端对非 PTY 会话忽略信号）。现在日志流命令改为 **POSIX 看门狗 supervisor**：`exec sh -c` 保证 supervisor 是会话直接子进程；docker 作为其子进程运行（可用时用 `setsid` 独立进程组）；supervisor 在收到 `HUP/TERM` **或 stdin EOF**（客户端 `CHANNEL_EOF/CLOSE` 必然触发）时主动 `kill -KILL` docker（有进程组时连组一起杀）；日志输出仍直接进 channel，不影响跟随延迟。Windows cmd 远端经 `docker/list` 平台探测保留原扁平命令。另保留上一轮的 `HUP→TERM→KILL→EOF→CLOSE` 关闭序列。

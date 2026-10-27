@@ -106,7 +106,6 @@ export interface WorkbenchToolbarActions
   sendSudoRefresh(): void;
   openAlertTriage(): void;
   toggleDockerPane(): void;
-  openCommandDialog(): void;
   toggleBatchBar(): void;
   toggleAgentModeMenu(): void;
   applyAgentMode(mode: AgentTerminalMode): void;
@@ -114,9 +113,6 @@ export interface WorkbenchToolbarActions
   toggleRecording(): void;
   toggleRecordings(): void;
   openAuditLog(): void;
-  toggleColumnsMenu(): void;
-  toggleSftpPaneDefaultOpen(): void;
-  toggleSftpAutoConnect(): void;
   toggleTransferPanel(): void;
   showTransferHistoryMenu(event: MouseEvent, entry: TransferHistoryEntry): void;
   toggleTransferPause(task: TransferTask): void;

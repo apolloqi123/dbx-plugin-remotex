@@ -379,7 +379,6 @@ const messages = {
       save: "権限を適用",
       sizeLimit: "4 MiB を超えるファイルは保存できません。アップロード/ダウンロードを使用してください。",
     },
-    sftpPathHistory: { title: "最近のパス", empty: "最近のパスはありません" },
     sftpBookmark: {
       add: "ブックマークに追加",
       title: "ブックマーク",

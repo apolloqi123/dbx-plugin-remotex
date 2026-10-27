@@ -45,7 +45,6 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
   closeSessionShellViews: () => void;
   connectionInfo: PopoverBinding;
   refreshConnectionInfo: () => void;
-  columnsOpen: Ref<boolean>;
   rdpResolution: PopoverBinding;
   rdpPaste: PopoverBinding;
   panelPalette: PopoverBinding;
@@ -59,7 +58,7 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     getSelectedUris, setSelectedUris, setLastClickedUri, getSelectedEntryUris,
     isLoadedDirectoryUri, isProtectedDirectory, copyTextToClipboard,
     quickMenu, resetQuickMenu, sessionMenu, closeSessionShellViews,
-    connectionInfo, refreshConnectionInfo, columnsOpen,
+    connectionInfo, refreshConnectionInfo,
     rdpResolution, rdpPaste, panelPalette, batchQuick, transferPanelOpen, closeMetrics,
   } = options;
 
@@ -211,12 +210,6 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     if (next) refreshConnectionInfo();
   }
 
-  function toggleColumnsMenu() {
-    const next = !columnsOpen.value;
-    closeToolbarPopovers();
-    columnsOpen.value = next;
-  }
-
   // 锚点按钮阻止了 pointerdown 的外点关闭，切换弹层时由这里显式互斥。
   function toggleRdpResolutionMenu() {
     const next = !rdpResolution.isOpen();
@@ -263,7 +256,6 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     toggleQuickMenu,
     toggleSessionMenu,
     toggleConnectionInfo,
-    toggleColumnsMenu,
     toggleRdpResolutionMenu,
     toggleRdpPasteMenu,
     togglePanelPaletteMenu,

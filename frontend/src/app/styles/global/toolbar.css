@@ -265,7 +265,7 @@
 .sudo-toggle:disabled { cursor: default; }
 .toolbar-separator { width: 1px; height: 16px; flex: 0 0 1px; margin: 0 3px; background: var(--border); }
 .icon-button.is-active { background: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
-.columns-popover input, .remember input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
+.remember input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
 /* 复选/单选全局对齐主色（UA 默认蓝色与宿主主题脱节）。 */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .icon-neutral { color: var(--muted-foreground); }

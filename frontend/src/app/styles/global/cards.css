@@ -177,7 +177,6 @@
 .session-menu-item,
 .shell-surface-item,
 .panel-palette-row,
-.columns-popover label,
 .folder-picker-row {
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast), transform var(--transition-fast);
@@ -185,7 +184,6 @@
 .session-menu-item:hover:not(:disabled),
 .shell-surface-item:hover,
 .panel-palette-row:hover,
-.columns-popover label:hover,
 .folder-picker-row:hover { background: var(--card-surface-raised); }
 .session-menu-item svg,
 .shell-surface-item svg {

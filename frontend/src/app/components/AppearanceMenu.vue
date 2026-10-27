@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Palette, Settings } from "@lucide/vue";
+import { Settings } from "@lucide/vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import type { AppearanceMenuActions, PanelSchemeChoice } from "../lib/workbenchToolbarActions";
 
 /** dock 面板底部栏「配色快切」下拉（T19 自 App.vue 模板迁入）：列出与当前宿主
@@ -25,7 +26,7 @@ const { togglePanelPaletteMenu, pickPanelScheme, openSettings } = props.actions;
 <template>
   <Popover v-if="!isRdpMode" :open="panelPaletteOpen" @update:open="(open) => { if (!open) panelPaletteOpen = false; }">
     <PopoverAnchor as-child>
-      <button class="icon-button compact icon-violet" :class="{ 'is-active': panelPaletteOpen }" :title="t('terminalAppearance.schemeSection')" :aria-label="t('terminalAppearance.schemeSection')" :aria-expanded="panelPaletteOpen" @pointerdown.stop @click.stop="togglePanelPaletteMenu"><Palette /></button>
+      <button class="icon-button compact icon-violet" :class="{ 'is-active': panelPaletteOpen }" :title="t('terminalAppearance.schemeSection')" :aria-label="t('terminalAppearance.schemeSection')" :aria-expanded="panelPaletteOpen" @pointerdown.stop @click.stop="togglePanelPaletteMenu"><WorkbenchGlyph name="palette" /></button>
     </PopoverAnchor>
     <PopoverContent class="popover panel-palette-popover" align="end" :side-offset="4">
       <h3>{{ t("terminalAppearance.schemeSection") }}</h3>

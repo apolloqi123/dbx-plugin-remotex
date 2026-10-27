@@ -53,12 +53,11 @@ export function useSftpNavigation(options: {
   persistDirectoryFollowPref: (value: boolean) => void;
   resetLinkTargets: () => void;
   hydrateLinkTargets: (list: { uri: string; name: string; kind: SftpEntryKind }[], isCurrent: () => boolean) => void;
-  rememberPathHistory: (path: string) => void;
-  closePathHistoryMenu: () => void;
+  closeBookmarksMenu: () => void;
   /** 首次列目录成功的回调：App 侧据此置"本会话已加载"标记（#179 惰性连接判定）。 */
   onListingLoaded?: () => void;
 }) {
-  const { t, showNotice, showError, session, sudoMode, connected, canWrite, currentPath, entries, loadingFiles, sftpError, sftpErrorOpen, sftpErrorKey, sftpHomePath, visibleColumns, followDirectory, directoryParser, selectedPath, directoryTrackingSupported, clearRowSelection, parentPath, normalizeRemotePath, getPendingTerminalInput, persistState, refreshDiskUsage, persistDirectoryFollowPref, resetLinkTargets, hydrateLinkTargets, rememberPathHistory, closePathHistoryMenu, onListingLoaded } = options;
+  const { t, showNotice, showError, session, sudoMode, connected, canWrite, currentPath, entries, loadingFiles, sftpError, sftpErrorOpen, sftpErrorKey, sftpHomePath, visibleColumns, followDirectory, directoryParser, selectedPath, directoryTrackingSupported, clearRowSelection, parentPath, normalizeRemotePath, getPendingTerminalInput, persistState, refreshDiskUsage, persistDirectoryFollowPref, resetLinkTargets, hydrateLinkTargets, closeBookmarksMenu, onListingLoaded } = options;
 
 async function loadHome() {
   if (!session.value) return;
@@ -107,7 +106,6 @@ async function loadDirectory(path = currentPath.value, fromTerminal = false, qui
     currentPath.value = normalized;
     selectedPath.value = "";
     clearRowSelection();
-    rememberPathHistory(normalized);
     persistState();
     void refreshDiskUsage();
     sftpSoftError.value = null;
@@ -191,7 +189,7 @@ async function setDirectoryTracking(enabled: boolean) {
 }
 
 function goToPath(path: string) {
-  closePathHistoryMenu();
+  closeBookmarksMenu();
   void loadDirectory(path);
 }
 

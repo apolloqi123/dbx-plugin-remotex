@@ -19,7 +19,7 @@ type Deps = InstallWorkbenchCoreResult & { late: Record<string, any>; state: Set
 
 export function installWorkbenchTerminal(deps: Deps) {
   const {
-  aiSearch, appearance, canWrite, columnsOpen, connected, connectionId,
+  aiSearch, appearance, canWrite, connected, connectionId,
   directoryTrackingSupported, followDirectory, handleSearchResults, isRdpConnection, isRdpMode, noticeSftpErrorKey,
   panelSurface, persistDirectoryFollowPref, session, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
   sftpError, sftpErrorOpen, sftpPaneOpen, sftpSearch, sftpShowHidden, sftpTreePane,
@@ -245,8 +245,7 @@ export function installWorkbenchTerminal(deps: Deps) {
     persistDirectoryFollowPref: (value) => persistDirectoryFollowPref(value),
     resetLinkTargets: () => { late.linkTargets.value = {}; },
     hydrateLinkTargets: (list, isCurrent) => late.hydrateLinkTargets(list, isCurrent),
-    rememberPathHistory: (path) => late.rememberPathHistory(path),
-    closePathHistoryMenu: () => { late.pathHistoryOpen.value = false; },
+    closeBookmarksMenu: () => { late.bookmarksOpen.value = false; },
     clearSftpSearch: () => late.clearSftpSearch(),
     clearRowSelection: () => late.clearRowSelection(),
     selectFile: (entry, event) => late.selectFile(entry, event),
@@ -339,7 +338,6 @@ export function installWorkbenchTerminal(deps: Deps) {
     toggleQuickMenu,
     toggleSessionMenu,
     toggleConnectionInfo,
-    toggleColumnsMenu,
     toggleRdpResolutionMenu,
     toggleRdpPasteMenu,
     togglePanelPaletteMenu,
@@ -389,7 +387,6 @@ export function installWorkbenchTerminal(deps: Deps) {
       // 否则从未开过指标浮层的会话在连接信息里永远看不到徽标。
       if (!late.metrics.value) void late.refreshMetrics();
     },
-    columnsOpen,
     rdpResolution: {
       isOpen: () => late.rdpResolutionOpen.value,
       setOpen: (open) => { late.rdpResolutionOpen.value = open; },
@@ -496,7 +493,7 @@ export function installWorkbenchTerminal(deps: Deps) {
     reconcileActiveTransfers, refreshTransferPanel, loadTransferConcurrency, persistTransferConcurrency, loadTransferDuplicatePolicy, persistTransferDuplicatePolicy, loadTransferMaxActive, persistTransferMaxActive,
     loadTransferDownloadLimit, persistTransferDownloadLimit, uploadSource, waitWhilePaused, toggleTransferPause, cancelTransfer, transferPercent, transferBarValue,
     transferShownBytes, transferBytesTitle, resetDragHighlightOnWindowLeave, terminalMenuOpen, fileMenu, fileMenuProtected, menuSelectionSnapshot, showTerminalMenu,
-    showFileMenu, showTransferHistoryMenu, onDocumentClickCloseMenus, copySelectedPaths, toggleQuickMenu, toggleSessionMenu, toggleConnectionInfo, toggleColumnsMenu,
+    showFileMenu, showTransferHistoryMenu, onDocumentClickCloseMenus, copySelectedPaths, toggleQuickMenu, toggleSessionMenu, toggleConnectionInfo,
     toggleRdpResolutionMenu, toggleRdpPasteMenu, togglePanelPaletteMenu, toggleBatchQuickPopover, toggleTransferPanel, commandRunning, historyScope, commandHistoryLimit,
     applyCommandHistoryLimit, commandHistory, commandHistoryTimes, commandHistoryMeta, commandHistoryIndex, commandHistoryBackup, persistCommandHistory, persistCommandHistoryTimes,
     pushTerminalCommandHistory, recordCommandExecutionMeta, loadRemoteShellHistory, quickCommands, quickSaving, quickImportBusy, hydrateQuickCommands, deleteQuickCommand,

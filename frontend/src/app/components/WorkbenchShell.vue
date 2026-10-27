@@ -40,11 +40,10 @@ const {
   attrsTarget, auditClearOpen, auditClearSubmitting, auditEntries, auditKindFilter,
   auditLoadFailed, auditLoading, auditOpen, auditRowKindClass, auditTime,
   auditTruncated, batchBarOpen, batchDeleteOpen, batchDeleteSubmitting, batchProgress,
-  beginPreviewEdit, bindDropUploadPathInputEl, canOpenLocalTab, canWrite, cancelCommand,
-  cancelPreviewEdit, chmodDraft, chmodSubmitting, chmodTarget, clearCommandHistory,
-  clearWallpaperImage, closeAttributes, closePreview, columnsOpen, commandDraft,
-  commandError, commandHistory, commandOpen, commandOutputText, commandResult,
-  commandRunning, commandUseSudo, commitCustomEditor, commitSymlink, confirmAuditClear,
+  beginPreviewEdit, bindDropUploadPathInputEl, canOpenLocalTab, canWrite,
+  cancelPreviewEdit, chmodDraft, chmodSubmitting, chmodTarget,
+  clearWallpaperImage, closeAttributes, closePreview,
+  commitCustomEditor, commitSymlink, confirmAuditClear,
   confirmBatchDelete, confirmChmod, confirmCommandSessionTab, confirmDelete, confirmDropUpload,
   confirmLocalTerminal, confirmRecordingClearAll, confirmRecordingDelete, confirmTransferHistoryClear, connectViaRdpDialog,
   connected, connection, connectionAuthMethodLabel, connectionId, connectionIdentity,
@@ -56,7 +55,7 @@ const {
   downloadPrompt, dropCwdTarget, dropUploadPathInput, dropUploadPrompt, dropUploadTarget,
   editorPrefsAdapter, externalEditBusy, fileBatchProgress, filteredQuickCommands, folderPickerTarget,
   folderUploadProgress, folderUploadSupported, formatDuration, formatModified, formatRecordedAt,
-  forwardsOpen, ghostTabAccept, groupedQuickCommands, gutterSettings, handleCommandInputKeydown,
+  forwardsOpen, ghostTabAccept, groupedQuickCommands, gutterSettings,
   highlightDisplayMode, highlightRules, highlightSaving, hostKeyPrompt, hostTerminalFontFamily,
   hostTerminalTheme, importPanelOpen, importQuickCommands, isLocalMode, isRdpConnection,
   isRdpMode, isSerialMode, isTelnetMode, isVncMode, jsonPreviewState,
@@ -80,17 +79,17 @@ const {
   rdpResolutionOpen, rdpScaleMode, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
   reconnectCountdown, reconnectPending, recordingActive, recordingClearAllOpen, recordingClearAllSubmitting,
   recordingDeleteSubmitting, recordingDeleteTarget, recordingTarget, recordings, recordingsOpen,
-  rememberHostKey, removeImportedScheme, renameQuickCommandGroupById, rerunHistoryCommand, resetAiFixConsent,
+  rememberHostKey, removeImportedScheme, renameQuickCommandGroupById, resetAiFixConsent,
   resolveAgentPrompt, resolveDownloadConflict, resolveDownloadPrompt, resolveDropUpload, resolveHostKey,
   resolvePasteConfirm, resolvePendingConfirmDialog, resolveRdpCertificate, resolveUploadDuplicate, resumableLoading,
-  resumableTasks, rightPanelView, runAlertTriage, runCommand, saveAttributesPermissions,
+  resumableTasks, rightPanelView, runAlertTriage, saveAttributesPermissions,
   saveHighlightRule, savePreview, saveQuickCommand, saveTerminalAppearanceTheme, selectedEntries,
   selectedShellInjectable, sendSuggestionToTerminal, serialDialogOpen, serialUploadBusy, serialUploadDialogOpen,
   session, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen, sessionPillText,
   sessionStatus, setGhostEnabled, setGhostTabAccept, setHighlightDisplayMode, setHistoryPanelEnabled,
   setLocalShellPref, setPaneDirection, setPromptHintsEnabled, setWallpaperImage, setWebglEnabled,
-  settingsOpen, sftpAutoConnect, sftpError, sftpErrorKey, sftpErrorOpen,
-  sftpErrorRetry, sftpPaneDefaultOpen, sftpPaneOpen, sftpViewActive, showError,
+  settingsOpen, sftpError, sftpErrorKey, sftpErrorOpen,
+  sftpErrorRetry, sftpPaneOpen, sftpViewActive, showError,
   showNotice, spawnSessionCommand, spawnSessionDialogOpen, startSerialSession, startSerialUpload,
   startTelnetSession, startVncSession, suggestionPrefsAdapter, symlinkDialog, symlinkDraft,
   symlinkSubmitting, symlinkTargetDraft, t, telnetDialogOpen, terminal,
@@ -117,7 +116,7 @@ const {
     <WorkbenchToolbar
       v-model:connection-info-open="connectionInfoOpen"
       v-model:agent-mode-open="agentModeOpen"
-      v-model:columns-open="columnsOpen"
+      v-model:importPanelOpen="importPanelOpen"
       v-model:transfer-panel-open="transferPanelOpen"
       v-model:transfer-history-clear-open="transferHistoryClearOpen"
       v-model:serial-upload-dialog-open="serialUploadDialogOpen"
@@ -175,8 +174,6 @@ const {
       :recording-active="recordingActive"
       :recording-target="recordingTarget"
       :recordings-open="recordingsOpen"
-      :sftp-pane-default-open="sftpPaneDefaultOpen"
-      :sftp-auto-connect="sftpAutoConnect"
       :active-transfers="activeTransfers"
       :panel-metrics-visible="panelMetricsVisible"
       :panel-metrics-failed="panelMetricsFailed"
@@ -341,14 +338,6 @@ const {
       v-model:customEditorCommand="customEditorCommand"
       v-model:customEditorRemember="customEditorRemember"
       :custom-editor-pattern="customEditorPattern"
-      v-model:commandOpen="commandOpen"
-      v-model:commandDraft="commandDraft"
-      :command-running="commandRunning"
-      :command-history="commandHistory"
-      v-model:commandUseSudo="commandUseSudo"
-      :command-result="commandResult"
-      :command-output-text="commandOutputText"
-      :command-error="commandError"
       v-model:chmodTarget="chmodTarget"
       v-model:chmodDraft="chmodDraft"
       :chmod-submitting="chmodSubmitting"
@@ -385,11 +374,6 @@ const {
       @upload-watched-always="uploadWatchedFileAlways"
       @upload-watched-single="uploadWatchedFileOnce"
       @commit-custom-editor="commitCustomEditor"
-      @command-input-keydown="handleCommandInputKeydown"
-      @clear-command-history="clearCommandHistory"
-      @rerun-history-command="rerunHistoryCommand"
-      @cancel-command="cancelCommand"
-      @run-command="runCommand"
       @confirm-chmod="confirmChmod"
       @confirm-delete="confirmDelete"
       @confirm-batch-delete="confirmBatchDelete"

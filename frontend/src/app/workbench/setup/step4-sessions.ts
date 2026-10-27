@@ -7,7 +7,6 @@ import { describeWorkbenchSessionStatus, type WorkbenchSessionStatus } from "../
 import { findTerminalPane, hasTerminalSplit, shouldFollowTabCwd } from "../../../features/terminal/lib/appearance/terminalLayout";
 import { formatAuthMethodLabel, type KnownAuthMethod } from "../../../features/connections/lib/connectionInfo";
 import { resolveTerminalFont } from "../../../features/terminal/lib/appearance/terminalFont";
-import { sanitizeCommandOutput } from "../../../features/terminal/lib/behavior/terminalOutputText";
 import { useCommandMarker } from "../../../features/terminal/composables/session/useCommandMarker";
 import { useRdpSession } from "../../../features/remote-desktop/composables/useRdpSession";
 import { useRdpWorkbench } from "../../../features/remote-desktop/composables/useRdpWorkbench";
@@ -392,7 +391,6 @@ export function installWorkbenchSessionIo(deps: Deps) {
   });
   // Reconnect countdown lifecycle: while the backoff loop is pending a 250ms
   // tick recomputes the pure countdown; any exit from "reconnecting" stops it.
-  const commandOutputText = computed(() => (late.commandResult.value ? sanitizeCommandOutput(late.commandResult.value.output) : ""));
   const connectionIdentity = computed(() => {
     // Connectionless local-terminal tab (including the restored shell): there is no connection identity to show.
     if (localUiMode.value && !connectionId.value) {
@@ -499,7 +497,7 @@ export function installWorkbenchSessionIo(deps: Deps) {
     reattachVncSession, startVncFromConnection, terminalLayout, shellTabSessions, activeTerminalPaneId, shellTabCwd, activePaneCwd, openTerminalSplit,
     splitTerminalPane, closeTerminalSplit, closePane, createPaneTab, activatePaneTab, closePaneTab, onShellTabOpened, resetTerminalLayout,
     canSplitTerminal, terminalHasSplit, splitTerminalFont, onShellTabCwd, onPaneActivated, syncSftpToActivePane, canOpenShellTab, sessionStatus,
-    sessionPillText, terminalErrorDetail, terminalErrorFriendly, commandOutputText, connectionIdentity, connectionAuthMethodLabel, dividerResizeHint, sftpSearchDraft,
+    sessionPillText, terminalErrorDetail, terminalErrorFriendly, connectionIdentity, connectionAuthMethodLabel, dividerResizeHint, sftpSearchDraft,
     clearSftpSearch, sftpFiltersActive, terminalTransferBusy, initialState, applyWorkbenchLayoutPrefs, restoreUiState, writeWorkbenchState, persistThrottle,
     persistWorkbenchState, persistState,
   };

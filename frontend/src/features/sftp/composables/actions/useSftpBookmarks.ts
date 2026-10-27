@@ -14,7 +14,7 @@ import {
 /**
  * SFTP 路径书签（存储迁移批 1）：权威在 pluginStore（宿主 ui-storage.json，
  * 随 DBX secrets 同步加密上云）；sidecar sftp/bookmarks/list 仅作首次拉取的
- * 一次性搬迁种子。星标收藏 + 路径弹层跳转/删除。
+ * 一次性搬迁种子。星标收藏 + 书签/快捷路径弹层跳转/删除。
  */
 export function useSftpBookmarks(options: {
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -22,13 +22,13 @@ export function useSftpBookmarks(options: {
   showError: (cause: unknown, target?: "terminal" | "sftp") => void;
   connected: Ref<boolean>;
   currentPath: Ref<string>;
-  pathHistoryOpen: Ref<boolean>;
   closeToolbarPopovers: () => void;
 }) {
-  const { t, showNotice, showError, connected, currentPath, pathHistoryOpen, closeToolbarPopovers } = options;
+  const { t, showNotice, showError, connected, currentPath, closeToolbarPopovers } = options;
 
   const sftpBookmarks = ref<SftpBookmark[]>([]);
   const bookmarkSaveOpen = ref(false);
+  const bookmarksOpen = ref(false);
   const bookmarkSaving = ref(false);
   const bookmarkLabelDraft = ref("");
 
@@ -44,6 +44,12 @@ export function useSftpBookmarks(options: {
     } catch {
       // 后端未升级/读取失败时保留既有列表（optional 特性静默降级，不阻塞路径栏）。
     }
+  }
+
+  function toggleBookmarksMenu() {
+    const next = !bookmarksOpen.value;
+    closeToolbarPopovers();
+    bookmarksOpen.value = next;
   }
 
   function toggleBookmarkSave() {
@@ -84,16 +90,18 @@ export function useSftpBookmarks(options: {
     showNotice(t("sftpBookmark.deleted"));
   }
 
-  // 连接建立后拉取书签（全局共享，不随会话清空）；打开路径弹层时刷新兜底。
+  // 连接建立后拉取书签（全局共享，不随会话清空）；打开书签弹层时刷新兜底。
   watch(connected, (value) => {
     if (value) void refreshBookmarks();
   });
-  watch(pathHistoryOpen, (open) => {
+  watch(bookmarksOpen, (open) => {
     if (open) void refreshBookmarks();
   });
 
   return {
     sftpBookmarks,
+    bookmarksOpen,
+    toggleBookmarksMenu,
     bookmarkSaveOpen,
     bookmarkSaving,
     bookmarkLabelDraft,

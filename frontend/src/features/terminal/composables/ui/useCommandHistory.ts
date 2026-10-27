@@ -151,7 +151,7 @@ export function useCommandHistory(options: {
   /**
    * 终端命令历史的统一采集口：命令环 + 执行时间映射同步推进、一并持久化。
    * 五个采集点（trackPendingInput 回车行兜底 / OSC 633 E 帧 / 命令弹窗
-   * runCommand / 批量发送 / 建议自动执行）共用，保证环与时间映射不漂移。
+   * 批量发送 / 建议自动执行）共用，保证环与时间映射不漂移。
    */
   function pushTerminalCommandHistory(command: string) {
     commandHistory.value = pushCommandHistory(commandHistory.value, command, commandHistoryLimit.value);

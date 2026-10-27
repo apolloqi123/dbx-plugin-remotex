@@ -379,7 +379,6 @@ const messages = {
       save: "Aplicar permissões",
       sizeLimit: "Arquivos acima de 4 MiB não podem ser salvos inline; use envio/download.",
     },
-    sftpPathHistory: { title: "Caminhos recentes", empty: "Nenhum caminho recente" },
     sftpBookmark: {
       add: "Adicionar favorito",
       title: "Favoritos",

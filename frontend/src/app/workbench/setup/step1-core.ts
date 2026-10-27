@@ -23,7 +23,6 @@ export function installWorkbenchCore(deps: Deps) {
 
   // 粘贴防护：内容含换行或达到该字符数时先确认（对齐 tiny-rdm TerminalPane 阈值）。
   const PASTE_CONFIRM_CHAR_THRESHOLD = 200;
-  // SFTP 路径历史：每连接最多保留 10 条，存 pluginStore（宿主 host.storage；对齐 tiny-rdm pathHistory）。
   // 命令历史 / 终端字号：pluginStore 持久化（敏感命令不入持久层；快速命令已迁 sidecar，见 QUICK_COMMANDS_KEY）。
   const COMMAND_HISTORY_KEY = "ssh-command-history";
   // 执行时间并行映射（Warp 式 history 面板的右侧相对时间）：command → 最近一次
@@ -224,9 +223,7 @@ export function installWorkbenchCore(deps: Deps) {
     termSelectCopy,
     terminalHotkeys,
     followDirectory,
-    toggleSftpPaneDefaultOpen,
     loadSftpPaneDefaultOpen,
-    toggleSftpAutoConnect,
     loadDirectoryFollowPref,
     persistDirectoryFollowPref,
     setPaneDirection,
@@ -331,7 +328,6 @@ export function installWorkbenchCore(deps: Deps) {
     otpPanelOpen,
     importPanelOpen,
     forwardsOpen,
-    columnsOpen,
     ghostKeycapMenuOpen,
     sessionMenuOpen,
     sessionMenuShellOpen,
@@ -355,7 +351,7 @@ export function installWorkbenchCore(deps: Deps) {
     aiContextExtras, aiFixFromBar, aiAssistFromTerminal, aiFixBarStyle, maybeOfferAiFix, captureOutputChunk, beginAiCommand, resetAiFixForSession,
     clearFixRecommendation, aiSearch, aiSearchState, aiSearchPending, aiSearchPendingQuery, aiSearchAnchor, aiSearchBarEl, aiSearchBarStyle,
     applePlatform, bindSftpWorkspaceTreePane, bindSftpPathBarInput, bindDropUploadPathInputEl, zmodemInput, panelSurface, paneDirection, sftpPaneDefaultOpen,
-    sftpAutoConnect, terminalBehavior, termSelectCopy, terminalHotkeys, followDirectory, toggleSftpPaneDefaultOpen, loadSftpPaneDefaultOpen, toggleSftpAutoConnect,
+    sftpAutoConnect, terminalBehavior, termSelectCopy, terminalHotkeys, followDirectory, loadSftpPaneDefaultOpen,
     loadDirectoryFollowPref, persistDirectoryFollowPref, setPaneDirection, updateTerminalBehavior, updateTerminalHotkeys, ctx, hostContext, appearance,
     locale, workbenchId, terminal, terminalHost, terminalState, terminalCwd, terminalCopyCache, directoryTrackingSupported,
     terminalFontSize, terminalFontOverride, terminalAppearance, terminalAppearanceState, activeAppearanceThemeId, terminalDiag, terminalDiagVisible, session,
@@ -367,7 +363,7 @@ export function installWorkbenchCore(deps: Deps) {
     terminalDragActive, localDownloadDir, localCanSave, SFTP_QUICK_PATHS, splitRatio, dockerSplitRatio, paneOrder, sudoMode,
     paneContainer, paneLayout, terminalBasis, paneSplitStyle, dockerPaneBasis, orderedPaneClass, resetDockerSplitRatio,
     settingsOpen, auditOpen, profilesOpen,
-    otpPanelOpen, importPanelOpen, forwardsOpen, columnsOpen, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
+    otpPanelOpen, importPanelOpen, forwardsOpen, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
   };
 }
 

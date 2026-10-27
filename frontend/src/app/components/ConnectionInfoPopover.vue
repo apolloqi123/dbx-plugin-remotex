@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Info } from "@lucide/vue";
+import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
 import { formatLatency } from "../../features/connections/lib/connectionInfo";
 
@@ -36,7 +36,7 @@ const emit = defineEmits<{
 <template>
   <Popover :open="connectionInfoOpen" @update:open="(value) => emit('update:connectionInfoOpen', value)">
     <PopoverAnchor as-child>
-      <button type="button" class="icon-button icon-neutral" :title="t('connectionInfo')" :aria-label="t('connectionInfo')" :aria-expanded="connectionInfoOpen" @pointerdown.stop @click.stop="emit('toggle')"><Info /></button>
+      <button type="button" class="icon-button icon-neutral" :title="t('connectionInfo')" :aria-label="t('connectionInfo')" :aria-expanded="connectionInfoOpen" @pointerdown.stop @click.stop="emit('toggle')"><WorkbenchGlyph name="info" /></button>
     </PopoverAnchor>
     <PopoverContent class="popover connection-info-popover" align="start" :side-offset="5">
     <h3>{{ t("connectionInfo") }}</h3>

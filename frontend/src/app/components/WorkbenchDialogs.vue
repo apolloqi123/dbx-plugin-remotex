@@ -168,7 +168,7 @@ const JsonPreviewPanel = createPreviewAsyncComponent(
 </script>
 
 <template>
-  <!-- SFTP 工具栏工具弹窗：OTP 验证码 / 会话导入（组件自带内部弹窗与状态）。 -->
+  <!-- 工具弹窗：OTP 验证码 / 会话导入（导入入口在顶部「会话」菜单，组件自带内部弹窗与状态）。 -->
   <Dialog :open="otpPanelOpen" @update:open="(open) => { if (!open) otpPanelOpen = false; }">
     <DialogContent class="modal sftp-tool-modal" @escape-key-down.prevent>
       <header>
