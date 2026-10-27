@@ -58,7 +58,6 @@ impl SshRuntime {
             triggers: Arc::new(Mutex::new(None)),
             terminal_tx,
             replay,
-            sftp: AsyncMutex::new(None),
             agent_recorder: Arc::new(Mutex::new(None)),
             session_recorder: Arc::new(Mutex::new(None)),
             agent_exec_lock: Arc::new(AsyncMutex::new(())),
@@ -116,9 +115,10 @@ impl SshRuntime {
     ) {
         if interactive_shell_session(spawn_exec, &connection.remote_command) {
             let hook_handle = entry.handle.clone();
+            let hook_lease = entry.transport_lease.clone();
             let hook_tx = entry.terminal_tx.clone();
             tokio::spawn(async move {
-                let shell = detect_remote_shell(&hook_handle).await;
+                let shell = detect_remote_shell(&hook_handle, &hook_lease).await;
                 let _ = hook_tx
                     .send(TerminalCommand::InstallPromptHook { shell })
                     .await;

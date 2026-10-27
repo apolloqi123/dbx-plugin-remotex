@@ -346,6 +346,31 @@ describe("ContainerTerminalTab", () => {
     expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID }, expect.anything());
   });
 
+  it("opens the latest container when switching again during an in-flight open", async () => {
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    let opens = 0;
+    const harness = installHost(async () => {
+      opens += 1;
+      if (opens === 1) {
+        return await new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return { terminalId: "term-latest" };
+    });
+    const wrapper = mountTab();
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(1));
+
+    await wrapper.setProps({ container: container({ id: "second000001", name: "b" }) });
+    await wrapper.setProps({ container: container({ id: "third0000002", name: "c" }) });
+    // 第一次 open 仍在途：此时不应并发再发 open。
+    expect(openCalls(harness)).toHaveLength(1);
+
+    resolveFirst?.({ terminalId: TERMINAL_ID });
+    await vi.waitFor(() => expect(openCalls(harness)).toHaveLength(2));
+    expect(openCalls(harness)[1]).toMatchObject({ containerId: "third0000002" });
+  });
+
   it("closes the PTY and disposes xterm on unmount", async () => {
     const harness = installHost();
     const wrapper = mountTab();

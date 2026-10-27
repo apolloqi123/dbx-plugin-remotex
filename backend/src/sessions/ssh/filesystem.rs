@@ -12,17 +12,22 @@ impl SshRuntime {
         session_id: &str,
     ) -> Result<Arc<AsyncMutex<SftpSession>>, String> {
         let session = self.session(session_id).await?;
-        let mut current = session.sftp.lock().await;
+        // SFTP lives on the transport lease, not the session: duplicate panes
+        // share one authenticated connection, and one subsystem channel per
+        // pane was enough to exhaust a server's `MaxSessions` budget.
+        let mut current = session.transport_lease.sftp.lock().await;
         if let Some(sftp) = current.as_ref() {
             return Ok(sftp.clone());
         }
-        let channel = open_session_channel(&session.handle)
+        let mut channel = open_session_channel(&session.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|error| format!("Failed to start SFTP: {error}"))?;
+        if let Err(error) = channel.request_subsystem(true, "sftp").await {
+            // The channel is already open server-side; dropping it without a
+            // close would burn one `MaxSessions` slot for the connection.
+            exec::close_setup_channel(&mut channel).await;
+            return Err(format!("Failed to start SFTP: {error}"));
+        }
         let compat = crate::core::preferences::sftp_compat_mode(&self.data_dir);
         let sftp = Arc::new(AsyncMutex::new(
             SftpSession::new_with_config(channel.into_stream(), sftp_client_config(compat))
@@ -545,19 +550,26 @@ impl SshRuntime {
         let Ok(session) = self.session(session_id).await else {
             return;
         };
-        session.sftp.lock().await.take();
+        let stale = session.transport_lease.sftp.lock().await.take();
+        // A cached-but-dead channel must be closed, not merely dropped: russh
+        // channels only release their server session on CHANNEL_CLOSE.
+        if let Some(stale) = stale {
+            if let Ok(mutex) = Arc::try_unwrap(stale) {
+                let _ = mutex.into_inner().close().await;
+            }
+        }
     }
 
     /// 打开一条独立 sftp 子系统通道并跑裸包客户端（严格串行请求/响应）。
     pub(crate) async fn raw_sftp_client(&self, session_id: &str) -> Result<RawSftpClient, String> {
         let session = self.session(session_id).await?;
-        let channel = open_session_channel(&session.handle)
+        let mut channel = open_session_channel(&session.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|error| format!("Failed to start SFTP: {error}"))?;
+        if let Err(error) = channel.request_subsystem(true, "sftp").await {
+            exec::close_setup_channel(&mut channel).await;
+            return Err(format!("Failed to start SFTP: {error}"));
+        }
         sftp_raw::RawSftp::init(channel.into_stream()).await
     }
 

@@ -29,6 +29,19 @@ describe("isPermanentConnectError", () => {
     expect(isPermanentConnectError(new Error("SSH connection to dbx-ssh-test:22 timed out"))).toBe(false);
     expect(isPermanentConnectError(new Error("boot race"))).toBe(false);
   });
+
+  it("keeps a server MaxSessions refusal retryable", () => {
+    // The transport is still authenticated; only its session budget is full.
+    // Marking this permanent stranded split panes on an error card.
+    const message =
+      "The SSH server's session limit (MaxSessions) was reached; close another terminal or pane and retry: Failed to open channel (AdministrativelyProhibited)";
+    expect(isPermanentConnectError(new Error(message))).toBe(false);
+    expect(decideConnectRetry({ ...BASE, cause: new Error(message) })).toEqual({
+      kind: "retry",
+      attempt: 1,
+      delayMs: OPEN_RETRY_BASE_DELAY_MS,
+    });
+  });
 });
 
 describe("decideConnectRetry", () => {

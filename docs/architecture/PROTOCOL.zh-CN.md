@@ -8,7 +8,11 @@ Telnet/VNC/Serial/RDP 的 saved connection 生命周期也走同一入口，但�
 
 **非 SSH 连接凭据暂存**（2026-10-03，配合连接表单 `password` 字段对 telnet/vnc/rdp 可见）：连接表单的密码（manifest `binding: "password"` → lifecycle `connection.password`）对这三个协议不再无处安放——`connection/connect` 非 SSH 分支把它连同 `connection.username` 按连接 id 暂存进 sidecar 内存注册表（仅进程内存活、`Zeroizing` 持有、容量 256 封顶、`connection/disconnect` 即清、Debug 只出连接 id 列表）；`telnet/start`（合成内置词表的 declarative 自动登录）、`vnc/start` / `rdp/start`（合并 NLA/VNC-Auth 密码，RDP 用户名仅请求留空时补）在**请求自身未携带凭据**时才取用。webview context 是无密钥白名单形状，前端永远接触不到该密码，只能透传 `connectionId`。没存密码则维持旧行为（回落各自连接弹窗）。
 
-工作台的“新建会话”保持独立 transport 语义，会重新完成 SSH 认证（堡垒机可再次要求 MFA）；“复制会话（免再次验证）”则向 `ssh/session/open` 传 `reuseAuthenticatedTransport: true` 和当前 `reuseAuthenticatedSessionId`，在用户所点窗口当前存活且已认证的 transport 上新开独立 PTY channel。复制会话拥有独立 `sessionId`、`workbenchId`、回放缓冲和终端任务，不复制或缓存 OTP。打开复制 channel 前会先预占共享 transport 引用，因此源会话在 channel/PTY/shell 建立期间关闭也不会提前释放跳板链；关闭任一复制会话只关闭自己的 channel，最后一个共享引用释放后才断开跳板链。每个复制会话都会额外占用一个 SSH channel，数量受服务端 `MaxSessions` 限制（OpenSSH 常见默认值为 10）；超过限制时 `open` 返回 channel 建立失败。
+工作台的“新建会话”保持独立 transport 语义，会重新完成 SSH 认证（堡垒机可再次要求 MFA）；“复制会话（免再次验证）”则向 `ssh/session/open` 传 `reuseAuthenticatedTransport: true` 和当前 `reuseAuthenticatedSessionId`，在用户所点窗口当前存活且已认证的 transport 上新开独立 PTY channel。复制会话拥有独立 `sessionId`、`workbenchId`、回放缓冲和终端任务，不复制或缓存 OTP。打开复制 channel 前会先预占共享 transport 引用，因此源会话在 channel/PTY/shell 建立期间关闭也不会提前释放跳板链；关闭任一复制会话只关闭自己的 channel，最后一个共享引用释放后才断开跳板链。每个复制会话都会额外占用一个 SSH channel，数量受服务端 `MaxSessions` 限制（OpenSSH 常见默认值为 10）。
+
+**每 transport 共享的资源**（`SharedTransportLease`）：SFTP 子系统通道与远端 shell 探测结果挂在 transport 租约上，而不是会话上——4 个复制窗格过去各自开 1 条 SFTP + 1 条探测通道（4 PTY + 4 SFTP + 4 探测 = 12），单靠窗格就能打满默认 `MaxSessions 10`；现在同一 transport 的 N 个窗格只共享 1 条 SFTP（请求由内层互斥串行，符合 SFTP 单流协议）和 1 次探测（结果缓存；并发打开在探测锁上排队，只有一次真正上线）。另外所有 session channel 的**拨号**都经过 transport 级信号量（最多 2 条并发），只约束建立过程、不占用 channel 生命周期，避免 PTY/探测/容器 list-files-logs-terminal 同时抢名额。实测 4 窗格 + 容器面板峰值 7–9 条；2 窗格 + 30 轮切换峰值 7 条、0 次拒绝。
+
+**`MaxSessions` 拒绝的错误形态**：服务端以 `AdministrativelyProhibited`/`ResourceShortage`/`ConnectFailed` 拒绝时属于**瞬时并发**（其它会话仍持有名额），`open_session_channel` 会做约 6 秒带抖动的有界重试；仍失败时返回 `The SSH server's session limit (MaxSessions) was reached; close another terminal or pane and retry: …`，前端不把它当作「连接不可复用」的永久错误（会按退避重试），transport 保持可用。只有真正的传输失效才返回 `The authenticated SSH connection can no longer be reused; use New session to reconnect`。
 
 显式传入 `reuseAuthenticatedSessionId` 时严格 fail closed：指定来源不存在、已关闭或连接不匹配都会返回 `No live authenticated SSH connection`。前端收到该错误后只降级一次，以普通“新建会话”语义重新登录，允许堡垒机再次要求 MFA；该错误同时属于永久重试错误，不进入对同一失效 sessionId 的退避重试。只传 `reuseAuthenticatedTransport: true` 的旧调用方保留兼容行为：后端会从同一连接中确定性选取最早创建的存活会话，因此 transport 来源不保证对应调用方当前显示的窗口。
 
@@ -18,7 +22,7 @@ Telnet/VNC/Serial/RDP 的 saved connection 生命周期也走同一入口，但�
 
 ## 提示符钩子与提示符换行（t8y2/dbx#10750）
 
-每个**交互 shell 会话**打开时，sidecar 在读循环外异步探测远端 shell（`printf '%s' "$SHELL"`，5s 超时判 Other），bash/zsh 会话即向 channel 键入一次 hook 安装行（与启动命令共用命令 FIFO，`interactive_shell_session` 门控——`spawnCommand`/`remote_command` 替代了 shell，绝不向其 stdin 键入 shell 语法）：
+每个**交互 shell 会话**打开时，sidecar 在读循环外异步探测远端 shell（`printf '%s' "$SHELL"`，5s 超时判 Other；结果按 transport 缓存，同一连接的复制窗格只探测一次，超时只关闭输出读取、不中断在途拨号以免泄漏 session），bash/zsh 会话即向 channel 键入一次 hook 安装行（与启动命令共用命令 FIFO，`interactive_shell_session` 门控——`spawnCommand`/`remote_command` 替代了 shell，绝不向其 stdin 键入 shell 语法）：
 
 - bash 在 `PROMPT_COMMAND` 前置 `__dbx_emit_cwd`，zsh 向 `precmd_functions` 前插同名函数，二者均在**每次提示符绘制前**发一帧 `ESC]7;file://<host><pwd>BEL`（与 SFTP 目录跟随共用同一信号源）；安装行带 `__DBX_CWD_ACTIVE` 幂等守卫与会话本地回滚保护，重复武装为远端 no-op。
 - 武装对会话全生命周期生效：SFTP「跟随目录」开关关闭只停前端导航，**不再拆除钩子**（`ssh/terminal/directoryTracking {enabled:false}` 现为纯前端语义）；开关开启遇已武装则跳过重复安装。
@@ -35,7 +39,7 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 - **与「复制会话」的差异**：仅 channel 启动动作不同（`exec` 指定命令 vs `request_shell`）。其余语义完全复用——独立 `sessionId`、`workbenchId`、回放缓冲与终端任务；`reuseAuthenticatedTransport` + `reuseAuthenticatedSessionId` 组合时的共享引用预占（retain 先于任何 await）、跳板链生命周期与 sudo 编排快照继承均与复制会话一致；关闭会话只关自己的 channel，最后一个共享引用释放才断开跳板链。差异点二：命令会话跳过 `startup_commands` 注入——exec 替代了交互 shell，向其键入预置命令是语义冲突（与连接级 `remote_command` 的既有豁免同款）。
 - **参数正交性**：`spawnCommand` 不强制与复用参数组合。与复用组合是主路径（WezTerm spawn 语义，免再次认证）；不带复用时按普通新建会话认证后在新 transport 上执行同一命令——前端「复制 transport 失效降级一次重登」路径依赖此正交性，降级后命令意图不丢。`spawnCommand` 是一次性打开参数：打开成功后该工作台的后续重连回到普通 shell 会话语义（对齐复制会话 reuse 意图的一次性消费），不把 exec 命令固化进连接配置。
 - **错误形态（沿用 sidecar String 错误上抛体系，无数字错误码）**：参数非法 → `spawnCommand must not contain NUL bytes` / `spawnCommand exceeds the 4096 byte limit`；复用来源失效 → 既有 `No live authenticated SSH connection`（前端单次降级为普通登录）；channel/PTY/exec 建立失败 → 既有 `Failed to open terminal channel` / `Failed to request SSH PTY` / `Failed to start remote command` 前缀并携带服务端原因原文。
-- **MaxSessions 语义**：命令会话与复制会话一样各占用一个 SSH channel，数量受服务端 `MaxSessions` 限制（OpenSSH 常见默认 10）。超限时 `exec`/`channel_open_session` 被服务端拒绝，`open` 以错误返回且错误文本携带服务端原因——失败对用户可见，不静默降级、不自动重连（与复制会话既有语义一致）。
+- **MaxSessions 语义**：命令会话与复制会话一样各占用一个 SSH channel，数量受服务端 `MaxSessions` 限制（OpenSSH 常见默认 10）。超限时 `exec`/`channel_open_session` 被服务端拒绝，sidecar 先做约 6 秒重试；仍失败时 `open` 以「session limit (MaxSessions)」错误返回且携带服务端原因——该错误可重试，transport 不会被判死，也不静默降级为重新认证。
 - **前端入口**：工作台工具栏「复制会话」按钮旁新增「命令会话」入口，弹窗输入命令后以 `openWorkbench` 打开新 tab，context 携带 `spawnCommand` + 复用参数（`spawnCommand` 非宿主保留字段，随 context 原样透传给工作台）。
 
 ## RPC

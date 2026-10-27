@@ -48,6 +48,19 @@ impl TransportLeaseCounter {
 pub(crate) struct SharedTransportLease {
     pub(crate) uses: TransportLeaseCounter,
     pub(crate) jump_chain: Vec<Arc<Handle<SshClient>>>,
+    /// One SFTP subsystem channel for the whole transport. Duplicate panes
+    /// (复制会话) share an authenticated connection; giving each its own SFTP
+    /// channel spent one server session per pane, and a 4-pane workbench alone
+    /// could exhaust OpenSSH's default `MaxSessions 10` before the Docker panel
+    /// opened anything. The inner mutex serializes requests, exactly like the
+    /// single-channel SFTP protocol requires.
+    pub(crate) sftp: AsyncMutex<Option<Arc<AsyncMutex<SftpSession>>>>,
+    /// Serializes interactive-shell probing so concurrent pane opens cannot
+    /// each burn a probe channel for the same connection.
+    pub(crate) shell_probe: AsyncMutex<()>,
+    /// Login shell detected on this transport (probe results are per account,
+    /// not per pane). `None` until a probe succeeds.
+    pub(crate) remote_shell: Mutex<Option<RemoteShell>>,
 }
 
 impl SharedTransportLease {
@@ -55,7 +68,24 @@ impl SharedTransportLease {
         Self {
             uses: TransportLeaseCounter::new(),
             jump_chain,
+            sftp: AsyncMutex::new(None),
+            shell_probe: AsyncMutex::new(()),
+            remote_shell: Mutex::new(None),
         }
+    }
+
+    pub(crate) fn cached_remote_shell(&self) -> Option<RemoteShell> {
+        *self
+            .remote_shell
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    pub(crate) fn cache_remote_shell(&self, shell: RemoteShell) {
+        *self
+            .remote_shell
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = Some(shell);
     }
 
     pub(crate) fn retain(&self) {

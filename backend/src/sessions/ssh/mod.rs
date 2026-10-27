@@ -43,7 +43,6 @@ mod tree_support;
 mod upload;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::future::Future;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -126,12 +125,48 @@ pub(crate) fn is_transient_channel_open_failure(error: &russh::Error) -> bool {
     )
 }
 
+/// Upper bound on *concurrent channel dials* per authenticated transport.
+/// Every open counts against the server's `MaxSessions`, and the plugin used
+/// to fire panes + shell probes + docker list/files/logs/terminal all at once.
+/// Two at a time keeps a burst from racing past the guard; long-lived channels
+/// stay open after their dial releases the slot.
+const MAX_CONCURRENT_CHANNEL_DIALS: usize = 2;
+
+/// Per-transport dial gate, keyed by the live `Handle` address. A weak
+/// registry means the gate disappears with the transport (pointer reuse after
+/// that can only produce a fresh, empty gate).
+fn channel_dial_gate(handle: &Handle<SshClient>) -> Arc<tokio::sync::Semaphore> {
+    use std::sync::{OnceLock, Weak};
+    type Gates = Mutex<HashMap<usize, Weak<tokio::sync::Semaphore>>>;
+    static GATES: OnceLock<Gates> = OnceLock::new();
+    let key = handle as *const Handle<SshClient> as usize;
+    let mut gates = GATES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    gates.retain(|_, weak| weak.strong_count() > 0);
+    if let Some(existing) = gates.get(&key).and_then(Weak::upgrade) {
+        return existing;
+    }
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CHANNEL_DIALS));
+    gates.insert(key, Arc::downgrade(&semaphore));
+    semaphore
+}
+
 /// Opens a session channel, retrying transient concurrency refusals with a
 /// short backoff so the previous pane's close can land. Permanent policy
 /// denials fall through unchanged after the bounded retries.
+///
+/// Dials are serialized per transport (see [`MAX_CONCURRENT_CHANNEL_DIALS`]):
+/// concurrent callers queue instead of all colliding on the same free
+/// `MaxSessions` slot, and the permit is released as soon as the channel is
+/// open — it does not cover the channel's lifetime.
 pub(crate) async fn open_session_channel(
     handle: &Handle<SshClient>,
 ) -> Result<russh::Channel<client::Msg>, russh::Error> {
+    let gate = channel_dial_gate(handle);
+    // The semaphore is never closed, so acquire cannot fail.
+    let _dial = gate.acquire().await.ok();
     // A transient refusal means the server is still counting sessions that
     // our previous panes closed; give those closes up to ~6s to land. The
     // shared counter de-synchronises retry loops from concurrent panes, so

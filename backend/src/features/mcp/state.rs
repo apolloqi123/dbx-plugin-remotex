@@ -14,15 +14,16 @@ impl McpConnection {
         if let Some(sftp) = self.sftp.as_ref() {
             return Ok(sftp.clone());
         }
-        let channel = self
-            .handle
-            .channel_open_session()
+        let channel = crate::sessions::ssh::open_session_channel(&self.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|error| format!("Failed to start SFTP: {error}"))?;
+        if let Err(error) = channel.request_subsystem(true, "sftp").await {
+            // Open channel, refused subsystem: close it so the server session
+            // is released instead of leaking a `MaxSessions` slot.
+            let _ = channel.eof().await;
+            let _ = channel.close().await;
+            return Err(format!("Failed to start SFTP: {error}"));
+        }
         let sftp = Arc::new(AsyncMutex::new(
             SftpSession::new_with_config(channel.into_stream(), sftp_client_config(false))
                 .await
@@ -37,14 +38,14 @@ impl McpConnection {
 /// 响应）。独立函数化：MCP 工具在释放 connections 写锁之后仍要按需新建
 /// 裸包客户端（latin-1 车道），不能依赖 &mut McpConnection。
 pub(crate) async fn open_raw_sftp(handle: &Handle<SshClient>) -> Result<RawSftpClient, String> {
-    let channel = handle
-        .channel_open_session()
+    let channel = crate::sessions::ssh::open_session_channel(handle)
         .await
         .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
-    channel
-        .request_subsystem(true, "sftp")
-        .await
-        .map_err(|error| format!("Failed to start SFTP: {error}"))?;
+    if let Err(error) = channel.request_subsystem(true, "sftp").await {
+        let _ = channel.eof().await;
+        let _ = channel.close().await;
+        return Err(format!("Failed to start SFTP: {error}"));
+    }
     sftp_raw::RawSftp::init(channel.into_stream()).await
 }
 

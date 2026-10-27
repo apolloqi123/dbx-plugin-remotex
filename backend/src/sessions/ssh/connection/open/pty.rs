@@ -28,7 +28,7 @@ impl SshRuntime {
         let directory_tracking_supported = true;
         let mut channel = open_session_channel(handle)
             .await
-            .map_err(|error| channel_open_error(reused_transport, error))?;
+            .map_err(|error| channel_open_error(reused_transport, &error))?;
         // From here on the channel is open on the server: every failure must
         // close it explicitly (a dropped russh Channel never sends CLOSE and
         // would hold a MaxSessions slot until the connection ends).

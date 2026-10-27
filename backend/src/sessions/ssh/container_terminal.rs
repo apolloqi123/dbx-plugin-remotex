@@ -106,6 +106,11 @@ impl PtyChannel for ChannelPty {
     }
 
     async fn close(&mut self) -> Result<(), String> {
+        // Signal before closing, like `abort_exec_channel`: a `docker exec -it`
+        // client that ignores the PTY hangup would otherwise keep its sshd
+        // session allocated against `MaxSessions`.
+        let _ = self.channel.signal(russh::Sig::TERM).await;
+        let _ = self.channel.eof().await;
         self.channel
             .close()
             .await
@@ -184,12 +189,14 @@ impl SshRuntime {
         mut resize: mpsc::Receiver<(u32, u32)>,
         mut cancel: watch::Receiver<bool>,
     ) -> Result<Option<i32>, String> {
-        let channel = tokio::time::timeout(
-            Duration::from_secs(30),
-            self.open_container_channel(session_id, command, cols, rows),
-        )
-        .await
-        .map_err(|_| "Timed out opening the container terminal".to_string())??;
+        // No timeout wrapper here: cancelling the future mid-dial would drop a
+        // channel the server already allocated and leak that session against
+        // `MaxSessions`. The dial itself is bounded by the shared retry budget
+        // in `open_session_channel`, and cancellation is honoured right after
+        // the channel is open (the driver below closes it).
+        let channel = self
+            .open_container_channel(session_id, command, cols, rows)
+            .await?;
         let mut channel = ChannelPty { channel };
         drive_pty_channel(&mut channel, &sink, &mut input, &mut resize, &mut cancel).await
     }

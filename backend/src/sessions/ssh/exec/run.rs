@@ -517,18 +517,25 @@ pub async fn validate_sudo_timestamp(handle: &Handle<SshClient>) -> Result<(), S
     let mut channel = open_session_channel(handle)
         .await
         .map_err(|error| format!("Failed to open sudo keepalive channel: {error}"))?;
-    channel
-        .exec(true, b"sudo -nv")
-        .await
-        .map_err(|error| format!("Failed to start sudo keepalive: {error}"))?;
-    let outcome = run_to_completion(
+    if let Err(error) = channel.exec(true, b"sudo -nv").await {
+        return Err(abort_exec_channel(
+            &mut channel,
+            format!("Failed to start sudo keepalive: {error}"),
+        )
+        .await);
+    }
+    let outcome = match run_to_completion(
         &mut channel,
         Some(Duration::from_secs(15)),
         None,
         &mut never_cancels(),
         None,
     )
-    .await?;
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => return Err(abort_exec_channel(&mut channel, error).await),
+    };
     if outcome.exit_code == 0 {
         Ok(())
     } else {

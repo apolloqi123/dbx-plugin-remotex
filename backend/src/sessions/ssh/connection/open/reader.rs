@@ -124,7 +124,12 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                             continue;
                         }
                         if remote_shell == RemoteShell::Unknown {
-                            remote_shell = detect_remote_shell(&entry.handle).await;
+                            // Session-open arming probes the shell off this
+                            // loop (once per transport) and delivers
+                            // InstallPromptHook when it resolves. Probing here
+                            // would stall terminal output behind a channel dial
+                            // and burn a second probe channel per pane.
+                            continue;
                         }
                         if remote_shell == RemoteShell::Other {
                             publish_terminal(

@@ -63,6 +63,13 @@ Composable/lib：
   服务端已分配的 session 永不关闭，快速 start/stop 会逐个泄漏 `MaxSessions`
   名额。`AdministrativelyProhibited`/`ResourceShortage`/`ConnectFailed` 都按
   瞬时并发拒绝做约 6 秒的有界退避重试。
+- 前端队列只串行“请求”，不限制 channel 生命周期；真正的常驻占用由 sidecar
+  按 transport 共享与限流：SFTP 子系统通道、远端 shell 探测结果都是每个
+  已认证 transport 一份（复制窗格不再各占一条），所有 channel 拨号经
+  transport 级信号量（最多 2 条并发）。因此 N 个窗格 + 日志 + 容器终端 +
+  一次列表轮询的峰值约为 `N + 3` 条，而不是 `2N + 3`。
+- 服务端仍拒绝时返回可重试的 `The SSH server's session limit (MaxSessions)
+  was reached…`；前端不把它当永久连接错误，transport 保持可用。
 
 ## 容器 PTY 终端
 

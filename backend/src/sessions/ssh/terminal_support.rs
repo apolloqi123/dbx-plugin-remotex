@@ -142,40 +142,61 @@ pub(super) fn spawn_exec_payload(command: &str) -> String {
     format!("sh -c {}", exec::shell_quote(command))
 }
 
-pub(super) async fn detect_remote_shell(handle: &Handle<SshClient>) -> RemoteShell {
-    remote_shell_or_timeout(
-        detect_remote_shell_inner(handle),
-        REMOTE_SHELL_DETECTION_TIMEOUT,
-    )
-    .await
+/// Resolves the login shell for a transport, probing at most once per
+/// authenticated connection. Duplicate panes share the result, so opening N
+/// panes no longer spends N extra session channels on a server whose
+/// `MaxSessions` budget is already tight.
+pub(super) async fn detect_remote_shell(
+    handle: &Handle<SshClient>,
+    lease: &SharedTransportLease,
+) -> RemoteShell {
+    // Concurrent pane opens queue here; the second caller then hits the cache
+    // instead of racing a second probe onto the wire.
+    let _probe = lease.shell_probe.lock().await;
+    if let Some(shell) = lease.cached_remote_shell() {
+        return shell;
+    }
+    match probe_remote_shell(handle).await {
+        // Only a *completed* probe is cached: a refusal/timeout says nothing
+        // about the account's shell, and caching `Other` would silently
+        // disable directory tracking for the rest of the transport's life.
+        Some(shell) => {
+            lease.cache_remote_shell(shell);
+            shell
+        }
+        None => RemoteShell::Other,
+    }
 }
 
-pub(super) async fn remote_shell_or_timeout<F>(future: F, timeout: Duration) -> RemoteShell
-where
-    F: Future<Output = RemoteShell>,
-{
-    tokio::time::timeout(timeout, future)
-        .await
-        .unwrap_or(RemoteShell::Other)
-}
-
-pub(super) async fn detect_remote_shell_inner(handle: &Handle<SshClient>) -> RemoteShell {
-    let Ok(mut channel) = open_session_channel(handle).await else {
-        return RemoteShell::Other;
-    };
+/// Probes `$SHELL` on one exec channel.
+///
+/// The dial itself is deliberately *not* wrapped in a timeout: dropping an
+/// in-flight `channel_open_session` future after the server allocated the
+/// channel leaks that session for the connection's lifetime. Only the output
+/// read is bounded, and the channel is always closed explicitly — a dropped
+/// russh channel never sends CHANNEL_CLOSE either.
+async fn probe_remote_shell(handle: &Handle<SshClient>) -> Option<RemoteShell> {
+    let mut channel = open_session_channel(handle).await.ok()?;
     if channel.exec(true, "printf '%s' \"$SHELL\"").await.is_err() {
         exec::close_setup_channel(&mut channel).await;
-        return RemoteShell::Other;
+        return None;
     }
     let mut output = Vec::new();
-    while let Some(message) = channel.wait().await {
-        match message {
-            ChannelMsg::Data { data } => output.extend_from_slice(&data),
-            ChannelMsg::Eof | ChannelMsg::Close => break,
-            _ => {}
+    let read = tokio::time::timeout(REMOTE_SHELL_DETECTION_TIMEOUT, async {
+        while let Some(message) = channel.wait().await {
+            match message {
+                ChannelMsg::Data { data } => output.extend_from_slice(&data),
+                ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
         }
+    })
+    .await;
+    if read.is_err() {
+        exec::close_setup_channel(&mut channel).await;
+        return None;
     }
-    classify_remote_shell(&String::from_utf8_lossy(&output))
+    Some(classify_remote_shell(&String::from_utf8_lossy(&output)))
 }
 
 pub(super) fn classify_remote_shell(value: &str) -> RemoteShell {

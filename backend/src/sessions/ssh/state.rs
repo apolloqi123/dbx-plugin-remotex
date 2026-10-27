@@ -53,7 +53,6 @@ pub(crate) struct SessionEntry {
     pub(crate) triggers: Arc<Mutex<Option<triggers::TriggerEngine>>>,
     pub(crate) terminal_tx: mpsc::Sender<TerminalCommand>,
     pub(crate) replay: Arc<AsyncMutex<ReplayBuffer>>,
-    pub(crate) sftp: AsyncMutex<Option<Arc<AsyncMutex<SftpSession>>>>,
     /// Output recorder installed while an agent command runs in this
     /// session's PTY (`exec_in_terminal`); `None` outside such a run. Fed
     /// by the read loop at the same point as the auto-sudo observer.

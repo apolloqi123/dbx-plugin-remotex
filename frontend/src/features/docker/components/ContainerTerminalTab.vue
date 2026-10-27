@@ -48,6 +48,8 @@ let resizeObserver: ResizeObserver | undefined;
 let unsubscribeState: (() => void) | undefined;
 let fitFrame = 0;
 let starting = false;
+/** 容器在 open 在途时又切走：open 因代际过期返回后必须补开最新目标。 */
+let pendingStart = false;
 let disposed = false;
 
 function canConnect(): boolean {
@@ -100,7 +102,16 @@ function scheduleFit(): void {
  * exited/error 需要用户点「重新连接」，不自动重试。
  */
 async function startIfNeeded(): Promise<void> {
-  if (disposed || !terminal || starting || !props.visible) return;
+  if (disposed || !terminal || !props.visible) {
+    pendingStart = false;
+    return;
+  }
+  // 快速切容器时上一次 open 可能仍在途（含等待 close RPC）；记下待补开，
+  // 等它结束后对最新容器重开，否则终态会停在 idle/connecting 而没有 PTY。
+  if (starting) {
+    pendingStart = true;
+    return;
+  }
   // 不可连接时仍走 open：只拿 disabled 提示文案，不发 RPC。
   if (status.value === "disabled") {
     if (!canConnect()) return;
@@ -118,6 +129,11 @@ async function startIfNeeded(): Promise<void> {
     starting = false;
   }
   if (!disposed && props.visible) terminal?.focus();
+  if (pendingStart) {
+    pendingStart = false;
+    // 只补开「被新目标取代」的场景：error/disabled 要等用户点重试。
+    if (!disposed && props.visible && status.value === "idle") void startIfNeeded();
+  }
 }
 
 async function retryTerminal(): Promise<void> {

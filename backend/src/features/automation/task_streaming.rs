@@ -326,10 +326,11 @@ pub(super) async fn ssh_upload_script(
     let channel = open_session_channel(handle)
         .await
         .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
-    channel
-        .request_subsystem(true, "sftp")
-        .await
-        .map_err(|error| format!("Failed to start SFTP: {error}"))?;
+    if let Err(error) = channel.request_subsystem(true, "sftp").await {
+        let _ = channel.eof().await;
+        let _ = channel.close().await;
+        return Err(format!("Failed to start SFTP: {error}"));
+    }
     let sftp = SftpSession::new_with_config(channel.into_stream(), sftp_client_config(false))
         .await
         .map_err(|error| format!("Failed to initialize SFTP: {error}"))?;
