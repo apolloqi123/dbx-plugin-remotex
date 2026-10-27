@@ -39,16 +39,14 @@
 .ui-tone-cyan { --tone: var(--tone-cyan); --tone-soft: var(--tone-cyan-soft); }
 
 /* —— 画布与工作台 —— */
+/* 主体直接使用宿主背景色，不叠加插件自有渐变，明暗主题与 DBX 保持一致。 */
 .workbench {
-  background:
-    radial-gradient(1100px 520px at 8% -14%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 62%),
-    radial-gradient(900px 460px at 102% -6%, color-mix(in srgb, var(--tone-violet) 8%, transparent), transparent 58%),
-    var(--background);
+  background: var(--background);
 }
 .workbench > .toolbar {
   height: 40px;
   min-height: 40px;
-  margin: 8px 8px 0;
+  margin: 1px 1px 0;
   border: 1px solid var(--card-border);
   border-bottom: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
@@ -60,15 +58,16 @@
 .workbench.panel-surface > .toolbar {
   height: 32px;
   min-height: 32px;
-  margin: 6px 6px 0;
+  margin: 1px 1px 0;
   border-color: transparent;
   background: color-mix(in srgb, var(--card-surface) 42%, transparent);
   box-shadow: none;
 }
+/* 卡片之间只留 1px 缝隙：间隙由分屏线本身承担，不再叠加 gap。 */
 .workbench > .panes {
-  gap: var(--space-xs);
-  padding: var(--space-sm);
-  margin-top: var(--space-2xs);
+  gap: 0;
+  padding: 1px;
+  margin-top: 0;
 }
 .workbench .divider {
   border-radius: var(--radius-pill);
@@ -139,14 +138,14 @@
   overflow: hidden;
 }
 .docker-divider {
-  height: 5px;
-  flex-basis: 5px;
-  margin: 0 var(--space-sm);
+  height: 1px;
+  flex-basis: 1px;
+  margin: 0;
 }
 .docker-divider::after {
-  inset: 2px 0;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  inset: -4px 0;
+  background: transparent;
+  border-radius: 0;
 }
 .side-panel-head {
   min-height: 38px;
@@ -408,22 +407,12 @@
    本段统一用 .workbench .docker-pane-surface 前缀压过，避免组件内旧规则
    把卡片外观盖回去。 */
 .workbench .docker-pane-surface .container-manager-pane { background: transparent; }
-.workbench .docker-pane-surface .container-manager-head {
-  min-height: 34px;
-  gap: var(--space-xs);
-  border-bottom: 1px solid var(--card-border);
-  padding: 4px 8px 4px 12px;
-  background: color-mix(in srgb, var(--card-surface-raised) 50%, transparent);
-}
-.workbench .docker-pane-surface .container-manager-title { font-size: 12px; letter-spacing: 0.01em; }
-.workbench .docker-pane-surface .container-manager-logo,
 .workbench .docker-pane-surface .container-list-logo {
   width: 22px;
   height: 22px;
   flex: 0 0 22px;
   border-radius: var(--radius-xs);
 }
-.workbench .docker-pane-surface .container-manager-logo svg,
 .workbench .docker-pane-surface .container-list-logo svg {
   width: 13px;
   height: 13px;
@@ -435,14 +424,17 @@
   flex: 0 0 24px;
   border-radius: var(--radius-xs);
 }
-.workbench .docker-pane-surface .container-manager-body { gap: var(--space-sm); padding: var(--space-sm); }
-.workbench .docker-pane-surface .container-manager-divider { flex: 0 0 6px; margin: 0; }
+.workbench .docker-pane-surface .container-manager-body { gap: 0; padding: 1px; }
+.workbench .docker-pane-surface .container-manager-divider { flex: 0 0 1px; margin: 0; }
 .workbench .docker-pane-surface .container-manager-divider::after {
-  inset: 0 2px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  inset: -4px 0;
+  border-radius: 0;
+  background: transparent;
 }
-.workbench .docker-pane-surface .container-manager-divider:hover::after { background: color-mix(in srgb, var(--primary) 55%, transparent); }
+.workbench .docker-pane-surface .container-manager-divider:hover::after,
+.workbench .docker-pane-surface .container-manager-divider:focus-visible::after {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
 .workbench .docker-pane-surface .container-manager-detail {
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
@@ -454,21 +446,21 @@
 .workbench .docker-pane-surface .container-detail-head {
   gap: var(--space-xs);
   border-bottom: 1px solid var(--card-border);
-  padding: 6px 8px 6px 12px;
+  padding: 4px 8px 4px 12px;
   background: color-mix(in srgb, var(--card-surface-raised) 50%, transparent);
 }
 .workbench .docker-pane-surface .container-detail-name { font-size: 12px; }
 .workbench .docker-pane-surface .container-detail-tabs {
   gap: var(--space-2xs);
-  border-bottom: 1px solid var(--card-border);
-  padding: 5px 8px;
+  border-bottom: 0;
+  padding: 0;
   background: transparent;
 }
 .workbench .docker-pane-surface .container-detail-tab {
   border: 1px solid transparent;
   border-bottom: 1px solid transparent;
   border-radius: var(--radius-control);
-  padding: 5px 10px;
+  padding: 3px 8px;
   opacity: 0.72;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
 }
@@ -492,7 +484,7 @@
 .workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="files"] { border-color: color-mix(in srgb, var(--tone-amber) 45%, var(--card-border)); }
 .workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="terminal"] { border-color: color-mix(in srgb, var(--tone-emerald) 45%, var(--card-border)); }
 
-.workbench .docker-pane-surface .container-list-pane { gap: var(--space-xs); padding: 0 2px 4px; }
+.workbench .docker-pane-surface .container-list-pane { gap: 1px; padding: 0; }
 .workbench .docker-pane-surface .container-list-head {
   gap: var(--space-xs);
   border: 1px solid var(--card-border);
@@ -511,8 +503,8 @@
   line-height: 18px;
 }
 .workbench .docker-pane-surface .container-rows {
-  gap: var(--space-xs);
-  padding: 2px;
+  gap: 1px;
+  padding: 0;
   border-top: 0;
 }
 .workbench .docker-pane-surface .container-row-item {

@@ -41,7 +41,6 @@ const messages = {
       logsRefresh: "再読み込み",
       logsLoadFailed: "ログの読み込みに失敗しました：{error}",
       logsEmpty: "ログ出力はありません",
-      terminalHint: "ターミナルボタンは docker exec -it <id> sh -lc 'bash || zsh || fish || ash || sh' をターミナルの入力行に入力します。Enter を押すとこのコンテナのシェルに入ります（自動実行はしません）。",
       terminalOpenTip: "コマンドをターミナルの入力行に入力します。Enter で確定して実行します（自動実行はしません）。",
       terminalNeedSession: "アクティブなターミナルセッションがありません。先に接続してから「ターミナルで開く」を使ってください。",
       toolbarTitle: "コンテナ（Docker / Podman）", dockerResizeHint: "ドラッグでパネルの幅を調整",

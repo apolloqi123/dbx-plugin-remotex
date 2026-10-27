@@ -41,7 +41,6 @@ const messages = {
       logsRefresh: "Ricarica",
       logsLoadFailed: "Caricamento dei log non riuscito: {error}",
       logsEmpty: "Nessun output di log",
-      terminalHint: "Il pulsante terminale inserisce docker exec -it <id> sh -lc 'bash || zsh || fish || ash || sh' nella riga di input del terminale: premi Invio per aprire una shell in questo contenitore; nulla viene eseguito automaticamente.",
       terminalOpenTip: "Inserisce il comando nella riga di input del terminale; conferma con Invio (nulla viene eseguito automaticamente).",
       terminalNeedSession: "Nessuna sessione di terminale attiva. Connettiti prima, poi usa Apri nel terminale.",
       toolbarTitle: "Container (Docker / Podman)", dockerResizeHint: "Trascina per regolare la larghezza del pannello",

@@ -42,9 +42,12 @@
   --space-xl: 24px;
   --card-border: color-mix(in srgb, var(--foreground) 11%, transparent);
   --card-border-strong: color-mix(in srgb, var(--foreground) 18%, transparent);
-  --card-surface: color-mix(in srgb, var(--background) 89%, var(--foreground) 11%);
-  --card-surface-raised: color-mix(in srgb, var(--background) 82%, var(--foreground) 18%);
-  --card-surface-inset: color-mix(in srgb, var(--background) 82%, #000);
+  /* 表面色全部由宿主桥接的 background/muted/accent 混出（色相、明度随宿主
+     明暗主题走，不写死黑色或第二套配色）：card ≈ 宿主 card，raised ≈ 宿主
+     accent，inset 用同色相回退到背景一侧。 */
+  --card-surface: color-mix(in srgb, var(--background) 65%, var(--muted) 35%);
+  --card-surface-raised: color-mix(in srgb, var(--card-surface) 80%, var(--accent) 20%);
+  --card-surface-inset: color-mix(in srgb, var(--background) 96%, var(--foreground) 4%);
   --card-glow: inset 0 1px 0 rgb(255 255 255 / 6%);
   --card-shadow: 0 16px 38px -26px rgb(0 0 0 / 62%), var(--card-glow);
   --card-shadow-hover: 0 22px 46px -26px rgb(0 0 0 / 72%), var(--card-glow);

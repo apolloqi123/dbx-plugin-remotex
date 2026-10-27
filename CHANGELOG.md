@@ -8,6 +8,13 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.40] — 2026-10-27
+
+- **工作台卡片间距收紧为 1px，容器管理去掉独立标题行**。工具栏、终端栈、容器管理、SFTP 侧栏以及容器列表/详情卡片之间的缝隙统一为 1px（拖拽分隔条的命中区保留）；容器管理不再占用一整行标题，关闭入口移至列表页头，日志/文件/终端页签与容器名称同排显示在详情页头右侧；移除列表底部的 `docker exec` 提示文案。
+  **Workbench card gutters tightened to 1px; container manager loses its title row.** The toolbar, terminal stack, container manager, SFTP side panel, and container list/detail cards are now separated by a single hairline (drag hit areas are preserved); the container manager no longer spends a full row on a title — its close action moved into the list header, and the logs/files/terminal tabs sit on the right of the container name row. The `docker exec` hint at the bottom of the list was removed.
+- **页面主体配色完全跟随宿主主题**。工作台背景直接使用宿主的 `--background`（移除插件自有渐变光晕），卡片/抬升/内嵌表面改由宿主的 background/muted/accent/foreground 混出；亮色宿主下卡片回到宿主白/浅灰，不再出现插件自带的灰调，暗色宿主保持原有层次。
+  **Page surfaces now follow the host theme exactly.** The workbench uses the host `--background` directly (the plugin-owned gradient glow is gone), and card/raised/inset surfaces are mixed from the host background/muted/accent/foreground tokens. Light hosts get the host's white/light-gray cards instead of plugin-defined grays, while dark hosts keep the same depth.
+
 ## [0.7.9-beta.39] — 2026-10-26
 
 - **全插件卡片化视觉升级**。工作台、终端页签、SFTP、容器管理、设置、弹窗/浮层、服务器指标与终端浮层统一为卡片化布局：18px 面板圆角、12px 行卡片、10px 控件圆角与胶囊页签；工具栏、容器列表/详情、SFTP 文件与设置分类使用亮色图标底座；卡片间距、柔和描边、悬浮lift 与阴影全部走设计令牌（`cards.css` / `tokens.css`），暗色与亮色宿主主题自动适配。同时修复无宿主 `--color-*` 令牌时语义状态色被 Tailwind 反向映射成 CSS 变量环而整体失效的问题。

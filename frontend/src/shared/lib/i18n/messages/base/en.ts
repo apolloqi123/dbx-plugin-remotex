@@ -43,7 +43,6 @@ const messages = {
       logsRefresh: "Reload",
       logsLoadFailed: "Failed to load logs: {error}",
       logsEmpty: "No log output",
-      terminalHint: "The terminal button fills docker exec -it <id> sh -lc 'bash || zsh || fish || ash || sh' into the terminal input line — press Enter to open a shell in this container. Nothing is sent automatically.",
       terminalOpenTip: "Fill the shell command into the terminal input line — confirm with Enter (nothing runs automatically).",
       terminalNeedSession: "No active terminal session. Connect first, then use Open in terminal.",
       toolbarTitle: "Containers (Docker / Podman)", dockerResizeHint: "Drag to resize the panel",

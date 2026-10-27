@@ -11,7 +11,7 @@ RPC/事件契约以 `docs/architecture/PROTOCOL.zh-CN.md` 的「Docker 管理面
 
 | 文件 | 职责 | 边界 |
 | --- | --- | --- |
-| `ContainerManagerPane.vue` | 页面外壳：页头（标题/关闭）、列表/详情分栏的打开时机与可拖拽分隔条、页签 | 首轮列表非空时自动以 Logs 打开详情；持有选中容器、页签状态与列表宽度（40%，夹取 25–70%） |
+| `ContainerManagerPane.vue` | 页面外壳：列表/详情分栏的打开时机与可拖拽分隔条（无独立标题行，关闭入口在列表页头） | 首轮列表非空时自动以 Logs 打开详情；持有选中容器、页签状态与列表宽度（40%，夹取 25–70%） |
 | `ContainerListPane.vue` | 容器列表：10s 轮询、3 连败暂停、动作菜单、kill/rm 确认、引擎设置 | 轮询与 needsSudo 逻辑在 `dockerPanelModel` / `dockerActions` / `useDockerContainers` |
 | `ContainerDetailPane.vue` | 选中容器详情与页签容器 | 只渲染，不订阅全局事件 |
 | `ContainerLogsTab.vue` | 日志视图：滚动容器、跟随按钮、tail 选择、清空、结束态/sudo 重试 | 行缓冲与 follow 判定在 `lib/dockerLogBuffer`，流生命周期在 `useDockerLogStream` |
@@ -48,8 +48,8 @@ Composable/lib：
   只消费一次）。列表清空或连接切换收起详情。
 - 分栏打开时列表默认 40%（可用分隔条拖拽或 `ArrowLeft`/`ArrowRight` 调整，
   `Shift` ×3；夹取 25%–70%）。分隔条为垂直 `separator`，带
-  `aria-valuenow/min/max`；详情页头 X 只收起详情并恢复列表整宽，分屏页头 X
-  才关闭整个分屏。
+  `aria-valuenow/min/max`；详情页头 X 只收起详情并恢复列表整宽，列表页头的 X
+  才关闭整个分屏。日志/文件/终端页签与容器名称同排显示在详情页头右侧。
 
 ## 容器 PTY 终端
 

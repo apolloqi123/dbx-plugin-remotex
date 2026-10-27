@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 选中容器详情外壳（Task 7）：页头（名称/状态/关闭）+ 日志/文件/终端页签。
+// 选中容器详情外壳（Task 7）：页头（名称/状态 + 日志/文件/终端页签 + 关闭）。
 // 页签状态由 ContainerManagerPane 持有（activeTab prop + update:activeTab）。
 //
 // 三个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
@@ -42,6 +42,44 @@ const emit = defineEmits<{
       <strong class="container-detail-name mono" :title="container.id">{{ container.name || container.id.slice(0, 12) }}</strong>
       <span class="docker-badge" :class="dockerStateClass(container.state)">{{ container.state }}</span>
       <span class="container-detail-spacer" />
+      <div class="container-detail-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="container-detail-tab"
+          data-tab="logs"
+          :aria-selected="activeTab === 'logs'"
+          :title="t('docker.logsTab')"
+          :aria-label="t('docker.logsTab')"
+          @click="emit('update:activeTab', 'logs')"
+        >
+          <ScrollText />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="container-detail-tab"
+          data-tab="files"
+          :aria-selected="activeTab === 'files'"
+          :title="t('docker.filesTab')"
+          :aria-label="t('docker.filesTab')"
+          @click="emit('update:activeTab', 'files')"
+        >
+          <FolderOpen />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="container-detail-tab"
+          data-tab="terminal"
+          :aria-selected="activeTab === 'terminal'"
+          :title="t('docker.terminalTab')"
+          :aria-label="t('docker.terminalTab')"
+          @click="emit('update:activeTab', 'terminal')"
+        >
+          <Terminal />
+        </button>
+      </div>
       <button
         type="button"
         class="icon-button compact container-detail-close"
@@ -52,44 +90,6 @@ const emit = defineEmits<{
         <X />
       </button>
     </header>
-    <div class="container-detail-tabs" role="tablist">
-      <button
-        type="button"
-        role="tab"
-        class="container-detail-tab"
-        data-tab="logs"
-        :aria-selected="activeTab === 'logs'"
-        :title="t('docker.logsTab')"
-        :aria-label="t('docker.logsTab')"
-        @click="emit('update:activeTab', 'logs')"
-      >
-        <ScrollText />
-      </button>
-      <button
-        type="button"
-        role="tab"
-        class="container-detail-tab"
-        data-tab="files"
-        :aria-selected="activeTab === 'files'"
-        :title="t('docker.filesTab')"
-        :aria-label="t('docker.filesTab')"
-        @click="emit('update:activeTab', 'files')"
-      >
-        <FolderOpen />
-      </button>
-      <button
-        type="button"
-        role="tab"
-        class="container-detail-tab"
-        data-tab="terminal"
-        :aria-selected="activeTab === 'terminal'"
-        :title="t('docker.terminalTab')"
-        :aria-label="t('docker.terminalTab')"
-        @click="emit('update:activeTab', 'terminal')"
-      >
-        <Terminal />
-      </button>
-    </div>
     <ContainerLogsTab
       v-show="activeTab === 'logs'"
       :t="t"
@@ -138,7 +138,9 @@ const emit = defineEmits<{
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  padding: 2px 6px 2px 10px;
+  min-height: 34px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .container-detail-name {
@@ -179,9 +181,8 @@ const emit = defineEmits<{
 .container-detail-tabs {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   gap: 2px;
-  padding: 0 6px;
-  border-bottom: 1px solid var(--border);
 }
 
 .container-detail-tab {
@@ -191,9 +192,9 @@ const emit = defineEmits<{
   border: none;
   background: none;
   color: inherit;
-  padding: 4px 10px;
+  padding: 3px 8px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   opacity: 0.7;
 }
 
@@ -203,7 +204,7 @@ const emit = defineEmits<{
 }
 
 .container-detail-tab[aria-selected="true"] {
-  border-bottom-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
   opacity: 1;
 }
 </style>

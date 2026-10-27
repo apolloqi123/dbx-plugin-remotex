@@ -41,7 +41,6 @@ const messages = {
       logsRefresh: "重新加载",
       logsLoadFailed: "日志加载失败：{error}",
       logsEmpty: "暂无日志输出",
-      terminalHint: "终端按钮会把 docker exec -it <id> sh -lc 'bash || zsh || fish || ash || sh' 填入终端输入行：按 Enter 即可进入容器 shell，不会自动执行。",
       terminalOpenTip: "把命令填入终端输入行（不回车），确认后按 Enter 执行。",
       terminalNeedSession: "没有活动的终端会话，请先连接，再使用「在终端打开」。",
       toolbarTitle: "容器管理（Docker / Podman）", dockerResizeHint: "拖拽调整面板宽度",

@@ -41,7 +41,6 @@ const messages = {
       logsRefresh: "重新載入",
       logsLoadFailed: "日誌載入失敗：{error}",
       logsEmpty: "尚無日誌輸出",
-      terminalHint: "終端機按鈕會把 docker exec -it <id> sh -lc 'bash || zsh || fish || ash || sh' 填入終端機輸入行：按 Enter 即可進入容器 shell，不會自動執行。",
       terminalOpenTip: "把命令填入終端機輸入行（不按 Enter），確認後再執行。",
       terminalNeedSession: "沒有作用中的終端機工作階段，請先連線再使用「在終端機開啟」。",
       toolbarTitle: "容器管理（Docker / Podman）", dockerResizeHint: "拖拽调整面板宽度",

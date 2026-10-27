@@ -5,18 +5,17 @@
 // 行菜单以日志重开（行点击带 explicit 标记），轮询/刷新只更新已打开的快照。
 // 分栏线可拖拽或方向键调整。本组件只持有选中容器、活动页签、首轮自动打开
 // 标记与分栏宽度；列表（轮询/动作/引擎设置）与详情（页头/页签/日志、文件与
-// 终端页）各自自治。
+// 终端页）各自自治。分屏不再单占一行标题：关闭入口在列表页头，日志/文件/
+// 终端页签与容器名称同排。
 //
 // props 契约：t / sessionId / connectionId / canWrite，以及可选的工作台终端
 // 主题/字体与 docker/terminal/state 订阅（原样下传详情页，容器终端消费）。
 // sessionId 缺省时列表回落本机 daemon（与容器面板既有语义一致）。
 import { computed, onUnmounted, ref, watch } from "vue";
-import { X } from "@lucide/vue";
 import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import type { DockerContainer } from "../lib/dockerPanelModel";
 import ContainerListPane from "./ContainerListPane.vue";
 import ContainerDetailPane from "./ContainerDetailPane.vue";
-import DockerWhaleLogo from "./DockerWhaleLogo.vue";
 
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -96,7 +95,7 @@ function openDetail(container: DockerContainer, tab: "logs" | "files"): void {
   autoOpened.value = true;
 }
 
-/** 详情页头 X：只收起详情，不关闭整个分屏（分屏头部的 X 才 emit close）。 */
+/** 详情页头 X：只收起详情，不关闭整个分屏（整个分屏的 X 在列表页头）。 */
 function closeDetail(): void {
   selected.value = undefined;
 }
@@ -153,20 +152,6 @@ watch([() => props.sessionId, () => props.connectionId], () => {
 
 <template>
   <section class="container-manager-pane" :aria-label="t('docker.toolbarTitle')">
-    <header class="container-manager-head">
-      <span class="ui-icon-tile ui-tone-blue container-manager-logo"><DockerWhaleLogo /></span>
-      <strong class="container-manager-title">{{ t("docker.managerTitle") }}</strong>
-      <span class="container-manager-spacer" />
-      <button
-        type="button"
-        class="icon-button compact container-manager-close"
-        :title="t('docker.close')"
-        :aria-label="t('docker.close')"
-        @click="emit('close')"
-      >
-        <X />
-      </button>
-    </header>
     <div ref="bodyRef" class="container-manager-body">
       <div class="container-manager-list" :style="{ flexBasis: detailOpen ? `${listWidth}%` : '100%' }">
         <ContainerListPane
@@ -176,6 +161,7 @@ watch([() => props.sessionId, () => props.connectionId], () => {
           @select="select"
           @logs="openDetail($event, 'logs')"
           @files="openDetail($event, 'files')"
+          @close="emit('close')"
         />
       </div>
       <template v-if="selected">
@@ -221,24 +207,6 @@ watch([() => props.sessionId, () => props.connectionId], () => {
   background: var(--background);
 }
 
-.container-manager-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.container-manager-title {
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.container-manager-spacer {
-  flex: 1;
-}
-
 .container-manager-body {
   display: flex;
   flex: 1 1 auto;
@@ -254,10 +222,11 @@ watch([() => props.sessionId, () => props.connectionId], () => {
   min-height: 0;
 }
 
-/* 分隔条：1px 视觉线 + 左右加宽的命中区，hover/拖拽时高亮。 */
+/* 分隔条：卡片之间只留 1px 线；命中区向左右各扩 4px，hover/拖拽时高亮。 */
 .container-manager-divider {
-  flex: 0 0 5px;
-  margin: 0 -2px;
+  flex: 0 0 1px;
+  margin: 0;
+  background: var(--border);
   cursor: col-resize;
   position: relative;
   z-index: 1;
@@ -268,13 +237,17 @@ watch([() => props.sessionId, () => props.connectionId], () => {
 .container-manager-divider::after {
   content: "";
   position: absolute;
-  inset: 0 2px;
-  background: var(--border);
+  inset: 0 -4px;
+}
+
+.container-manager-divider:hover,
+.container-manager-divider:focus-visible {
+  background: var(--primary);
 }
 
 .container-manager-divider:hover::after,
 .container-manager-divider:focus-visible::after {
-  background: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .container-manager-detail {

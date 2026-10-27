@@ -9,7 +9,7 @@
 // 状态/轮询/动作在 composables/useDockerContainers，纯逻辑在 lib/dockerPanelModel，
 // 三个 UI 块在 DockerEnginePopover / DockerRowMenu / DockerConfirmDialog。
 import { onScopeDispose, onUnmounted, ref, watch } from "vue";
-import { Loader2, RefreshCw } from "@lucide/vue";
+import { Loader2, RefreshCw, X } from "@lucide/vue";
 import type { DockerEngineSettings } from "../lib/dockerEngine";
 import type { DockerActionName } from "../lib/dockerActions";
 import {
@@ -41,6 +41,8 @@ const emit = defineEmits<{
   (e: "logs", container: DockerContainer): void;
   /** 行菜单「Files」：打开该容器的文件详情。 */
   (e: "files", container: DockerContainer): void;
+  /** 页头 X：关闭整个容器管理分屏（详情收起由详情页头的 X 负责）。 */
+  (e: "close"): void;
 }>();
 
 const {
@@ -242,6 +244,15 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
         @toggle="toggleEngineSettings"
         @apply="applyEngineSettings"
       />
+      <button
+        type="button"
+        class="icon-button compact container-manager-close"
+        :title="props.t('docker.close')"
+        :aria-label="props.t('docker.close')"
+        @click="emit('close')"
+      >
+        <X />
+      </button>
     </header>
 
     <p v-if="pollPaused" class="docker-hint docker-hint-warn">{{ props.t("docker.pollStopped") }}</p>
@@ -303,7 +314,6 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
         />
       </li>
     </ul>
-    <p v-if="mode === 'ssh' && containers.length" class="docker-hint">{{ props.t("docker.terminalHint") }}</p>
 
     <!-- kill/rm 强制确认 -->
     <DockerConfirmDialog
