@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.58] — 2026-10-27
+
+- **插件盾徽调浅、终端提示符放大**。盾形渐变改为更浅的青→薄荷（`#67E8F9 → #34D399`），并加一条低透明度深青描边，保证浅色宿主上仍有清晰轮廓；盾面里的终端提示符 `>_` 整体放大、描边 6.5→8 并改为近黑色，16px 下也能一眼读出箭头与光标条，对比明显增强。
+  **Lighter shield, larger terminal prompt.** The shield gradient is now a lighter cyan→mint (`#67E8F9 → #34D399`) with a subtle deep-teal outline so it keeps a crisp edge on light host surfaces. The inset `>_` prompt is larger, its stroke grows from 6.5 to 8 and turns near-black, making the chevron and cursor bar clearly readable and high-contrast even at 16px.
+
 ## [0.7.9-beta.57] — 2026-10-27
 
 - **插件标识改为大胆的盾形主体**。放弃「圆角方片 + 角落小徽标」的组合，直接把青→翡翠渐变的盾作为标志本身，终端提示符 `>_` 以深墨色嵌入盾面：一个图形同时表达「安全」与「终端」，16px 下仍能读出盾形与箭头；透明背景避免深色圆底上的“方片套圆”双层观感，深浅宿主都能直接用。连接卡的 30px 徽标与 20px 轨道端点同步更新。
