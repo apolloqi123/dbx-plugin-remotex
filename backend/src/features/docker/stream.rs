@@ -5,9 +5,9 @@
 
 use super::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
 
 use dbx_plugin_sdk::PluginEmitter;
@@ -99,6 +99,87 @@ pub fn logs_follow_command(engine: &EngineConfig, container_id: &str, tail: u64)
         clamp_tail(tail),
         container_id
     )
+}
+
+/// POSIX supervisor around [`logs_follow_command`].
+///
+/// Some sshd builds keep a channel counted against `MaxSessions` until its
+/// child exits, and the SSH `signal` request does not always reach the real
+/// `docker` process (forking login shells, wrapper scripts, servers that
+/// ignore signals for non-PTY sessions). The supervisor makes the child die
+/// without the server's help:
+///
+/// * the docker CLI is a background child of `sh`;
+/// * `HUP`/`TERM` (our abort path) kill that child explicitly;
+/// * a `cat` watcher also kills it on **stdin EOF** — the client's
+///   `CHANNEL_EOF`/`CHANNEL_CLOSE` closes the session's stdin pipe, which is
+///   guaranteed by the protocol even when signal requests are dropped.
+///
+/// `exec sh -c` makes the supervisor the session's direct child regardless of
+/// the login shell's exec/ fork behaviour, while docker's stdout still streams
+/// straight into the channel. The supervisor itself runs without a TTY and
+/// never reads the log output.
+pub fn supervised_logs_follow_command(
+    engine: &EngineConfig,
+    container_id: &str,
+    tail: u64,
+) -> String {
+    // `env VAR=…` instead of the plain command's `export …;` prefix keeps the
+    // launch a single external command, so `setsid` can make it a process
+    // group leader and `kill -PID` reaps forked wrapper children too.
+    let assignments = match engine.endpoint.as_deref() {
+        None => String::new(),
+        Some(endpoint) => format!("DOCKER_HOST={endpoint} CONTAINER_HOST={endpoint} "),
+    };
+    let body = format!(
+        "{}{} logs -f --tail {} {}",
+        assignments,
+        engine.cli,
+        clamp_tail(tail),
+        container_id
+    );
+    let launch = if assignments.is_empty() {
+        body
+    } else {
+        format!("env {body}")
+    };
+    // `$c` is assigned before the trap is defined, so the double-quoted trap
+    // expands the pid at definition time (the value we want to kill later).
+    // fd 3 preserves the channel's stdin for the watcher: POSIX gives
+    // background commands /dev/null on stdin when job control is off, which
+    // would otherwise make `cat` see instant EOF and kill the stream at once.
+    format!(
+        "exec sh -c 'exec 3<&0; if command -v setsid >/dev/null 2>&1; then setsid {launch} & else {launch} & fi; c=$!; trap \"kill -KILL $c 2>/dev/null; kill -KILL -$c 2>/dev/null; exit 0\" HUP TERM; ( cat <&3 >/dev/null; kill -KILL $c 2>/dev/null; kill -KILL -$c 2>/dev/null ) & w=$!; wait $c; kill $w 2>/dev/null'"
+    )
+}
+
+/// Session ids whose Docker CLI runs under Windows `cmd.exe`, detected by the
+/// docker/list fallback. The log-follow supervisor is POSIX-only; Windows
+/// remotes keep the flat command (cmd has no `exec`/`sh`).
+fn windows_sessions() -> &'static Mutex<HashSet<String>> {
+    static WINDOWS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    WINDOWS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+pub(crate) fn mark_remote_platform(session_id: &str, windows: bool) {
+    let Ok(mut sessions) = windows_sessions().lock() else {
+        return;
+    };
+    if sessions.len() > 64 {
+        sessions.clear();
+    }
+    if windows {
+        sessions.insert(session_id.to_string());
+    } else {
+        sessions.remove(session_id);
+    }
+}
+
+pub(crate) fn remote_is_windows(session_id: &str) -> bool {
+    windows_sessions()
+        .lock()
+        .map(|sessions| sessions.contains(session_id))
+        .unwrap_or(false)
 }
 
 /// Endpoint export for the follow command. Unlike the heredoc collectors'

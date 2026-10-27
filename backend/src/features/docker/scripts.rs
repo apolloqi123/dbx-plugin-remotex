@@ -146,6 +146,57 @@ mod tests {
         assert_eq!(command, "docker logs -f --tail 200 d4a7c9f1e2b3");
     }
 
+    /// The POSIX supervisor must stay one flat, single-quoted argument (no
+    /// embedded single quotes from the endpoint/id), and must kill the docker
+    /// child both on HUP/TERM and on stdin EOF (the client's channel close).
+    #[test]
+    fn supervised_follow_command_reaps_child_on_signals_and_stdin_eof() {
+        let engine = crate::features::docker::test_engine("docker", None);
+        let command = crate::features::docker::supervised_logs_follow_command(
+            &engine,
+            "d4a7c9f1e2b3",
+            200,
+        );
+        assert!(command.starts_with("exec sh -c 'exec 3<&0; "), "{command}");
+        assert!(command.contains("setsid docker logs -f --tail 200"), "{command}");
+        assert!(command.contains("kill -KILL $c"), "{command}");
+        assert!(command.contains("kill -KILL -$c"), "{command}");
+        assert!(
+            command.contains("cat <&3 >/dev/null; kill -KILL $c"),
+            "{command}"
+        );
+        assert_eq!(
+            command.matches('\'').count(),
+            2,
+            "only the sh -c argument may be quoted: {command}"
+        );
+    }
+
+    #[test]
+    fn supervised_follow_command_keeps_the_endpoint_inside_the_script() {
+        let engine =
+            crate::features::docker::test_engine("podman", Some("unix:///tmp/podman.sock"));
+        let command = crate::features::docker::supervised_logs_follow_command(
+            &engine,
+            "d4a7c9f1e2b3",
+            500,
+        );
+        assert!(
+            command.contains("env DOCKER_HOST=unix:///tmp/podman.sock CONTAINER_HOST=unix:///tmp/podman.sock podman logs -f --tail 500 d4a7c9f1e2b3"),
+            "{command}"
+        );
+    }
+
+    #[test]
+    fn windows_platform_is_tracked_per_session() {
+        let session = "windows-platform-test-session";
+        assert!(!crate::features::docker::remote_is_windows(session));
+        crate::features::docker::mark_remote_platform(session, true);
+        assert!(crate::features::docker::remote_is_windows(session));
+        crate::features::docker::mark_remote_platform(session, false);
+        assert!(!crate::features::docker::remote_is_windows(session));
+    }
+
     #[test]
     fn stream_registry_caps_active_streams() {
         let registry = DockerStreams::new();

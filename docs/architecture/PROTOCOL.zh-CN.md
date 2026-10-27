@@ -16,7 +16,9 @@ Telnet/VNC/Serial/RDP 的 saved connection 生命周期也走同一入口，但�
 
 **远端回收（HUP/TERM/KILL）**：容器终端里的交互式 `bash` 默认忽略 `SIGTERM`；只发 TERM 时远端 `docker exec` / `docker logs` client 可能继续运行，而部分 sshd 会把它占用的通道一直计入 `MaxSessions` 直到子进程退出——表现为每切换一次容器终端就永久少一个并发名额。所有取消/关闭路径（exec、日志流、容器 PTY、sudo 流、自动化）现在按 `HUP → TERM → KILL → EOF → CLOSE` 顺序发送，先让交互式 shell 退出，再 KILL 兜底包装脚本。`docker logs -f` 等非 PTY 命令同样适用。
 
-**通道账本（现场诊断）**：sidecar 在数据目录写 `channel-debug.log`（超过 256 KiB 自动清空重写）。每次 channel 打开记录 `OPEN id=<n> label=<操作>`，关闭记录 `CLOSE id=<n>`；收到瞬时拒绝时写 `REFUSED label=… error=… live=N [id:label:年龄 …]`。SFTP（每 transport 一条）、主终端 PTY（每窗格一条）、容器终端、日志流分别带 `sftp` / `ssh/pty` / `docker/terminal` / `exec/stream` 标签。若 `REFUSED` 时 `live` 很小（只剩 PTY+SFTP），说明服务端仍在计数客户端已关闭的通道（远端子进程未退出或 sshd 行为），而不是插件自己漏关。
+**通道账本（现场诊断）**：sidecar 在数据目录写 `channel-debug.log`（超过 256 KiB 自动清空重写）。每次 channel 打开记录 `OPEN id=<n> label=<操作>`，关闭记录 `CLOSE id=<n>`；收到瞬时拒绝时写 `REFUSED label=… error=… live=N [id:label:年龄 …]`。SFTP（每 transport 一条）、主终端 PTY（每窗格一条）、容器终端、日志流分别带 `sftp` / `ssh/pty` / `docker/terminal` / `exec/stream` 标签。若 `REFUSED` 时 `live` 很小（只剩 PTY+SFTP），说明服务端仍在计数客户端已关闭的通道——实测就是远端 `docker logs -f` 子进程没退出。
+
+**日志流看门狗**：`docker/logs/start` 在 POSIX 远端不再直接执行 `docker logs -f`，而是 `exec sh -c 'exec 3<&0; …setsid docker logs -f … & c=$!; trap kill…; ( cat <&3 >/dev/null; kill … ) & …'`：supervisor 是会话直接子进程，docker 是它的子进程（有 `setsid` 时独立进程组）；收到 `HUP/TERM` 或 **stdin EOF**（客户端 `CHANNEL_EOF/CLOSE` 必然产生）时 `kill -KILL` docker 并退出，不再依赖服务端是否转发信号。docker 的 stdout 仍直连 channel，跟随延迟不变。Windows cmd 远端（由 `docker/list` 的 cmd 兜底探测得出）继续用原来的扁平命令。
 
 显式传入 `reuseAuthenticatedSessionId` 时严格 fail closed：指定来源不存在、已关闭或连接不匹配都会返回 `No live authenticated SSH connection`。前端收到该错误后只降级一次，以普通“新建会话”语义重新登录，允许堡垒机再次要求 MFA；该错误同时属于永久重试错误，不进入对同一失效 sessionId 的退避重试。只传 `reuseAuthenticatedTransport: true` 的旧调用方保留兼容行为：后端会从同一连接中确定性选取最早创建的存活会话，因此 transport 来源不保证对应调用方当前显示的窗口。
 

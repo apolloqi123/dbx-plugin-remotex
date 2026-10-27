@@ -42,7 +42,9 @@ impl Plugin {
                     .unwrap_or_default()
                     .to_string();
                 // Windows OpenSSH 默认 shell 没有 sh，heredoc 输不出任何
-                // 探针标记：多花一个往返用 cmd 版采集器重试。
+                // 探针标记：多花一个往返用 cmd 版采集器重试。探测结果同时
+                // 决定日志跟随命令能否使用 POSIX 看门狗包装。
+                let mut windows_remote = false;
                 if crate::features::docker::needs_windows_fallback(&output) {
                     if let Ok(win_response) = self.runtime.block_on(self.ssh.exec(
                         session_id,
@@ -57,9 +59,11 @@ impl Plugin {
                             .unwrap_or_default();
                         if !crate::features::docker::needs_windows_fallback(win_output) {
                             output = win_output.to_string();
+                            windows_remote = true;
                         }
                     }
                 }
+                crate::features::docker::mark_remote_platform(session_id, windows_remote);
                 let payload = crate::features::docker::list_payload(&output);
                 if payload["needsSudo"] != true {
                     return Ok(payload);
@@ -241,8 +245,18 @@ impl Plugin {
                         return Err("Quick Sudo is disabled for this connection".to_string());
                     }
                 }
-                let command =
-                    crate::features::docker::logs_follow_command(&engine, container_id, tail);
+                // POSIX remotes get a watchdog supervisor so a stopped stream's
+                // `docker logs -f` child dies even when the server never forwards
+                // our signal requests; Windows cmd keeps the flat command.
+                let command = if crate::features::docker::remote_is_windows(session_id) {
+                    crate::features::docker::logs_follow_command(&engine, container_id, tail)
+                } else {
+                    crate::features::docker::supervised_logs_follow_command(
+                        &engine,
+                        container_id,
+                        tail,
+                    )
+                };
                 let stream_id = self.runtime.block_on(async {
                     self.docker_streams.start_ssh(
                         self.ssh.clone(),

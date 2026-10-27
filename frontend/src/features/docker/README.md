@@ -70,10 +70,11 @@ Composable/lib：
   一次列表轮询的峰值约为 `N + 3` 条，而不是 `2N + 3`。
 - 服务端仍拒绝时返回可重试的 `The SSH server's session limit (MaxSessions)
   was reached…`；前端不把它当永久连接错误，transport 保持可用。
-- 远端回收：取消/关闭一律按 `HUP → TERM → KILL → EOF → CLOSE` 发送（容器内
-  交互式 bash 忽略 TERM，只发 TERM 会留下 docker client 并占住名额）。现场排查
-  看数据目录的 `channel-debug.log`：`OPEN/CLOSE label=…` 记录插件持有的通道，
-  `REFUSED … live=N […]` 在服务端拒绝时给出当时的存活清单。
+- 远端回收：取消/关闭一律按 `HUP → TERM → KILL → EOF → CLOSE` 发送；日志流
+  另外运行在 POSIX supervisor 下，收到信号**或 stdin EOF**（客户端关闭通道）时
+  主动 `kill -KILL` docker 子进程，即使服务端不转发信号也能释放会话。
+- 现场排查看数据目录的 `channel-debug.log`：`OPEN/CLOSE label=…` 记录插件持有
+  的通道，`REFUSED … live=N […]` 在服务端拒绝时给出当时的存活清单。
 
 ## 容器 PTY 终端
 
