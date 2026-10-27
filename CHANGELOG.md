@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.56] — 2026-10-27
+
+- **重新设计插件标识**。去掉旧版深色方片套在深色圆底上的双层观感与细描边：新标识改为宝蓝渐变圆角瓦片（左上高光、右下收深），白色终端提示符 `>` + 青色光标条作为主图形，右上角用实心翡翠锁徽表达安全语义。16–64px 及深浅宿主背景均可读，连接卡的 30px 徽标与 20px 轨道端点同步更新。
+  **Redesigned the plugin mark.** The old dark tile-inside-a-dark-circle look and hairline outline are gone: the new mark is a royal-blue gradient squircle (lit top-left, deeper bottom-right) with a white terminal chevron and cyan cursor as the main glyph, plus a solid emerald lock badge for the security meaning. It stays legible from 16–64px on light and dark host surfaces, and the connecting card's 30px badge and 20px track endpoint pick it up automatically.
+
 ## [0.7.9-beta.55] — 2026-10-27
 
 - **传输任务面板进一步收紧尺寸**。弹层宽度 372→340px，筛选条改为图标 + 数量（悬停显示含义），任务行文件图标 28→24px、文件名 12→11px、徽标 15→14px、行内按钮 22→20px，行高与详情卡同步压缩，一屏可显示更多任务。文件夹整包上传的历史记录（含旧版随机临时名）也统一显示文件夹图标，仍能从新命名中还原文件夹名。
