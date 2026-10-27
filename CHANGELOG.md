@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.46] — 2026-10-27
+
+- **按功能语义重绘工具条中的 7 个图标**。上一版自绘图标在 14px 工具栏尺寸下有若干图形偏抽象：分栏互换改为两个面板 + 居中的左右双箭头；SFTP 面板改为文件夹 + 右侧面板；会话下拉改为带 `>_` 提示符的前景终端窗口 + 背景窗口；端口映射改为网关盒 + 入/出箭头；快速命令改为闪电 + 命令列表；上级目录改为文件夹 + 向上箭头；审计日志简化为文档 + 内置时钟；面板收起改为折叠箭头。其余图标（重连插头、sudo 盾牌、告警铃、容器鲸鱼、批量广播、Agent、指标、录制、传输、设置等）保持原设计；仍沿用 24×24 栅格、1.7 描边与 currentColor。
+  **Redrew seven toolbar glyphs by function.** The first custom set had a few shapes that read too abstractly at 14px: pane swap is now two panels with a centered left/right double arrow; the SFTP panel is a folder plus a side panel; the session menu is a terminal window with a `>_` prompt and a background window; port forwarding is a gateway box with in/out arrows; quick commands is a bolt plus a command list; parent directory is a folder with an up arrow; the audit log is a document with an inset clock; panel close is a collapse chevron. The rest (reconnect plug, sudo shield, alert bell, Docker whale, batch broadcast, agent, metrics, record, transfers, settings) keep their existing designs. The 24×24 grid, 1.7 stroke and currentColor are unchanged.
+
 ## [0.7.9-beta.45] — 2026-10-27
 
 - **精简两处工具栏并按使用习惯重排，图标改为自绘图形**。顶部工具栏移除「运行命令」与「SFTP 面板偏好」两个入口（命令弹窗、`useCommandDialog`、列偏好弹层与相关接线/文案一并删除；`ssh/exec` 仍保留给容器、sudo 等内部功能）；剩余按钮按「视图 → 会话 → 连接与运维 → 效率工具 → 监控与记录 → 文件与系统」分组重排，设置固定在右缘。SFTP 路径工具栏移除「最近路径」与「导入会话」：路径历史模块整体删除，书签与快捷路径合并为「书签」弹层；导入会话入口迁到顶部「会话」菜单（功能保留）。两处工具栏（含 RDP 工具组、dock 面板精简组、连接信息与配色快切）的图标统一改为工作台自有图标集：24×24 栅格、1.7 描边、统一圆角端点，12–14px 下保持笔画间距。
