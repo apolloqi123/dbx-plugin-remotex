@@ -1,21 +1,12 @@
-<!-- SSHX plugin mark: royal-blue squircle, terminal prompt, secure-lock badge. -->
+<!-- SSHX plugin mark: gradient security shield with a terminal prompt cut in. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SSHX">
   <defs>
-    <linearGradient id="sshx-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2B5CE6"/>
-      <stop offset=".55" stop-color="#142A5C"/>
-      <stop offset="1" stop-color="#0A1020"/>
+    <linearGradient id="sshx-shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#10B981"/>
     </linearGradient>
-    <radialGradient id="sshx-shine" cx=".22" cy=".12" r=".62">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".2"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
   </defs>
-  <rect x="1.5" y="1.5" width="61" height="61" rx="15" fill="url(#sshx-bg)"/>
-  <rect x="1.5" y="1.5" width="61" height="61" rx="15" fill="url(#sshx-shine)"/>
-  <path d="M13.5 20 27.5 32 13.5 44" fill="none" stroke="#F8FAFC" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 44h16.5" fill="none" stroke="#22D3EE" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="50.5" cy="13.5" r="9" fill="#34D399"/>
-  <rect x="46.2" y="13.1" width="8.6" height="6.8" rx="1.8" fill="#062A22"/>
-  <path d="M48.1 13.1v-1.7a2.4 2.4 0 0 1 4.8 0v1.7" fill="none" stroke="#062A22" stroke-width="1.9" stroke-linecap="round"/>
+  <path d="M32 4.5 55 12.5V29c0 15.5-9.3 25.5-23 30.5C18.3 54.5 9 44.5 9 29V12.5Z" fill="url(#sshx-shield)"/>
+  <path d="M22 23.5 31.5 32 22 40.5" fill="none" stroke="#052019" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M35 40.5h8.5" fill="none" stroke="#052019" stroke-width="6.5" stroke-linecap="round"/>
 </svg>

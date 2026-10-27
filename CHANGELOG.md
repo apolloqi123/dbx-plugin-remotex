@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.57] — 2026-10-27
+
+- **插件标识改为大胆的盾形主体**。放弃「圆角方片 + 角落小徽标」的组合，直接把青→翡翠渐变的盾作为标志本身，终端提示符 `>_` 以深墨色嵌入盾面：一个图形同时表达「安全」与「终端」，16px 下仍能读出盾形与箭头；透明背景避免深色圆底上的“方片套圆”双层观感，深浅宿主都能直接用。连接卡的 30px 徽标与 20px 轨道端点同步更新。
+  **Bold shield-first plugin mark.** The rounded tile with a corner badge is gone: the cyan→emerald gradient shield is now the mark itself, with the terminal `>_` prompt inset in deep ink. One silhouette carries both “secure” and “terminal”, staying legible at 16px, and the transparent background avoids the tile-inside-a-circle look on dark host surfaces while working on light ones. The connecting card's 30px badge and 20px track endpoint follow automatically.
+
 ## [0.7.9-beta.56] — 2026-10-27
 
 - **重新设计插件标识**。去掉旧版深色方片套在深色圆底上的双层观感与细描边：新标识改为宝蓝渐变圆角瓦片（左上高光、右下收深），白色终端提示符 `>` + 青色光标条作为主图形，右上角用实心翡翠锁徽表达安全语义。16–64px 及深浅宿主背景均可读，连接卡的 30px 徽标与 20px 轨道端点同步更新。
