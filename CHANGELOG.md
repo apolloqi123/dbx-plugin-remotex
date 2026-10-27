@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.48] — 2026-10-27
+
+- **SFTP 文件树图标放大**。文件夹/文件夹展开/文件/符号链接图标由 14px 内容尺寸放大到 18px（20px 槽位、1px 内边距），28px 行高与文字基线保持不变；深色/浅色宿主下实拍确认，图标更易辨认且不挤压文件名。
+  **Enlarged the SFTP tree icons.** Folder, open-folder, file and symlink glyphs grow from a 14px content size to 18px (20px slot, 1px padding), while the 28px row height and text baseline stay unchanged. Verified on dark and light host surfaces: easier to recognize without crowding the file name.
+
 ## [0.7.9-beta.47] — 2026-10-27
 
 - **SFTP 文件树图标与插件注册标识更新，作者改为 apolloqi**。文件树去掉每行「彩色小方块 + 线性图标」的叠层，改为无底色、双色实心的文件夹/文件夹展开/文件/符号链接图标：文件夹使用琥珀色背板 + 实心前板，文件使用蓝色纸张 + 折角与文本线，符号链接带白色快捷箭头；14px 下轮廓更干净，行内不再出现密集色块。DBX 插件列表与连接提供方使用的新标识为深色圆角瓦片 + 青色终端提示符 + 翡翠色安全盾徽，24–64px 及深浅宿主背景均可读。manifest `publisher`、Cargo `authors` 与 LICENSE 版权统一改为 `apolloqi`；仓库 source/homepage URL 保持不变。

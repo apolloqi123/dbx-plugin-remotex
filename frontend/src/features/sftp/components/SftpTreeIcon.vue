@@ -41,10 +41,10 @@ defineProps<{ kind: SftpTreeIconKind }>();
 <style scoped>
 .sftp-tree-kind-icon {
   box-sizing: border-box;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  padding: 2px;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  padding: 1px;
 }
 .is-directory,
 .is-directory-open { color: var(--tone-amber); }
