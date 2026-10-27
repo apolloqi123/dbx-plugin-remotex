@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.59] — 2026-10-27
+
+- **插件标识简化为纯紫色终端符号**。去掉盾形与所有底色，只保留加粗的 `>_` 提示符：紫色 `#A855F7`、9.5 描边、透明背景，圆形底色完全交给宿主。16–64px 以及深浅宿主背景都保持清晰，连接卡的 30px 徽标与 20px 轨道端点同步更新。
+  **Simplified the plugin mark to a purple terminal symbol.** The shield and every background are gone; only the bold `>_` prompt remains, in purple `#A855F7` with a 9.5 stroke on transparency, leaving the circular backdrop entirely to the host. It stays crisp from 16–64px on light and dark host surfaces, and the connecting card's 30px badge and 20px track endpoint follow automatically.
+
 ## [0.7.9-beta.58] — 2026-10-27
 
 - **插件盾徽调浅、终端提示符放大**。盾形渐变改为更浅的青→薄荷（`#67E8F9 → #34D399`），并加一条低透明度深青描边，保证浅色宿主上仍有清晰轮廓；盾面里的终端提示符 `>_` 整体放大、描边 6.5→8 并改为近黑色，16px 下也能一眼读出箭头与光标条，对比明显增强。
