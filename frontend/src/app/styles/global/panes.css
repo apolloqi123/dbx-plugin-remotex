@@ -264,8 +264,8 @@
   .connect-card-fill { transition: none; }
   .connect-card-endpoint-target svg { animation: none; }
 }
-.divider { position: relative; z-index: 4; width: 2px; flex: 0 0 2px; background: var(--border); cursor: col-resize; }
-/* 命中区加宽到 8px：2px 视觉线仍不易抓取（SFTP 分栏与 Docker 面板拖宽共用）。 */
+/* 视觉分隔完全透明，只保留 2px 布局缝隙；::after 提供 8px 拖拽命中区。 */
+.divider { position: relative; z-index: 4; width: 2px; flex: 0 0 2px; background: transparent; cursor: col-resize; }
+/* 命中区加宽到 8px：2px 视觉缝隙本身透明，仍保留抓取范围。 */
 .divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; }
-.divider:hover { background: color-mix(in srgb, var(--foreground) 38%, var(--border)); }
 .sftp-pane { position: relative; z-index: 0; flex: 1; overflow: hidden; }

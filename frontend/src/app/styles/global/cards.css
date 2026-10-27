@@ -69,16 +69,20 @@
   padding: 2px;
   margin-top: 0;
 }
-.workbench .divider {
-  border-radius: var(--radius-pill);
+.workbench .divider,
+.workbench .divider:hover {
   background: transparent;
 }
+/* 命中区保持透明：不再绘制悬停高亮条，只留 2px 的卡片间距。
+   键盘聚焦时用一条细描边提示可调节，鼠标悬停不出现亮色。 */
 .workbench .divider::after {
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  transition: background var(--transition-fast);
+  border-radius: 0;
+  background: transparent;
 }
-.workbench .divider:hover::after { background: color-mix(in srgb, var(--primary) 60%, transparent); }
+.workbench .divider:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset: -1px;
+}
 
 /* —— 终端栈 / 终端页签 —— */
 .terminal-stack {

@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.51] — 2026-10-27
+
+- **终端与 SFTP 面板之间的分隔条去掉悬停高亮**。此前鼠标移到分隔条上会把 8px 命中区染成 primary 60% 的亮条；现在视觉线保持透明，只保留 2px 的布局缝隙与 8px 拖拽命中区，悬停时仅显示左右调整光标；键盘聚焦（Tab）时用一条细描边提示可调节。容器分屏把手未受影响。
+  **Removed the hover highlight from the terminal/SFTP divider.** The 8px hit area used to turn into a bright primary-60% bar on hover; it is now transparent, keeping only the 2px layout gap and the 8px drag hit area, with the resize cursor as the only hover cue. Keyboard focus (Tab) still shows a subtle outline. The container split handle is unchanged.
+
 ## [0.7.9-beta.50] — 2026-10-27
 
 - **布局细化：SFTP 默认四分之一宽、容器页全宽底部一半高、页签左对齐**。SFTP 面板默认宽度改为 25%（终端 75%），旧工作台自动落盘的 58% 通过 `splitRatioV2` 标记一次性迁移，用户后续拖拽仍按新值持久化。容器管理从终端列内部移到工作台级全宽底部行：SFTP 面板打开时，容器页横跨终端与 SFTP 下方；打开即重置为上下各 50%，拖拽/键盘调整仍可用。容器详情的日志/文件/终端图标从右端移到容器名称与状态之后，关闭按钮固定在右缘。SFTP 树图标同步宿主 14px 尺寸（描边 2），不再比宿主偏大。
