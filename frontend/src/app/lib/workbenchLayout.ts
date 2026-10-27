@@ -38,11 +38,11 @@ export function resolveDirectoryFollow(state: { followDirectory?: unknown }, fol
 }
 
 /**
- * Parses the persisted global directory-follow preference. Default is OFF:
- * only the explicit opt-in makes new workbenches start with the switch on.
+ * Parses the persisted global directory-follow preference. Default is ON:
+ * only an explicit opt-out ("false") disables the terminal→SFTP follow.
  */
 export function sanitizeDirectoryFollowPref(raw: string | null): boolean {
-  return raw === "true";
+  return raw !== "false";
 }
 
 /**

@@ -6,6 +6,7 @@
 import { onMounted, onScopeDispose, onUnmounted, ref, watch } from "vue";
 import { normalizeBatchTargets } from "../../terminal/lib/transfer/batchSend";
 import { rpc } from "../../../shared/lib/rpc";
+import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
 import {
   dockerEngineParams,
   loadDockerEngineSettings,
@@ -137,10 +138,9 @@ export function useDockerContainers(options: UseDockerContainersOptions = {}) {
     loading.value = true;
     try {
       const payload = dockerListPayload(
-        await rpc<unknown>(
-          "docker/list",
-          dockerParams(),
-          { timeoutMs: LIST_TIMEOUT_MS },
+        await runDockerChannel(
+          dockerChannelKey(sessionId.value, readConnectionId()),
+          () => rpc<unknown>("docker/list", dockerParams(), { timeoutMs: LIST_TIMEOUT_MS }),
         ),
       );
       containers.value = payload.containers;

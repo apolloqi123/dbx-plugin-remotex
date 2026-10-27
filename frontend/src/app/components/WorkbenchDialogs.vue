@@ -218,7 +218,7 @@ const JsonPreviewPanel = createPreviewAsyncComponent(
       <!-- JSON 候选且非编辑态走格式化预览面板（invalid/too-large 时面板内部降级为
            原始视图 + 提示条）；其余文件与编辑态保持既有 TextPreview。 -->
       <JsonPreviewPanel v-else-if="!previewEditable && jsonPreviewState.kind !== 'unavailable'" :state="jsonPreviewState" :text="previewText" :file-name="previewTitle" :locale="locale" :appearance="appearance" />
-      <TextPreview v-else :text="previewText" :file-name="previewTitle" :appearance="appearance" :editable="previewEditable" @change="previewDraft = $event" />
+      <TextPreview v-else :text="previewText" :file-name="previewTitle" :appearance="appearance" :editable="previewEditable" :t="t" @change="previewDraft = $event" />
     </DialogContent>
   </Dialog>
 

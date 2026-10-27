@@ -52,12 +52,12 @@ pub(super) async fn run_streaming(
     mut on_log: impl FnMut(LogStream, String),
     mut on_tick: Option<&mut (dyn FnMut() + Send)>,
 ) -> Result<RunEnd, String> {
-    let mut channel = tokio::select! {
-        biased;
-        _ = wait_cancelled(cancel) => return Ok(RunEnd::Cancelled),
-        opened = open_session_channel(handle) =>
-            opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
-    };
+    // Uncancellable dial: a dropped in-flight open leaks the session the
+    // server already allocated. Cancel is handled by the exec select below,
+    // which closes the channel and reports Cancelled.
+    let mut channel = open_session_channel(handle)
+        .await
+        .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     if pty {
         // Best-effort: PTY-less servers still run the command.
         let _ = channel

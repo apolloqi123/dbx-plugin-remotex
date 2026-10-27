@@ -9,6 +9,7 @@ import { bridgeBinaryBytes } from "../../../../../shared/frontend/binaryEvent";
 import { randomUUID } from "../../../shared/lib/uuid";
 import { createTerminalInputQueue } from "../../terminal/lib/emulator/terminalInputQueue";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
+import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
 
 export type ContainerTerminalStatus = "idle" | "connecting" | "connected" | "exited" | "error" | "disabled";
 
@@ -85,6 +86,11 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     return options.createTerminalId ? options.createTerminalId() : randomUUID();
   }
 
+  /** 与日志/文件/列表共用连接级 channel 队列（MaxSessions 压力）。 */
+  function channelKey(): string {
+    return dockerChannelKey(options.sessionId(), options.connectionId());
+  }
+
   function setStatus(next: ContainerTerminalStatus, detail?: { exitCode?: number; error?: string }): void {
     status.value = next;
     options.onState?.(next, detail);
@@ -113,8 +119,9 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     if (!target) return pendingClose;
     const api = window.dbxPlugin;
     if (!api) return pendingClose;
-    pendingClose = api
-      .invoke("docker/terminal/close", { terminalId: target }, { timeoutMs: CLOSE_TIMEOUT_MS })
+    pendingClose = runDockerChannel(channelKey(), () =>
+      api.invoke("docker/terminal/close", { terminalId: target }, { timeoutMs: CLOSE_TIMEOUT_MS }),
+    )
       .then(() => undefined)
       .catch(() => undefined);
     return pendingClose;
@@ -177,13 +184,19 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
         ...dockerEngineParams(loadDockerEngineSettings(options.connectionId() || "")),
         ...(sessionId ? { sessionId } : { target: "local" }),
       };
-      const result = await api.invoke<{ terminalId?: string }>("docker/terminal/open", params, {
-        timeoutMs: OPEN_TIMEOUT_MS,
-      });
+      const result = await runDockerChannel(channelKey(), () =>
+        api.invoke<{ terminalId?: string }>("docker/terminal/open", params, {
+          timeoutMs: OPEN_TIMEOUT_MS,
+        }),
+      );
       if (current !== generation || stopped) {
         // close()/新 open 已取代本次打开：后端可能已建好 PTY，不能让它泄漏。
         const created = result?.terminalId;
-        if (created) void api.invoke("docker/terminal/close", { terminalId: created }).catch(() => undefined);
+        if (created) {
+          void runDockerChannel(channelKey(), () =>
+            api.invoke("docker/terminal/close", { terminalId: created }),
+          ).catch(() => undefined);
+        }
         return;
       }
       if (!result?.terminalId) throw new Error("missing terminalId");
@@ -203,9 +216,9 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       terminalId = "";
       live = false;
       if (failedId) {
-        void api
-          .invoke("docker/terminal/close", { terminalId: failedId }, { timeoutMs: CLOSE_TIMEOUT_MS })
-          .catch(() => undefined);
+        void runDockerChannel(channelKey(), () =>
+          api.invoke("docker/terminal/close", { terminalId: failedId }, { timeoutMs: CLOSE_TIMEOUT_MS }),
+        ).catch(() => undefined);
       }
     }
   }

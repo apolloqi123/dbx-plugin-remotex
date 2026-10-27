@@ -222,11 +222,11 @@ watch([() => props.sessionId, () => props.connectionId], () => {
   min-height: 0;
 }
 
-/* 分隔条：卡片之间只留 1px 线；命中区向左右各扩 4px，hover/拖拽时高亮。 */
+/* 分隔条：卡片之间只留 2px 线；命中区向左右各扩 4px，hover/拖拽时高亮。 */
 .container-manager-divider {
-  flex: 0 0 1px;
+  flex: 0 0 2px;
   margin: 0;
-  background: var(--border);
+  background: transparent;
   cursor: col-resize;
   position: relative;
   z-index: 1;

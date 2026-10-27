@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 容器日志页：真流式 + 默认跟随。`useDockerLogStream` 由本组件内部持有（props
-// 契约固定为 t/container/sessionId/connectionId/canWrite），页签切到文件时
-// 组件不卸载、流不断；容器切换/页面关闭/卸载才收流。
+// 契约固定为 t/container/sessionId/connectionId/canWrite）。页签不可见时停止
+// 跟随（不再占用一条 SSH session channel，服务器 MaxSessions 较小时尤其重要），
+// 切回日志页再按当前 tail 重新跟随；容器切换/页面关闭/卸载同样收流。
 //
 // 跟随规则（spec §3.2）：默认跟随；向上滚动距底 >24px 暂停自动滚动但继续接收；
 // 滚回距底 ≤4px 自动恢复；按钮在跟随时点一下只关自动滚动（不断流）。
@@ -11,15 +12,17 @@ import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
 
-const props = defineProps<{
+// Vue 对未传的 Boolean prop 会转成 false；这里显式默认 true，避免「未声明
+// visible」的调用方被误判为隐藏页签而不开流。
+const props = withDefaults(defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
   container: DockerContainer;
   sessionId?: string;
   connectionId?: string;
   canWrite?: boolean;
-  /** 页签是否可见：v-show 隐藏时没有布局，重新显示后要补一次置底。 */
+  /** 页签是否可见：隐藏时停流，重新显示时恢复跟随并补一次置底。 */
   visible?: boolean;
-}>();
+}>(), { visible: true });
 
 const stream = useDockerLogStream({
   sessionId: () => props.sessionId,
@@ -36,6 +39,7 @@ const {
   needsSudo,
   exitCode,
   start,
+  stop,
   restart,
   retrySudo,
   clear,
@@ -45,6 +49,8 @@ const tail = ref<string>("200");
 const scroller = ref<HTMLElement>();
 /** 用户是否刚点过“清空”（只用于空态提示，不参与流状态）。 */
 const clearedNotice = ref(false);
+/** 流是否因页签隐藏而停止：只有这种停止才在重新可见时自动重开。 */
+let pausedByHidden = false;
 
 /** 截断提示文案；数值直接取自缓冲上限，避免两处漂移。 */
 const truncatedHint = computed(() =>
@@ -106,15 +112,25 @@ const endedBanner = (value: DockerLogStreamStatus): boolean => value === "ended"
 const showEmptyState = computed(() => !text.value && status.value !== "starting");
 
 onMounted(() => {
+  if (props.visible === false) {
+    pausedByHidden = true;
+    return;
+  }
   void start(props.container.id, { tail: tail.value });
 });
 
-// 容器切换：先清视图再开新流（start 内部会停掉旧流）。
+// 容器切换：先清视图再开新流（start 内部会停掉旧流）。页签隐藏时只清视图，
+// 不建立 channel；重新可见时再按新容器开流。
 watch(
   () => props.container.id,
   (containerId) => {
     clearedNotice.value = false;
     clear();
+    if (props.visible === false) {
+      pausedByHidden = true;
+      return;
+    }
+    pausedByHidden = false;
     void start(containerId, { tail: tail.value });
   },
 );
@@ -125,11 +141,26 @@ watch(text, (value) => {
   if (follow.value) scrollToBottom();
 });
 
-// v-show 隐藏期间节点没有布局，scrollToBottom 无效；重新显示时补一次置底。
+// 页签显隐：隐藏即停流（日志页不可见时不必占用 SSH channel）；重新可见时
+// 若是本组件主动暂停的流则按当前 tail 重开，并补一次置底（v-show 隐藏期间
+// 节点没有布局，scrollToBottom 无效）。
 watch(
   () => props.visible,
   (visible) => {
-    if (visible !== false && follow.value) scrollToBottom();
+    if (visible === false) {
+      if (status.value === "streaming" || status.value === "starting") {
+        pausedByHidden = true;
+        void stop();
+      }
+      return;
+    }
+    if (pausedByHidden) {
+      pausedByHidden = false;
+      clearedNotice.value = false;
+      clear();
+      void start(props.container.id, { tail: tail.value });
+    }
+    if (follow.value) scrollToBottom();
   },
 );
 </script>

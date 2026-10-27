@@ -8,6 +8,17 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.41] — 2026-10-27
+
+- **彻底修复反复切换容器后仍出现 `AdministrativelyProhibited` / `ConnectFailed` 与轮询暂停**。真正根因是取消发生在 SSH channel 打开途中：客户端丢弃在途的 `channel_open_session` future 时，sshd 已分配的 session 永远不会关闭，快速 start/stop 每次都漏一个 `MaxSessions` 名额（本地 sshd 复现：`MaxSessions 4` 下第三次切换即开始失败，连接关闭后残留 session 才释放）。现在所有 exec/日志/自动化/容器的打开都等 channel 建立完成，再走统一的 `signal(TERM)+EOF+CLOSE`；`ConnectFailed` 也按瞬时并发拒绝重试（约 6 秒、带抖动）；前端把容器列表/文件/日志/终端操作放进连接级 FIFO 队列串行执行，并在日志页隐藏时停止跟随。`MaxSessions 4` 下连续 10 轮日志+终端+文件切换与 50 次快速 start/stop：0 错误、0 残留进程、连接内 channel 回到基线。
+  **Fixed the remaining `AdministrativelyProhibited` / `ConnectFailed` failures and polling pauses after repeated container switches.** The actual root cause was cancelling while an SSH channel open was still in flight: dropping the `channel_open_session` future leaves the session sshd already allocated open forever, so every rapid start/stop leaked one `MaxSessions` slot (reproduced locally: with `MaxSessions 4`, failures started on the third switch and leaked sessions were only released when the connection closed). All exec/log/automation/container opens now wait for the channel to be established and then use the normal `signal(TERM)+EOF+CLOSE` path; `ConnectFailed` is retried as a transient concurrency refusal (about 6 seconds with jitter); the frontend runs container list/files/logs/terminal operations through one per-connection FIFO queue, and stops following logs while the logs tab is hidden. With `MaxSessions 4`, 10 rounds of log+terminal+file switching and 50 rapid start/stop cycles produced 0 errors, 0 stray processes, and the connection's channel count returned to baseline.
+- **卡片间距从 1px 调整为 2px**。工具栏、终端栈、容器管理、SFTP 侧栏以及容器列表/详情之间的缝隙统一为 2px，拖拽分隔条的命中区保持。
+  **Card gutters changed from 1px to 2px** across the toolbar, terminal stack, container manager, SFTP side panel, and container list/detail, keeping the drag hit areas intact.
+- **SFTP「跟随终端」默认开启**。旧工作台状态里自动落盘的 `false` 通过迁移标记不再生效；用户显式关闭后仍按关闭持久化。
+  **SFTP terminal-follow now defaults to on.** Auto-persisted `false` values in old workbench states are migrated away via a new marker, while an explicit opt-out still persists.
+- **文件编辑器查找/替换改为 VS Code 风格右上角浮层**。Ctrl/Cmd+F 打开查找、Ctrl/Cmd+H 打开替换，支持匹配计数、区分大小写/全字/正则、上一个/下一个、替换/全部替换、Esc 关闭；不再使用 CodeMirror 自带的底部搜索面板。
+  **The file editor's find/replace is now a VS Code-style floating widget in the top-right.** Ctrl/Cmd+F opens find and Ctrl/Cmd+H opens replace, with match count, match-case/whole-word/regex toggles, previous/next, replace/replace-all and Esc to close; CodeMirror's bottom search panel is no longer used.
+
 ## [0.7.9-beta.40] — 2026-10-27
 
 - **工作台卡片间距收紧为 1px，容器管理去掉独立标题行**。工具栏、终端栈、容器管理、SFTP 侧栏以及容器列表/详情卡片之间的缝隙统一为 1px（拖拽分隔条的命中区保留）；容器管理不再占用一整行标题，关闭入口移至列表页头，日志/文件/终端页签与容器名称同排显示在详情页头右侧；移除列表底部的 `docker exec` 提示文案。

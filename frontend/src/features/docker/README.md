@@ -51,6 +51,19 @@ Composable/lib：
   `aria-valuenow/min/max`；详情页头 X 只收起详情并恢复列表整宽，列表页头的 X
   才关闭整个分屏。日志/文件/终端页签与容器名称同排显示在详情页头右侧。
 
+## SSH channel 预算（MaxSessions）
+
+- 同一连接上的容器短操作（`docker/list` 轮询、`files/list`、`files/stat`、
+  `logs/start|stop`、`terminal/open|close`）统一经 `lib/dockerChannelQueue.ts`
+  的连接级 FIFO 队列串行出队；快速切容器时不会并发打开多条 channel。
+- 日志页签不可见时停止跟随（切回按当前 tail 重开），隐藏页不再常驻一条
+  `docker logs -f` channel；文件页与终端页本来就只在可见时加载/打开。
+- 取消发生在 channel 打开途中时，sidecar 等打开完成后再走统一的
+  `signal(TERM)+EOF+CLOSE`：丢弃在途的 `channel_open_session` future 会让
+  服务端已分配的 session 永不关闭，快速 start/stop 会逐个泄漏 `MaxSessions`
+  名额。`AdministrativelyProhibited`/`ResourceShortage`/`ConnectFailed` 都按
+  瞬时并发拒绝做约 6 秒的有界退避重试。
+
 ## 容器 PTY 终端
 
 `Terminal` 页签是真正的交互式 PTY（设计见

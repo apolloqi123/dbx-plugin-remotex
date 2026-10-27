@@ -47,6 +47,7 @@ import terminalHistoryPanel from "./messages/supplemental/terminalHistoryPanel";
 import transferCompress from "./messages/supplemental/transferCompress";
 import sftpWorkbenchEnhancements from "./messages/supplemental/sftpWorkbenchEnhancements";
 import terminalTabs from "./messages/supplemental/terminalTabs";
+import editorFind from "./messages/supplemental/editorFind";
 
 export type WorkbenchLocale = "en" | "es" | "it" | "ja" | "pt-BR" | "zh-CN" | "zh-TW";
 
@@ -108,6 +109,7 @@ terminalHistoryPanel,
 transferCompress,
 sftpWorkbenchEnhancements,
 terminalTabs,
+editorFind,
 ];
 for (const table of supplementalTables) {
   for (const locale of Object.keys(table)) {

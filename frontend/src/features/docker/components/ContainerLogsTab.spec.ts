@@ -10,6 +10,7 @@ import type { DockerContainer } from "../lib/dockerPanelModel";
 import { dispatchDockerLogEvent } from "../lib/dockerLogEvents";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
+import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
 
 const t = (key: string) => key;
 
@@ -79,6 +80,7 @@ function sizeScroller(wrapper: MountedTab, scrollHeight = 1000, clientHeight = 1
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()?.unmount();
+  resetDockerChannelQueues();
   pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
   vi.unstubAllGlobals();
 });
@@ -221,25 +223,68 @@ describe("ContainerLogsTab streaming", () => {
     expect(starts.at(-1)?.params).toMatchObject({ containerId: "def456abc123" });
   });
 
+  it("does not open a log channel while the tab is hidden", async () => {
+    const calls = stubHost();
+    await mountTab({ visible: false });
+    expect(calls.some((call) => call.method === "docker/logs/start")).toBe(false);
+  });
+
+  it("stops following while hidden and restarts when visible again", async () => {
+    const calls = stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "visible\n" });
+    await nextTick();
+
+    await wrapper.setProps({ visible: false });
+    await flushPromises();
+    expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
+
+    await wrapper.setProps({ visible: true });
+    await flushPromises();
+    const starts = calls.filter((call) => call.method === "docker/logs/start");
+    expect(starts).toHaveLength(2);
+    expect(starts.at(-1)?.params).toMatchObject({ containerId: "abc123def456", tail: 200 });
+    // 恢复时重新跟随最新日志：旧缓冲不重复展示。
+    expect(wrapper.get(".docker-log-scroll").text()).toBe("");
+  });
+
+  it("defers a hidden container switch until the tab is visible again", async () => {
+    const calls = stubHost();
+    const wrapper = await mountTab({ visible: false });
+    await wrapper.setProps({ container: container({ id: "def456abc123", name: "web-next" }) });
+    await flushPromises();
+    expect(calls.some((call) => call.method === "docker/logs/start")).toBe(false);
+
+    await wrapper.setProps({ visible: true });
+    await flushPromises();
+    const starts = calls.filter((call) => call.method === "docker/logs/start");
+    expect(starts.at(-1)?.params).toMatchObject({ containerId: "def456abc123" });
+  });
+
   it("scrolls back to the bottom when the tab becomes visible again", async () => {
     stubHost();
     const wrapper = await mountTab({ visible: false });
     const element = sizeScroller(wrapper);
+    await wrapper.setProps({ visible: true });
+    await flushPromises();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "while-hidden\n" });
     await nextTick();
-    // v-show 隐藏期间没有布局，滚动位置停在原处。
     element.scrollTop = 0;
-
-    await wrapper.setProps({ visible: true });
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "more\n" });
     await nextTick();
     await nextTick();
     expect(element.scrollTop).toBe(element.scrollHeight);
   });
 
   it("does not show the no-output empty state while the stream is starting", async () => {
+    let resolveStart: ((value: unknown) => void) | undefined;
     vi.stubGlobal("dbxPlugin", {
       invoke: (method: string) => {
-        if (method === "docker/logs/start") return new Promise(() => undefined);
+        if (method === "docker/logs/start") {
+          return new Promise((resolve) => {
+            resolveStart = resolve;
+          });
+        }
         return Promise.resolve({ stopped: true });
       },
     });
@@ -247,6 +292,9 @@ describe("ContainerLogsTab streaming", () => {
     wrappers.push(wrapper);
     await nextTick();
     expect(wrapper.find(".docker-log-empty").exists()).toBe(false);
+    // 释放连接级队列，避免后续用例排在未完成的 start 后面。
+    resolveStart?.({ streamId: "stream-starting" });
+    await flushPromises();
   });
 
   it("shows the cleared hint in the empty state after clearing", async () => {
@@ -264,7 +312,10 @@ describe("ContainerLogsTab streaming", () => {
     const wrapper = await mountTab();
     wrapper.unmount();
     wrappers.splice(wrappers.indexOf(wrapper), 1);
-    expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
+    // 收流 RPC 经连接队列排队，等它出队后再断言。
+    await vi.waitFor(() =>
+      expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true),
+    );
   });
 });
 

@@ -8,6 +8,7 @@ import { nextTick } from "vue";
 import ContainerTerminalTab from "./ContainerTerminalTab.vue";
 import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import type { DockerContainer } from "../lib/dockerPanelModel";
+import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
 
 const TERMINAL_ID = "term-12345678";
 
@@ -193,6 +194,7 @@ function terminal(): InstanceType<typeof MockTerminal> | undefined {
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()?.unmount();
+  resetDockerChannelQueues();
   MockTerminal.reset();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
@@ -352,7 +354,10 @@ describe("ContainerTerminalTab", () => {
 
     wrapper.unmount();
     wrappers.splice(wrappers.indexOf(wrapper), 1);
-    expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID }, expect.anything());
+    // 收 PTY 的 close RPC 经连接队列排队，等它出队后再断言。
+    await vi.waitFor(() =>
+      expect(harness.invoke).toHaveBeenCalledWith("docker/terminal/close", { terminalId: TERMINAL_ID }, expect.anything()),
+    );
     expect(instance?.disposed).toBe(true);
   });
 });

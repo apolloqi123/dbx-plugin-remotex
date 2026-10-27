@@ -30,6 +30,8 @@ export interface WorkbenchState {
   terminalSequence?: number;
   sftpPath?: string;
   followDirectory?: boolean;
+  /** 目录跟随默认开启（2026-10-27）迁移标记：无此标记的旧状态不采用其中的 false。 */
+  followDefaultOn?: boolean;
   sudoMode?: boolean;
   splitRatio?: number;
   paneOrder?: SshWorkbenchPaneOrder;
@@ -142,8 +144,15 @@ export function useWorkbenchPersistence(options: {
     // 恢复层一律收起。hostContext 在本函数之前已水合（initialize 7787）。
     if (readPluginMode(hostContext.value) === "local-terminal") sftpPaneOpen.value = false;
     // Dock panel surface：目录跟随是 SFTP 面板能力，面板一律关闭。
-    // 恢复的 tab 用 per-workbench 状态；全新工作台回落全局偏好（pluginStore）。
-    followDirectory.value = panelSurface.value ? false : resolveDirectoryFollow(state, loadDirectoryFollowPref());
+    // 2026-10-27 起目录跟随默认开启：旧工作台状态没有 followDefaultOn 标记时，
+    // 其中自动落盘的 false 不再生效，统一按新默认恢复；标记落盘后按用户最近
+    // 一次显式选择恢复。
+    const followDefault = loadDirectoryFollowPref();
+    followDirectory.value = panelSurface.value
+      ? false
+      : state.followDefaultOn === true
+        ? resolveDirectoryFollow(state, followDefault)
+        : followDefault;
     sudoMode.value = state.sudoMode === true && canWrite.value;
     // 一次性迁移：六列默认上线前的旧偏好重置为全开（之后用户自定义照常持久化）。
     const legacyColumns = state.visibleColumns != null && state.columnsV2 !== true;
@@ -178,6 +187,7 @@ export function useWorkbenchPersistence(options: {
     const uiMirror = {
       sftpPath: currentPath.value,
       followDirectory: followDirectory.value,
+      followDefaultOn: true,
       sudoMode: sudoMode.value,
       splitRatio: splitRatio.value,
       paneOrder: paneOrder.value,

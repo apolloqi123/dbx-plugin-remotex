@@ -15,6 +15,8 @@ export const WORKBENCH_UI_MIRROR_KEY = "ssh-workbench-ui";
 export interface WorkbenchUiMirror {
   sftpPath?: string;
   followDirectory?: boolean;
+  /** 目录跟随默认开启（2026-10-27）迁移标记。 */
+  followDefaultOn?: boolean;
   sudoMode?: boolean;
   splitRatio?: number;
   paneOrder?: "sftp-left" | "terminal-left";

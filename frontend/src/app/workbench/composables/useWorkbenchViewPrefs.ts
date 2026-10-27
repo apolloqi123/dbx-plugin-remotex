@@ -101,7 +101,7 @@ export function useWorkbenchViewPrefs(options: {
     try {
       return sanitizeDirectoryFollowPref(pluginStore.getItem(FOLLOW_DIRECTORY_KEY));
     } catch {
-      return false;
+      return true;
     }
   }
 

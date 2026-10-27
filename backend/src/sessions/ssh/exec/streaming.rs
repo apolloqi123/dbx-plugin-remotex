@@ -20,12 +20,11 @@ pub(super) async fn exec_with_sudo_inner(
 ) -> Result<ExecOutcome, String> {
     if auth.password.is_empty() {
         let command_line = format!("sudo -n {}", sanitize_sudo_command(command));
-        let mut channel = tokio::select! {
-            biased;
-            _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-            opened = open_session_channel(handle) =>
-                opened.map_err(|error| format!("Failed to open sudo channel: {error}"))?,
-        };
+        // Uncancellable dial: a dropped in-flight open leaks the channel the
+        // server already allocated. Cancel is handled right after, via abort.
+        let mut channel = open_session_channel(handle)
+            .await
+            .map_err(|error| format!("Failed to open sudo channel: {error}"))?;
         tokio::select! {
             biased;
             _ = wait_cancelled(cancel) => {
@@ -59,12 +58,11 @@ pub(super) async fn exec_with_sudo_inner(
     }
 
     let command_line = format!("sudo -S -p '' {}", sanitize_sudo_command(command));
-    let mut channel = tokio::select! {
-        biased;
-        _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = open_session_channel(handle) =>
-            opened.map_err(|error| format!("Failed to open sudo channel: {error}"))?,
-    };
+    // Uncancellable dial (see the passwordless branch above): cancel lands at
+    // the env/exec select and closes the channel through the abort path.
+    let mut channel = open_session_channel(handle)
+        .await
+        .map_err(|error| format!("Failed to open sudo channel: {error}"))?;
     if use_pty {
         // Some PAM stacks only prompt correctly with a TTY. With a PTY the
         // prompt arrives on the merged stdout stream instead of stderr.
@@ -156,13 +154,12 @@ pub async fn exec_plain_stream(
     sink: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) -> Result<i32, String> {
     let mut cancel = cancel;
-    // Dial: no exec issued yet, so a plain error return leaks nothing.
-    let mut channel = tokio::select! {
-        biased;
-        _ = wait_cancelled(&mut cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = open_session_channel(handle) =>
-            opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
-    };
+    // Uncancellable dial: dropping a channel-open future after sshd allocated
+    // the channel leaks that session against `MaxSessions`. Cancellation is
+    // honoured by the env/exec select below, which closes the channel.
+    let mut channel = open_session_channel(handle)
+        .await
+        .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     // env/exec start: the command may have been accepted by the time the
     // cancel lands, so this arm closes the channel before returning.
     tokio::select! {

@@ -6,6 +6,7 @@
 // “—”，下载仍可继续（size 由 export 再确认）。
 import { computed, onMounted, ref, watch } from "vue";
 import { rpc } from "../../../shared/lib/rpc";
+import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import {
   breadcrumbs as buildBreadcrumbs,
@@ -123,7 +124,10 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     error.value = "";
     try {
       const payload = containerFileListPayload(
-        await rpc<unknown>("docker/files/list", requestParams(target)),
+        await runDockerChannel(
+          dockerChannelKey(readSessionId(), readConnectionId()),
+          () => rpc<unknown>("docker/files/list", requestParams(target)),
+        ),
         target,
       );
       if (seq !== listSeq) return;
@@ -169,7 +173,10 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     selectedMetaLoading.value = true;
     try {
       const payload = containerStatPayload(
-        await rpc<unknown>("docker/files/stat", requestParams(entry.path)),
+        await runDockerChannel(
+          dockerChannelKey(readSessionId(), readConnectionId()),
+          () => rpc<unknown>("docker/files/stat", requestParams(entry.path)),
+        ),
       );
       if (seq === statSeq) selectedMeta.value = payload;
     } catch {

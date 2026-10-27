@@ -139,13 +139,13 @@ pub async fn exec_plain_cancellable(
     set_env: &[(String, String)],
     cancel: &mut watch::Receiver<bool>,
 ) -> Result<ExecOutcome, String> {
-    // Dial: no exec issued yet, so a plain error return leaks nothing.
-    let mut channel = tokio::select! {
-        biased;
-        _ = wait_cancelled(cancel) => return Err(EXEC_CANCELLED_MESSAGE.to_string()),
-        opened = open_session_channel(handle) =>
-            opened.map_err(|error| format!("Failed to open exec channel: {error}"))?,
-    };
+    // The dial is deliberately uncancellable: dropping a channel-open future
+    // after sshd allocated the channel leaks that session (it is never closed)
+    // and burns one `MaxSessions` slot for the connection. Cancellation is
+    // honoured immediately after the open, through the abort path below.
+    let mut channel = open_session_channel(handle)
+        .await
+        .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     // env/exec start: the command may have been accepted by the time the
     // cancel lands, so this arm closes the channel before returning.
     tokio::select! {

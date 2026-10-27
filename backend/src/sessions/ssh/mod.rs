@@ -109,13 +109,19 @@ use crate::filesystem::sftp::name::NameEncoding;
 
 /// True when a channel-open refusal is the server's transient concurrency
 /// guard rather than a policy denial. OpenSSH reports `MaxSessions` exhaustion
-/// as `AdministrativelyProhibited`; rapid container/tab switching can hit it
-/// while the previous channels are still winding down.
+/// as `AdministrativelyProhibited` on most builds, but some versions map the
+/// same "no more sessions" path to `ConnectFailed` (the server could not start
+/// another session); rapid container/tab switching can hit either while the
+/// previous channels are still winding down. A bounded retry is harmless for
+/// both, while real policy denials (unknown channel type, disconnect) still
+/// fail immediately.
 pub(crate) fn is_transient_channel_open_failure(error: &russh::Error) -> bool {
     matches!(
         error,
         russh::Error::ChannelOpenFailure(
-            ChannelOpenFailure::AdministrativelyProhibited | ChannelOpenFailure::ResourceShortage
+            ChannelOpenFailure::AdministrativelyProhibited
+                | ChannelOpenFailure::ResourceShortage
+                | ChannelOpenFailure::ConnectFailed
         )
     )
 }
@@ -127,18 +133,24 @@ pub(crate) async fn open_session_channel(
     handle: &Handle<SshClient>,
 ) -> Result<russh::Channel<client::Msg>, russh::Error> {
     // A transient refusal means the server is still counting sessions that
-    // our previous panes closed; give those closes up to ~2.6s to land.
-    const DELAYS_MS: [u64; 4] = [100, 300, 700, 1_500];
+    // our previous panes closed; give those closes up to ~6s to land. The
+    // shared counter de-synchronises retry loops from concurrent panes, so
+    // they do not keep colliding on the same free slot.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static RETRY_TICK: AtomicU64 = AtomicU64::new(0);
+    const DELAYS_MS: [u64; 6] = [100, 250, 500, 1_000, 1_500, 2_500];
     for (attempt, delay_ms) in DELAYS_MS.iter().enumerate() {
         match handle.channel_open_session().await {
             Ok(channel) => return Ok(channel),
             Err(error) if is_transient_channel_open_failure(&error) => {
                 let attempt = attempt + 1;
+                let jitter_ms = RETRY_TICK.fetch_add(23, Ordering::Relaxed) % 71;
+                let wait_ms = delay_ms + jitter_ms;
                 eprintln!(
-                    "[dbx-plugin-sshx] SSH channel open refused ({error}); retry {attempt}/{} in {delay_ms}ms",
+                    "[dbx-plugin-sshx] SSH channel open refused ({error}); retry {attempt}/{} in {wait_ms}ms",
                     DELAYS_MS.len()
                 );
-                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+                tokio::time::sleep(Duration::from_millis(wait_ms)).await;
             }
             Err(error) => return Err(error),
         }

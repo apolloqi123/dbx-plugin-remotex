@@ -38,9 +38,9 @@
 .editor-divider::after { content: ""; position: absolute; top: -3px; bottom: -3px; left: 0; right: 0; }
 .editor-divider:hover, .editor-divider:focus-visible { background: color-mix(in srgb, var(--primary) 55%, var(--border)); }
 /* 容器管理底部分屏（容器页 + 把手）：容器页高度走内联 flex-basis（100 - 终端占比，
-   默认 33%），把手视觉线只占卡片间 1px 间距，命中区向上下各扩 4px。 */
+   默认 33%），把手视觉线只占卡片间 2px 间距，命中区向上下各扩 4px。 */
 .docker-pane-surface { flex: 0 0 auto; min-height: 120px; overflow: hidden; }
-.docker-divider { position: relative; z-index: 4; height: 1px; flex: 0 0 1px; background: var(--border); cursor: row-resize; touch-action: none; }
+.docker-divider { position: relative; z-index: 4; height: 2px; flex: 0 0 2px; cursor: row-resize; touch-action: none; }
 .docker-divider::after { content: ""; position: absolute; inset: -4px 0; }
 .docker-divider:hover, .docker-divider:focus-visible { background: color-mix(in srgb, var(--primary) 55%, var(--border)); }
 .terminal-pane.drag-active { background: color-mix(in srgb, var(--primary) 5%, var(--ssh-terminal-background)); }
@@ -257,8 +257,8 @@
   .connect-card-fill { transition: none; }
   .connect-card-endpoint-target svg { animation: none; }
 }
-.divider { position: relative; z-index: 4; width: 1px; flex: 0 0 1px; background: var(--border); cursor: col-resize; }
-/* 命中区加宽到 7px：1px 视觉线几乎抓不到（SFTP 分栏与 Docker 面板拖宽共用）。 */
+.divider { position: relative; z-index: 4; width: 2px; flex: 0 0 2px; background: var(--border); cursor: col-resize; }
+/* 命中区加宽到 8px：2px 视觉线仍不易抓取（SFTP 分栏与 Docker 面板拖宽共用）。 */
 .divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; }
 .divider:hover { background: color-mix(in srgb, var(--foreground) 38%, var(--border)); }
 .sftp-pane { position: relative; z-index: 0; flex: 1; overflow: hidden; }

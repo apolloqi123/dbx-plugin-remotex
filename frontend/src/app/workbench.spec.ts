@@ -202,11 +202,10 @@ describe("SSH workbench protocol helpers", () => {
   });
 
   it("parses the persisted directory-follow preference defensively", () => {
-    // Global default is OFF: only the explicit opt-in starts new workbenches
-    // with directory following enabled.
-    expect(sanitizeDirectoryFollowPref(null)).toBe(false);
+    // Global default is ON (2026-10-27): only an explicit opt-out disables it.
+    expect(sanitizeDirectoryFollowPref(null)).toBe(true);
     expect(sanitizeDirectoryFollowPref("true")).toBe(true);
-    expect(sanitizeDirectoryFollowPref("garbage")).toBe(false);
+    expect(sanitizeDirectoryFollowPref("garbage")).toBe(true);
     expect(sanitizeDirectoryFollowPref("false")).toBe(false);
   });
 

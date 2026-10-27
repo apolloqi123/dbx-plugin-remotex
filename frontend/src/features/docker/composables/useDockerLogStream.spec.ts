@@ -10,6 +10,7 @@ import {
   saveDockerEngineSettings,
 } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
+import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
 
 type Call = { method: string; params: Record<string, unknown> };
 
@@ -41,6 +42,7 @@ function createStream(options: Parameters<typeof useDockerLogStream>[0] = {}) {
 }
 
 afterEach(() => {
+  resetDockerChannelQueues();
   clearPendingDockerLogEvents();
   pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
   vi.unstubAllGlobals();
@@ -63,7 +65,10 @@ describe("useDockerLogStream", () => {
     expect(stream.lines.value).toEqual(["hello", "wor"]);
 
     scope.stop();
-    expect(calls.at(-1)).toEqual({ method: "docker/logs/stop", params: { streamId: "stream-1" } });
+    // 连接级队列把 stop 排到微任务，等它真正出队后再断言。
+    await vi.waitFor(() =>
+      expect(calls.at(-1)).toEqual({ method: "docker/logs/stop", params: { streamId: "stream-1" } }),
+    );
   });
 
   it("targets the local daemon when no session is bound", async () => {
@@ -262,6 +267,7 @@ describe("useDockerLogStream", () => {
     const pending = stream.start("abc123def456");
     await nextTick();
     expect(stream.status.value).toBe("starting");
+    await vi.waitFor(() => expect(resolveStart).toBeTypeOf("function"));
 
     // start 尚未返回：事件没有处理器，必须先进缓冲而不是被丢弃。
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-fast", text: "fatal: no such container\n" });
@@ -299,7 +305,9 @@ describe("useDockerLogStream", () => {
     const { stream, scope } = createStream({ sessionId: () => "sess-1" });
 
     const slowA = stream.start("aaa111aaa111");
-    await nextTick();
+    await vi.waitFor(() =>
+      expect(calls.filter((call) => call.method === "docker/logs/start")).toHaveLength(1),
+    );
     const fastB = stream.start("bbb222bbb222");
     await nextTick();
 

@@ -8,6 +8,7 @@
 // 由 UI 层决定，这里只持有状态并在重置时回调 onFollowChange。
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { rpc } from "../../../shared/lib/rpc";
+import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
 import { LogBuffer } from "../lib/dockerLogBuffer";
 import { clearPendingDockerLogEvents, registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
 import { LOGS_TIMEOUT_MS } from "../lib/dockerPanelModel";
@@ -100,7 +101,9 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     // 这条流已不再被本实例接管：丢掉可能还在缓冲的早到事件，避免复用 id 回放。
     clearPendingDockerLogEvents(streamId);
     try {
-      await rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS });
+      await runDockerChannel(dockerChannelKey(readSessionId()), () =>
+        rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS }),
+      );
     } catch {
       // 收流尽力而为。
     }
@@ -176,9 +179,13 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
 
     let streamId = "";
     try {
-      const response = await rpc<{ streamId?: unknown }>("docker/logs/start", startPayload(next), {
-        timeoutMs: LOGS_TIMEOUT_MS,
-      });
+      // 与 stop/list/files/terminal 共用同一连接队列：切换容器时不让多个
+      // channel 同时开，避免瞬时超过服务器 MaxSessions。
+      const response = await runDockerChannel(dockerChannelKey(readSessionId()), () =>
+        rpc<{ streamId?: unknown }>("docker/logs/start", startPayload(next), {
+          timeoutMs: LOGS_TIMEOUT_MS,
+        }),
+      );
       streamId = typeof response?.streamId === "string" ? response.streamId : "";
     } catch (cause) {
       if (token !== generation) return;

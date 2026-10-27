@@ -46,7 +46,7 @@
 .workbench > .toolbar {
   height: 40px;
   min-height: 40px;
-  margin: 1px 1px 0;
+  margin: 2px 2px 0;
   border: 1px solid var(--card-border);
   border-bottom: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
@@ -58,15 +58,15 @@
 .workbench.panel-surface > .toolbar {
   height: 32px;
   min-height: 32px;
-  margin: 1px 1px 0;
+  margin: 2px 2px 0;
   border-color: transparent;
   background: color-mix(in srgb, var(--card-surface) 42%, transparent);
   box-shadow: none;
 }
-/* 卡片之间只留 1px 缝隙：间隙由分屏线本身承担，不再叠加 gap。 */
+/* 卡片之间只留 2px 缝隙：间隙由分屏线本身承担，不再叠加 gap。 */
 .workbench > .panes {
   gap: 0;
-  padding: 1px;
+  padding: 2px;
   margin-top: 0;
 }
 .workbench .divider {
@@ -138,8 +138,8 @@
   overflow: hidden;
 }
 .docker-divider {
-  height: 1px;
-  flex-basis: 1px;
+  height: 2px;
+  flex-basis: 2px;
   margin: 0;
 }
 .docker-divider::after {
@@ -424,8 +424,8 @@
   flex: 0 0 24px;
   border-radius: var(--radius-xs);
 }
-.workbench .docker-pane-surface .container-manager-body { gap: 0; padding: 1px; }
-.workbench .docker-pane-surface .container-manager-divider { flex: 0 0 1px; margin: 0; }
+.workbench .docker-pane-surface .container-manager-body { gap: 0; padding: 2px; }
+.workbench .docker-pane-surface .container-manager-divider { flex: 0 0 2px; margin: 0; }
 .workbench .docker-pane-surface .container-manager-divider::after {
   inset: -4px 0;
   border-radius: 0;
@@ -484,7 +484,7 @@
 .workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="files"] { border-color: color-mix(in srgb, var(--tone-amber) 45%, var(--card-border)); }
 .workbench .docker-pane-surface .container-detail-tab[aria-selected="true"][data-tab="terminal"] { border-color: color-mix(in srgb, var(--tone-emerald) 45%, var(--card-border)); }
 
-.workbench .docker-pane-surface .container-list-pane { gap: 1px; padding: 0; }
+.workbench .docker-pane-surface .container-list-pane { gap: 2px; padding: 0; }
 .workbench .docker-pane-surface .container-list-head {
   gap: var(--space-xs);
   border: 1px solid var(--card-border);
@@ -503,7 +503,7 @@
   line-height: 18px;
 }
 .workbench .docker-pane-surface .container-rows {
-  gap: 1px;
+  gap: 2px;
   padding: 0;
   border-top: 0;
 }

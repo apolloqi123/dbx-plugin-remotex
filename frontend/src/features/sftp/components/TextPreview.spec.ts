@@ -19,17 +19,25 @@ const cm = vi.hoisted(() => {
     parent: HTMLElement;
     state: { doc: string; extensions: FakeExtension[] };
   }
+  interface FakeChange {
+    from: number;
+    to: number;
+    insert: string;
+  }
   interface FakeView {
     parent: HTMLElement;
     readonly doc: string;
     // 组件经 view.state.doc 读取文档（播种与 text 推送），需镜像该形状。
-    readonly state: { doc: { toString(): string; readonly length: number } };
+    readonly state: {
+      doc: { toString(): string; readonly length: number };
+      selection: { main: { from: number; to: number; head: number; anchor: number } };
+    };
     extensions: FakeExtension[];
     editableValue: boolean;
     readOnlyValue: boolean;
     dispatchCount: number;
     destroyed: boolean;
-    dispatch(tr: { changes: { from: number; to: number; insert: string } }): void;
+    dispatch(tr: { changes?: FakeChange | FakeChange[]; selection?: { anchor: number; head: number }; scrollIntoView?: boolean }): void;
     destroy(): void;
   }
 
@@ -40,6 +48,7 @@ const cm = vi.hoisted(() => {
       .filter((ext) => ext.kind === "updateListener" && typeof ext.listener === "function")
       .map((ext) => ext.listener as (update: { docChanged: boolean; state: { doc: { toString(): string } } }) => void);
     const docRef = { value: config.state.doc };
+    const sel = { anchor: 0, head: 0 };
     // 组件的 updateListener 回调读取 update.state.doc（变更后的文档状态）。
     const notifyChange = () => {
       for (const listener of updateListeners) {
@@ -52,7 +61,17 @@ const cm = vi.hoisted(() => {
         return docRef.value;
       },
       get state() {
-        return { doc: { toString: () => docRef.value, length: docRef.value.length } };
+        return {
+          doc: { toString: () => docRef.value, length: docRef.value.length },
+          selection: {
+            main: {
+              anchor: sel.anchor,
+              head: sel.head,
+              from: Math.min(sel.anchor, sel.head),
+              to: Math.max(sel.anchor, sel.head),
+            },
+          },
+        };
       },
       extensions: config.state.extensions,
       editableValue: config.state.extensions.some((ext) => ext.kind === "editable" && ext.value === true),
@@ -60,9 +79,18 @@ const cm = vi.hoisted(() => {
       dispatchCount: 0,
       destroyed: false,
       dispatch(tr) {
-        docRef.value = docRef.value.slice(0, tr.changes.from) + tr.changes.insert + docRef.value.slice(tr.changes.to);
-        view.dispatchCount += 1;
-        notifyChange();
+        if (tr.changes) {
+          const changes = Array.isArray(tr.changes) ? [...tr.changes].sort((a, b) => b.from - a.from) : [tr.changes];
+          for (const change of changes) {
+            docRef.value = docRef.value.slice(0, change.from) + change.insert + docRef.value.slice(change.to);
+          }
+          view.dispatchCount += 1;
+          notifyChange();
+        }
+        if (tr.selection) {
+          sel.anchor = tr.selection.anchor;
+          sel.head = tr.selection.head;
+        }
       },
       destroy() {
         view.destroyed = true;
@@ -172,7 +200,7 @@ describe("TextPreview", () => {
     expect(wrapper.find(".preview-editor").exists()).toBe(true);
     expect(cm.views).toHaveLength(1);
     expect(cm.views[0].doc).toBe("const a = 1;");
-    expect(cm.views[0].parent).toBe(wrapper.find(".preview-editor").element);
+    expect(cm.views[0].parent).toBe(wrapper.find(".preview-editor-cm").element);
   });
 
   it("is read-only by default and becomes editable only with editable=true", async () => {
@@ -273,4 +301,55 @@ describe("TextPreview", () => {
     wrapper.unmount();
     expect(cm.views[0].destroyed).toBe(true);
   });
+
+describe("TextPreview find widget", () => {
+  async function openWithKey(combo: { key: string; ctrlKey?: boolean; metaKey?: boolean }) {
+    const wrapper = await mountPreview({ text: "hello world hello", editable: true });
+    await wrapper.trigger("keydown", combo);
+    await flushPromises();
+    return wrapper;
+  }
+
+  it("opens at the editor with Mod-F and shows the match count", async () => {
+    const wrapper = await openWithKey({ key: "f", ctrlKey: true });
+    const input = wrapper.get(".editor-find .editor-find-input");
+    expect((input.element as HTMLInputElement).value).toBe("");
+    await input.setValue("hello");
+    await vi.waitFor(() => expect(wrapper.get(".editor-find-count").text()).toBe("1/2"));
+  });
+
+  it("cycles through matches with Enter and Shift-Enter", async () => {
+    const wrapper = await openWithKey({ key: "f", ctrlKey: true });
+    const input = wrapper.get(".editor-find .editor-find-input");
+    await input.setValue("hello");
+    await vi.waitFor(() => expect(wrapper.get(".editor-find-count").text()).toBe("1/2"));
+
+    await input.trigger("keydown", { key: "Enter" });
+    expect(cm.views[0].state.selection.main).toMatchObject({ from: 0, to: 5 });
+    await input.trigger("keydown", { key: "Enter" });
+    expect(cm.views[0].state.selection.main).toMatchObject({ from: 12, to: 17 });
+    await input.trigger("keydown", { key: "Enter", shiftKey: true });
+    expect(cm.views[0].state.selection.main).toMatchObject({ from: 0, to: 5 });
+  });
+
+  it("closes on Escape", async () => {
+    const wrapper = await openWithKey({ key: "f", ctrlKey: true });
+    await wrapper.get(".editor-find").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find(".editor-find").exists()).toBe(false);
+  });
+
+  it("replaces all matches from the Mod-H panel", async () => {
+    const wrapper = await openWithKey({ key: "h", ctrlKey: true });
+    const inputs = wrapper.findAll(".editor-find .editor-find-input");
+    await inputs[0].setValue("hello");
+    await vi.waitFor(() => expect(wrapper.get(".editor-find-count").text()).toBe("1/2"));
+    await inputs[1].setValue("hi");
+
+    const buttons = wrapper.findAll(".editor-find-action");
+    await buttons[1].trigger("click");
+    await flushPromises();
+    expect(cm.views[0].doc).toBe("hi world hi");
+  });
+});
 });

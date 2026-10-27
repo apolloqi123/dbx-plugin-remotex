@@ -137,6 +137,7 @@ function onTextChange(text: string) {
         :file-name="activeTab.name"
         :appearance="appearance"
         :editable="activeTab.editable"
+        :t="t"
         @change="onTextChange"
       />
     </div>
