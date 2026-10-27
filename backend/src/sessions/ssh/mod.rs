@@ -18,6 +18,7 @@ pub(crate) mod algorithms;
 mod auth;
 #[cfg(test)]
 mod channel_error_tests;
+mod channel_ledger;
 mod container_terminal;
 #[cfg(test)]
 mod container_terminal_tests;
@@ -161,8 +162,28 @@ fn channel_dial_gate(handle: &Handle<SshClient>) -> Arc<tokio::sync::Semaphore> 
 /// concurrent callers queue instead of all colliding on the same free
 /// `MaxSessions` slot, and the permit is released as soon as the channel is
 /// open — it does not cover the channel's lifetime.
-pub(crate) async fn open_session_channel(
+/// Opens a session channel and records it in the channel ledger under `label`
+/// so a field report can show which operations hold the server's
+/// `MaxSessions` budget when it starts refusing.
+pub(crate) async fn open_session_channel_labeled(
     handle: &Handle<SshClient>,
+    label: &str,
+) -> Result<russh::Channel<client::Msg>, russh::Error> {
+    dial_session_channel(handle, Some(label)).await
+}
+
+/// Dial without adding the channel to the ledger (short-lived raw-SFTP
+/// helper channels that are dropped by their owner, so they cannot be
+/// paired with a close event).
+pub(crate) async fn open_session_channel_untracked(
+    handle: &Handle<SshClient>,
+) -> Result<russh::Channel<client::Msg>, russh::Error> {
+    dial_session_channel(handle, None).await
+}
+
+async fn dial_session_channel(
+    handle: &Handle<SshClient>,
+    label: Option<&str>,
 ) -> Result<russh::Channel<client::Msg>, russh::Error> {
     let gate = channel_dial_gate(handle);
     // The semaphore is never closed, so acquire cannot fail.
@@ -176,7 +197,12 @@ pub(crate) async fn open_session_channel(
     const DELAYS_MS: [u64; 6] = [100, 250, 500, 1_000, 1_500, 2_500];
     for (attempt, delay_ms) in DELAYS_MS.iter().enumerate() {
         match handle.channel_open_session().await {
-            Ok(channel) => return Ok(channel),
+            Ok(channel) => {
+                if let Some(label) = label {
+                    channel_ledger::opened(label, channel.id().number());
+                }
+                return Ok(channel);
+            }
             Err(error) if is_transient_channel_open_failure(&error) => {
                 let attempt = attempt + 1;
                 let jitter_ms = RETRY_TICK.fetch_add(23, Ordering::Relaxed) % 71;
@@ -185,12 +211,19 @@ pub(crate) async fn open_session_channel(
                     "[dbx-plugin-sshx] SSH channel open refused ({error}); retry {attempt}/{} in {wait_ms}ms",
                     DELAYS_MS.len()
                 );
+                if let Some(label) = label {
+                    channel_ledger::refused(label, &error.to_string());
+                }
                 tokio::time::sleep(Duration::from_millis(wait_ms)).await;
             }
             Err(error) => return Err(error),
         }
     }
-    handle.channel_open_session().await
+    let result = handle.channel_open_session().await;
+    if let (Ok(channel), Some(label)) = (result.as_ref(), label) {
+        channel_ledger::opened(label, channel.id().number());
+    }
+    result
 }
 
 mod dial;

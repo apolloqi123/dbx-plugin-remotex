@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::sessions::ssh::exec::shell_quote as shell_single_quote;
-use crate::sessions::ssh::open_session_channel;
+use crate::sessions::ssh::open_session_channel_labeled;
 
 pub(super) async fn wait_cancelled(cancel: &mut watch::Receiver<bool>) {
     loop {
@@ -55,7 +55,7 @@ pub(super) async fn run_streaming(
     // Uncancellable dial: a dropped in-flight open leaks the session the
     // server already allocated. Cancel is handled by the exec select below,
     // which closes the channel and reports Cancelled.
-    let mut channel = open_session_channel(handle)
+    let mut channel = open_session_channel_labeled(handle, "automation/stream")
         .await
         .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     if pty {
@@ -323,7 +323,7 @@ pub(super) async fn ssh_upload_script(
                 ))
             }
         })?;
-    let channel = open_session_channel(handle)
+    let channel = open_session_channel_labeled(handle, "automation/sftp")
         .await
         .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
     if let Err(error) = channel.request_subsystem(true, "sftp").await {

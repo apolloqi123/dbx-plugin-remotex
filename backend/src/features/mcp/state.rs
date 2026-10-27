@@ -14,7 +14,7 @@ impl McpConnection {
         if let Some(sftp) = self.sftp.as_ref() {
             return Ok(sftp.clone());
         }
-        let channel = crate::sessions::ssh::open_session_channel(&self.handle)
+        let channel = crate::sessions::ssh::open_session_channel_untracked(&self.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
         if let Err(error) = channel.request_subsystem(true, "sftp").await {
@@ -38,7 +38,7 @@ impl McpConnection {
 /// 响应）。独立函数化：MCP 工具在释放 connections 写锁之后仍要按需新建
 /// 裸包客户端（latin-1 车道），不能依赖 &mut McpConnection。
 pub(crate) async fn open_raw_sftp(handle: &Handle<SshClient>) -> Result<RawSftpClient, String> {
-    let channel = crate::sessions::ssh::open_session_channel(handle)
+    let channel = crate::sessions::ssh::open_session_channel_untracked(handle)
         .await
         .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
     if let Err(error) = channel.request_subsystem(true, "sftp").await {

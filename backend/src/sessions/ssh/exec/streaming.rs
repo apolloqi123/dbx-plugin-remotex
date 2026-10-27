@@ -22,7 +22,7 @@ pub(super) async fn exec_with_sudo_inner(
         let command_line = format!("sudo -n {}", sanitize_sudo_command(command));
         // Uncancellable dial: a dropped in-flight open leaks the channel the
         // server already allocated. Cancel is handled right after, via abort.
-        let mut channel = open_session_channel(handle)
+        let mut channel = open_session_channel_labeled(handle, "sudo/stream")
             .await
             .map_err(|error| format!("Failed to open sudo channel: {error}"))?;
         tokio::select! {
@@ -60,7 +60,7 @@ pub(super) async fn exec_with_sudo_inner(
     let command_line = format!("sudo -S -p '' {}", sanitize_sudo_command(command));
     // Uncancellable dial (see the passwordless branch above): cancel lands at
     // the env/exec select and closes the channel through the abort path.
-    let mut channel = open_session_channel(handle)
+    let mut channel = open_session_channel_labeled(handle, "sudo/stream")
         .await
         .map_err(|error| format!("Failed to open sudo channel: {error}"))?;
     if use_pty {
@@ -157,7 +157,7 @@ pub async fn exec_plain_stream(
     // Uncancellable dial: dropping a channel-open future after sshd allocated
     // the channel leaks that session against `MaxSessions`. Cancellation is
     // honoured by the env/exec select below, which closes the channel.
-    let mut channel = open_session_channel(handle)
+    let mut channel = open_session_channel_labeled(handle, "exec/stream")
         .await
         .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     // env/exec start: the command may have been accepted by the time the

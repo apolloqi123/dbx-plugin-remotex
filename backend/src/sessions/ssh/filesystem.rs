@@ -16,10 +16,10 @@ impl SshRuntime {
         // share one authenticated connection, and one subsystem channel per
         // pane was enough to exhaust a server's `MaxSessions` budget.
         let mut current = session.transport_lease.sftp.lock().await;
-        if let Some(sftp) = current.as_ref() {
+        if let Some((_, sftp)) = current.as_ref() {
             return Ok(sftp.clone());
         }
-        let mut channel = open_session_channel(&session.handle)
+        let mut channel = open_session_channel_labeled(&session.handle, "sftp")
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
         if let Err(error) = channel.request_subsystem(true, "sftp").await {
@@ -29,13 +29,14 @@ impl SshRuntime {
             return Err(format!("Failed to start SFTP: {error}"));
         }
         let compat = crate::core::preferences::sftp_compat_mode(&self.data_dir);
+        let channel_id = channel.id().number();
         let sftp = Arc::new(AsyncMutex::new(
             SftpSession::new_with_config(channel.into_stream(), sftp_client_config(compat))
                 .await
                 .map_err(sftp_error)?,
         ));
-        *current = Some(sftp.clone());
-        Ok(sftp.clone())
+        *current = Some((channel_id, sftp.clone()));
+        Ok(sftp)
     }
 
     /// 探测/建立失败的一次性兼容建议（M14-B）：每个会话只提示一次，避免
@@ -553,7 +554,8 @@ impl SshRuntime {
         let stale = session.transport_lease.sftp.lock().await.take();
         // A cached-but-dead channel must be closed, not merely dropped: russh
         // channels only release their server session on CHANNEL_CLOSE.
-        if let Some(stale) = stale {
+        if let Some((channel_id, stale)) = stale {
+            channel_ledger::closed(channel_id);
             if let Ok(mutex) = Arc::try_unwrap(stale) {
                 let _ = mutex.into_inner().close().await;
             }
@@ -563,7 +565,7 @@ impl SshRuntime {
     /// 打开一条独立 sftp 子系统通道并跑裸包客户端（严格串行请求/响应）。
     pub(crate) async fn raw_sftp_client(&self, session_id: &str) -> Result<RawSftpClient, String> {
         let session = self.session(session_id).await?;
-        let mut channel = open_session_channel(&session.handle)
+        let mut channel = open_session_channel_untracked(&session.handle)
             .await
             .map_err(|error| format!("Failed to open SFTP channel: {error}"))?;
         if let Err(error) = channel.request_subsystem(true, "sftp").await {

@@ -14,6 +14,10 @@ Telnet/VNC/Serial/RDP 的 saved connection 生命周期也走同一入口，但�
 
 **`MaxSessions` 拒绝的错误形态**：服务端以 `AdministrativelyProhibited`/`ResourceShortage`/`ConnectFailed` 拒绝时属于**瞬时并发**（其它会话仍持有名额），`open_session_channel` 会做约 6 秒带抖动的有界重试；仍失败时返回 `The SSH server's session limit (MaxSessions) was reached; close another terminal or pane and retry: …`，前端不把它当作「连接不可复用」的永久错误（会按退避重试），transport 保持可用。只有真正的传输失效才返回 `The authenticated SSH connection can no longer be reused; use New session to reconnect`。
 
+**远端回收（HUP/TERM/KILL）**：容器终端里的交互式 `bash` 默认忽略 `SIGTERM`；只发 TERM 时远端 `docker exec` / `docker logs` client 可能继续运行，而部分 sshd 会把它占用的通道一直计入 `MaxSessions` 直到子进程退出——表现为每切换一次容器终端就永久少一个并发名额。所有取消/关闭路径（exec、日志流、容器 PTY、sudo 流、自动化）现在按 `HUP → TERM → KILL → EOF → CLOSE` 顺序发送，先让交互式 shell 退出，再 KILL 兜底包装脚本。`docker logs -f` 等非 PTY 命令同样适用。
+
+**通道账本（现场诊断）**：sidecar 在数据目录写 `channel-debug.log`（超过 256 KiB 自动清空重写）。每次 channel 打开记录 `OPEN id=<n> label=<操作>`，关闭记录 `CLOSE id=<n>`；收到瞬时拒绝时写 `REFUSED label=… error=… live=N [id:label:年龄 …]`。SFTP（每 transport 一条）、主终端 PTY（每窗格一条）、容器终端、日志流分别带 `sftp` / `ssh/pty` / `docker/terminal` / `exec/stream` 标签。若 `REFUSED` 时 `live` 很小（只剩 PTY+SFTP），说明服务端仍在计数客户端已关闭的通道（远端子进程未退出或 sshd 行为），而不是插件自己漏关。
+
 显式传入 `reuseAuthenticatedSessionId` 时严格 fail closed：指定来源不存在、已关闭或连接不匹配都会返回 `No live authenticated SSH connection`。前端收到该错误后只降级一次，以普通“新建会话”语义重新登录，允许堡垒机再次要求 MFA；该错误同时属于永久重试错误，不进入对同一失效 sessionId 的退避重试。只传 `reuseAuthenticatedTransport: true` 的旧调用方保留兼容行为：后端会从同一连接中确定性选取最早创建的存活会话，因此 transport 来源不保证对应调用方当前显示的窗口。
 
 复制会话继承来源会话在连接时解析出的内存态 sudo 编排快照（`SudoAuth`），包括 `password_command` 当时的解析结果；复制时不会再次运行 `password_command`。会话建立后的设置同步仍按各会话现有更新机制独立生效。

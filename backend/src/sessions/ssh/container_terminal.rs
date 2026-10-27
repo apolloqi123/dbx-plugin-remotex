@@ -106,15 +106,22 @@ impl PtyChannel for ChannelPty {
     }
 
     async fn close(&mut self) -> Result<(), String> {
-        // Signal before closing, like `abort_exec_channel`: a `docker exec -it`
-        // client that ignores the PTY hangup would otherwise keep its sshd
-        // session allocated against `MaxSessions`.
+        // Signal before closing, like `abort_exec_channel`. The interactive
+        // shell inside the container ignores SIGTERM (bash job-control
+        // default), so HUP + KILL are what actually reaps the `docker exec`
+        // client; otherwise an old sshd keeps the session counted against
+        // `MaxSessions` and every container switch leaks one slot.
+        let _ = self.channel.signal(russh::Sig::HUP).await;
         let _ = self.channel.signal(russh::Sig::TERM).await;
+        let _ = self.channel.signal(russh::Sig::KILL).await;
         let _ = self.channel.eof().await;
-        self.channel
+        let result = self
+            .channel
             .close()
             .await
-            .map_err(|error| format!("Failed to close the container terminal: {error}"))
+            .map_err(|error| format!("Failed to close the container terminal: {error}"));
+        channel_ledger::closed(self.channel.id().number());
+        result
     }
 
     async fn next(&mut self) -> Option<PtyMessage> {
@@ -156,7 +163,7 @@ impl SshRuntime {
         rows: u32,
     ) -> Result<TerminalChannel, String> {
         let entry = self.session(session_id).await?;
-        let mut channel = open_session_channel(&entry.handle)
+        let mut channel = open_session_channel_labeled(&entry.handle, "docker/terminal")
             .await
             .map_err(|error| format!("Failed to open the container terminal channel: {error}"))?;
         if let Err(error) = channel
@@ -192,7 +199,7 @@ impl SshRuntime {
         // No timeout wrapper here: cancelling the future mid-dial would drop a
         // channel the server already allocated and leak that session against
         // `MaxSessions`. The dial itself is bounded by the shared retry budget
-        // in `open_session_channel`, and cancellation is honoured right after
+        // in `open_session_channel_labeled`, and cancellation is honoured right after
         // the channel is open (the driver below closes it).
         let channel = self
             .open_container_channel(session_id, command, cols, rows)

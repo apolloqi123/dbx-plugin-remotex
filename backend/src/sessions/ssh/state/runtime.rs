@@ -54,7 +54,7 @@ pub(crate) struct SharedTransportLease {
     /// could exhaust OpenSSH's default `MaxSessions 10` before the Docker panel
     /// opened anything. The inner mutex serializes requests, exactly like the
     /// single-channel SFTP protocol requires.
-    pub(crate) sftp: AsyncMutex<Option<Arc<AsyncMutex<SftpSession>>>>,
+    pub(crate) sftp: AsyncMutex<Option<(u32, Arc<AsyncMutex<SftpSession>>)>>,
     /// Serializes interactive-shell probing so concurrent pane opens cannot
     /// each burn a probe channel for the same connection.
     pub(crate) shell_probe: AsyncMutex<()>,

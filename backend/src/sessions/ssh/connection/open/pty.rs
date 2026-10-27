@@ -26,7 +26,7 @@ impl SshRuntime {
     ) -> Result<(RemoteShell, bool, TerminalChannel), String> {
         let remote_shell = RemoteShell::Unknown;
         let directory_tracking_supported = true;
-        let mut channel = open_session_channel(handle)
+        let mut channel = open_session_channel_labeled(handle, "ssh/pty")
             .await
             .map_err(|error| channel_open_error(reused_transport, &error))?;
         // From here on the channel is open on the server: every failure must

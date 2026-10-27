@@ -8,6 +8,7 @@ impl SshRuntime {
         let known_hosts_path = data_dir.join("known_hosts");
         let _ = std::fs::create_dir_all(&transfer_dir);
         sweep_stale_transfer_temps(&transfer_dir);
+        channel_ledger::init(&data_dir);
         Self {
             connections: RwLock::new(HashMap::new()),
             local_targets: RwLock::new(HashMap::new()),

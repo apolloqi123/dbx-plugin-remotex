@@ -143,7 +143,7 @@ pub async fn exec_plain_cancellable(
     // after sshd allocated the channel leaks that session (it is never closed)
     // and burns one `MaxSessions` slot for the connection. Cancellation is
     // honoured immediately after the open, through the abort path below.
-    let mut channel = open_session_channel(handle)
+    let mut channel = open_session_channel_labeled(handle, "exec")
         .await
         .map_err(|error| format!("Failed to open exec channel: {error}"))?;
     // env/exec start: the command may have been accepted by the time the
@@ -232,6 +232,7 @@ pub async fn exec_with_sudo_cancellable(
 pub(crate) async fn close_setup_channel(channel: &mut russh::Channel<russh::client::Msg>) {
     let _ = channel.eof().await;
     let _ = channel.close().await;
+    channel_ledger::closed(channel.id().number());
 }
 
 /// Aborts an exec channel after a failed/aborted remote run. Dropping a
@@ -250,9 +251,16 @@ pub(super) async fn abort_exec_channel(
     channel: &mut russh::Channel<russh::client::Msg>,
     error: String,
 ) -> String {
+    // HUP first: interactive shells (notably bash inside a container behind
+    // `docker exec`) ignore SIGTERM, so TERM alone can leave the remote client
+    // alive and its sshd session/channel allocated. KILL is the backstop for
+    // wrappers that install their own TERM/HUP handlers.
+    let _ = channel.signal(russh::Sig::HUP).await;
     let _ = channel.signal(russh::Sig::TERM).await;
+    let _ = channel.signal(russh::Sig::KILL).await;
     let _ = channel.eof().await;
     let _ = channel.close().await;
+    channel_ledger::closed(channel.id().number());
     error
 }
 
@@ -440,6 +448,8 @@ pub(super) async fn run_to_completion(
         }
     }
 
+    // Normal completion (peer Close / EOF + Close): release the ledger entry.
+    channel_ledger::closed(channel.id().number());
     let mut output = String::from_utf8_lossy(&stdout)
         .trim_end_matches('\n')
         .to_string();
@@ -514,7 +524,7 @@ pub(super) async fn maybe_answer_prompt(
 /// Validates a cached sudo timestamp without prompting; used by the
 /// background keepalive loop.
 pub async fn validate_sudo_timestamp(handle: &Handle<SshClient>) -> Result<(), String> {
-    let mut channel = open_session_channel(handle)
+    let mut channel = open_session_channel_labeled(handle, "sudo/keepalive")
         .await
         .map_err(|error| format!("Failed to open sudo keepalive channel: {error}"))?;
     if let Err(error) = channel.exec(true, b"sudo -nv").await {

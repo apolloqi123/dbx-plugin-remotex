@@ -178,7 +178,12 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         if channel.data(script.as_bytes()).await.is_err() { break; }
                     }
                     Some(TerminalCommand::Close) | None => {
+                        // A terminal tab close must also end the remote shell:
+                        // some sshd builds keep counting the channel until the
+                        // child exits, and an interactive shell ignores TERM.
+                        let _ = channel.signal(russh::Sig::HUP).await;
                         let _ = channel.close().await;
+                        channel_ledger::closed(channel.id().number());
                         break;
                     }
                 },
@@ -186,7 +191,10 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                     let (data, stream) = match message {
                         Some(ChannelMsg::Data { data }) => (data.to_vec(), TerminalStream::Stdout),
                         Some(ChannelMsg::ExtendedData { data, .. }) => (data.to_vec(), TerminalStream::Stderr),
-                        Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                        Some(ChannelMsg::Eof | ChannelMsg::Close) | None => {
+                            channel_ledger::closed(channel.id().number());
+                            break;
+                        }
                         _ => continue,
                     };
                     if stream == TerminalStream::Stdout {
@@ -345,6 +353,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                 }
             }
         }
+        channel_ledger::closed(channel.id().number());
         entry.connected.store(false, Ordering::Release);
         // Auto-stop an active session recording: the file is finalized
         // even when the workbench never sent `ssh/recording/stop`.

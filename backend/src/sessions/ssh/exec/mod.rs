@@ -27,7 +27,7 @@ mod stream_tests;
 #[cfg(test)]
 mod tests;
 
-use crate::sessions::ssh::{open_session_channel, SshClient};
+use crate::sessions::ssh::{channel_ledger, open_session_channel_labeled, SshClient};
 
 pub const SUDO_EXEC_TIMEOUT: Duration = Duration::from_secs(90);
 pub const PLAIN_EXEC_TIMEOUT: Duration = Duration::from_secs(60);
