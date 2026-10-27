@@ -7,6 +7,10 @@ export interface TransferTask {
   sessionId?: string;
   direction: "upload" | "download";
   fileName: string;
+  /** 用户可见名（文件夹整包上传等内部临时文件名的替代）；事件/对账不得覆盖。 */
+  displayName?: string;
+  /** 展示为文件夹而非归档文件（文件夹整包上传的临时 tar）。 */
+  displayFolder?: boolean;
   size: number;
   transferred: number;
   status: "queued" | "running" | "completed" | "cancelled" | "failed";

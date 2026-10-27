@@ -368,8 +368,10 @@ describe("useUploadChain folder archive and root overwrite", () => {
     expect(confirmDialogMock).not.toHaveBeenCalled();
     expect(uploadSource).toHaveBeenCalledTimes(1);
     const call = uploadSource.mock.calls[0]!;
-    expect(call[0]).toMatch(/^\.sshx-upload-[a-z0-9-]+\.tar$/);
+    expect(call[0]).toMatch(/^\.sshx-upload-photos-[a-z0-9-]+\.tar$/);
     expect(call[4]).toBe("/target");
+    // 任务卡展示文件夹名而不是内部临时 tar 名。
+    expect(call[5]).toMatchObject({ displayName: "photos", displayFolder: true });
     expect(invoke).toHaveBeenCalledWith(
       "sftp/extract",
       { sessionId: "s1", archivePath: `/target/${call[0]}`, destinationPath: "/target", overwrite: true, sudo: false },
@@ -397,7 +399,8 @@ describe("useUploadChain folder archive and root overwrite", () => {
     const methods = invoke.mock.calls.map((entry) => entry[0]);
     expect(methods.indexOf("sftp/delete")).toBeLessThan(methods.indexOf("sftp/extract"));
     expect(uploadSource).toHaveBeenCalledTimes(1);
-    expect(uploadSource.mock.calls[0]![0]).toMatch(/^\.sshx-upload-[a-z0-9-]+\.tar$/);
+    expect(uploadSource.mock.calls[0]![0]).toMatch(/^\.sshx-upload-photos-[a-z0-9-]+\.tar$/);
+    expect(uploadSource.mock.calls[0]![5]).toMatchObject({ displayName: "photos", displayFolder: true });
   });
 
   it("declining the root confirmation skips every entry under it and uploads nothing", async () => {

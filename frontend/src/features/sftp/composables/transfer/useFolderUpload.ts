@@ -21,7 +21,7 @@ type UploadSource = (
   readChunk: (offset: number, length: number) => Promise<Uint8Array>,
   resume?: { taskId: string; remotePath: string },
   targetDir?: string,
-  options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string },
+  options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string; displayName?: string; displayFolder?: boolean },
 ) => Promise<boolean>;
 
 /** 文件夹上传（issue #78）：webkitdirectory 选择器 + 纯前端编排，复用既有
@@ -184,20 +184,29 @@ async function uploadFolderFiles(entries: readonly FolderUploadEntry[], baseDir?
     // .tar 的第二次覆盖询问，也保证任何冲突/取消都不会发生在根目录已删除
     // 之后（覆盖确认的破坏性动作只由根目录提示触发）。
     const archiveDisplayName = folderArchiveName(archiveEntries);
+    // 展示名去掉 .tar：用户上传的是文件夹，不是归档文件本身。
+    const archiveFolderName = archiveDisplayName.replace(/\.tar$/i, "") || "folder";
     const uniqueSuffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const archiveName = `.sshx-upload-${uniqueSuffix}.tar`;
+    // 临时名带上（消毒后的）文件夹名：任务卡与落盘历史都能还原可读名称，
+    // 而不是 `.sshx-upload-<随机串>.tar`。
+    const safeStem = archiveFolderName.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "folder";
+    const archiveName = `.sshx-upload-${safeStem}-${uniqueSuffix}.tar`;
     const source = createTarChunkSource(archiveEntries, archiveName);
     if (source) {
       openTransferPanel();
       try {
         const archivePath = joinRemote(base, archiveName);
-        await uploadSource(archiveName, source.size, source.readChunk, undefined, base, { duplicatePreCheckedAbsent: true });
+        await uploadSource(archiveName, source.size, source.readChunk, undefined, base, {
+          duplicatePreCheckedAbsent: true,
+          displayName: archiveFolderName,
+          displayFolder: true,
+        });
         await rpc("sftp/extract", { sessionId, archivePath, destinationPath: base, overwrite: true, sudo: sudoUpload() }, { timeoutMs: 10 * 60 * 1000 });
         // 归档是传输载体：解包成功即清理（sudo 车道 sudo/remove），失败保留
         // 供手工解包。
         await rpc(sudoUpload() ? "sudo/remove" : "sftp/delete", { sessionId, path: archivePath }).catch(() => undefined);
         await refreshUploadedTarget(base);
-        showNotice(t("folderArchive.completed", { count: archiveEntries.length, name: archiveDisplayName }));
+        showNotice(t("folderArchive.completed", { count: archiveEntries.length, name: archiveFolderName }));
       } catch (cause) {
         showError(cause, "sftp");
       }

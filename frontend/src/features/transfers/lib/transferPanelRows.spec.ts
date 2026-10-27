@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTransferRows,
   countTransferFilters,
+  displayTransferFileName,
   filterTransferRows,
   formatTransferStamp,
   type BuildTransferRowsInput,
@@ -32,6 +33,7 @@ function input(overrides: Partial<BuildTransferRowsInput> = {}): BuildTransferRo
     transferPercent: (task) => (task.size > 0 ? (task.transferred / task.size) * 100 : 0),
     transferShownBytes: (task) => task.transferred,
     transferPausable: (status) => status === "running" || status === "queued",
+    folderLabel: "Folder upload",
     ...overrides,
   };
 }
@@ -72,6 +74,47 @@ describe("transfer panel rows", () => {
     expect(rows[4].percent).toBe(25);
     expect(rows[4].canResume).toBe(true);
     expect(rows[4].direction).toBe("upload");
+  });
+
+  it("restores a readable folder name from the internal archive name", () => {
+    expect(displayTransferFileName(".sshx-upload-rancher-images-mvqp06x4-twmbkb.tar", "Folder upload")).toBe("rancher-images");
+    // Legacy names without a stem fall back to the generic label.
+    expect(displayTransferFileName(".sshx-upload-mvqp06x4-twmbkb.tar", "Folder upload")).toBe("Folder upload");
+    expect(displayTransferFileName("report.pdf", "Folder upload")).toBe("report.pdf");
+  });
+
+  it("prefers an explicit display name and folder kind over the internal file name", () => {
+    const rows = buildTransferRows(
+      input({
+        transferList: [
+          liveTask({
+            fileName: ".sshx-upload-photos-a1b2c3-d4e5f6.tar",
+            displayName: "photos",
+            displayFolder: true,
+          }),
+        ],
+      }),
+    );
+    expect(rows[0].fileName).toBe("photos");
+    expect(rows[0].isFolder).toBe(true);
+  });
+
+  it("maps legacy folder archive history entries to the generic folder label", () => {
+    const rows = buildTransferRows(
+      input({
+        history: [
+          {
+            taskId: "archive-1",
+            direction: "upload",
+            fileName: ".sshx-upload-mvqp06x4-twmbkb.tar",
+            size: 100,
+            transferred: 100,
+            status: "completed",
+          },
+        ],
+      }),
+    );
+    expect(rows[0].fileName).toBe("Folder upload");
   });
 
   it("orders running tasks before queued regardless of ledger order", () => {

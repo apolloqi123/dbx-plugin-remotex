@@ -38,7 +38,7 @@ export function useTransferOperations(options: {
   /** 单文件上传入口。返回 boolean 供批次调用方区分成功与放弃：true=已交付
    * sidecar（后台推送中也算），false=重复目标弹窗里放弃跳过（无会话同理）——
    * 抛错仍是失败。成功提示的计数只该包含 true 的那份。 */
-  async function uploadSource(name: string, size: number, readChunk: (offset: number, length: number) => Promise<Uint8Array>, resume?: { taskId: string; remotePath: string }, targetDir?: string, options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string; displayName?: string }): Promise<boolean> {
+  async function uploadSource(name: string, size: number, readChunk: (offset: number, length: number) => Promise<Uint8Array>, resume?: { taskId: string; remotePath: string }, targetDir?: string, options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string; displayName?: string; displayFolder?: boolean }): Promise<boolean> {
     if (!session.value) return false;
     // resume 携带原 taskId/remotePath：后端校验 spool meta 后从已传前缀续接。
     // targetDir 仅新上传生效（终端拖入的自定义目标目录）；缺省仍是 SFTP 当前目录。
@@ -66,7 +66,7 @@ export function useTransferOperations(options: {
     // 后续 progress 事件（恒带 compression）接手维护，回退时以 none 清除。
     // 容器上传的暂存文件名由服务端消毒，展示名保留用户选中的原文件名；
     // 仅影响任务卡文案，远端写入路径仍是 uploadName。
-    transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "upload", fileName: options?.displayName ?? uploadName, size, transferred: startOffset, compression: info.compression === "gzip" ? "gzip" : undefined, status: startOffset > 0 ? "running" : "queued", joinedAt: Date.now(), batchId: options?.batchId };
+    transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "upload", fileName: options?.displayName ?? uploadName, displayName: options?.displayName, displayFolder: options?.displayFolder, size, transferred: startOffset, compression: info.compression === "gzip" ? "gzip" : undefined, status: startOffset > 0 ? "running" : "queued", joinedAt: Date.now(), batchId: options?.batchId };
     try {
       let offset = startOffset;
       while (offset < size) {

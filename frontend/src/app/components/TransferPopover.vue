@@ -85,6 +85,7 @@ const rows = computed(() =>
     transferPercent: props.transferPercent,
     transferShownBytes: props.transferShownBytes,
     transferPausable: props.transferPausable,
+    folderLabel: t("folderUpload.title"),
   }),
 );
 

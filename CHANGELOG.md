@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.54] — 2026-10-27
+
+- **修复文件夹整包上传在传输任务里显示内部临时名，并压缩任务行密度**。文件夹上传的整包车道会把目录打成 `.sshx-upload-<随机串>.tar` 传输，任务卡此前直接显示该内部名。现在上传任务携带 `displayName`/`displayFolder`：任务卡与详情显示真实文件夹名和文件夹图标，进度事件与对账不再覆盖展示名；临时归档名也带上消毒后的文件夹名，落盘历史可还原文件夹名（旧版无名的记录回退为「文件夹上传」标签）。同时任务行整体缩小：28px 文件图标、12px 文件名、15px 徽标、更紧凑的行距与 22px 行内按钮，一屏可见更多任务。
+  **Fixed folder uploads showing the internal temporary archive name, and tightened the task rows.** The folder-archive lane streams a directory as `.sshx-upload-<random>.tar`, and the task row used to show that internal name. Uploads now carry `displayName`/`displayFolder` so the row and details show the real folder name with a folder icon, and progress/reconcile events no longer overwrite it; the temporary archive name also embeds a sanitized folder name so persisted history can recover it (legacy unnamed records fall back to the “Folder upload” label). Rows are also denser: 28px file icons, 12px names, 15px badges, tighter spacing and 22px inline buttons, showing more tasks per screen.
+
 ## [0.7.9-beta.53] — 2026-10-27
 
 - **SFTP 传输任务页重做为筛选式任务列表**。弹层改为「头部计数 + 状态筛选 + 任务行」结构：文件类型图标按目录/压缩包/图片/代码配置/文档分色，行内展示文件名、上传/下载与 SFTP（含 gzip）徽标、状态圆点与体积/时间（运行中显示已传/总量，有速度时追加速率），行底 2px 状态色进度线；右侧内联提供打开文件、在文件夹中显示、暂停/继续、取消，点击行展开详情卡（状态与时间、体积、本地/远端路径、错误）。筛选条对全部/上传/下载/暂停/已完成实时计数，无匹配时给出空态；活跃任务按运行中→排队排序，落盘历史与可续传任务合并展示并按 taskId 去重。文件夹/多文件批量上传聚合卡保留，历史右键菜单、清空历史、刷新与续传文件选择器均保留。

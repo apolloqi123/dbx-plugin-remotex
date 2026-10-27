@@ -46,6 +46,17 @@ export interface BuildTransferRowsInput {
   transferPercent: (task: TransferTask) => number;
   transferShownBytes: (task: TransferTask) => number;
   transferPausable: (status: string) => boolean;
+  /** 无文件夹名可还原时（旧版临时 tar）使用的文件夹标签。 */
+  folderLabel: string;
+}
+
+/** 文件夹整包上传使用 `.sshx-upload-<stem>-<suffix>.tar` 内部名：能从名字
+ *  还原文件夹名就还原，旧版无 stem 的只显示通用“文件夹上传”标签。 */
+export function displayTransferFileName(fileName: string, folderLabel: string): string {
+  const archive = /^\.sshx-upload-(.*)-[a-z0-9]+-[a-z0-9]+\.tar$/i.exec(fileName);
+  if (archive) return archive[1] || folderLabel;
+  if (/^\.sshx-upload-.+\.tar$/i.test(fileName)) return folderLabel;
+  return fileName;
 }
 
 function clampPercent(value: number): number {
@@ -71,7 +82,7 @@ function liveRow(task: TransferTask, input: BuildTransferRowsInput): TransferRow
     key: `live:${task.taskId}`,
     taskId: task.taskId,
     source: "live",
-    fileName: task.fileName || task.taskId,
+    fileName: task.displayName ?? displayTransferFileName(task.fileName || task.taskId, input.folderLabel),
     direction: task.direction,
     status,
     percent,
@@ -83,7 +94,7 @@ function liveRow(task: TransferTask, input: BuildTransferRowsInput): TransferRow
     currentFile: task.currentFile,
     error: task.error,
     compression: task.compression,
-    isFolder: (task.fileCount ?? 0) > 1 || Boolean(task.currentFile),
+    isFolder: Boolean(task.displayFolder) || (task.fileCount ?? 0) > 1 || Boolean(task.currentFile),
     paused,
     canPause: input.transferPausable(status),
     canCancel: status === "queued" || status === "running",
@@ -100,7 +111,7 @@ function historyRow(entry: TransferHistoryEntry, input: BuildTransferRowsInput):
     key: `history:${entry.taskId}`,
     taskId: entry.taskId,
     source: "history",
-    fileName: entry.fileName || entry.taskId,
+    fileName: displayTransferFileName(entry.fileName || entry.taskId, input.folderLabel),
     direction: entry.direction,
     status: entry.status,
     percent,

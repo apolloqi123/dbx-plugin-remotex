@@ -32,7 +32,7 @@ export function useUploadChain(options: {
   terminalDragActive: Ref<boolean>;
   sftpPaneOpen: Ref<boolean>;
   terminalTransferBusy: Ref<boolean>;
-  uploadSource: (name: string, size: number, readChunk: (offset: number, length: number) => Promise<Uint8Array>, resume?: { taskId: string; remotePath: string }, targetDir?: string, options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string }) => Promise<boolean>;
+  uploadSource: (name: string, size: number, readChunk: (offset: number, length: number) => Promise<Uint8Array>, resume?: { taskId: string; remotePath: string }, targetDir?: string, options?: { duplicatePreCheckedAbsent?: boolean; batchId?: string; displayName?: string; displayFolder?: boolean }) => Promise<boolean>;
   /** 传输任务账本（issue #165）：批次字节进度按 batchId 聚合。 */
   transferTasks: Record<string, import("../../../transfers/lib/transferQueue").TransferTask>;
   loadTransferConcurrency: () => number;

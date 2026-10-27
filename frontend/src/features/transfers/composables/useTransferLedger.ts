@@ -60,7 +60,11 @@ export function useTransferLedger(options: {
       taskId,
       sessionId: String(params.sessionId || existing?.sessionId || ""),
       direction: params.direction === "download" ? "download" : existing?.direction || "upload",
-      fileName: String(params.fileName || existing?.fileName || ""),
+      // displayName 是用户可见名（文件夹整包上传的临时 tar 等）：progress 事件
+      // 的 fileName 是远端内部名，不得把它覆盖回面板。
+      fileName: existing?.displayName ?? String(params.fileName || existing?.fileName || ""),
+      displayName: existing?.displayName,
+      displayFolder: existing?.displayFolder,
       size: progress.size,
       transferred: progress.transferred,
       staged: progress.staged,
@@ -219,7 +223,14 @@ export function useTransferLedger(options: {
       // 活跃区排序（issue #18）。batchId 同理透传（issue #165）：它是纯前端
       // 键（后端 list 不带），不透传的话批中关开一次面板，restoreTransfers
       // 整行覆盖就会把批次卡打回 0/N · 0%。
-      transferTasks[task.taskId] = { ...task, joinedAt: existing?.joinedAt ?? Date.now(), batchId: existing?.batchId ?? task.batchId };
+      transferTasks[task.taskId] = {
+        ...task,
+        fileName: existing?.displayName ?? task.fileName,
+        displayName: existing?.displayName,
+        displayFolder: existing?.displayFolder,
+        joinedAt: existing?.joinedAt ?? Date.now(),
+        batchId: existing?.batchId ?? task.batchId,
+      };
     }
   }
 

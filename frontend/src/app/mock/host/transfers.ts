@@ -20,6 +20,11 @@ let mockTransferHistoryCleared = false;
 const demoLiveJoinedAt = Date.now();
 const DEMO_LIVE_TRANSFERS = [
   {
+    taskId: "visual-live-4", sessionId: "visual-session", direction: "upload",
+    fileName: ".sshx-upload-rancher-images-mvqp06x4-twmbkb.tar", displayName: "rancher-images", displayFolder: true,
+    size: 3_670_016, transferred: 2_200_320, status: "running", joinedAt: demoLiveJoinedAt - 60_000,
+  },
+  {
     taskId: "visual-live-3", sessionId: "visual-session", direction: "download", fileName: "Nessus",
     size: 76_546_048, transferred: 24_117_248, status: "running", fileCount: 12,
     currentFile: "plugins/audit.nasl", joinedAt: demoLiveJoinedAt - 45_000,
