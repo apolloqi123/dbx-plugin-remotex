@@ -236,11 +236,7 @@ defineExpose({ sftpPane });
     />
     <template v-else-if="shell.rightPanelView === 'metrics'">
       <header class="side-panel-head">
-        <h2>
-          {{ t("metrics") }}
-          <span v-if="metrics.distroBadge" class="distro-badge" :style="{ backgroundColor: metrics.distroBadge.color }" :title="metrics.distroBadge.name">{{ metrics.distroBadge.label }}</span>
-          <span v-if="metrics.hostname" class="metrics-host" :title="metrics.hostname"> · {{ metrics.hostname }}</span>
-        </h2>
+        <h2>{{ t("metrics") }}</h2>
         <span class="side-panel-head-actions">
           <button class="icon-button compact" :title="t('refresh')" :aria-label="t('refresh')" :disabled="metrics.loading" @click="emit('refresh-metrics')"><RefreshCw :class="{ spinning: metrics.loading }" /></button>
           <button class="icon-button compact" :title="t('close')" :aria-label="t('close')" @click="emit('close-panel')"><X /></button>

@@ -43,4 +43,10 @@ describe("metrics sparkline path", () => {
   it("clamps oversized values to the top edge", () => {
     expect(sparklinePath([20, 10], 30, 10)).toBe("0,0 30,5");
   });
+
+  it("uses an absolute scale when fixedMax is given", () => {
+    // CPU 50% stays mid-chart even though 50 is the series peak.
+    expect(sparklinePath([50, 100], 60, 18, 100)).toBe("0,9 60,0");
+    expect(sparklinePath([5, 5], 60, 18, 100)).toBe("0,17 60,17");
+  });
 });

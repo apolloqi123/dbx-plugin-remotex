@@ -10,16 +10,8 @@
 .metrics-float h2 .metrics-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metrics-float-body { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 10px; overflow: auto; padding: 10px 12px; }
 .metrics-host { color: var(--muted-foreground); font-weight: 400; }
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-/* 三级信息层级（对齐现代监控面板观感）：大数字 22px/700 抓眼 → xs 标签 →
-   10px mono 副信息；卡片留白与圆角走令牌。 */
-.metric-card { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: color-mix(in srgb, var(--muted) 40%, transparent); }
-.metric-card strong { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* 运行时长等长文本卡片独占整行，不在两列网格里被挤压折行。 */
-.metric-card--wide { grid-column: 1 / -1; }
-.metric-card > span { color: var(--foreground); font-size: 11px; font-weight: 500; }
-.metric-card small { color: var(--muted-foreground); font-family: var(--terminal-font-family); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.metrics-disks { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+/* 指标卡片的版式在 ServerMetricsPanel/MetricCard 内以 scoped 样式维护；
+   这里只保留 GPU/NPU 卡片共用的 disk-row 与全局提示样式。 */
 .disk-row { display: grid; grid-template-columns: minmax(70px, 130px) 1fr auto; align-items: center; gap: 10px; font-size: 11px; }
 /* 超长挂载点/网卡名不得外溢压到进度条与数值列：第一列截断省略，完整值走 title。 */
 .disk-row > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -32,5 +24,4 @@
    避免 var(--background) 在卡片上显出一块色差；sticky + 阴影保留。 */
 .metrics-float .file-header,
 .metrics-side-body .file-header { background: var(--popover); box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent); }
-.side-panel-head .distro-badge { width: 18px; height: 18px; flex-basis: 18px; font-size: 11px; }
 

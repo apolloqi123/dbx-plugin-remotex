@@ -20,12 +20,14 @@ export function pushSample(ring: readonly number[], sample: number, capacity = M
  * - 空序列 → ""（调用方不渲染 SVG）；
  * - 单点画在左端中线（曲线尚未成形时的稳定占位）；
  * - x 均匀铺满 [0, width]，y 按 max 归一化（全零/非正 max 时贴底边），
- *   超出 max 的值钳制在顶边，坐标取整到像素。
+ *   超出 max 的值钳制在顶边，坐标取整到像素；
+ * - 百分比序列传 `fixedMax`（如 100）使用绝对刻度，避免 5% 与 95% 都被
+ *   拉伸到顶边；网络速率无绝对上限时保持按序列峰值自适应。
  */
-export function sparklinePath(values: readonly number[], width: number, height: number): string {
+export function sparklinePath(values: readonly number[], width: number, height: number, fixedMax = 0): string {
   if (!values.length || width <= 0 || height <= 0) return "";
   if (values.length === 1) return `0,${Math.round(height / 2)}`;
-  const max = values.reduce((peak, value) => Math.max(peak, value), 0);
+  const max = fixedMax > 0 ? fixedMax : values.reduce((peak, value) => Math.max(peak, value), 0);
   const points = values.map((value, index) => {
     const x = Math.round((index / (values.length - 1)) * width);
     const ratio = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;

@@ -279,8 +279,6 @@ export function installWorkbenchShell(deps: Deps) {
     memSparkline: metricsMemSparkline.value,
     rxSparkline: metricsRxSparkline.value,
     txSparkline: metricsTxSparkline.value,
-    cpuLast: metricSamples.cpu.at(-1) ?? 0,
-    memLast: metricSamples.mem.at(-1) ?? 0,
     disks: visibleDiskMounts.value,
     networks: visibleNetworkInterfaces.value,
     processesOpen: processesOpen.value,

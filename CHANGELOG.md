@@ -8,6 +8,13 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.52] — 2026-10-27
+
+- **服务器指标页重做为卡片仪表盘**。右侧指标页按参考监控面板改版：系统卡（主机名、发行版、内核、核心数、负载、运行时长）、CPU 卡（大数字 + 固定 0–100 刻度的趋势图 + 最多 64 核的每核分段刻度条）、内存卡（已用/缓存/空闲环形图 + 交换分区进度条）、网络卡（上下行双线趋势 + 各网卡速率与累计流量）、磁盘卡（总用量、各挂载点进度条、inode 使用率，≥85% 转警示色）、进程卡（CPU/MEM 双进度条 + PID/用户）；GPU/NPU 区与进程管理表保留并统一卡片外壳。“查看全部”仍打开可排序、可终止进程的完整管理表。
+  采集侧新增只读探测字段：`cpu.perCore`（`/proc/stat` 两次采样的每核忙闲比，最多 64 核）与 `memory.cacheBytes`/`memory.freeBytes`（Buffers+Cached 与总量减已用）。旧 sidecar 缺少这些字段时，前端自动隐藏每核区、缓存扇区按 0 处理，不影响既有指标。
+  **Redesigned the server metrics page as a card dashboard.** The right-side metrics view now mirrors the reference monitoring panel: a system card (hostname, distro, kernel, cores, load, uptime), a CPU card (hero percentage, fixed 0–100 trend chart, per-core segmented bars for up to 64 cores), a memory card (used/cache/free donut plus swap bar), a network card (dual rx/tx line chart with per-interface rates and totals), a disk card (aggregate usage, per-mount bars and inode usage, warning color at ≥85%), and a processes card (CPU/MEM mini bars with PID/user). The GPU/NPU section and the sortable, killable process manager are preserved and share the same card shell; “View all” still opens the full table.
+  The collector adds read-only probe fields: `cpu.perCore` (per-core busy ratio from two `/proc/stat` samples, capped at 64 cores) and `memory.cacheBytes`/`memory.freeBytes` (Buffers+Cached and total-minus-used). Older sidecars that lack them simply hide the per-core grid and treat cache as 0; existing metrics are unaffected.
+
 ## [0.7.9-beta.51] — 2026-10-27
 
 - **终端与 SFTP 面板之间的分隔条去掉悬停高亮**。此前鼠标移到分隔条上会把 8px 命中区染成 primary 60% 的亮条；现在视觉线保持透明，只保留 2px 的布局缝隙与 8px 拖拽命中区，悬停时仅显示左右调整光标；键盘聚焦（Tab）时用一条细描边提示可调节。容器分屏把手未受影响。

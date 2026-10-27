@@ -451,6 +451,40 @@ fn extended_json_keeps_base_fields_and_adds_defaults() {
 }
 
 #[test]
+fn parses_per_core_cpu_and_memory_cache() {
+    let output = "\
+hostname=web-02
+nproc=2
+--mem--
+MemTotal:       1000 kB
+MemAvailable:    400 kB
+MemFree:         100 kB
+Buffers:          50 kB
+Cached:          250 kB
+--cpu--
+cpu  100 0 200 8000 40
+cpu1 50 0 100 4000 20
+cpu0 50 0 100 4000 20
+cpu  200 0 300 8100 40
+cpu1 100 0 150 4050 20
+cpu0 100 0 150 4050 20
+";
+    let metrics = parse_metrics_output(output);
+    // Aggregate: delta 100+100 busy over 300 total -> 66.7%.
+    assert_eq!(metrics["cpu"]["percent"], 66.7);
+    let cores = metrics["cpu"]["perCore"].as_array().unwrap();
+    // Sorted by index even though the fixture lists cpu1 before cpu0.
+    assert_eq!(cores.len(), 2);
+    assert_eq!(cores[0]["index"], 0);
+    assert_eq!(cores[0]["percent"], 66.7);
+    assert_eq!(cores[1]["index"], 1);
+    // Memory: used 600 kB, cache 300 kB (Buffers+Cached), free 400 kB.
+    assert_eq!(metrics["memory"]["usedBytes"], 600 * 1024);
+    assert_eq!(metrics["memory"]["cacheBytes"], 300 * 1024);
+    assert_eq!(metrics["memory"]["freeBytes"], 400 * 1024);
+}
+
+#[test]
 fn parses_inode_usage_across_df_dialects() {
     // GNU layout: IUse% is the fourth column; busybox prints it third.
     // Header rows carry no percent token and are skipped.

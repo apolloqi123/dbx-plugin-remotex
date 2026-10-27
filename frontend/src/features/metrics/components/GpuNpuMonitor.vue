@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { Cpu } from "@lucide/vue";
 import { workbenchMessage } from "../../../shared/lib/i18n";
 import { formatBytes } from "../../../shared/lib/format";
 import {
@@ -68,8 +69,8 @@ function deviceKeyTitle(device: NpuDeviceView) {
 
 <template>
   <div v-if="visible" class="gpu-npu-section">
-    <h3 class="settings-section-title">
-      <span>{{ t("metricsGpu.title") }}</span>
+    <h3 class="settings-section-title gpu-npu-head">
+      <span class="gpu-npu-title"><span class="gpu-npu-icon"><Cpu /></span>{{ t("metricsGpu.title") }}</span>
       <span v-if="npuCann" class="mono gpu-npu-cann" :title="t('metricsNpu.cann')">CANN {{ npuCann }}</span>
     </h3>
 
@@ -142,8 +143,33 @@ function deviceKeyTitle(device: NpuDeviceView) {
 <style scoped>
 /* 对齐 style.css 的 .metric-card / .metrics-grid：同样的边框、圆角、底色
    token 与 auto-fit 网格，保证与监控面板其余卡片视觉一致。 */
+/* 与其他指标卡片同壳：inset 卡面 + 统一图标底色/标题字号。 */
+.gpu-npu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px 12px;
+  background: var(--card-surface-inset);
+}
+.gpu-npu-section .settings-section-title { margin: 0; border-top: 0; padding-top: 0; font-size: 11px; letter-spacing: 0.02em; }
+.gpu-npu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gpu-npu-title { display: inline-flex; align-items: center; gap: 8px; }
+.gpu-npu-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  color: var(--tone-violet);
+}
+.gpu-npu-icon > svg { width: 14px; height: 14px; }
 .gpu-npu-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.gpu-npu-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: color-mix(in srgb, var(--muted) 40%, transparent); overflow: hidden; }
+.gpu-npu-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--card-surface-raised); overflow: hidden; }
 .gpu-npu-card-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
 .gpu-npu-card-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .gpu-npu-badge { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: var(--muted-foreground); font-size: 10px; }

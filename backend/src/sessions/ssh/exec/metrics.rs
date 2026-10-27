@@ -23,6 +23,8 @@ pub fn parse_metrics_output(output: &str) -> serde_json::Value {
     let mut nproc: serde_json::Value = serde_json::Value::Null;
     let mut mem_kib: HashMap<&str, u64> = HashMap::new();
     let mut cpu_samples: Vec<Vec<u64>> = Vec::new();
+    // One map per aggregate sample; `cpuN` rows attach to the latest map.
+    let mut cpu_core_samples: Vec<HashMap<u32, Vec<u64>>> = Vec::new();
     let mut disks = Vec::new();
     let mut section = "";
 
@@ -67,6 +69,23 @@ pub fn parse_metrics_output(output: &str) -> serde_json::Value {
                     .collect::<Vec<_>>();
                 if values.len() >= 4 {
                     cpu_samples.push(values);
+                    cpu_core_samples.push(HashMap::new());
+                }
+            } else if let Some(rest) = line.strip_prefix("cpu") {
+                // `cpuN user nice system idle iowait …`; the aggregate line is
+                // consumed above and section markers never reach this branch.
+                if let Some((index, values)) = rest.split_once(' ') {
+                    if let (Ok(index), Some(sample)) =
+                        (index.parse::<u32>(), cpu_core_samples.last_mut())
+                    {
+                        let values = values
+                            .split_whitespace()
+                            .filter_map(|n| n.parse::<u64>().ok())
+                            .collect::<Vec<_>>();
+                        if values.len() >= 4 {
+                            sample.insert(index, values);
+                        }
+                    }
                 }
             }
         } else if section == "--df--" {
@@ -107,20 +126,26 @@ pub fn parse_metrics_output(output: &str) -> serde_json::Value {
     }
 
     let mut cpu_percent = serde_json::Value::Null;
-    if cpu_samples.len() == 2 {
-        let first = &cpu_samples[0];
-        let second = &cpu_samples[1];
-        let delta: Vec<i64> = second
-            .iter()
-            .zip(first.iter())
-            .map(|(next, prev)| *next as i64 - *prev as i64)
-            .collect();
-        let total: i64 = delta.iter().sum();
-        // Columns are user nice system idle iowait …; idle time is idle+iowait.
-        let idle = delta.get(3).copied().unwrap_or(0) + delta.get(4).copied().unwrap_or(0);
-        if total > 0 {
-            cpu_percent =
-                json!(((total - idle) as f64 * 100.0 / total as f64 * 10.0).round() / 10.0);
+    if let [first, second] = cpu_samples.as_slice() {
+        if let Some(percent) = cpu_busy_percent(first, second) {
+            cpu_percent = json!(percent);
+        }
+    }
+
+    // Per-core usage is additive: old sidecars omit `cpuN` rows entirely and
+    // macOS keeps the aggregate-only fallback, so the list simply stays empty.
+    let mut per_core: Vec<serde_json::Value> = Vec::new();
+    if let [first, second] = cpu_core_samples.as_slice() {
+        let mut indices = second
+            .keys()
+            .filter(|index| first.contains_key(index))
+            .copied()
+            .collect::<Vec<_>>();
+        indices.sort_unstable();
+        for index in indices {
+            if let Some(percent) = cpu_busy_percent(&first[&index], &second[&index]) {
+                per_core.push(json!({ "index": index, "percent": percent }));
+            }
         }
     }
 
@@ -156,6 +181,20 @@ pub fn parse_metrics_output(output: &str) -> serde_json::Value {
     // 异常数据源可能让回退估计超过 MemTotal（used 饱和到 0，MEM 带倒挂）：
     // classic free 同样把 available 夹紧在 total 以内。
     let mem_available = mem_available.min(mem_total);
+    let mem_used = mem_total.saturating_sub(mem_available);
+    // Cache = buffers + page cache (the "free -w" cache column) and a subset of
+    // `usedBytes`, which keeps its historical total-available semantics for the
+    // dock band. Clamping prevents a quirky /proc shim from overshooting.
+    let mem_cache = mem_kib
+        .get("Buffers")
+        .copied()
+        .unwrap_or(0)
+        .saturating_add(mem_kib.get("Cached").copied().unwrap_or(0))
+        .saturating_mul(1024)
+        .min(mem_used);
+    // Remainder of total after used; the donut then draws
+    // (used - cache) + cache + free == total.
+    let mem_free = mem_total.saturating_sub(mem_used);
     let swap_total = mem_kib.get("SwapTotal").copied().unwrap_or(0) * 1024;
     let swap_free = mem_kib.get("SwapFree").copied().unwrap_or(0) * 1024;
     let uptime_seconds = uptime
@@ -169,16 +208,42 @@ pub fn parse_metrics_output(output: &str) -> serde_json::Value {
         "hostname": hostname,
         "kernel": kernel,
         "uptimeSeconds": uptime_seconds,
-        "cpu": { "cores": nproc, "percent": cpu_percent, "load1": load1, "load5": load5, "load15": load15 },
+        "cpu": {
+            "cores": nproc,
+            "percent": cpu_percent,
+            "load1": load1,
+            "load5": load5,
+            "load15": load15,
+            "perCore": per_core,
+        },
         "memory": {
             "totalBytes": mem_total,
             "availableBytes": mem_available,
-            "usedBytes": mem_total.saturating_sub(mem_available),
+            "usedBytes": mem_used,
+            "cacheBytes": mem_cache,
+            "freeBytes": mem_free,
             "swapTotalBytes": swap_total,
             "swapUsedBytes": swap_total.saturating_sub(swap_free),
         },
         "disks": disks,
     })
+}
+
+/// Busy percentage between two `/proc/stat` tick rows (user nice system idle
+/// iowait …). Idle time is idle+iowait; `None` when the counter wrapped or the
+/// sample did not advance, so callers can leave the field unset.
+pub(super) fn cpu_busy_percent(first: &[u64], second: &[u64]) -> Option<f64> {
+    let delta = second
+        .iter()
+        .zip(first.iter())
+        .map(|(next, prev)| *next as i64 - *prev as i64)
+        .collect::<Vec<_>>();
+    let total: i64 = delta.iter().sum();
+    let idle = delta.get(3).copied().unwrap_or(0) + delta.get(4).copied().unwrap_or(0);
+    if total <= 0 {
+        return None;
+    }
+    Some(((total - idle) as f64 * 100.0 / total as f64 * 10.0).round() / 10.0)
 }
 
 pub(super) fn rest_after_colon(line: &str) -> Option<(&str, &str)> {

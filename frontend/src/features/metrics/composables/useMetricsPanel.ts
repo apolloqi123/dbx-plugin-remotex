@@ -10,9 +10,26 @@ export interface ServerMetrics {
   hostname?: string | null;
   kernel?: string | null;
   uptimeSeconds?: number | null;
-  cpu?: { cores?: number | null; percent?: number | null; load1?: number | null; load5?: number | null; load15?: number | null };
-  memory?: { totalBytes?: number; availableBytes?: number; usedBytes?: number; swapTotalBytes?: number; swapUsedBytes?: number };
-  disks?: Array<{ filesystem: string; mount: string; totalBytes: number; usedBytes: number; availableBytes: number; percentUsed: number }>;
+  cpu?: {
+    cores?: number | null;
+    percent?: number | null;
+    load1?: number | null;
+    load5?: number | null;
+    load15?: number | null;
+    // New sidecars report one row per logical core; old ones omit the field.
+    perCore?: Array<{ index: number; percent?: number | null }> | null;
+  };
+  memory?: {
+    totalBytes?: number;
+    availableBytes?: number;
+    usedBytes?: number;
+    // Subset of usedBytes (buffers + page cache) and the non-used remainder.
+    cacheBytes?: number;
+    freeBytes?: number;
+    swapTotalBytes?: number;
+    swapUsedBytes?: number;
+  };
+  disks?: Array<{ filesystem: string; mount: string; totalBytes: number; usedBytes: number; availableBytes: number; percentUsed: number; inodeUsePercent?: number | null }>;
   // Extensions reported by newer sidecars; when absent the network and
   // process sections simply stay hidden instead of erroring.
   network?: Array<{ name: string; rxRate: number; txRate: number; rxTotal: number; txTotal: number }>;
@@ -86,10 +103,16 @@ function recordMetricSamples() {
   if (totalBytes > 0) metricSamples.mem = pushSample(metricSamples.mem, ((metrics.value?.memory?.usedBytes ?? 0) / totalBytes) * 100, METRICS_SAMPLE_CAPACITY);
 }
 
-const metricsRxSparkline = computed(() => sparklinePath(metricSamples.rx, 60, 18));
-const metricsTxSparkline = computed(() => sparklinePath(metricSamples.tx, 60, 18));
-const metricsCpuSparkline = computed(() => sparklinePath(metricSamples.cpu, 120, 18));
-const metricsMemSparkline = computed(() => sparklinePath(metricSamples.mem, 120, 18));
+// 网络速率没有绝对上限：按双向共同峰值留 15% 顶部余量，峰值不会贴边。
+const metricsNetScale = computed(() => {
+  const peak = Math.max(0, ...metricSamples.rx, ...metricSamples.tx);
+  return peak > 0 ? peak * 1.15 : 0;
+});
+const metricsRxSparkline = computed(() => sparklinePath(metricSamples.rx, 60, 18, metricsNetScale.value));
+const metricsTxSparkline = computed(() => sparklinePath(metricSamples.tx, 60, 18, metricsNetScale.value));
+// CPU/内存是百分比：固定 0–100 刻度，低占用不会被拉伸到顶边。
+const metricsCpuSparkline = computed(() => sparklinePath(metricSamples.cpu, 120, 18, 100));
+const metricsMemSparkline = computed(() => sparklinePath(metricSamples.mem, 120, 18, 100));
 // 视图层去噪：伪文件系统/overlay 重复挂载/零流量虚拟网卡不进渲染（纯函数在 lib/metricsView）。
 const visibleDiskMounts = computed(() => filterDiskMounts(metrics.value?.disks));
 const visibleNetworkInterfaces = computed(() => filterNetworkInterfaces(metrics.value?.network));

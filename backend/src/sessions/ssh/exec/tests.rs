@@ -1010,6 +1010,15 @@ tmpfs 8154428 0 8154428 0% /dev/shm
         (16_308_856_u64 - 12_000_000) * 1024
     );
     assert_eq!(metrics["memory"]["swapUsedBytes"], 0);
+    // No Buffers/Cached rows in this fixture: cache stays 0 and free is the
+    // total-available remainder.
+    assert_eq!(metrics["memory"]["cacheBytes"], 0);
+    assert_eq!(
+        metrics["memory"]["freeBytes"],
+        (16_308_856_u64 - (16_308_856_u64 - 12_000_000)) * 1024
+    );
+    // Aggregate-only CPU output has no per-core rows.
+    assert_eq!(metrics["cpu"]["perCore"].as_array().unwrap().len(), 0);
     let disks = metrics["disks"].as_array().unwrap();
     assert_eq!(disks.len(), 3);
     assert_eq!(disks[1]["mount"], "/dev/shm");

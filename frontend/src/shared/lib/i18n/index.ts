@@ -24,6 +24,7 @@ import terminalBehaviorJa from "./messages/supplemental/terminalBehavior.ja";
 import terminalBehaviorPtBR from "./messages/supplemental/terminalBehavior.pt-BR";
 import restored from "./messages/supplemental/restored";
 import acceleratorMonitor from "./messages/supplemental/acceleratorMonitor";
+import metricsDashboard from "./messages/supplemental/metricsDashboard";
 import suggestionTransfer from "./messages/supplemental/suggestionTransfer";
 import sftpPipeline from "./messages/supplemental/sftpPipeline";
 import connNameEncoding from "./messages/supplemental/connNameEncoding";
@@ -86,6 +87,7 @@ quickCommandsManage,
 terminalBehavior,
 restored,
 acceleratorMonitor,
+metricsDashboard,
 suggestionTransfer,
 sftpPipeline,
 connNameEncoding,

@@ -54,7 +54,10 @@ pub(crate) const METRICS_SCRIPT: &str = concat!(
     "vm_stat 2>/dev/null | awk -v pskb=\"$pskb\" '/Pages free:/{f=$NF} /Pages inactive:/{ia=$NF} /Pages speculative:/{sp=$NF} END{gsub(/\\./,\"\",f); gsub(/\\./,\"\",ia); gsub(/\\./,\"\",sp); if (f!=\"\") printf \"MemAvailable: %d kB\\n\", (f+ia+sp)*pskb}'; ",
     "sysctl -n vm.swapusage 2>/dev/null | awk -F'[ =M]+' '{if ($2 != \"\") printf \"SwapTotal: %d kB\\nSwapFree: %d kB\\n\", $2*1024, $6*1024}'; fi; ",
     "echo '--cpu--'; ",
-    "if [ -r /proc/stat ]; then head -n 1 /proc/stat; sleep 0.4; head -n 1 /proc/stat; ",
+    // Aggregate `cpu` line first, then up to 64 per-core `cpuN` lines; the
+    // parser uses the aggregate line as a sample boundary, so both passes
+    // keep the same order.
+    "if [ -r /proc/stat ]; then head -n 1 /proc/stat; grep -E '^cpu[0-9]+ ' /proc/stat 2>/dev/null | head -n 64; sleep 0.4; head -n 1 /proc/stat; grep -E '^cpu[0-9]+ ' /proc/stat 2>/dev/null | head -n 64; ",
     // macOS: `iostat -c 2` takes two samples 1s apart; the second is a real
     // delta. The us/sy/id columns sit at a variable offset (per-disk columns
     // precede them), so anchor on the header row and re-emit the percentages
