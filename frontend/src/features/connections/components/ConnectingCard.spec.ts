@@ -31,7 +31,7 @@ describe("ConnectingCard", () => {
     // 单一来源：渲染出的图形就是 assets/plugin.svg 原文（同路径数据，非复刻件）。
     const badgeHtml = wrapper.find(".connect-card-badge .plugin-logo").html();
     expect(badgeHtml).toContain('viewBox="0 0 64 64"');
-    for (const segment of ["M9 10 29 32 9 54", "M37 53h18"]) {
+    for (const segment of ["M15 21 27 32 15 43", "M32 43h11", "M50 8.5 58 11.6"]) {
       expect(badgeHtml).toContain(segment);
       expect(rawPluginLogo).toContain(segment);
     }

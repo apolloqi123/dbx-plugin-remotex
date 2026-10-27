@@ -25,14 +25,14 @@ describe("SftpTreePane", () => {
     expect(rows[0].attributes("aria-expanded")).toBe("true");
     expect(rows[1].attributes("aria-expanded")).toBeUndefined();
     expect(wrapper.find(".sftp-tree-caret").attributes("aria-label")).toBe("collapse /");
-    expect(rows[0].find("svg.lucide-folder-open").exists()).toBe(true);
-    expect(rows[1].find(".sftp-tree-file-icon").exists()).toBe(true);
+    expect(rows[0].find(".sftp-tree-kind-icon.is-directory-open").exists()).toBe(true);
+    expect(rows[1].find(".sftp-tree-kind-icon.is-file").exists()).toBe(true);
   });
 
   it("renders a link icon for symlinks and a lossy warning", () => {
     const link = makeNode("/shortcut", "symlink", { entry: { ...makeEntry("/shortcut", "symlink", true) } });
     const wrapper = mountPane([row(link)]);
-    expect(wrapper.find(".sftp-tree-file-icon.is-link").exists()).toBe(true);
+    expect(wrapper.find(".sftp-tree-kind-icon.is-symlink").exists()).toBe(true);
     expect(wrapper.find(".sftp-lossy-icon").exists()).toBe(true);
   });
 

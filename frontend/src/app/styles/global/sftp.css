@@ -21,7 +21,6 @@
 .sftp-tree-caret { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 14px; width: 14px; height: 14px; border: 0; border-radius: 3px; background: transparent; cursor: pointer; color: var(--muted-foreground); padding: 0; }
 .sftp-tree-caret svg { width: 11px; height: 11px; }
 .sftp-tree-caret:hover { background: color-mix(in srgb, var(--muted-foreground) 20%, transparent); color: var(--foreground); }
-.sftp-tree-row > svg.sftp-tree-dir-icon { width: 13px; height: 13px; flex: 0 0 13px; color: var(--muted-foreground); }
 .sftp-tree-name { overflow: hidden; text-overflow: ellipsis; }
 .sftp-tree-spinner { width: 9px; height: 9px; border: 1.5px solid var(--muted-foreground); border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
 

@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.47] — 2026-10-27
+
+- **SFTP 文件树图标与插件注册标识更新，作者改为 apolloqi**。文件树去掉每行「彩色小方块 + 线性图标」的叠层，改为无底色、双色实心的文件夹/文件夹展开/文件/符号链接图标：文件夹使用琥珀色背板 + 实心前板，文件使用蓝色纸张 + 折角与文本线，符号链接带白色快捷箭头；14px 下轮廓更干净，行内不再出现密集色块。DBX 插件列表与连接提供方使用的新标识为深色圆角瓦片 + 青色终端提示符 + 翡翠色安全盾徽，24–64px 及深浅宿主背景均可读。manifest `publisher`、Cargo `authors` 与 LICENSE 版权统一改为 `apolloqi`；仓库 source/homepage URL 保持不变。
+  **Updated the SFTP tree icons and the plugin registration mark, with the author changed to apolloqi.** The file tree drops the per-row “colored tile + line icon” stack for flat, two-tone solid folder/open-folder/file/symlink glyphs: amber folders with a lighter back panel and solid front, blue paper files with a folded corner and text lines, and symlinks with a white shortcut arrow. At 14px the silhouettes are cleaner and the rows no longer carry dense color blocks. The DBX plugin list and connection provider now use a dark rounded tile with a cyan terminal prompt and an emerald security shield, verified from 24–64px on light and dark host surfaces. The manifest `publisher`, Cargo `authors` and LICENSE copyright now read `apolloqi`; the repository source/homepage URLs are unchanged.
+
 ## [0.7.9-beta.46] — 2026-10-27
 
 - **按功能语义重绘工具条中的 7 个图标**。上一版自绘图标在 14px 工具栏尺寸下有若干图形偏抽象：分栏互换改为两个面板 + 居中的左右双箭头；SFTP 面板改为文件夹 + 右侧面板；会话下拉改为带 `>_` 提示符的前景终端窗口 + 背景窗口；端口映射改为网关盒 + 入/出箭头；快速命令改为闪电 + 命令列表；上级目录改为文件夹 + 向上箭头；审计日志简化为文档 + 内置时钟；面板收起改为折叠箭头。其余图标（重连插头、sudo 盾牌、告警铃、容器鲸鱼、批量广播、Agent、指标、录制、传输、设置等）保持原设计；仍沿用 24×24 栅格、1.7 描边与 currentColor。

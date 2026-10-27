@@ -2,19 +2,11 @@
 // 单行文件树（SftpTreePane 的呈现层）：只做行内 DOM 与交互事件的语义化上抛
 // （选中/展开/打开/右键/改名/键盘/详情卡/拖放），节点状态与虚拟窗口由父级
 // 维护。样式必须与行同处一个 scoped 块：父级 scoped CSS 到不了子组件内部。
-import {
-  ChevronDown,
-  ChevronRight,
-  File as FileIcon,
-  FileText,
-  Folder,
-  FolderOpen,
-  Info,
-  Link2,
-  TriangleAlert,
-} from "@lucide/vue";
+import { computed } from "vue";
+import { ChevronDown, ChevronRight, Info, TriangleAlert } from "@lucide/vue";
 import type { SftpSanitizedEntry } from "../lib/entries/sftpEntries";
 import type { SftpFileTreeNode } from "../lib/tree/sftpFileTree";
+import SftpTreeIcon, { type SftpTreeIconKind } from "./SftpTreeIcon.vue";
 
 const props = defineProps<{
   row: { node: SftpFileTreeNode; depth: number; index: number };
@@ -48,6 +40,14 @@ const emit = defineEmits<{
   (event: "row-drag-leave", node: SftpFileTreeNode, dragEvent: DragEvent): void;
   (event: "row-drop", node: SftpFileTreeNode, dragEvent: DragEvent): void;
 }>();
+
+const iconKind = computed<SftpTreeIconKind>(() => {
+  const node = props.row.node;
+  if (node.kind === "directory") return node.expanded ? "directory-open" : "directory";
+  if (node.kind === "symlink") return "symlink";
+  if (node.kind === "other") return "other";
+  return "file";
+});
 
 function onRowClick(event: MouseEvent) {
   // 双击的第二次 click（detail > 1）忽略：首击已选中/展开，dblclick 只
@@ -130,13 +130,7 @@ function onDrop(event: DragEvent) {
     </button>
     <span v-else class="sftp-tree-caret-spacer" aria-hidden="true"></span>
 
-    <template v-if="row.node.kind === 'directory'">
-      <FolderOpen v-if="row.node.expanded" class="sftp-tree-dir-icon" />
-      <Folder v-else class="sftp-tree-dir-icon" />
-    </template>
-    <Link2 v-else-if="row.node.kind === 'symlink'" class="sftp-tree-file-icon is-link" />
-    <FileText v-else-if="row.node.kind === 'other'" class="sftp-tree-file-icon" />
-    <FileIcon v-else class="sftp-tree-file-icon" />
+    <SftpTreeIcon :kind="iconKind" />
 
     <input
       v-if="renaming"
@@ -204,17 +198,6 @@ function onDrop(event: DragEvent) {
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
-}
-
-.sftp-tree-row > svg.sftp-tree-file-icon {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 13px;
-  color: var(--muted-foreground);
-}
-
-.sftp-tree-row > svg.sftp-tree-file-icon.is-link {
-  color: var(--primary);
 }
 
 .sftp-tree-name {

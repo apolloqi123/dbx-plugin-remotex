@@ -1,5 +1,10 @@
-<!-- Original DBX SSH workbench icon. Licensed under the repository Apache-2.0 license. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SSH">
-  <path d="M9 10 29 32 9 54" fill="none" stroke="#0ea5e9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M37 53h18" fill="none" stroke="#0ea5e9" stroke-width="10" stroke-linecap="round"/>
+<!-- SSHX plugin mark: dark rounded tile, terminal prompt, security shield. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SSHX">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0F1A2E"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="13.25" fill="none" stroke="#FFFFFF" stroke-opacity=".10" stroke-width="1.5"/>
+  <path d="M15 21 27 32 15 43" fill="none" stroke="#22D3EE" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 43h11" fill="none" stroke="#E2E8F0" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M50 8.5 58 11.6v8.2c0 6.3-3.9 10.6-8 12.4-4.1-1.8-8-6.1-8-12.4v-8.2Z" fill="#0B1220" stroke="#34D399" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M50 17.8v4.4" stroke="#34D399" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="50" cy="15.2" r="1.4" fill="#34D399"/>
 </svg>

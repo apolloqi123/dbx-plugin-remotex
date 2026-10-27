@@ -349,16 +349,6 @@
 }
 .sftp-tree-row.is-current .sftp-tree-name { color: var(--primary); font-weight: 600; }
 .sftp-tree-caret { border-radius: var(--radius-xs); }
-.sftp-tree-row > svg.sftp-tree-dir-icon {
-  box-sizing: content-box;
-  width: 12px;
-  height: 12px;
-  flex: 0 0 18px;
-  padding: 3px;
-  border-radius: var(--radius-xs);
-  background: var(--tone-amber-soft);
-  color: var(--tone-amber);
-}
 .file-header {
   height: 30px;
   min-height: 30px;
@@ -806,21 +796,6 @@
 }
 .terminal-tab.is-active .terminal-tab-main svg { background: var(--tone-blue-soft); }
 .terminal-tab-add { width: 26px; height: 26px; }
-.sftp-tree-row > svg.sftp-tree-file-icon {
-  box-sizing: content-box;
-  width: 12px;
-  height: 12px;
-  flex: 0 0 18px;
-  padding: 3px;
-  border-radius: var(--radius-xs);
-  background: var(--tone-blue-soft);
-  color: var(--tone-blue);
-}
-.sftp-tree-row > svg.sftp-tree-file-icon.is-link {
-  background: var(--tone-cyan-soft);
-  color: var(--tone-cyan);
-}
-
 /* 设置分类：每个入口一枚亮色图标（见上方 settings-nav 规则）。 */
 
 /* —— 设置 / 传输 / 安全 / 终端面板：卡片化容器 —— */
