@@ -231,11 +231,11 @@ function beginResume(task: ResumableUploadTask) {
           class="transfer-filter"
           :class="{ 'is-active': filter === option.key }"
           :title="option.label"
+          :aria-label="`${option.label} (${option.count})`"
           :aria-pressed="filter === option.key"
           @click="filter = option.key"
         >
           <component :is="option.icon" />
-          <span class="transfer-filter-label">{{ option.label }}</span>
           <b>{{ option.count }}</b>
         </button>
       </nav>
@@ -289,54 +289,55 @@ function beginResume(task: ResumableUploadTask) {
 <style scoped>
 .transfer-panel-head {
   display: flex;
-  min-height: 42px;
+  min-height: 38px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border-bottom: 1px solid var(--card-border);
-  padding: 6px 8px 6px 12px;
+  padding: 5px 7px 5px 10px;
   background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
 }
 .transfer-panel-icon {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--tone-blue-soft);
   color: var(--tone-blue);
 }
-.transfer-panel-icon :deep(svg) { width: 14px; height: 14px; }
-.transfer-panel-head h3 { margin: 0; overflow: hidden; flex: 0 1 auto; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-panel-icon :deep(svg) { width: 13px; height: 13px; }
+.transfer-panel-head h3 { margin: 0; overflow: hidden; flex: 0 1 auto; font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .transfer-panel-count {
   flex: 0 0 auto;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-pill);
-  padding: 1px 7px;
+  padding: 0 6px;
   color: var(--muted-foreground);
-  font-size: 9.5px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
-.transfer-panel-actions { display: inline-flex; margin-left: auto; flex: 0 0 auto; align-items: center; gap: 2px; }
-.transfer-panel-actions .icon-button { width: 26px; height: 26px; padding: 5px; color: var(--muted-foreground); }
-.transfer-panel-actions svg { width: 14px; height: 14px; }
+.transfer-panel-actions { display: inline-flex; margin-left: auto; flex: 0 0 auto; align-items: center; gap: 1px; }
+.transfer-panel-actions .icon-button { width: 24px; height: 24px; padding: 4px; color: var(--muted-foreground); }
+.transfer-panel-actions svg { width: 13px; height: 13px; }
 
+/* 筛选按钮只留图标 + 数量（与参考面板一致），窄面板下仍能一排放齐。 */
 .transfer-filters {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--card-border);
-  padding: 7px 10px;
+  padding: 6px 8px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 .transfer-filters::-webkit-scrollbar { display: none; }
 .transfer-filter {
   display: inline-flex;
-  height: 22px;
+  height: 20px;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
@@ -345,11 +346,11 @@ function beginResume(task: ResumableUploadTask) {
   padding: 0 7px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 9.5px;
+  font-size: 8.5px;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
-.transfer-filter > svg { width: 11px; height: 11px; }
-.transfer-filter b { font-size: 9px; font-variant-numeric: tabular-nums; }
+.transfer-filter > svg { width: 10px; height: 10px; }
+.transfer-filter b { font-size: 8.5px; font-variant-numeric: tabular-nums; }
 .transfer-filter:hover { background: var(--card-surface-raised); color: var(--foreground); }
 .transfer-filter.is-active {
   border-color: color-mix(in srgb, var(--primary) 45%, transparent);
@@ -357,44 +358,43 @@ function beginResume(task: ResumableUploadTask) {
   color: var(--foreground);
 }
 .transfer-filter.is-active > svg { color: var(--primary); }
-.transfer-filter-label { line-height: 1; }
 
-.transfer-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 2px 8px 8px; }
+.transfer-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 2px 7px 7px; }
 .transfer-scroll::-webkit-scrollbar { display: block; width: 8px; }
 .transfer-scroll::-webkit-scrollbar-thumb { border-radius: 4px; background: color-mix(in srgb, var(--foreground) 20%, transparent); }
 
 .transfer-batch {
   position: relative;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  margin: 6px 0;
+  gap: 8px;
+  margin: 5px 0;
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px 11px;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px 9px;
   background: var(--card-surface-inset);
   overflow: hidden;
 }
 .transfer-batch-icon {
   display: inline-flex;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--tone-violet) 34%, transparent);
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--tone-violet-soft);
   color: var(--tone-violet);
 }
 .transfer-batch-icon.is-file { border-color: color-mix(in srgb, var(--tone-blue) 34%, transparent); background: var(--tone-blue-soft); color: var(--tone-blue); }
-.transfer-batch-icon > svg { width: 16px; height: 16px; }
-.transfer-batch-body { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.transfer-batch-icon > svg { width: 14px; height: 14px; }
+.transfer-batch-body { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .transfer-batch-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.transfer-batch-title { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.transfer-batch-percent { flex: 0 0 auto; color: var(--foreground); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.transfer-batch-meta { color: var(--muted-foreground); font-size: 9.5px; font-variant-numeric: tabular-nums; }
-.transfer-batch-file { overflow: hidden; color: var(--muted-foreground); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-batch-title { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-batch-percent { flex: 0 0 auto; color: var(--foreground); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.transfer-batch-meta { color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
+.transfer-batch-file { overflow: hidden; color: var(--muted-foreground); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
 .transfer-batch-line { position: absolute; bottom: 0; left: 0; height: 2px; border-radius: var(--radius-pill); background: var(--tone-violet); transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1); }
 
 .transfer-banner {
@@ -409,7 +409,7 @@ function beginResume(task: ResumableUploadTask) {
   color: var(--muted-foreground);
   font-size: 10px;
 }
-.transfer-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 12px 30px; color: var(--muted-foreground); text-align: center; }
+.transfer-empty { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 20px 12px 24px; color: var(--muted-foreground); text-align: center; }
 .transfer-empty-icon { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border-radius: 10px; background: var(--card-surface-raised); color: var(--muted-foreground); }
 .transfer-empty-icon > svg { width: 16px; height: 16px; }
 .transfer-empty p { margin: 0; font-size: 10.5px; }

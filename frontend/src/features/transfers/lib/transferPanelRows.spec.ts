@@ -5,6 +5,7 @@ import {
   displayTransferFileName,
   filterTransferRows,
   formatTransferStamp,
+  isFolderArchiveName,
   type BuildTransferRowsInput,
 } from "./transferPanelRows";
 import type { TransferTask } from "./transferQueue";
@@ -81,6 +82,8 @@ describe("transfer panel rows", () => {
     // Legacy names without a stem fall back to the generic label.
     expect(displayTransferFileName(".sshx-upload-mvqp06x4-twmbkb.tar", "Folder upload")).toBe("Folder upload");
     expect(displayTransferFileName("report.pdf", "Folder upload")).toBe("report.pdf");
+    expect(isFolderArchiveName(".sshx-upload-rancher-images-mvqp06x4-twmbkb.tar")).toBe(true);
+    expect(isFolderArchiveName("report.pdf")).toBe(false);
   });
 
   it("prefers an explicit display name and folder kind over the internal file name", () => {
@@ -115,6 +118,7 @@ describe("transfer panel rows", () => {
       }),
     );
     expect(rows[0].fileName).toBe("Folder upload");
+    expect(rows[0].isFolder).toBe(true);
   });
 
   it("orders running tasks before queued regardless of ledger order", () => {

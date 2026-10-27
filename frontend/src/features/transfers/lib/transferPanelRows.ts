@@ -50,12 +50,17 @@ export interface BuildTransferRowsInput {
   folderLabel: string;
 }
 
+/** 文件夹整包上传的内部归档名（含旧版无 stem 的随机名）。 */
+export function isFolderArchiveName(fileName: string): boolean {
+  return /^\.sshx-upload-.+\.tar$/i.test(fileName);
+}
+
 /** 文件夹整包上传使用 `.sshx-upload-<stem>-<suffix>.tar` 内部名：能从名字
  *  还原文件夹名就还原，旧版无 stem 的只显示通用“文件夹上传”标签。 */
 export function displayTransferFileName(fileName: string, folderLabel: string): string {
   const archive = /^\.sshx-upload-(.*)-[a-z0-9]+-[a-z0-9]+\.tar$/i.exec(fileName);
   if (archive) return archive[1] || folderLabel;
-  if (/^\.sshx-upload-.+\.tar$/i.test(fileName)) return folderLabel;
+  if (isFolderArchiveName(fileName)) return folderLabel;
   return fileName;
 }
 
@@ -94,7 +99,7 @@ function liveRow(task: TransferTask, input: BuildTransferRowsInput): TransferRow
     currentFile: task.currentFile,
     error: task.error,
     compression: task.compression,
-    isFolder: Boolean(task.displayFolder) || (task.fileCount ?? 0) > 1 || Boolean(task.currentFile),
+    isFolder: Boolean(task.displayFolder) || isFolderArchiveName(task.fileName) || (task.fileCount ?? 0) > 1 || Boolean(task.currentFile),
     paused,
     canPause: input.transferPausable(status),
     canCancel: status === "queued" || status === "running",
@@ -120,7 +125,7 @@ function historyRow(entry: TransferHistoryEntry, input: BuildTransferRowsInput):
     timeLabel: formatTransferStamp(entry.finishedAt ?? entry.startedAt),
     localPath: entry.localPath,
     error: entry.error,
-    isFolder: false,
+    isFolder: isFolderArchiveName(entry.fileName),
     paused: false,
     canPause: false,
     canCancel: false,

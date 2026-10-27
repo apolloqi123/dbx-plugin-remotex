@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.55] — 2026-10-27
+
+- **传输任务面板进一步收紧尺寸**。弹层宽度 372→340px，筛选条改为图标 + 数量（悬停显示含义），任务行文件图标 28→24px、文件名 12→11px、徽标 15→14px、行内按钮 22→20px，行高与详情卡同步压缩，一屏可显示更多任务。文件夹整包上传的历史记录（含旧版随机临时名）也统一显示文件夹图标，仍能从新命名中还原文件夹名。
+  **Tightened the transfer task panel further.** The popover shrinks from 372 to 340px, filters become icon + count chips with hover labels, and rows use 24px file icons, 11px names, 14px badges and 20px inline buttons with tighter spacing and detail cards, fitting more tasks per screen. Folder-archive history rows (including legacy random temp names) now also show the folder icon, while new archive names still recover the folder name.
+
 ## [0.7.9-beta.54] — 2026-10-27
 
 - **修复文件夹整包上传在传输任务里显示内部临时名，并压缩任务行密度**。文件夹上传的整包车道会把目录打成 `.sshx-upload-<随机串>.tar` 传输，任务卡此前直接显示该内部名。现在上传任务携带 `displayName`/`displayFolder`：任务卡与详情显示真实文件夹名和文件夹图标，进度事件与对账不再覆盖展示名；临时归档名也带上消毒后的文件夹名，落盘历史可还原文件夹名（旧版无名的记录回退为「文件夹上传」标签）。同时任务行整体缩小：28px 文件图标、12px 文件名、15px 徽标、更紧凑的行距与 22px 行内按钮，一屏可见更多任务。

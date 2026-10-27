@@ -133,6 +133,9 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
       { taskId: "visual-hist-2", connectionId: context.connectionId, direction: "download", fileName: "core.dump", size: 268_435_456, transferred: 268_435_456, status: "failed", startedAt: now - 1_600_000, finishedAt: now - 1_590_000, error: "disk quota exceeded", localPath: "/Users/demo/Downloads/core.dump" },
       { taskId: "visual-hist-1", connectionId: context.connectionId, direction: "upload", fileName: "backup.tar.gz", size: 52_428_800, transferred: 0, status: "cancelled", startedAt: now - 3_200_000, finishedAt: now - 3_190_000, localPath: "/Users/demo/backup.tar.gz" },
       { taskId: "visual-hist-5", connectionId: context.connectionId, direction: "download", fileName: "ansible-inventory.yml", size: 18_432, transferred: 18_432, status: "completed", startedAt: now - 5_000_000, finishedAt: now - 4_990_000, localPath: "/Users/demo/Downloads/ansible-inventory.yml" },
+      // 文件夹整包上传的历史：新名可还原文件夹名，旧随机名回退「文件夹上传」标签。
+      { taskId: "visual-hist-6", connectionId: context.connectionId, direction: "upload", fileName: ".sshx-upload-promoteDatastats-10-27-mvqp06x4-twmbkb.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 7_000_000, finishedAt: now - 6_990_000 },
+      { taskId: "visual-hist-7", connectionId: context.connectionId, direction: "upload", fileName: ".sshx-upload-abcdef12-ghijkl.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 8_000_000, finishedAt: now - 7_990_000 },
     ];
     return { tasks: entries.slice(0, limit) };
   }

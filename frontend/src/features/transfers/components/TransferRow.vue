@@ -161,8 +161,8 @@ const detailTitle = computed(() =>
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
-  padding: 6px 4px 7px 2px;
+  gap: 3px;
+  padding: 5px 3px 6px 2px;
   transition: background var(--transition-fast);
 }
 .transfer-row:hover .transfer-row-summary { background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent); }
@@ -171,7 +171,7 @@ const detailTitle = computed(() =>
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: 0;
   border-radius: var(--radius-sm);
   padding: 0;
@@ -184,57 +184,57 @@ const detailTitle = computed(() =>
 
 .transfer-file-icon {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--card-surface-raised);
   color: var(--muted-foreground);
 }
-.transfer-file-icon > svg { width: 14px; height: 14px; }
+.transfer-file-icon > svg { width: 12px; height: 12px; }
 .transfer-file-icon[data-tone="amber"] { border-color: color-mix(in srgb, var(--tone-amber) 34%, transparent); background: var(--tone-amber-soft); color: var(--tone-amber); }
 .transfer-file-icon[data-tone="blue"] { border-color: color-mix(in srgb, var(--tone-blue) 34%, transparent); background: var(--tone-blue-soft); color: var(--tone-blue); }
 .transfer-file-icon[data-tone="cyan"] { border-color: color-mix(in srgb, var(--tone-cyan) 34%, transparent); background: var(--tone-cyan-soft); color: var(--tone-cyan); }
 .transfer-file-icon[data-tone="violet"] { border-color: color-mix(in srgb, var(--tone-violet) 34%, transparent); background: var(--tone-violet-soft); color: var(--tone-violet); }
 
-.transfer-row-main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.transfer-row-main { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .transfer-row-name {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  line-height: 1.2;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.transfer-row-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.transfer-row-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 .transfer-dir {
   display: inline-flex;
-  height: 15px;
+  height: 14px;
   align-items: center;
   gap: 2px;
   border: 1px solid;
   border-radius: var(--radius-pill);
-  padding: 0 5px;
-  font-size: 9px;
+  padding: 0 4px;
+  font-size: 8.5px;
   font-weight: 600;
 }
-.transfer-dir > svg { width: 9px; height: 9px; }
+.transfer-dir > svg { width: 8px; height: 8px; }
 .transfer-dir.is-upload { border-color: color-mix(in srgb, var(--tone-emerald) 45%, transparent); background: var(--tone-emerald-soft); color: var(--tone-emerald); }
 .transfer-dir.is-download { border-color: color-mix(in srgb, var(--tone-blue) 45%, transparent); background: var(--tone-blue-soft); color: var(--tone-blue); }
 .transfer-proto {
   display: inline-flex;
-  height: 15px;
+  height: 14px;
   align-items: center;
   border: 1px solid var(--card-border);
   border-radius: 4px;
-  padding: 0 5px;
+  padding: 0 4px;
   color: var(--muted-foreground);
-  font-size: 8.5px;
+  font-size: 8px;
   letter-spacing: 0.02em;
 }
 .transfer-proto.is-compressed { border-color: color-mix(in srgb, var(--tone-violet) 40%, transparent); color: var(--tone-violet); }
@@ -243,13 +243,13 @@ const detailTitle = computed(() =>
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1px 6px;
+  gap: 1px 5px;
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: 8.5px;
   font-variant-numeric: tabular-nums;
 }
-.transfer-row-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.transfer-row-dot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--muted-foreground); }
+.transfer-row-status { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.transfer-row-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: var(--muted-foreground); }
 .transfer-row.is-running .transfer-row-dot { background: var(--tone-blue); animation: transfer-pulse 1.9s ease-out infinite; }
 .transfer-row.is-staging .transfer-row-dot { background: var(--tone-violet); }
 .transfer-row.is-completed .transfer-row-dot { background: var(--tone-emerald); }
@@ -271,16 +271,16 @@ const detailTitle = computed(() =>
 .transfer-row:hover .transfer-row-actions,
 .transfer-row:focus-within .transfer-row-actions { opacity: 1; }
 .transfer-row-actions .icon-button {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
   padding: 3px;
   border-radius: var(--radius-xs);
   color: var(--muted-foreground);
 }
 .transfer-row-actions .icon-button:hover:not(:disabled) { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 10%, transparent); box-shadow: none; }
 .transfer-row-actions .icon-button.is-danger:hover:not(:disabled) { color: var(--tone-rose); background: var(--tone-rose-soft); }
-.transfer-row-actions svg { width: 12px; height: 12px; }
+.transfer-row-actions svg { width: 11px; height: 11px; }
 
 .transfer-row-line {
   position: absolute;
@@ -301,22 +301,22 @@ const detailTitle = computed(() =>
 .transfer-detail {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 0 2px 8px 36px;
+  gap: 5px;
+  margin: 0 2px 7px 31px;
   border: 1px solid var(--card-border);
-  border-radius: var(--radius-md);
-  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
   background: var(--card-surface-inset);
 }
-.transfer-detail-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.transfer-detail-name { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-detail-head { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.transfer-detail-name { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 10.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .transfer-detail-state {
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
-  padding: 1px 6px;
+  padding: 1px 5px;
   background: var(--tone-blue-soft);
   color: var(--tone-blue);
-  font-size: 8.5px;
+  font-size: 8px;
   font-variant-numeric: tabular-nums;
 }
 .transfer-detail-state.is-completed { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
@@ -324,19 +324,19 @@ const detailTitle = computed(() =>
 .transfer-detail-state.is-cancelled { background: color-mix(in srgb, var(--muted-foreground) 14%, transparent); color: var(--muted-foreground); }
 .transfer-detail-state.is-paused,
 .transfer-detail-state.is-resumable { background: var(--tone-amber-soft); color: var(--tone-amber); }
-.transfer-detail-meta { color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
+.transfer-detail-meta { color: var(--muted-foreground); font-size: 8.5px; font-variant-numeric: tabular-nums; }
 .transfer-detail-path {
   display: flex;
   flex-direction: column;
   gap: 2px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
-  padding: 6px 8px;
+  padding: 5px 7px;
   background: var(--card-surface);
 }
-.transfer-detail-path-label { color: var(--muted-foreground); font-size: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
-.transfer-detail-path-value { color: var(--foreground); font-size: 9.5px; overflow-wrap: anywhere; }
-.transfer-detail-error { margin: 0; color: var(--tone-rose); font-size: 9.5px; overflow-wrap: anywhere; }
+.transfer-detail-path-label { color: var(--muted-foreground); font-size: 7.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.transfer-detail-path-value { color: var(--foreground); font-size: 9px; overflow-wrap: anywhere; }
+.transfer-detail-error { margin: 0; color: var(--tone-rose); font-size: 9px; overflow-wrap: anywhere; }
 
 @keyframes transfer-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone-blue) 35%, transparent); }

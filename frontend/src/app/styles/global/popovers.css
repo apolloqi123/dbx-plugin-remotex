@@ -13,7 +13,7 @@
 /* 传输弹层：头部/筛选固定，任务行内部滚动（宽度对齐参考面板的窄栏比例）。 */
 .transfer-popover {
   display: flex;
-  width: min(372px, calc(100vw - 24px));
+  width: min(340px, calc(100vw - 24px));
   max-height: min(560px, calc(100vh - 52px));
   flex-direction: column;
   gap: 0;
