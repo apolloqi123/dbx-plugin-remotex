@@ -2,11 +2,19 @@
 // 单行文件树（SftpTreePane 的呈现层）：只做行内 DOM 与交互事件的语义化上抛
 // （选中/展开/打开/右键/改名/键盘/详情卡/拖放），节点状态与虚拟窗口由父级
 // 维护。样式必须与行同处一个 scoped 块：父级 scoped CSS 到不了子组件内部。
-import { computed } from "vue";
-import { ChevronDown, ChevronRight, Info, TriangleAlert } from "@lucide/vue";
+import {
+  ChevronDown,
+  ChevronRight,
+  File as FileIcon,
+  FileText,
+  FolderClosed,
+  FolderOpen,
+  Info,
+  Link2,
+  TriangleAlert,
+} from "@lucide/vue";
 import type { SftpSanitizedEntry } from "../lib/entries/sftpEntries";
 import type { SftpFileTreeNode } from "../lib/tree/sftpFileTree";
-import SftpTreeIcon, { type SftpTreeIconKind } from "./SftpTreeIcon.vue";
 
 const props = defineProps<{
   row: { node: SftpFileTreeNode; depth: number; index: number };
@@ -40,14 +48,6 @@ const emit = defineEmits<{
   (event: "row-drag-leave", node: SftpFileTreeNode, dragEvent: DragEvent): void;
   (event: "row-drop", node: SftpFileTreeNode, dragEvent: DragEvent): void;
 }>();
-
-const iconKind = computed<SftpTreeIconKind>(() => {
-  const node = props.row.node;
-  if (node.kind === "directory") return node.expanded ? "directory-open" : "directory";
-  if (node.kind === "symlink") return "symlink";
-  if (node.kind === "other") return "other";
-  return "file";
-});
 
 function onRowClick(event: MouseEvent) {
   // 双击的第二次 click（detail > 1）忽略：首击已选中/展开，dblclick 只
@@ -130,7 +130,11 @@ function onDrop(event: DragEvent) {
     </button>
     <span v-else class="sftp-tree-caret-spacer" aria-hidden="true"></span>
 
-    <SftpTreeIcon :kind="iconKind" />
+    <FolderOpen v-if="row.node.kind === 'directory' && row.node.expanded" class="sftp-tree-dir-icon" />
+    <FolderClosed v-else-if="row.node.kind === 'directory'" class="sftp-tree-dir-icon" />
+    <Link2 v-else-if="row.node.kind === 'symlink'" class="sftp-tree-file-icon is-link" />
+    <FileText v-else-if="row.node.kind === 'other'" class="sftp-tree-file-icon is-other" />
+    <FileIcon v-else class="sftp-tree-file-icon" />
 
     <input
       v-if="renaming"
@@ -199,6 +203,23 @@ function onDrop(event: DragEvent) {
   width: 14px;
   height: 14px;
 }
+
+/* 宿主同款 Lucide 线性文件夹/文件：无彩色底块，18px 内容尺寸（20px 槽位），
+   琥珀色文件夹 + 蓝色文件 + 青色符号链接；描边与宿主树保持一致。 */
+.sftp-tree-row > svg.sftp-tree-dir-icon,
+.sftp-tree-row > svg.sftp-tree-file-icon {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  padding: 1px;
+  stroke-width: 1.8;
+}
+
+.sftp-tree-row > svg.sftp-tree-dir-icon { color: var(--tone-amber); }
+.sftp-tree-row > svg.sftp-tree-file-icon { color: var(--tone-blue); }
+.sftp-tree-row > svg.sftp-tree-file-icon.is-link { color: var(--tone-cyan); }
+.sftp-tree-row > svg.sftp-tree-file-icon.is-other { color: var(--muted-foreground); }
 
 .sftp-tree-name {
   min-width: 0;

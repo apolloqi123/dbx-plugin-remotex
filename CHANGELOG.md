@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.49] — 2026-10-27
+
+- **工具栏右缘按使用习惯重排，SFTP 文件树改用宿主同款图标**。顶部工具栏从右往左固定为「设置 → 审计 → SFTP 面板 → SFTP 传输 → 容器管理 → 服务器指标」，SFTP 面板与传输紧邻；左侧依次为视图（分栏/字号）、会话、连接运维、效率工具、录制。dock 面板精简组也把传输与 SFTP 面板放在一起。SFTP 文件树的文件夹/文件/符号链接图标改为与宿主 DBX 相同的 Lucide `FolderClosed`/`FolderOpen`/`File`/`Link2` 线性图标：琥珀色文件夹、蓝色文件、青色符号链接，去掉彩色底块，保持 18px 内容尺寸与 28px 行高。
+  **Reordered the toolbar's right edge and switched the SFTP tree to the host's icon language.** From right to left the top toolbar is now Settings → Audit → SFTP panel → SFTP transfers → Containers → Server metrics, with the SFTP panel next to transfers; the left side follows view (panes/font), session, connection ops, productivity and recording. The dock compact strip also groups transfers with the SFTP panel. SFTP tree folder/file/symlink glyphs now use the same Lucide `FolderClosed`/`FolderOpen`/`File`/`Link2` line icons as the DBX host — amber folders, blue files, cyan symlinks — with the colored tiles removed, keeping the 18px content size and 28px row height.
+
 ## [0.7.9-beta.48] — 2026-10-27
 
 - **SFTP 文件树图标放大**。文件夹/文件夹展开/文件/符号链接图标由 14px 内容尺寸放大到 18px（20px 槽位、1px 内边距），28px 行高与文字基线保持不变；深色/浅色宿主下实拍确认，图标更易辨认且不挤压文件名。
