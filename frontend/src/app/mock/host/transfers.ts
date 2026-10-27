@@ -15,6 +15,29 @@ const fixtureUploadCount = { value: 0 };
 // 可视化 mock 也需要具备真实的“清空后刷新为空”语义，否则历史工具栏
 // 的刷新/清空按钮看起来没有效果。
 let mockTransferHistoryCleared = false;
+// ?demo=transfers：面板改版的视觉夹具——一条运行中的目录下载、一条运行中的
+// 文件上传、一条排队任务；cancel/status 都按真实契约应答，避免对账把它们判死。
+const demoLiveJoinedAt = Date.now();
+const DEMO_LIVE_TRANSFERS = [
+  {
+    taskId: "visual-live-3", sessionId: "visual-session", direction: "download", fileName: "Nessus",
+    size: 76_546_048, transferred: 24_117_248, status: "running", fileCount: 12,
+    currentFile: "plugins/audit.nasl", joinedAt: demoLiveJoinedAt - 45_000,
+  },
+  {
+    taskId: "visual-live-2", sessionId: "visual-session", direction: "upload", fileName: "report-2026-q3.pdf",
+    size: 8_388_608, transferred: 5_242_880, status: "running", joinedAt: demoLiveJoinedAt - 15_000,
+  },
+  {
+    taskId: "visual-live-1", sessionId: "visual-session", direction: "upload", fileName: "anaconda-ks.cfg",
+    size: 1_536, transferred: 0, status: "queued", joinedAt: demoLiveJoinedAt - 5_000,
+  },
+];
+const cancelledDemoTransfers = new Set<string>();
+const demoLiveTransfers = () =>
+  fixtureParams.get("demo") === "transfers"
+    ? DEMO_LIVE_TRANSFERS.filter((task) => !cancelledDemoTransfers.has(task.taskId))
+    : [];
 
 // 录制回放 fixture：一条 ~24s 的输出事件流，供录制浮条与回放弹窗（进度条/
 // 倍速/GIF 导出）走查。data 为直写 xterm 的原始文本（asciicast eventdata）。
@@ -47,7 +70,13 @@ export function handleSftpUploadBinary(channel: string, bytes: Uint8Array): void
 }
 
 export async function handleTransfersInvoke(method: string, params: unknown): Promise<unknown | Unhandled> {
-  if (method === "sftp/transfer/list") return { tasks: [] };
+  if (method === "sftp/transfer/list") return { tasks: demoLiveTransfers().map((task) => ({ ...task })) };
+  if (method === "sftp/transfer/status") {
+    const taskId = String((params as Record<string, unknown>)?.taskId || "");
+    const task = demoLiveTransfers().find((item) => item.taskId === taskId);
+    if (!task) throw new Error(`unknown transfer task: ${taskId}`);
+    return { taskId, transferred: task.transferred, size: task.size, status: task.status, phase: "uploading" };
+  }
   if (method === "ssh/recording/list") return { recordings: [RECORDING_FIXTURE_SUMMARY] };
   if (method === "ssh/recording/get") {
     const input = (params || {}) as Record<string, unknown>;
@@ -94,10 +123,11 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(200, Math.floor(limitRaw)) : 50;
     const now = Date.now();
     const entries: Array<Record<string, unknown>> = mockTransferHistoryCleared ? [] : [
-      { taskId: "visual-hist-4", connectionId: context.connectionId, direction: "upload", fileName: "deploy.sh", size: 2481, transferred: 2481, status: "completed", startedAt: now - 400_000, finishedAt: now - 396_000 },
-      { taskId: "visual-hist-3", connectionId: context.connectionId, direction: "download", fileName: "server.log", size: 741_248, transferred: 741_248, status: "completed", startedAt: now - 800_000, finishedAt: now - 790_000 },
-      { taskId: "visual-hist-2", connectionId: context.connectionId, direction: "download", fileName: "core.dump", size: 268_435_456, transferred: 268_435_456, status: "failed", startedAt: now - 1_600_000, finishedAt: now - 1_590_000, error: "disk quota exceeded" },
-      { taskId: "visual-hist-1", connectionId: context.connectionId, direction: "upload", fileName: "backup.tar.gz", size: 52_428_800, transferred: 0, status: "cancelled", startedAt: now - 3_200_000, finishedAt: now - 3_190_000 },
+      { taskId: "visual-hist-4", connectionId: context.connectionId, direction: "upload", fileName: "deploy.sh", size: 2481, transferred: 2481, status: "completed", startedAt: now - 400_000, finishedAt: now - 396_000, localPath: "/Users/demo/deploy.sh" },
+      { taskId: "visual-hist-3", connectionId: context.connectionId, direction: "download", fileName: "server.log", size: 741_248, transferred: 741_248, status: "completed", startedAt: now - 800_000, finishedAt: now - 790_000, localPath: "/Users/demo/Downloads/server.log" },
+      { taskId: "visual-hist-2", connectionId: context.connectionId, direction: "download", fileName: "core.dump", size: 268_435_456, transferred: 268_435_456, status: "failed", startedAt: now - 1_600_000, finishedAt: now - 1_590_000, error: "disk quota exceeded", localPath: "/Users/demo/Downloads/core.dump" },
+      { taskId: "visual-hist-1", connectionId: context.connectionId, direction: "upload", fileName: "backup.tar.gz", size: 52_428_800, transferred: 0, status: "cancelled", startedAt: now - 3_200_000, finishedAt: now - 3_190_000, localPath: "/Users/demo/backup.tar.gz" },
+      { taskId: "visual-hist-5", connectionId: context.connectionId, direction: "download", fileName: "ansible-inventory.yml", size: 18_432, transferred: 18_432, status: "completed", startedAt: now - 5_000_000, finishedAt: now - 4_990_000, localPath: "/Users/demo/Downloads/ansible-inventory.yml" },
     ];
     return { tasks: entries.slice(0, limit) };
   }
@@ -116,7 +146,10 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     });
     return { success: true, phase: "uploading" };
   }
-  if (method === "sftp/transfer/cancel") return { success: true };
+  if (method === "sftp/transfer/cancel") {
+    cancelledDemoTransfers.add(String((params as Record<string, unknown>)?.taskId || ""));
+    return { success: true };
+  }
   if (method === "sftp/download/start") {
     const remotePath = mockFileSystem.normalizePath(String((params as Record<string, unknown>)?.remotePath || "download.bin"));
     const node = mockFileSystem.findNode(remotePath);

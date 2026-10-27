@@ -31,7 +31,7 @@
 }
 
 .identity, .toolbar-actions, .icon-button,
-.file-name, .transfer-title, .transfer-meta,
+.file-name,
 .modal header, .modal footer, .file-footer {
   display: flex;
   align-items: center;
@@ -251,7 +251,7 @@
 .file-header button:hover { background: var(--accent); }
 .icon-button:disabled, button:disabled { cursor: default; opacity: .42; }
 .icon-button svg, .path-toolbar svg,
-.file-header svg, .file-name svg, .transfer-title svg, .drop-overlay svg {
+.file-header svg, .file-name svg, .drop-overlay svg {
   width: 14px;
   height: 14px;
   flex: 0 0 14px;

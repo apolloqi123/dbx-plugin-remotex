@@ -10,23 +10,17 @@
 .bookmark-list-popover { display: flex; gap: 0; width: 250px; max-height: min(320px, 50vh); flex-direction: column; padding: 8px; overflow: auto; }
 /* 旧 z60 是为了在工具栏层叠上下文里压过 xterm 装饰层；portal 后由 wrapper
    z-50 统一参与根级排序，与右键菜单同档（菜单后挂载 DOM 序靠后自然盖住）。 */
-.transfer-popover { gap: 0; width: min(340px, calc(100vw - 24px)); max-height: min(520px, calc(100vh - 52px)); padding: 8px; overflow: auto; }
-.transfer-popover h3 { margin: 2px 4px 8px; font-size: 12px; }
-/* Docker 工具条弹层（鲸鱼入口）：容器表需要比侧栏宽的横向空间，关闭即卸载。 */
-.transfer-card { display: grid; grid-template: "title actions" auto "progress progress" auto "meta meta" auto "path path" auto "error error" auto / minmax(0, 1fr) auto; position: relative; column-gap: 6px; row-gap: 4px; border-top: 1px solid var(--border); padding: 7px 4px; }
-.transfer-title { grid-area: title; min-width: 0; gap: 6px; }
-.transfer-title span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.transfer-title strong { font-size: 11px; font-variant-numeric: tabular-nums; }
-/* 压缩传输徽标（M33）：窄胶囊，弱化色，不打断标题行省略。 */
-.transfer-badge { flex: 0 0 auto !important; border: 1px solid var(--border); border-radius: 999px; padding: 0 5px; color: var(--muted-foreground); font-size: 9px; line-height: 14px; }
-.transfer-card progress { grid-area: progress; width: 100%; height: 4px; border: 0; accent-color: var(--primary); }
-.transfer-meta { grid-area: meta; min-width: 0; gap: 7px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.transfer-meta span { overflow: hidden; text-overflow: ellipsis; }
-.transfer-meta span + span::before { content: "·"; margin-right: 7px; color: var(--border); }
-.transfer-path { grid-area: path; min-width: 0; margin: 0; color: var(--muted-foreground); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
-.transfer-actions { grid-area: actions; display: flex; align-self: start; justify-content: flex-end; gap: 3px; }
-.transfer-actions .icon-button { width: 24px; height: 24px; min-width: 24px; padding: 3px; }
-.transfer-card .task-error { grid-area: error; }
+/* 传输弹层：头部/筛选固定，任务行内部滚动（宽度对齐参考面板的窄栏比例）。 */
+.transfer-popover {
+  display: flex;
+  width: min(372px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 52px));
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.transfer-popover h3 { margin: 0; font-size: 12px; }
 .link-button { align-self: flex-end; padding: 2px 0; color: var(--primary); font-size: 11px; }
 .task-error { margin: 0; color: var(--destructive); font-size: 10px; overflow-wrap: anywhere; }
 .activity-dot { position: absolute; top: 4px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 1px var(--background); }
@@ -40,9 +34,9 @@
 .zmodem-status { position: absolute; z-index: 3; right: 8px; bottom: 8px; left: 8px; display: flex; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: var(--radius); padding: 6px 8px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent); color: var(--foreground); font-size: 11px; pointer-events: none; }
 .zmodem-status svg { width: 14px; height: 14px; flex: 0 0 14px; }
 .zmodem-status span:first-of-type { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* trzsz overlay reuses the zmodem status card shell and adds transfer-card
-   style progress/state affordances: a thin progress bar, file counter, speed
-   and a working cancel button (the shell itself keeps pointer-events: none). */
+/* trzsz overlay reuses the zmodem status card shell and adds transfer-style
+   progress/state affordances: a thin progress bar, file counter, speed and a
+   working cancel button (the shell itself keeps pointer-events: none). */
 .trzsz-status { flex-wrap: wrap; }
 .trzsz-status.trzsz-done { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
 .trzsz-status.trzsz-failed { border-color: color-mix(in srgb, var(--destructive) 45%, var(--border)); color: var(--destructive); }

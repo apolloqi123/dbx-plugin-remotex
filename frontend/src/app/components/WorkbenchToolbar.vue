@@ -137,9 +137,7 @@ const props = defineProps<{
   batchUploadPercent: (summary: BatchUploadSummary) => number;
   formatBytes: (value?: number) => string;
   transferPercent: (task: TransferTask) => number;
-  transferBarValue: (task: TransferTask) => number | undefined;
   transferShownBytes: (task: TransferTask) => number;
-  transferBytesTitle: (task: TransferTask) => string | undefined;
   transferPausable: (status: string) => boolean;
   actions: WorkbenchToolbarActions;
 }>();
@@ -430,9 +428,7 @@ const {
       :batch-upload-percent="batchUploadPercent"
       :format-bytes="formatBytes"
       :transfer-percent="transferPercent"
-      :transfer-bar-value="transferBarValue"
       :transfer-shown-bytes="transferShownBytes"
-      :transfer-bytes-title="transferBytesTitle"
       :transfer-pausable="transferPausable"
       :t="t"
       @update:transferPanelOpen="(value) => { if (!value && !transferHistoryMenu) transferPanelOpen = false; }"

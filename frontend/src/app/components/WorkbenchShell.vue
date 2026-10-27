@@ -95,7 +95,7 @@ const {
   symlinkSubmitting, symlinkTargetDraft, t, telnetDialogOpen, terminal,
   terminalAppearance, terminalAppearanceState, terminalBehavior, terminalFontSize, terminalHotkeys,
   terminalState, toggleAttrsPerm, toggleChmodPerm, toggleHighlightRule, togglePanelToolbar,
-  toolbarActions, toolbarStyle, tooltip, transferBarValue, transferBytesTitle,
+  toolbarActions, toolbarStyle, tooltip,
   transferHistory, transferHistoryClearOpen, transferHistoryFailed, transferHistoryLoading, transferHistoryMenu,
   transferList, transferPanelOpen, transferPercent, transferPrefsAdapter, transferShownBytes,
   transferSpeeds, updateActionLinksSettings, updateAiSettings, updateCtxSearchEngines, updateGutterSettings,
@@ -222,9 +222,7 @@ const {
       :batch-upload-percent="batchUploadPercent"
       :format-bytes="formatBytes"
       :transfer-percent="transferPercent"
-      :transfer-bar-value="transferBarValue"
       :transfer-shown-bytes="transferShownBytes"
-      :transfer-bytes-title="transferBytesTitle"
       :transfer-pausable="transferPausable"
       :actions="toolbarActions"
       @close-history-menu="transferHistoryMenu = undefined"

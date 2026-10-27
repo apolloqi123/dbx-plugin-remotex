@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.53] — 2026-10-27
+
+- **SFTP 传输任务页重做为筛选式任务列表**。弹层改为「头部计数 + 状态筛选 + 任务行」结构：文件类型图标按目录/压缩包/图片/代码配置/文档分色，行内展示文件名、上传/下载与 SFTP（含 gzip）徽标、状态圆点与体积/时间（运行中显示已传/总量，有速度时追加速率），行底 2px 状态色进度线；右侧内联提供打开文件、在文件夹中显示、暂停/继续、取消，点击行展开详情卡（状态与时间、体积、本地/远端路径、错误）。筛选条对全部/上传/下载/暂停/已完成实时计数，无匹配时给出空态；活跃任务按运行中→排队排序，落盘历史与可续传任务合并展示并按 taskId 去重。文件夹/多文件批量上传聚合卡保留，历史右键菜单、清空历史、刷新与续传文件选择器均保留。
+  **Redesigned the SFTP transfer tasks panel as a filtered task list.** The popover now has a header count, status filter chips and typed task rows: file-type tiles for folders/archives/images/code/docs, file name, upload/download and SFTP (plus gzip) badges, a status dot with size/time (live rows show transferred/total plus speed when available), and a 2px status-colored progress line. Inline actions cover open file, reveal in folder, pause/resume and cancel, and clicking a row expands a detail card with status/time, size, local/remote paths and errors. Filters count all/uploads/downloads/paused/completed live and show an empty state when nothing matches; active tasks sort running→queued, while persisted history and resumable uploads merge into the same list deduped by taskId. Folder/multi-file batch cards, the history context menu, clear/refresh actions and the resume file picker are preserved.
+
 ## [0.7.9-beta.52] — 2026-10-27
 
 - **服务器指标页重做为卡片仪表盘**。右侧指标页按参考监控面板改版：系统卡（主机名、发行版、内核、核心数、负载、运行时长）、CPU 卡（大数字 + 固定 0–100 刻度的趋势图 + 最多 64 核的每核分段刻度条）、内存卡（已用/缓存/空闲环形图 + 交换分区进度条）、网络卡（上下行双线趋势 + 各网卡速率与累计流量）、磁盘卡（总用量、各挂载点进度条、inode 使用率，≥85% 转警示色）、进程卡（CPU/MEM 双进度条 + PID/用户）；GPU/NPU 区与进程管理表保留并统一卡片外壳。“查看全部”仍打开可排序、可终止进程的完整管理表。
