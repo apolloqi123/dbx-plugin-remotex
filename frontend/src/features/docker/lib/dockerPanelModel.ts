@@ -84,3 +84,40 @@ export function dockerStateClass(state: string): string {
 export function isDockerContainerRunning(container: Pick<DockerContainer, "state">): boolean {
   return container.state === "running";
 }
+
+/**
+ * Parse "stopped X ago" from Docker status text and return minutes since stop.
+ * Returns null if the status doesn't indicate a stopped container or the time
+ * can't be parsed.
+ *
+ * Examples:
+ *   "Exited (0) 2 minutes ago" → 2
+ *   "Exited (137) 5 hours ago" → 300
+ *   "Up 3 hours" → null (still running)
+ */
+export function parseStoppedMinutesAgo(status: string): number | null {
+  const match = status.match(/Exited\s+\([^)]+\)\s+(\d+)\s+(second|minute|hour|day)s?\s+ago/i);
+  if (!match) return null;
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  if (unit === "second") return value / 60;
+  if (unit === "minute") return value;
+  if (unit === "hour") return value * 60;
+  if (unit === "day") return value * 24 * 60;
+  return null;
+}
+
+/** Filter containers by state. "recent" = running + stopped within 5 minutes. */
+export type ContainerFilter = "all" | "running" | "recent" | "stopped";
+
+export function filterContainers(containers: DockerContainer[], filter: ContainerFilter): DockerContainer[] {
+  if (filter === "all") return containers;
+  if (filter === "running") return containers.filter((c) => c.state === "running");
+  if (filter === "stopped") return containers.filter((c) => c.state !== "running");
+  // "recent": running + stopped within 5 minutes
+  return containers.filter((c) => {
+    if (c.state === "running") return true;
+    const minutes = parseStoppedMinutesAgo(c.status);
+    return minutes !== null && minutes <= 5;
+  });
+}
