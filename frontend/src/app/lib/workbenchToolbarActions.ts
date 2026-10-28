@@ -1,5 +1,5 @@
 import type { AgentTerminalMode } from "../../features/agent/lib/agentTerminal";
-import type { QuickCommand, QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
+import type { QuickCommand } from "../../features/quick-commands/lib/quickCommands";
 import type { TerminalColorScheme } from "../../features/terminal/lib/appearance/terminalScheme";
 import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
 import type { ResumableUploadTask } from "../../features/transfers/lib/transferResume";
@@ -59,14 +59,19 @@ export interface SessionMenuActions {
   requestLocalTerminal(): void;
 }
 
-/** 快速命令下拉（列表 + 搜索 + 执行；管理入口已归位设置·终端）。 */
+/** 工具栏「命令管理」弹层：执行 + 完整管理（保存/删除/分组/导入/错误提示）。 */
 export interface QuickCommandsMenuActions {
   toggleQuickMenu(): void;
   sendQuickCommand(item: QuickCommand): void;
   pasteQuickCommand(item: QuickCommand): void;
-  toggleQuickGroupCollapse(groupId: string): void;
-  quickGroupName(group: QuickCommandGroupView): string;
-  toggleQuickExpand(id: string): void;
+  saveQuickCommand(command: { id?: string; name: string; command: string; groupId?: string; groupName?: string }): void;
+  deleteQuickCommand(id: string): void;
+  importQuickCommands(items: Array<{ name: string; command: string; groupName?: string }>): void;
+  createQuickCommandGroup(name: string): void;
+  renameQuickCommandGroupById(groupId: string, name: string): void;
+  dissolveQuickCommandGroupById(groupId: string): void;
+  showNotice(message: string): void;
+  showError(cause: unknown): void;
 }
 
 /** RDP 独立工具组（缩放三档 + 分辨率 + 大文本粘贴 + 断开）。 */

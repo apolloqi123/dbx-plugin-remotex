@@ -53,9 +53,9 @@ const {
   deleteQuickCommand, deleteSubmitting, deleteTarget, deleteTerminalAppearanceTheme, dismissWatchModified,
   dissolveQuickCommandGroupById, dockConnections, dockerPaneOpen, downloadConflictPrompt, downloadPrefsAdapter,
   downloadPrompt, dropCwdTarget, dropUploadPathInput, dropUploadPrompt, dropUploadTarget,
-  editorPrefsAdapter, externalEditBusy, fileBatchProgress, filteredQuickCommands, folderPickerTarget,
+  editorPrefsAdapter, externalEditBusy, fileBatchProgress, folderPickerTarget,
   folderUploadProgress, folderUploadSupported, formatDuration, formatModified, formatRecordedAt,
-  forwardsOpen, ghostTabAccept, groupedQuickCommands, gutterSettings,
+  forwardsOpen, ghostTabAccept, gutterSettings,
   highlightDisplayMode, highlightRules, highlightSaving, hostKeyPrompt, hostTerminalFontFamily,
   hostTerminalTheme, importPanelOpen, importQuickCommands, isLocalMode, isRdpConnection,
   isRdpMode, isSerialMode, isTelnetMode, isVncMode, jsonPreviewState,
@@ -72,8 +72,7 @@ const {
   previewDirty, previewDraft, previewEditable, previewEditableAllowed, previewImageUrl,
   previewImageZoomed, previewLoading, previewMode, previewOpen, previewSaving,
   previewSize, previewText, previewTitle, previewTruncated, profilesOpen,
-  promptHintsEnabled, quickCollapsedGroups, quickCommandGroupSummary, quickCommands, quickExpandedId,
-  quickGroups, createQuickCommandGroup, quickHasRealGroups, quickImportBusy, quickMenuOpen, quickSaving, quickSearch,
+  promptHintsEnabled, quickCommands, quickGroups, createQuickCommandGroup, quickImportBusy, quickMenuOpen, quickSaving,
   rdpCertPrompt, rdpCertRemaining, rdpCertRemember, rdpCustomHeight, rdpCustomWidth,
   rdpDesktopSize, rdpDialogOpen, rdpPasteOpen, rdpPasteText, rdpResizing,
   rdpResolutionOpen, rdpScaleMode, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
@@ -126,7 +125,6 @@ const {
       v-model:session-menu-shell-pick-open="sessionMenuShellPickOpen"
       v-model:local-shell-surface-open="localShellSurfaceOpen"
       v-model:quick-menu-open="quickMenuOpen"
-      v-model:quick-search="quickSearch"
       v-model:panel-palette-open="panelPaletteOpen"
       v-model:rdp-scale-mode="rdpScaleMode"
       v-model:rdp-resolution-open="rdpResolutionOpen"
@@ -195,12 +193,9 @@ const {
       :can-open-local-tab="canOpenLocalTab"
       :dock-connections="dockConnections"
       :quick-commands="quickCommands"
-      :filtered-quick-commands="filteredQuickCommands"
-      :grouped-quick-commands="groupedQuickCommands"
-      :quick-has-real-groups="quickHasRealGroups"
-      :quick-collapsed-groups="quickCollapsedGroups"
-      :quick-expanded-id="quickExpandedId"
-      :quick-command-group-summary="quickCommandGroupSummary"
+      :quick-groups="quickGroups"
+      :quick-saving="quickSaving"
+      :quick-importing="quickImportBusy"
       :resolution-presets="RDP_RESOLUTION_PRESETS"
       :rdp-resizing="rdpResizing"
       :rdp-desktop-size="rdpDesktopSize"

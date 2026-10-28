@@ -114,5 +114,7 @@ function saveCommand() {
 .qc-field textarea { min-height: 104px; resize: vertical; line-height: 1.55; }
 .qc-field input:focus, .qc-field textarea:focus, .qc-select:focus { border-color: color-mix(in srgb, var(--primary) 65%, var(--border)); outline: none; }
 .quick-command-editor-actions { display: flex; align-items: center; gap: 6px; }
+.quick-command-editor-actions > button:not(.primary-button) { height: 26px; border: 1px solid var(--border); border-radius: 7px; padding: 0 10px; background: var(--background); color: var(--foreground); font-size: 11px; cursor: pointer; }
+.quick-command-editor-actions > button:not(.primary-button):hover { background: var(--accent); }
 .qc-limit { margin-left: auto; flex: 0 0 auto; border-radius: 8px; padding: 2px 7px; background: var(--muted); color: var(--muted-foreground); font-size: 10px; line-height: 15px; }
 </style>

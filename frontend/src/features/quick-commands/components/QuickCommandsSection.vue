@@ -44,6 +44,8 @@ const props = defineProps<{
   /** 批量导入在途态（App 侧）。 */
   importing: boolean;
   limit: number;
+  /** 表面形态：设置页（默认）或工具栏弹层（更高、更宽）。 */
+  variant?: "settings" | "popover";
   t: (key: string, values?: Record<string, string | number>) => string;
 }>();
 
@@ -122,6 +124,7 @@ function groupTone(group: QuickCommandGroupView): string {
 
 // —— 上下文菜单：单实例子组件，右键 / 行内 ⋯ / 工具栏 ⋯ 共用 ——
 const menuRef = ref<InstanceType<typeof QuickCommandsMenu> | null>(null);
+const rootEl = ref<HTMLElement | null>(null);
 
 function selectCommand(item: QuickCommand) {
   selected.value = { kind: "command", id: item.id };
@@ -405,7 +408,7 @@ watch([() => props.commands, () => props.groups], () => {
 </script>
 
 <template>
-  <div class="quick-commands-section" :class="{ 'is-tree': view === 'tree' }">
+  <div ref="rootEl" class="quick-commands-section" :class="{ 'is-tree': view === 'tree', 'is-popover': variant === 'popover' }">
     <QuickCommandImport
       v-if="view === 'import'"
       :commands="commands"
@@ -536,6 +539,8 @@ watch([() => props.commands, () => props.groups], () => {
 
     <QuickCommandsMenu
       ref="menuRef"
+      :anchor-el="rootEl"
+      :positioning="variant === 'popover' ? 'absolute' : 'fixed'"
       :t="t"
       :connected="connected"
       :has-commands="commands.length > 0"

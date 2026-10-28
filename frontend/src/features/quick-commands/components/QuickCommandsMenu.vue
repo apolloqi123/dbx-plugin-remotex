@@ -27,6 +27,9 @@ const props = defineProps<{
   hasCommands: boolean;
   selectedCommand?: QuickCommand;
   selectedGroup?: QuickCommandGroupView;
+  /** 定位容器：设置页为 fixed（视口坐标）；工具栏弹层为 absolute（管理器根内）。 */
+  positioning?: "fixed" | "absolute";
+  anchorEl?: HTMLElement | null;
 }>();
 
 const emit = defineEmits<{
@@ -42,14 +45,18 @@ const menuCommand = computed(() => (menu.value?.target.kind === "command" ? menu
 
 async function open(target: QuickCommandsMenuTarget, x: number, y: number, trigger?: HTMLElement | null) {
   menuTrigger.value = trigger ?? null;
-  menu.value = { target, x, y };
-  // 先以点击点定位，渲染后按实际尺寸把菜单收回视口内。
+  const absolute = props.positioning === "absolute" && props.anchorEl;
+  const anchorRect = absolute ? props.anchorEl!.getBoundingClientRect() : null;
+  menu.value = { target, x: absolute ? x - anchorRect!.left : x, y: absolute ? y - anchorRect!.top : y };
+  // 先以点击点定位，渲染后按实际尺寸把菜单收回容器（或视口）内。
   await nextTick();
   const rect = menuEl.value?.getBoundingClientRect();
   if (!rect || !menu.value) return;
-  const margin = 8;
-  const left = Math.min(menu.value.x, window.innerWidth - rect.width - margin);
-  const top = Math.min(menu.value.y, window.innerHeight - rect.height - margin);
+  const margin = absolute ? 4 : 8;
+  const maxX = absolute ? anchorRect!.width - rect.width - margin : window.innerWidth - rect.width - margin;
+  const maxY = absolute ? anchorRect!.height - rect.height - margin : window.innerHeight - rect.height - margin;
+  const left = Math.min(menu.value.x, maxX);
+  const top = Math.min(menu.value.y, maxY);
   menu.value = { ...menu.value, x: Math.max(margin, left), y: Math.max(margin, top) };
   await nextTick();
   menuEl.value?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
@@ -126,7 +133,7 @@ defineExpose({ open, close });
     v-if="menu"
     ref="menuEl"
     class="qc-context-menu"
-    :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+    :style="{ position: positioning === 'absolute' ? 'absolute' : 'fixed', left: `${menu.x}px`, top: `${menu.y}px` }"
     role="menu"
     :data-menu="menu.target.kind"
     @keydown="onMenuKeydown"

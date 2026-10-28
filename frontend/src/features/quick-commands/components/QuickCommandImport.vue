@@ -84,5 +84,7 @@ function confirmImport() {
 .quick-import-file input[type="file"] { display: none; }
 .quick-import-summary { margin: 0; font-size: 10.5px; line-height: 1.5; }
 .quick-command-editor-actions { display: flex; align-items: center; gap: 6px; }
+.quick-command-editor-actions > button:not(.primary-button) { height: 26px; border: 1px solid var(--border); border-radius: 7px; padding: 0 10px; background: var(--background); color: var(--foreground); font-size: 11px; cursor: pointer; }
+.quick-command-editor-actions > button:not(.primary-button):hover { background: var(--accent); }
 textarea { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; line-height: 1.5; }
 </style>

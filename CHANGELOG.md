@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.61] — 2026-10-28
+
+- **工具栏「快速命令」入口改为「命令管理」，并与设置页复用同一套管理器**。点击工具栏图标不再弹出旧的只读列表，而是直接打开命令管理界面：搜索、彩色分组树、命令行内联运行/⋯、右键菜单（命令运行/粘贴/复制/编辑/导出/删除；分组新建命令/新建分组/重命名/导出/删除）、新建命令/分组、导入与按范围导出。弹层放宽到 560px，上下文菜单在弹层内绝对定位，避免浮层裁切；工具栏图标的 tooltip 与 aria-label 同步改为「命令管理」。7 个语言与深浅主题同步生效。
+  **The toolbar quick-command entry is now “Command manager” and reuses the full manager.** Clicking the toolbar icon opens the same command-management surface as Settings instead of the old read-only list: search, colored group tree, inline run/⋯ actions, context menus (run/paste/copy/edit/export/delete for commands; new command/group, rename, export and delete for groups), new command/group, import, and scoped exports. The popover widens to 560px and positions its context menu absolutely inside the popover so it is never clipped; the toolbar icon's tooltip and aria-label are renamed to “Command manager”. All seven locales and both themes follow.
+
 ## [0.7.9-beta.60] — 2026-10-28
 
 - **快速命令管理页重做为树形命令管理器**。设置·快速命令改为「命令管理」卡：顶部搜索 + 新建命令/新建分组/更多，分组以彩色文件夹树展示并带条数，命令行单行显示名称与命令预览，空分组也会持久保留。分组与命令都支持右键菜单（或行尾 ⋯）：命令可执行、粘贴到终端、复制、编辑、导出到剪贴板/文件、删除；分组可新建命令、新建分组、重命名、导出分组、删除。工具栏 ⋯ 提供导入与「当前命令/当前分组/全部」导出，文件导出走宿主 `host.saveFile` 落盘桥。分组清单独立存入 pluginStore（`ssh-quick-command-groups`），命令端组字段继续兼容；导入/导出文件携带分组名，可往返还原。深浅主题与 7 个语言均适配。

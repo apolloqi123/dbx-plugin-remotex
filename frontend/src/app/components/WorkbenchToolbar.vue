@@ -2,7 +2,7 @@
 import type { CSSProperties } from "vue";
 import { AGENT_MODES } from "../../features/agent/lib/agentTerminal";
 import type { AgentTerminalMode } from "../../features/agent/lib/agentTerminal";
-import type { QuickCommand, QuickCommandGroupView } from "../../features/quick-commands/lib/quickCommands";
+import type { QuickCommand, QuickCommandGroup } from "../../features/quick-commands/lib/quickCommands";
 import type { FolderUploadProgress } from "../../features/sftp/lib/transfer/folderUpload";
 import type { TerminalColorScheme } from "../../features/terminal/lib/appearance/terminalScheme";
 import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
@@ -106,14 +106,11 @@ const props = defineProps<{
   localState: string;
   canOpenLocalTab: boolean;
   dockConnections: DockConnectionEntry[];
-  // 快速命令下拉（转发 QuickCommandsMenu）
+  // 命令管理弹层（转发 QuickCommandsMenu）
   quickCommands: QuickCommand[];
-  filteredQuickCommands: QuickCommand[];
-  groupedQuickCommands: QuickCommandGroupView[];
-  quickHasRealGroups: boolean;
-  quickCollapsedGroups: string[];
-  quickExpandedId: string | null;
-  quickCommandGroupSummary: string;
+  quickGroups: QuickCommandGroup[];
+  quickSaving: boolean;
+  quickImporting: boolean;
   // RDP 工具组（转发 RdpToolbarControls）
   resolutionPresets: ReadonlyArray<{ width: number; height: number }>;
   rdpResizing: boolean;
@@ -155,7 +152,6 @@ const sessionMenuShellOpen = defineModel<boolean>("sessionMenuShellOpen", { requ
 const sessionMenuShellPickOpen = defineModel<boolean>("sessionMenuShellPickOpen", { required: true });
 const localShellSurfaceOpen = defineModel<boolean>("localShellSurfaceOpen", { required: true });
 const quickMenuOpen = defineModel<boolean>("quickMenuOpen", { required: true });
-const quickSearch = defineModel<string>("quickSearch", { required: true });
 const panelPaletteOpen = defineModel<boolean>("panelPaletteOpen", { required: true });
 const rdpScaleMode = defineModel<"fit" | "stretch" | "actual">("rdpScaleMode", { required: true });
 const rdpResolutionOpen = defineModel<boolean>("rdpResolutionOpen", { required: true });
@@ -315,16 +311,12 @@ const {
       <!-- 效率工具：快命令 → 批量发送 → Agent 模式 -->
       <QuickCommandsMenu
         v-model:quick-menu-open="quickMenuOpen"
-        v-model:quick-search="quickSearch"
         :t="t"
         :connected="connected"
         :quick-commands="quickCommands"
-        :filtered-quick-commands="filteredQuickCommands"
-        :grouped-quick-commands="groupedQuickCommands"
-        :quick-has-real-groups="quickHasRealGroups"
-        :quick-collapsed-groups="quickCollapsedGroups"
-        :quick-expanded-id="quickExpandedId"
-        :quick-command-group-summary="quickCommandGroupSummary"
+        :quick-groups="quickGroups"
+        :quick-saving="quickSaving"
+        :quick-importing="quickImporting"
         :actions="actions"
       />
       <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><WorkbenchGlyph name="batch-send" /></button>

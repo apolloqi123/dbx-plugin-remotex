@@ -1,6 +1,8 @@
-.quick-commands-section { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 8px; }
+.quick-commands-section { position: relative; display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 8px; }
 /* 树视图锁在设置面板的可视高度内：树自身滚动，头部/工具栏/页脚始终可见。 */
 .quick-commands-section.is-tree { height: min(340px, calc(100vh - 255px)); }
+/* 工具栏弹层表面：给树更多高度，接近独立命令管理器窗口。 */
+.quick-commands-section.is-popover.is-tree { height: min(460px, calc(100vh - 180px)); }
 
 /* —— 头部：标题 + 汇总 + 限额 —— */
 .qc-head { display: flex; align-items: center; gap: 10px; }
