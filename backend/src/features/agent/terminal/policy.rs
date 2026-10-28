@@ -13,16 +13,27 @@ pub enum RoutingDecision {
     Deny(&'static str),
 }
 
+/// Whether one exec call enters the visible terminal at all.
+///
+/// The connection-level setting is authoritative: `off` means "AI commands
+/// stay on the hidden channel" (the UI's off hint promises no terminal echo),
+/// so an agent's explicit `runInTerminal: true` cannot reopen the terminal.
+/// An explicit `false` always forces the hidden channel regardless of mode.
+/// Only a non-off mode with an unset/true flag reaches the approval matrix
+/// below.
+pub fn routes_to_terminal(
+    mode: AgentTerminalMode,
+    run_in_terminal: Option<bool>,
+) -> bool {
+    mode != AgentTerminalMode::Off && run_in_terminal != Some(false)
+}
+
 /// The §1 matrix: `auto` approves low-risk commands and prompts for
 /// elevated ones; `strict` prompts for everything.
 ///
-/// `Off` only reaches here when `runInTerminal: true` forced the terminal
-/// path (otherwise the routing never leaves the hidden channel): low-risk
-/// commands still run because they are plain visibility, and elevated ones
-/// raise the in-app approval prompt — the agent explicitly opted into the
-/// visible terminal, the human still approves each command, and an
-/// unanswered prompt times out to a refusal. Without that explicit opt-in
-/// an elevated command under `off` is denied outright.
+/// `Off` branches are retained as the documented matrix but are unreachable
+/// through exec routing: [`routes_to_terminal`] keeps `off` connections on
+/// the hidden channel even when the agent sets `runInTerminal: true`.
 pub fn decide(
     mode: AgentTerminalMode,
     risk: CommandRisk,

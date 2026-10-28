@@ -188,16 +188,16 @@ DBX 内嵌 AI 通道（`mcp/call` 携 lifecycle `connectionId`）的 `ssh_exec` 
 | `agentTerminalMode` | low 风险 | elevated（sudo / 灾难模式命中） |
 | --- | --- | --- |
 | `off`（默认） | 既有隐藏 exec 通道 | 既有隐藏 exec 通道 |
-| `off` + 显式 `runInTerminal: true` | 直接注入（发 `ssh/agent/notice`） | 审批后注入（0.4.49 起；此前为拒绝） |
 | `auto` | 直接注入（发 `ssh/agent/notice`） | 审批后注入 |
 | `strict` | 审批后注入 | 审批后注入 |
 
-- 调用级覆盖：工具可选参数 `runInTerminal`（`true` 强制终端路径、`false` 强制隐藏
-  通道、缺省按连接模式）。stdio `--mcp` 模式的连接类调用自动经宿主桥转发到运行中的
-  DBX 应用执行（embedded sidecar 按同一矩阵决策），因此连接级模式开关在 stdio 场景
+- 连接模式是权威开关：`off` 下 AI 命令一律走隐藏 exec 通道，agent 显式
+  `runInTerminal: true` 也不能把命令注入终端（UI 文案承诺「关闭 = 不在终端回显」）；
+  非 `off` 模式下调用级参数才生效（`true` 强制终端路径，`false` 强制隐藏，
+  缺省按连接模式）。stdio `--mcp` 模式的连接类调用自动经宿主桥转发到运行中的
+  DBX 应用执行（embedded sidecar 按同一规则决策），因此连接级开关在 stdio 场景
   同样生效；宿主桥仅在显式 `runInTerminal: true` 或探针确认模式非 `off` 时才打开
-  工作台标签，静默调用不再开标签也不再抢窗口焦点。`runInTerminal` 是 agent 可自主
-  决定的参数（schema 引导：任务需要可见性/人工监督/交互性时主动置 `true`）。
+  工作台标签，静默调用不再开标签也不再抢窗口焦点。
 - 持久化：连接级 `agentTerminalMode` 落盘 `<plugin_data_dir>/agent-modes.json`
   （版本化 JSON：`{version, modes: {connectionId: "auto"|"strict"}}`，原子写，
   `off` 移除条目；损坏按空表处理），sidecar/app 重启后保持，不再回落 `off`。

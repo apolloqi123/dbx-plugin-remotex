@@ -1,9 +1,25 @@
 use super::*;
 
 #[test]
+fn off_mode_keeps_even_explicit_requests_on_the_hidden_channel() {
+    // The connection setting is authoritative: an agent asking for
+    // visibility cannot reopen a terminal the user switched off.
+    assert!(!routes_to_terminal(AgentTerminalMode::Off, Some(true)));
+    assert!(!routes_to_terminal(AgentTerminalMode::Off, None));
+    assert!(!routes_to_terminal(AgentTerminalMode::Off, Some(false)));
+    // auto/strict follow the flag, defaulting to visible when it is absent.
+    assert!(routes_to_terminal(AgentTerminalMode::Auto, None));
+    assert!(routes_to_terminal(AgentTerminalMode::Auto, Some(true)));
+    assert!(!routes_to_terminal(AgentTerminalMode::Auto, Some(false)));
+    assert!(routes_to_terminal(AgentTerminalMode::Strict, None));
+    assert!(routes_to_terminal(AgentTerminalMode::Strict, Some(true)));
+    assert!(!routes_to_terminal(AgentTerminalMode::Strict, Some(false)));
+}
+
+#[test]
 fn decide_covers_the_full_policy_matrix() {
-    // off: only forced low-risk runs; explicit runInTerminal still gets
-    // the human approval prompt, implicit routing is refused outright.
+    // off matrix rows are retained for completeness, but exec routing
+    // (`routes_to_terminal`) never sends an off connection here.
     assert_eq!(
         decide(AgentTerminalMode::Off, CommandRisk::Low, false),
         RoutingDecision::Run
@@ -72,8 +88,9 @@ fn decide_with_memory_downgrades_only_prompt_to_run() {
         decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, false, true),
         RoutingDecision::Deny(_)
     ));
-    // off / elevated with explicit runInTerminal: remembered approval
-    // replaces the per-command human prompt.
+    // off / elevated with explicit runInTerminal: matrix-only rows (routing
+    // keeps off connections hidden); remembered approval would replace the
+    // per-command human prompt if routing ever reached them.
     assert_eq!(
         decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, true, false),
         RoutingDecision::Prompt

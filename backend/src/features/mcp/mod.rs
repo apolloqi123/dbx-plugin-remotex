@@ -80,7 +80,6 @@ use crate::core::model::{
     normalize_remote_path, AuthenticationMethod, JumpHost, StoredConnection, SudoSource,
 };
 use crate::core::preferences;
-use crate::features::agent::terminal::AgentTerminalMode;
 use crate::features::automation::multi_exec;
 use crate::features::mcp::safety::CommandRisk;
 use crate::sessions::ssh::{

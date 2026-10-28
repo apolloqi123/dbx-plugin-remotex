@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.69] — 2026-10-28
+
+- **修复「AI 终端同步」关闭后 AI 命令仍在终端回显**。连接级模式 `off` 现在是权威开关：即使 AI 显式传 `runInTerminal: true`，`ssh_exec` / `ssh_exec_sudo` 也保持静默隐藏通道，不再把命令注入终端；只有 `auto` / `strict` 模式下调用级 `runInTerminal` 才生效（`true` 走终端、`false` 强制隐藏、缺省按连接模式）。`auto` / `strict` 的审批流程不变，工具 schema、协议与 MCP 文档同步更新。
+  **Fixed commands still appearing in the terminal after AI terminal sync was turned off.** The connection-level `off` mode is now authoritative: even when the agent explicitly sets `runInTerminal: true`, `ssh_exec`/`ssh_exec_sudo` stay on the silent hidden channel and never inject into the terminal. The per-call flag only applies to `auto`/`strict` (true routes to the terminal, false forces hidden, omitted follows the mode). The `auto`/`strict` approval flow is unchanged; tool schema, protocol and MCP docs were updated.
+
 ## [0.7.9-beta.68] — 2026-10-28
 
 - **修复录制回放空白、00:00 无法播放**。录制开始时先把会话当前屏幕（回放缓冲里的最近输出，最多 256 KiB、不含状态帧）作为 t=0 输出事件写入录像，打开回放即可看到录制开始时的终端画面；回放总时长同时采用录像的真实墙钟时长，静默录制或末尾长时间空闲也能看到完整进度条并正常播放/拖动。SSH 与本地终端共用同一逻辑。升级前生成且没有捕获到输出的旧录像无法补录内容，仍会显示为空。

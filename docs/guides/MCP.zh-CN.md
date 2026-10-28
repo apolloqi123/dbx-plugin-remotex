@@ -152,7 +152,7 @@ MCP 调用方是 LLM，`sftp_upload`（本地读）与 `sftp_download`（本地�
 | 工具 | 说明 |
 | --- | --- |
 | `ssh_list_connections` | 列出已保存连接的元数据（id / name / host / port / username / authentication / readOnly），参数无；**仅元数据，任何密钥只出布尔标志位，绝不出值**。数据源为 DBX 应用本地桥（`source: "dbx-app-bridge"`）；桥不可用或应用版本过旧时降级为"仅本会话注册表"（`source: "session-registry"`）并附 `note` 字段说明（详见「方式二」的「connectionId 从哪来」） |
-| `ssh_exec` / `ssh_exec_sudo` | 非交互远程命令；sudo 版注入密码并自动应答 2FA/TOTP。TOTP 支持多密钥（换行/分号分隔）：跨调用自动轮换，优先未过期且未使用过的验证码，重放窗口内已提交的码不再注入。两者均受危险命令确认门约束（见下节），只读连接上 `ssh_exec` 仅放行白名单巡检命令，配置了连接 sudo 白名单时特权命令还须命中白名单条目（见下节）。两者均支持可选 `runInTerminal`（见「AI 终端同步执行」）；stdio 模式传 `true` 且带 `connectionId` 时自动转发到运行中的 DBX app（未运行则唤起），在 app 的可见终端里执行。**超过 ~10 秒的命令请改用 `ssh_run_bg`**（宿主等待上限与防重复执行见「长任务与断线恢复」） |
+| `ssh_exec` / `ssh_exec_sudo` | 非交互远程命令；sudo 版注入密码并自动应答 2FA/TOTP。TOTP 支持多密钥（换行/分号分隔）：跨调用自动轮换，优先未过期且未使用过的验证码，重放窗口内已提交的码不再注入。两者均受危险命令确认门约束（见下节），只读连接上 `ssh_exec` 仅放行白名单巡检命令，配置了连接 sudo 白名单时特权命令还须命中白名单条目（见下节）。两者均支持可选 `runInTerminal`（见「AI 终端同步执行」）；stdio 模式传 `true` 且带 `connectionId` 时自动转发到运行中的 DBX app（未运行则唤起），由 app 侧 sidecar 按连接级 `agentTerminalMode` 决定可见终端或隐藏通道（`off` 下保持隐藏）。**超过 ~10 秒的命令请改用 `ssh_run_bg`**（宿主等待上限与防重复执行见「长任务与断线恢复」） |
 | `ssh_run_bg` | 把长命令以 nohup 方式脱离会话启动，立即返回 `taskId`/`pid`/`logPath`；输出落在服务器 `/tmp/.dbx-ssh-tasks/<taskId>.log`，断线、超时、换会话均不丢。与 `ssh_exec` 同受危险命令确认门与只读写门约束 |
 | `ssh_multi_exec` | 一条命令在多个**已保存连接**上聚合执行并逐目标回结果（隐藏通道语义，不经可见终端/agentTerminalMode）。`targets`：1–10 个连接引用（connectionId/connectionName），保序去重，任一未解析整体拒绝；`mode` parallel（默认，并发）/ sequential（顺序）；`stopOnError` 仅 sequential 生效（首败即停）；`confirmDestructive` 一次覆盖全部目标的灾难门；**不提供 sudo**（提权走单目标 `ssh_exec_sudo`）。逐目标独立过只读白名单门（连接只读时仅放行巡检命令）。stdio 独立模式无注册表，targets 解析即报引导 |
 | `ssh_terminal_input` | 向连接的**存活 DBX 终端**注入原始输入（交互应答 / Ctrl+C / 方向键语义；终端必须已打开）。`\n`/`\r\n` 折叠为 Enter，NUL 剥离，8 KiB 截断；`appendNewline` 默认 false（交互应答自带 `\r`，要执行键入命令置 true）。**输出不收集**——终端本身可见，要收集输出用 `ssh_exec{runInTerminal:true}`。门禁：只读连接仅放行纯控制序列；灾难行需 `confirmDestructive: true`（只读上一律拒绝）；sudo 行受连接 sudo 白名单约束。stdio 模式无工作台 PTY，调用报引导错误 |
@@ -334,25 +334,27 @@ confirm fail-closed 与 scope fail-closed（含 list 在作用域下可用）。
   （未注册连接 / 无终端会话）末尾均追加提示"可用 `ssh_list_connections` 列出
   已保存连接 id"。
 - 连接级默认行为由工作台设置 `agentTerminalMode` 决定（`off` 默认不路由 /
-  `auto` 分级审批 / `strict` 每条必审，协议见 PROTOCOL「AI 终端同步执行」）；
-  `runInTerminal` 显式值优先于连接模式。**终端工具栏快速开关**：工作台按钮行
+  `auto` 分级审批 / `strict` 每条必审，协议见 PROTOCOL「AI 终端同步执行」）。
+  **连接模式是权威开关**：`off` 下即使 agent 显式传 `runInTerminal: true` 也保持
+  静默隐藏通道，命令不会注入/回显到终端；只有非 `off` 模式下 `runInTerminal`
+  才生效（`true` 强制终端路径、`false` 强制隐藏、缺省按连接模式）。
+  **终端工具栏快速开关**：工作台按钮行
   的「终端 MCP 模式」弹出层（`Bot` 图标，非 `off` 高亮）可就地切换连接级模式——
   开启后 MCP exec 命令（即使不传 `runInTerminal`）都经该终端可见执行（审计/学习），
   关闭则全部走静默隐藏通道。**模式持久化**：`agentTerminalMode` 落盘到
   插件数据目录 `agent-modes.json`（按 connectionId 记录，off 移除条目），
   app/sidecar 重启后保持。
-- **agent 可自主决定**：`runInTerminal` 是 agent 决策参数——工具 schema 引导 AI 在
-  任务需要可见性、人工监督或交互性时主动传 `true`，不必等用户开模式。`off` 连接上
-  显式 `runInTerminal: true` 的提权命令（sudo/灾难命中）不直接死路拒绝，而是触发
-  工作台人工审批弹窗（超时即拒绝）；隐式路由（未传参）在 `off` 下维持隐藏通道不变。
+- **agent 可自主决定（非 off 连接）**：`runInTerminal` 是 agent 决策参数——工具
+  schema 引导 AI 在任务需要可见性、人工监督或交互性时主动传 `true`，不必等用户
+  开模式。但用户把连接切到 `off` 后，显式 `true` 不会重新打开终端，也不会触发
+  审批；命令按 off 语义走隐藏 exec 通道。
 - **静默调用不打扰**：宿主桥转发前按「工具是否为 ssh_exec 族 + 显式 `runInTerminal`
   + 连接模式探针（`ssh/agent/mode/get`，任何失败回落 `off`）」判定是否需要打开
   工作台标签；静默调用（隐藏通道）不自动开标签，事件监听也不抢 macOS 窗口
   焦点——标签在后台就位、命令写入终端缓冲，用户回到 DBX 时可完整回看。
 - 审批：`auto` 下 elevated（sudo / 灾难命中）与 `strict` 下全部命令会触发工作台
   弹窗（完整命令原文 + 风险徽标 + 倒计时，默认 120s 超时即拒绝）；AI 侧表现为
-  明确的 denied/timed out 错误。`off` 连接上 agent 显式 `runInTerminal: true` 的
-  提权命令走同一审批弹窗（按「agent 显式申请 + 人工批准」放行）。
+  明确的 denied/timed out 错误。`off` 连接不会进入审批路径（终端路由已关闭）。
 - **审批记忆**：弹窗提供「记住此命令」勾选（resolve 请求 `remember: true`），
   批准的命令写入连接级免审批清单（`agent-approved-commands.json`，匹配复用 sudo
   白名单 token 语义，设置弹窗可查看/删除/手工泛化通配）；后续命中清单的命令在
