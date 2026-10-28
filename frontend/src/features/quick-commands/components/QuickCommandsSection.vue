@@ -1,20 +1,47 @@
 <script setup lang="ts">
-// 快速命令管理节（M32-A3）：编辑器 + 批量导入两个子视图从工具条弹层迁入
-// 设置·终端。纯管理视图：草稿/导入预览在组件内，数据面
-// （ssh/quickCommands/* RPC）留在 App——save/import 落库后 App 会整体替换
-// commands 数组，组件据此收口子视图。
-import { computed, reactive, ref, watch } from "vue";
-import { ArrowLeft, ChevronDown, ChevronRight, FileUp, FolderMinus, Pencil, Trash2 } from "@lucide/vue";
-import { groupQuickCommands, quickCommandGroupCount, QUICK_COMMAND_GROUP_NAME_MAX_LENGTH, QUICK_COMMAND_NAME_MAX_LENGTH, QUICK_COMMAND_TEXT_MAX_LENGTH, type QuickCommand, type QuickCommandGroupView } from "../lib/quickCommands";
-import { mergeQuickCommandImport, parseQuickCommandImport } from "../lib/quickCommandImport";
+// 快速命令管理页（设置 · 快速命令）：对标命令管理器的树形管理视图。
+// 分组行（空组可持久化）+ 命令行 + 搜索 + 右键上下文菜单 + 分组/命令/全部导出。
+// 数据面（pluginStore + PTY 写入）仍在 App：本组件只维护视图态并经 emits 上抛。
+import { computed, nextTick, ref, watch } from "vue";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  MoreHorizontal,
+  Play,
+  Plus,
+  Search,
+  Terminal,
+  X,
+} from "@lucide/vue";
+import {
+  groupQuickCommands,
+  quickCommandExportFileName,
+  quickCommandGroupCount,
+  QUICK_COMMAND_GROUP_NAME_MAX_LENGTH,
+  serializeQuickCommands,
+  type QuickCommand,
+  type QuickCommandGroup,
+  type QuickCommandGroupView,
+} from "../lib/quickCommands";
+import type { QuickCommandsMenuAction, QuickCommandsMenuTarget } from "../lib/quickCommandMenu";
 import { confirmDialog } from "../../../shared/lib/confirmDialog";
-import { randomUUID } from "../../../shared/lib/uuid";
+import { writeClipboardText, type ClipboardDeps } from "../../../shared/lib/clipboardBridge";
+import QuickCommandEditor from "./QuickCommandEditor.vue";
+import QuickCommandImport from "./QuickCommandImport.vue";
+import QuickCommandsMenu from "./QuickCommandsMenu.vue";
 
 const props = defineProps<{
   commands: QuickCommand[];
-  /** 单条 save 的 RPC 在途态（App 侧）。 */
+  /** 显式分组定义（含空组）。 */
+  groups: QuickCommandGroup[];
+  /** 终端会话可执行：未连接时禁用执行/粘贴。 */
+  connected: boolean;
+  /** 单条 save 在途态（App 侧）。 */
   saving: boolean;
-  /** 批量导入循环 save 的在途态（App 侧）。 */
+  /** 批量导入在途态（App 侧）。 */
   importing: boolean;
   limit: number;
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -23,310 +50,500 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "save", command: { id?: string; name: string; command: string; groupId?: string; groupName?: string }): void;
   (e: "delete", id: string): void;
-  (e: "import", items: Array<{ name: string; command: string }>): void;
+  (e: "import", items: Array<{ name: string; command: string; groupName?: string }>): void;
+  (e: "create-group", name: string): void;
   (e: "rename-group", payload: { groupId: string; name: string }): void;
   (e: "dissolve-group", groupId: string): void;
+  (e: "run", item: QuickCommand): void;
+  (e: "paste", item: QuickCommand): void;
+  (e: "notice", message: string): void;
   (e: "error", cause: unknown): void;
 }>();
 
 const t = props.t;
 
-// —— 分组视图（issue #201）：派生组 + 折叠态 + 组名行内改名 ——
-const groups = computed<QuickCommandGroupView[]>(() => groupQuickCommands(props.commands));
-const hasRealGroups = computed(() => quickCommandGroupCount(props.commands) > 0);
-const realGroups = computed<QuickCommandGroupView[]>(() => groups.value.filter((group) => group.id));
+// —— 树视图：分组派生 / 搜索 / 折叠 / 选中 ——
+const groups = computed<QuickCommandGroupView[]>(() => groupQuickCommands(props.commands, props.groups));
+const search = ref("");
+const searching = computed(() => search.value.trim().length > 0);
 const collapsedGroups = ref<string[]>([]);
-const renamingGroupId = ref<string | null>(null);
-const renameDraft = ref("");
-function toggleGroupCollapse(groupId: string) {
-  const index = collapsedGroups.value.indexOf(groupId);
-  if (index >= 0) collapsedGroups.value.splice(index, 1);
-  else collapsedGroups.value.push(groupId);
+const selected = ref<{ kind: "group" | "command"; id: string } | null>(null);
+
+const selectedGroup = computed(() => (selected.value?.kind === "group" ? groups.value.find((group) => group.id === selected.value?.id) : undefined));
+const selectedCommand = computed(() => (selected.value?.kind === "command" ? props.commands.find((item) => item.id === selected.value?.id) : undefined));
+
+const summary = computed(() => t("quickCommandsGroupSummary", { groups: quickCommandGroupCount(props.commands, props.groups), count: props.commands.length }));
+
+function matches(item: QuickCommand, needle: string): boolean {
+  return (
+    item.name.toLowerCase().includes(needle) ||
+    item.command.toLowerCase().includes(needle) ||
+    (item.groupName ?? "").toLowerCase().includes(needle)
+  );
 }
-function groupName(group: QuickCommandGroupView): string {
+
+/** 搜索时按组名整体命中（组内命令全保留），否则保留名/命令命中的条目；空组仅在组名命中时显示。 */
+const visibleGroups = computed<QuickCommandGroupView[]>(() => {
+  const needle = search.value.trim().toLowerCase();
+  if (!needle) return groups.value;
+  return groups.value.flatMap((group) => {
+    const label = group.id ? group.name : t("quickCommandsUngrouped");
+    if (label.toLowerCase().includes(needle)) return [group];
+    const commands = group.commands.filter((item) => matches(item, needle));
+    return commands.length ? [{ ...group, commands }] : [];
+  });
+});
+
+const hasRealGroups = computed(() => groups.value.some((group) => group.id));
+const isEmpty = computed(() => !props.commands.length && !props.groups.length);
+
+function isCollapsed(group: QuickCommandGroupView): boolean {
+  return !searching.value && collapsedGroups.value.includes(group.id);
+}
+
+function toggleGroup(group: QuickCommandGroupView) {
+  selected.value = { kind: "group", id: group.id };
+  const index = collapsedGroups.value.indexOf(group.id);
+  if (index >= 0) collapsedGroups.value.splice(index, 1);
+  else collapsedGroups.value.push(group.id);
+}
+
+function groupLabel(group: QuickCommandGroupView): string {
   return group.id ? group.name : t("quickCommandsUngrouped");
 }
+
+const GROUP_TONES = ["ui-tone-emerald", "ui-tone-blue", "ui-tone-amber", "ui-tone-violet", "ui-tone-cyan", "ui-tone-rose"];
+function groupTone(group: QuickCommandGroupView): string {
+  if (!group.id) return "qc-tone-muted";
+  // 未分组不占色位：第一个真实分组用绿色（对齐命令管理器截图的 common/k8s 配色）。
+  const index = groups.value.filter((item) => item.id).findIndex((item) => item.id === group.id);
+  return GROUP_TONES[Math.max(0, index) % GROUP_TONES.length];
+}
+
+// —— 上下文菜单：单实例子组件，右键 / 行内 ⋯ / 工具栏 ⋯ 共用 ——
+const menuRef = ref<InstanceType<typeof QuickCommandsMenu> | null>(null);
+
+function selectCommand(item: QuickCommand) {
+  selected.value = { kind: "command", id: item.id };
+}
+
+function openGroupMenu(group: QuickCommandGroupView, event: MouseEvent) {
+  selected.value = { kind: "group", id: group.id };
+  void menuRef.value?.open({ kind: "group", group }, event.clientX, event.clientY);
+}
+
+function openCommandMenu(item: QuickCommand, event: MouseEvent) {
+  selected.value = { kind: "command", id: item.id };
+  void menuRef.value?.open({ kind: "command", command: item }, event.clientX, event.clientY);
+}
+
+function openMenuFromButton(target: QuickCommandsMenuTarget, event: MouseEvent) {
+  event.stopPropagation();
+  const button = event.currentTarget as HTMLElement;
+  const rect = button.getBoundingClientRect();
+  if (target.kind === "group") selected.value = { kind: "group", id: target.group.id };
+  if (target.kind === "command") selected.value = { kind: "command", id: target.command.id };
+  void menuRef.value?.open(target, rect.right - 4, rect.bottom + 4, button);
+}
+
+function openOverflowMenu(event: MouseEvent) {
+  const button = event.currentTarget as HTMLElement;
+  const rect = button.getBoundingClientRect();
+  void menuRef.value?.open({ kind: "overflow" }, rect.right, rect.bottom + 4, button);
+}
+
+function onMenuAction(action: QuickCommandsMenuAction) {
+  switch (action.type) {
+    case "new-command":
+      openNewCommand(action.group);
+      break;
+    case "new-group":
+      openCreateGroup();
+      break;
+    case "rename-group":
+      startGroupRename(action.group);
+      break;
+    case "export-group":
+      void exportScope({ kind: "group", group: action.group }, action.channel);
+      break;
+    case "delete-group":
+      void deleteGroup(action.group);
+      break;
+    case "run":
+      runCommand(action.command);
+      break;
+    case "paste":
+      pasteCommand(action.command);
+      break;
+    case "copy":
+      void copyCommand(action.command);
+      break;
+    case "edit":
+      openEditor(action.command);
+      break;
+    case "export-command":
+      void exportScope({ kind: "command", item: action.command }, action.channel);
+      break;
+    case "delete-command":
+      void deleteCommand(action.command);
+      break;
+    case "import":
+      openImport();
+      break;
+    case "export-current-command":
+      exportSelected("command", action.channel);
+      break;
+    case "export-current-group":
+      exportSelected("group", action.channel);
+      break;
+    case "export-all":
+      void exportScope({ kind: "all" }, action.channel);
+      break;
+  }
+}
+
+// —— 执行 / 粘贴 / 复制 ——
+function runCommand(item: QuickCommand) {
+  if (!props.connected) return;
+  emit("run", item);
+}
+
+function pasteCommand(item: QuickCommand) {
+  if (!props.connected) return;
+  emit("paste", item);
+}
+
+function clipboardDeps(): ClipboardDeps {
+  return {
+    bridge: window.dbxPlugin?.clipboard ?? null,
+    nativeClipboard: typeof navigator !== "undefined" ? navigator.clipboard ?? null : null,
+  };
+}
+
+async function copyCommand(item: QuickCommand) {
+  try {
+    await writeClipboardText(item.command, clipboardDeps());
+    emit("notice", t("quickSelect.copied"));
+  } catch {
+    emit("notice", t("jsonPreview.copyFailed"));
+  }
+}
+
+// —— 导出：当前命令 / 当前分组 / 全部；剪贴板或宿主落盘 ——
+type ExportScope = { kind: "all" } | { kind: "group"; group: QuickCommandGroupView } | { kind: "command"; item: QuickCommand };
+
+function scopeCommands(scope: ExportScope): QuickCommand[] {
+  if (scope.kind === "all") return [...props.commands];
+  if (scope.kind === "command") return [scope.item];
+  return props.commands.filter((item) => (item.groupId ?? "") === scope.group.id);
+}
+
+function scopeSlug(scope: ExportScope): string | undefined {
+  if (scope.kind === "all") return undefined;
+  if (scope.kind === "command") return scope.item.name;
+  return scope.group.id ? scope.group.name : t("quickCommandsUngrouped");
+}
+
+async function exportScope(scope: ExportScope, channel: "clipboard" | "file") {
+  const payload = serializeQuickCommands(scopeCommands(scope));
+  if (channel === "clipboard") {
+    try {
+      await writeClipboardText(payload, clipboardDeps());
+      emit("notice", t("quickCommandsExportCopied", { count: scopeCommands(scope).length }));
+    } catch {
+      emit("notice", t("jsonPreview.copyFailed"));
+    }
+    return;
+  }
+  const api = window.dbxPlugin;
+  if (!api?.saveFile) {
+    emit("notice", t("quickCommandsExportUnavailable"));
+    return;
+  }
+  try {
+    const saved = await api.saveFile(
+      { fileName: quickCommandExportFileName(scopeSlug(scope)), contentType: "application/json" },
+      payload,
+    );
+    if (saved) emit("notice", t("quickCommandsExportSaved", { path: saved.path }));
+  } catch (cause) {
+    emit("error", cause);
+  }
+}
+
+/** 溢出菜单的「当前命令/当前分组」导出：选择缺失时按钮已禁用，这里再守一次。 */
+function exportSelected(kind: "command" | "group", channel: "clipboard" | "file") {
+  if (kind === "command") {
+    if (selectedCommand.value) void exportScope({ kind: "command", item: selectedCommand.value }, channel);
+    return;
+  }
+  if (selectedGroup.value) void exportScope({ kind: "group", group: selectedGroup.value }, channel);
+}
+
+// —— 新建分组（行内输入） ——
+const creatingGroup = ref(false);
+const newGroupName = ref("");
+const newGroupError = ref("");
+const newGroupInput = ref<HTMLInputElement | null>(null);
+
+function openCreateGroup() {
+  creatingGroup.value = true;
+  newGroupName.value = "";
+  newGroupError.value = "";
+  void nextTick(() => newGroupInput.value?.focus());
+}
+
+function cancelCreateGroup() {
+  creatingGroup.value = false;
+  newGroupName.value = "";
+  newGroupError.value = "";
+}
+
+function submitCreateGroup() {
+  const name = newGroupName.value.trim();
+  if (!name) return;
+  if (props.groups.some((group) => group.name.trim().toLowerCase() === name.toLowerCase())) {
+    newGroupError.value = t("quickCommandsGroupExists");
+    return;
+  }
+  emit("create-group", name);
+  cancelCreateGroup();
+}
+
+// —— 分组改名 / 删除 ——
+const renamingGroupId = ref<string | null>(null);
+const renameDraft = ref("");
+
 function startGroupRename(group: QuickCommandGroupView) {
   if (!group.id) return;
   renamingGroupId.value = group.id;
   renameDraft.value = group.name;
 }
+
 function cancelGroupRename() {
   renamingGroupId.value = null;
   renameDraft.value = "";
 }
+
 function confirmGroupRename() {
   const groupId = renamingGroupId.value;
-  if (!groupId || !renameDraft.value.trim()) return;
-  emit("rename-group", { groupId, name: renameDraft.value.trim() });
+  const name = renameDraft.value.trim();
+  if (!groupId || !name) return;
+  emit("rename-group", { groupId, name });
   cancelGroupRename();
 }
-/** 删除分组 = 组内命令移回未分组（命令保留）：先确认（同单条删除的确认语义）。 */
+
 async function deleteGroup(group: QuickCommandGroupView) {
   if (!group.id) return;
   if (!(await confirmDialog(t("quickCommandsGroupDeleteConfirm", { name: group.name || group.id })))) return;
   emit("dissolve-group", group.id);
 }
 
-/** 编辑器组选择：未分组 / 既有组 / 新建分组（哨兵值 + 名称输入）。 */
-const GROUP_CHOICE_UNGROUPED = "";
-const GROUP_CHOICE_NEW = "__new__";
-const groupChoice = ref(GROUP_CHOICE_UNGROUPED);
-const newGroupName = ref("");
+// —— 子视图（树 / 编辑器 / 导入） ——
+type View = "tree" | "editor" | "import";
+const view = ref<View>("tree");
+const editorSeed = ref<{ item?: QuickCommand; groupId?: string }>({});
 
-// —— 编辑器子视图 ——
-const editorOpen = ref(false);
-const draft = reactive<{ id?: string; name: string; command: string }>({ name: "", command: "" });
+function openEditor(item?: QuickCommand, groupId?: string) {
+  editorSeed.value = { item, groupId };
+  view.value = "editor";
+}
 
-// —— 导入子视图 ——
-const importOpen = ref(false);
-const importText = ref("");
-const importFileName = ref("");
-const importPlan = computed(() => parseQuickCommandImport(importText.value));
-const importMerge = computed(() => mergeQuickCommandImport(props.commands, importPlan.value));
-
-// 数据面在 App：RPC 成功后 commands 数组被整体替换（引用变化），据此感知
-// "本次保存/导入已落库" 再复位子视图；失败时引用不变，草稿/预览保留可继续改。
-let awaitingSaveResult = false;
-let awaitingImportResult = false;
-watch(() => props.commands, () => {
-  if (awaitingSaveResult) {
-    awaitingSaveResult = false;
-    closeEditor();
-  }
-  if (awaitingImportResult) {
-    awaitingImportResult = false;
-    closeImport();
-  }
-});
-
-function openEditor(item?: QuickCommand) {
-  draft.id = item?.id;
-  draft.name = item?.name ?? "";
-  draft.command = item?.command ?? "";
-  groupChoice.value = item?.groupId ?? GROUP_CHOICE_UNGROUPED;
-  newGroupName.value = "";
-  editorOpen.value = true;
+function openNewCommand(group?: QuickCommandGroupView) {
+  openEditor(undefined, group?.id);
 }
 
 function closeEditor() {
-  editorOpen.value = false;
-  draft.id = undefined;
-  draft.name = "";
-  draft.command = "";
-  groupChoice.value = GROUP_CHOICE_UNGROUPED;
-  newGroupName.value = "";
+  view.value = "tree";
+}
+
+function onEditorSave(command: { id?: string; name: string; command: string; groupId?: string; groupName?: string }) {
+  awaitingSaveResult = true;
+  emit("save", command);
+}
+
+async function deleteCommand(item: QuickCommand) {
+  if (!(await confirmDialog(t("quickCommandDeleteConfirm", { name: item.name || item.command })))) return;
+  emit("delete", item.id);
 }
 
 function openImport() {
-  importText.value = "";
-  importFileName.value = "";
-  importOpen.value = true;
+  view.value = "import";
 }
 
 function closeImport() {
-  importOpen.value = false;
-  importText.value = "";
-  importFileName.value = "";
+  view.value = "tree";
 }
 
-async function onImportFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  try {
-    importText.value = await file.text();
-    importFileName.value = file.name;
-  } catch (cause) {
-    emit("error", cause);
-  }
-}
-
-function saveCommand() {
-  const command = draft.command.trim();
-  if (!command || props.saving) return;
-  if (!draft.id && props.commands.length >= props.limit) return;
-  // 组归属（issue #201）：未分组不落组字段；新建分组生成组 id，组名取输入值。
-  let groupId: string | undefined;
-  let groupName: string | undefined;
-  if (groupChoice.value === GROUP_CHOICE_NEW) {
-    const name = newGroupName.value.trim();
-    if (name) {
-      groupId = randomUUID();
-      groupName = name;
-    }
-  } else if (groupChoice.value) {
-    groupId = groupChoice.value;
-    groupName = groups.value.find((group) => group.id === groupChoice.value)?.name || groupChoice.value;
-  }
-  awaitingSaveResult = true;
-  emit("save", { id: draft.id, name: draft.name.trim(), command, groupId, groupName });
-}
-
-/** 汇总计数（issue #201）：「{groups} 组 · {count} 条」。 */
-const groupSummary = computed(() => t("quickCommandsGroupSummary", { groups: quickCommandGroupCount(props.commands), count: props.commands.length }));
-
-/** 删除是不可逆操作：先确认（应用内弹窗——宿主沙箱 window.confirm 恒 false）。 */
-async function deleteCommand(id: string) {
-  const target = props.commands.find((item) => item.id === id);
-  if (target && !(await confirmDialog(t("quickCommandDeleteConfirm", { name: target.name || target.command })))) return;
-  emit("delete", id);
-}
-
-/** 确认导入：上抛预览 accepted 条目，逐条 save 循环由 App 执行（沿用后端上限校验）。 */
-function confirmImport() {
-  const merge = importMerge.value;
-  if (!merge.accepted.length || props.importing) return;
+function onImportConfirmed(items: Array<{ name: string; command: string; groupName?: string }>) {
   awaitingImportResult = true;
-  emit("import", merge.accepted);
+  emit("import", items);
 }
+
+// 数据面在 App：保存/导入成功后 commands 引用整体替换，据此收口子视图。
+let awaitingSaveResult = false;
+let awaitingImportResult = false;
+watch(
+  () => props.commands,
+  () => {
+    if (awaitingSaveResult) {
+      awaitingSaveResult = false;
+      closeEditor();
+    }
+    if (awaitingImportResult) {
+      awaitingImportResult = false;
+      closeImport();
+    }
+  },
+);
+
+// 选中项被删除/解散后清空选择，避免「导出当前…」指向不存在的对象。
+watch([() => props.commands, () => props.groups], () => {
+  if (selected.value?.kind === "command" && !props.commands.some((item) => item.id === selected.value?.id)) selected.value = null;
+  if (selected.value?.kind === "group" && selected.value.id && !groups.value.some((group) => group.id === selected.value?.id)) selected.value = null;
+});
 </script>
 
 <template>
-  <div class="quick-commands-section">
-    <template v-if="importOpen">
-      <header class="quick-editor-head">
-        <button class="icon-button compact" :title="t('cancel')" :aria-label="t('cancel')" @click="closeImport"><ArrowLeft /></button>
-        <h3>{{ t("quickCommandsImport") }}</h3>
-      </header>
-      <div class="quick-command-editor">
-        <label class="quick-import-file">
-          <FileUp />
-          <span>{{ importFileName || t("quickCommandsImportFile") }}</span>
-          <input type="file" accept=".json,application/json,text/plain" @change="onImportFile" />
-        </label>
-        <textarea v-model="importText" class="mono" rows="6" :placeholder="t('quickCommandsImportPlaceholder')" spellcheck="false" />
-        <p v-if="importText.trim()" class="muted quick-import-summary">
-          <template v-if="importPlan.invalid < 0">{{ t("quickCommandsImportInvalid") }}</template>
-          <template v-else>{{ t("quickCommandsImportSummary", { accepted: importMerge.accepted.length, skipped: importMerge.skippedExisting, dup: importPlan.duplicates, invalid: importPlan.invalid, overflow: importMerge.overflow }) }}</template>
-        </p>
-        <div class="quick-command-editor-actions">
-          <button class="primary-button" :disabled="importing || !importMerge.accepted.length" @click="confirmImport">{{ t("quickCommandsImportConfirm", { count: importMerge.accepted.length }) }}</button>
-          <button @click="closeImport">{{ t("cancel") }}</button>
-        </div>
-        <p class="muted quick-import-note">{{ t("quickCommandsImportPolicy") }}</p>
-      </div>
-    </template>
-    <template v-else-if="editorOpen">
-      <header class="quick-editor-head">
-        <button class="icon-button compact" :title="t('cancel')" :aria-label="t('cancel')" @click="closeEditor"><ArrowLeft /></button>
-        <h3>{{ draft.id ? t("quickCommandsEdit") : t("quickCommandsNew") }}</h3>
-      </header>
-      <footer class="quick-command-editor">
-        <input v-model="draft.name" :placeholder="t('quickCommandsName')" :maxlength="QUICK_COMMAND_NAME_MAX_LENGTH" autofocus />
-        <textarea v-model="draft.command" class="mono" rows="4" :placeholder="t('quickCommandsCommand')" :maxlength="QUICK_COMMAND_TEXT_MAX_LENGTH" @keydown.ctrl.enter="saveCommand" />
-        <div class="quick-group-editor">
-          <label class="quick-group-editor-field">
-            <span>{{ t("quickCommandsGroup") }}</span>
-            <select v-model="groupChoice" class="quick-group-editor-select">
-              <option :value="GROUP_CHOICE_UNGROUPED">{{ t("quickCommandsUngrouped") }}</option>
-              <option v-for="group in realGroups" :key="group.id" :value="group.id">{{ groupName(group) }}</option>
-              <option :value="GROUP_CHOICE_NEW">{{ t("quickCommandsGroupNew") }}</option>
-            </select>
-          </label>
-          <input v-if="groupChoice === GROUP_CHOICE_NEW" v-model="newGroupName" :placeholder="t('quickCommandsGroupName')" :maxlength="QUICK_COMMAND_GROUP_NAME_MAX_LENGTH" />
-        </div>
-        <div class="quick-command-editor-actions">
-          <button class="primary-button" :disabled="saving || !draft.command.trim() || (!draft.id && commands.length >= limit)" @click="saveCommand">{{ draft.id ? t("save") : t("quickCommandsAdd") }}</button>
-          <button @click="closeEditor">{{ t("cancel") }}</button>
-          <span class="quick-command-limit">{{ groupSummary }}</span>
-        </div>
-      </footer>
-    </template>
+  <div class="quick-commands-section" :class="{ 'is-tree': view === 'tree' }">
+    <QuickCommandImport
+      v-if="view === 'import'"
+      :commands="commands"
+      :importing="importing"
+      :t="t"
+      @import="onImportConfirmed"
+      @cancel="closeImport"
+      @error="(cause) => emit('error', cause)"
+    />
+
+    <QuickCommandEditor
+      v-else-if="view === 'editor'"
+      :commands="commands"
+      :groups="groups"
+      :saving="saving"
+      :limit="limit"
+      :initial="editorSeed"
+      :t="t"
+      @save="onEditorSave"
+      @cancel="closeEditor"
+    />
+
     <template v-else>
-      <template v-if="commands.length">
-        <template v-if="hasRealGroups">
-          <section v-for="group in groups" :key="group.id || '__ungrouped__'" class="quick-manage-group">
-            <div class="quick-manage-group-head">
-              <button class="quick-group-toggle" :aria-expanded="!collapsedGroups.includes(group.id)" @click="toggleGroupCollapse(group.id)">
-                <ChevronDown v-if="!collapsedGroups.includes(group.id)" /><ChevronRight v-else />
-                <span class="quick-group-title">{{ groupName(group) }}</span>
-                <span class="quick-group-count">{{ group.commands.length }}</span>
+      <header class="qc-head">
+        <span class="qc-head-icon"><Terminal /></span>
+        <div class="qc-head-text">
+          <strong>{{ t("quickCommandsManagerTitle") }}</strong>
+          <span>{{ summary }}</span>
+        </div>
+        <span class="qc-limit">{{ commands.length }} / {{ limit }}</span>
+      </header>
+
+      <div class="qc-toolbar">
+        <div class="qc-search">
+          <Search />
+          <input v-model="search" :placeholder="t('quickCommandsSearch')" spellcheck="false" />
+          <button v-if="search" class="qc-search-clear" :title="t('cancel')" :aria-label="t('cancel')" @click="search = ''"><X /></button>
+        </div>
+        <button class="qc-tool" :title="t('quickCommandsNewCommand')" :aria-label="t('quickCommandsNewCommand')" :disabled="commands.length >= limit" @click="openNewCommand()"><Plus /></button>
+        <button class="qc-tool" :title="t('quickCommandsGroupNew')" :aria-label="t('quickCommandsGroupNew')" @click="openCreateGroup"><FolderPlus /></button>
+        <button class="qc-tool" :aria-label="t('quickCommandsMore')" @click="openOverflowMenu"><MoreHorizontal /></button>
+      </div>
+
+      <div v-if="creatingGroup" class="qc-group-create">
+        <FolderPlus />
+        <input
+          ref="newGroupInput"
+          v-model="newGroupName"
+          :placeholder="t('quickCommandsGroupName')"
+          :maxlength="QUICK_COMMAND_GROUP_NAME_MAX_LENGTH"
+          @keydown.enter="submitCreateGroup"
+          @keydown.esc="cancelCreateGroup"
+        />
+        <button class="qc-mini primary" :disabled="!newGroupName.trim()" @click="submitCreateGroup">{{ t("create") }}</button>
+        <button class="qc-mini" @click="cancelCreateGroup">{{ t("cancel") }}</button>
+        <span v-if="newGroupError" class="qc-error">{{ newGroupError }}</span>
+      </div>
+
+      <div class="qc-tree">
+        <div v-if="isEmpty" class="qc-empty">
+          <span class="qc-empty-icon"><Terminal /></span>
+          <strong>{{ t("quickCommandsEmpty") }}</strong>
+          <p>{{ t("quickCommandsManagerHint") }}</p>
+          <button class="primary-button" @click="openNewCommand()">{{ t("quickCommandsNewCommand") }}</button>
+        </div>
+        <div v-else-if="!visibleGroups.length" class="qc-empty compact">
+          <Search />
+          <span>{{ t("quickCommandsNoMatch") }}</span>
+        </div>
+        <template v-else>
+          <section v-for="group in visibleGroups" :key="group.id || '__ungrouped__'" class="qc-group" :class="{ 'is-selected': selected?.kind === 'group' && selected.id === group.id }">
+            <div
+              class="qc-group-row"
+              :class="[groupTone(group), { active: selected?.kind === 'group' && selected.id === group.id }]"
+              @contextmenu.prevent="openGroupMenu(group, $event)"
+            >
+              <button class="qc-caret" :aria-expanded="!isCollapsed(group)" :aria-label="groupLabel(group)" @click.stop="toggleGroup(group)">
+                <ChevronDown v-if="!isCollapsed(group)" />
+                <ChevronRight v-else />
               </button>
-              <span v-if="group.id" class="settings-list-actions">
-                <button class="icon-button" :title="t('quickCommandsGroupRename')" :aria-label="t('quickCommandsGroupRename')" @click="startGroupRename(group)"><Pencil /></button>
-                <button class="icon-button" :title="t('quickCommandsGroupDelete')" :aria-label="t('quickCommandsGroupDelete')" @click="deleteGroup(group)"><FolderMinus /></button>
-              </span>
+              <button class="qc-group-main" @click="toggleGroup(group)">
+                <FolderOpen v-if="!isCollapsed(group)" class="qc-folder" />
+                <Folder v-else class="qc-folder" />
+                <span class="qc-group-name">{{ groupLabel(group) }}</span>
+                <span class="qc-group-count">({{ group.commands.length }})</span>
+              </button>
+              <button class="qc-row-more" :aria-label="t('quickCommandsMore')" @click="openMenuFromButton({ kind: 'group', group }, $event)"><MoreHorizontal /></button>
             </div>
-            <div v-if="renamingGroupId === group.id" class="quick-group-rename">
+
+            <div v-if="renamingGroupId === group.id" class="qc-group-rename">
               <input v-model="renameDraft" :maxlength="QUICK_COMMAND_GROUP_NAME_MAX_LENGTH" :placeholder="t('quickCommandsGroupName')" @keydown.enter="confirmGroupRename" @keydown.esc="cancelGroupRename" />
-              <button class="primary-button" :disabled="!renameDraft.trim()" @click="confirmGroupRename">{{ t("save") }}</button>
-              <button @click="cancelGroupRename">{{ t("cancel") }}</button>
+              <button class="qc-mini primary" :disabled="!renameDraft.trim()" @click="confirmGroupRename">{{ t("save") }}</button>
+              <button class="qc-mini" @click="cancelGroupRename">{{ t("cancel") }}</button>
             </div>
-            <ul v-if="!collapsedGroups.includes(group.id)" class="settings-list quick-manage-list">
-              <li v-for="item in group.commands" :key="item.id">
-                <span class="quick-manage-main">
+
+            <div v-if="!isCollapsed(group)" class="qc-children">
+              <p v-if="!group.commands.length" class="qc-group-empty">{{ t("quickCommandsGroupEmpty") }}</p>
+              <div
+                v-for="item in group.commands"
+                :key="item.id"
+                class="qc-command-row"
+                :class="{ active: selected?.kind === 'command' && selected.id === item.id }"
+                :title="`${item.name}\n${item.command}`"
+                @click="selectCommand(item)"
+                @dblclick="runCommand(item)"
+                @contextmenu.prevent="openCommandMenu(item, $event)"
+              >
+                <span class="qc-command-text">
                   <strong>{{ item.name }}</strong>
-                  <span class="mono" :title="item.command">{{ item.command }}</span>
+                  <span class="mono">{{ item.command }}</span>
                 </span>
-                <span class="settings-list-actions">
-                  <button class="icon-button" :title="t('quickCommandsEdit')" :aria-label="t('quickCommandsEdit')" @click="openEditor(item)"><Pencil /></button>
-                  <button class="icon-button" :title="t('delete')" :aria-label="t('delete')" @click="deleteCommand(item.id)"><Trash2 /></button>
+                <span class="qc-command-actions">
+                  <button class="qc-row-more" :title="t('quickCommandRun')" :aria-label="t('quickCommandRun')" :disabled="!connected" @click.stop="runCommand(item)"><Play /></button>
+                  <button class="qc-row-more" :aria-label="t('quickCommandsMore')" @click="openMenuFromButton({ kind: 'command', command: item }, $event)"><MoreHorizontal /></button>
                 </span>
-              </li>
-            </ul>
+              </div>
+            </div>
           </section>
         </template>
-        <ul v-else class="settings-list quick-manage-list">
-          <li v-for="item in commands" :key="item.id">
-            <span class="quick-manage-main">
-              <strong>{{ item.name }}</strong>
-              <span class="mono" :title="item.command">{{ item.command }}</span>
-            </span>
-            <span class="settings-list-actions">
-              <button class="icon-button" :title="t('quickCommandsEdit')" :aria-label="t('quickCommandsEdit')" @click="openEditor(item)"><Pencil /></button>
-              <button class="icon-button" :title="t('delete')" :aria-label="t('delete')" @click="deleteCommand(item.id)"><Trash2 /></button>
-            </span>
-          </li>
-        </ul>
-      </template>
-      <p v-else class="muted settings-note">{{ t("quickCommandsEmpty") }}</p>
-      <p class="muted settings-note">{{ groupSummary }}</p>
-      <footer class="quick-manage-actions">
-        <button class="link-button" type="button" :disabled="commands.length >= limit" @click="openEditor()">{{ t("quickCommandsNew") }}</button>
-        <button class="link-button" type="button" :disabled="commands.length >= limit" @click="openImport()">{{ t("quickCommandsImport") }}</button>
-      </footer>
+      </div>
+
+      <div class="quick-manage-actions qc-footer">
+        <button class="link-button" type="button" :disabled="commands.length >= limit" @click="openNewCommand()">{{ t("quickCommandsNewCommand") }}</button>
+        <button class="link-button" type="button" @click="openImport">{{ t("quickCommandsImport") }}</button>
+        <span class="qc-footer-hint">{{ hasRealGroups ? t("quickCommandsManagerHint") : t("quickCommandsGlobalHint") }}</span>
+      </div>
     </template>
+
+    <QuickCommandsMenu
+      ref="menuRef"
+      :t="t"
+      :connected="connected"
+      :has-commands="commands.length > 0"
+      :selected-command="selectedCommand"
+      :selected-group="selectedGroup"
+      @action="onMenuAction"
+    />
   </div>
 </template>
 
-<style scoped>
-/* 设置页管理视图：简单两行卡片（名称 + 命令）+ 行内编辑/删除，样式对齐
-   startup-commands-list 的 settings-list 行为。 */
-.quick-manage-list { max-height: min(320px, calc(100vh - 380px)); overflow-y: auto; }
-.quick-manage-main { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; }
-.quick-manage-main strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.quick-manage-main .mono { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.quick-manage-actions { display: flex; align-items: center; gap: 16px; }
-/* 分组（issue #201）：组头折叠 + 行内改名 + 编辑器组选择。 */
-.quick-manage-group-head { display: flex; align-items: center; gap: 4px; }
-.quick-group-toggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 5px; border: 0; padding: 3px 2px; background: transparent; color: var(--muted-foreground); text-align: left; cursor: pointer; }
-.quick-group-toggle:hover { color: var(--foreground); }
-.quick-group-toggle svg { width: 13px; height: 13px; flex: 0 0 13px; }
-.quick-group-title { min-width: 0; flex: 1; overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.quick-group-count { flex: 0 0 auto; border-radius: 8px; padding: 0 6px; background: var(--muted); color: var(--muted-foreground); font-size: 9px; line-height: 15px; }
-.quick-group-rename { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; }
-.quick-group-rename input { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.quick-group-editor { display: flex; align-items: center; gap: 6px; }
-.quick-group-editor-field { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; }
-.quick-group-editor-field > span { flex: 0 0 auto; color: var(--muted-foreground); font-size: 11px; }
-.quick-group-editor-select { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 6px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.quick-group-editor > input { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-/* 迁入自 App.vue 弹层（编辑器/导入子视图原样式，见 App.vue <style scoped> 历史）。 */
-.quick-editor-head { display: flex; align-items: center; gap: 6px; }
-.quick-editor-head h3 { flex: 1; margin: 0; }
-.quick-command-editor { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
-.quick-command-editor input { width: 100%; height: 26px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.quick-command-editor textarea { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; line-height: 1.5; }
-.quick-command-editor input:focus, .quick-command-editor textarea:focus { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); outline: none; }
-.quick-command-editor-actions { display: flex; align-items: center; gap: 6px; }
-.quick-command-editor-actions .quick-command-limit { flex: 1; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.quick-import-file { display: flex; align-items: center; gap: 6px; height: 26px; border: 1px dashed var(--border); border-radius: var(--radius); padding: 0 8px; font-size: 11px; color: var(--muted-foreground); cursor: pointer; }
-.quick-import-file:hover { border-color: color-mix(in srgb, var(--primary) 60%, var(--border)); background: var(--accent); }
-.quick-import-file svg { width: 13px; height: 13px; flex: none; }
-.quick-import-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.quick-import-file input[type="file"] { display: none; }
-.quick-import-summary { margin: 0; font-size: 10px; line-height: 1.5; }
-.quick-import-note { margin: 0; font-size: 10px; line-height: 1.5; }
-</style>
+<style scoped src="./QuickCommandsSection.css"></style>

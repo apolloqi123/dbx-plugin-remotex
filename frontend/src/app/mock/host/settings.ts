@@ -3,10 +3,39 @@
  * MCP 设置。状态与校验语义镜像 sidecar 的持久化形状（上限/默认规则/脱敏回显）。
  */
 
+import { fixtureParams } from "./fixture";
 import { UNHANDLED, type Unhandled } from "./shared";
 
-const QUICK_COMMANDS_LIMIT = 20;
-const quickCommandsState: { id: string; name: string; command: string; createdAt: number; updatedAt: number }[] = [];
+const QUICK_COMMANDS_LIMIT = 200;
+
+// 命令管理页视觉夹具（?demo=commands）：pluginStore 键写入 localStorage，
+// 与宿主 storage mock 的读路径同形；同时填充 sidecar 列表供首次搬迁路径。
+const DEMO_QUICK_GROUPS = [
+  { id: "demo-common", name: "common" },
+  { id: "demo-k8s", name: "k8s" },
+  { id: "demo-docker", name: "docker" },
+  { id: "demo-inbox", name: "待整理" },
+];
+const DEMO_QUICK_COMMANDS = [
+  { id: "demo-qc-1", name: "查询该目录下所有文件里是否包含“xxx”", command: 'grep -R "xxx" .', groupId: "demo-common", groupName: "common" },
+  { id: "demo-qc-2", name: "删除所有处于 Terminating 状态的 pod", command: "kubectl get pods --all-namespaces | awk '$4==\"Terminating\"{print $1\" \"$2}' | xargs -rn2 kubectl delete pod -n", groupId: "demo-k8s", groupName: "k8s" },
+  { id: "demo-qc-3", name: "删除所有失败的 pod", command: "kubectl get pods --all-namespaces --field-selector=status.phase=Failed -o name | xargs -rn1 kubectl delete", groupId: "demo-k8s", groupName: "k8s" },
+  { id: "demo-qc-4", name: "清理悬空镜像", command: "docker image prune -f", groupId: "demo-docker", groupName: "docker" },
+  { id: "demo-qc-5", name: "查看磁盘占用", command: "df -h" },
+];
+if (fixtureParams.get("demo") === "commands") {
+  try {
+    window.localStorage.setItem("ssh-quick-commands", JSON.stringify(DEMO_QUICK_COMMANDS));
+    window.localStorage.setItem("ssh-quick-command-groups", JSON.stringify(DEMO_QUICK_GROUPS));
+  } catch {
+    // opaque origin：走 sidecar 种子兜底。
+  }
+}
+
+const quickCommandsState: { id: string; name: string; command: string; createdAt: number; updatedAt: number }[] =
+  fixtureParams.get("demo") === "commands"
+    ? DEMO_QUICK_COMMANDS.map((item, index) => ({ ...item, createdAt: index, updatedAt: index }))
+    : [];
 const settingsState = { quickSudo: true, sudoUsePty: false, sudoPasswordSet: true, totpConfigured: false, authFlowMode: "password_then_otp", passwordPromptHint: "", totpPromptHint: "", agentTerminalMode: "off", rememberedCommands: [] as string[] };
 
 // 关键词高亮规则（ssh/highlightRules/*）mock 状态：镜像 sidecar 存储

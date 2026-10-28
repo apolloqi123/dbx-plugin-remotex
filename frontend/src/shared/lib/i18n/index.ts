@@ -15,6 +15,7 @@ import dropGate from "./messages/supplemental/dropGate";
 import terminalAppearance from "./messages/supplemental/terminalAppearance";
 import terminalFontMoved from "./messages/supplemental/terminalFontMoved";
 import quickCommandsManage from "./messages/supplemental/quickCommandsManage";
+import quickCommandsManager from "./messages/supplemental/quickCommandsManager";
 import terminalBehaviorEn from "./messages/supplemental/terminalBehavior.en";
 import terminalBehaviorZhCN from "./messages/supplemental/terminalBehavior.zh-CN";
 import terminalBehaviorZhTW from "./messages/supplemental/terminalBehavior.zh-TW";
@@ -85,6 +86,7 @@ dropGate,
 terminalAppearance,
 terminalFontMoved,
 quickCommandsManage,
+quickCommandsManager,
 terminalBehavior,
 restored,
 acceleratorMonitor,

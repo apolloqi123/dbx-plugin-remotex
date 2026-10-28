@@ -439,9 +439,11 @@ export function installWorkbenchTerminal(deps: Deps) {
     pasteQuickCommand,
     sendSudoRefresh,
     saveQuickCommand,
+    createQuickCommandGroup,
     renameQuickCommandGroupById,
     dissolveQuickCommandGroupById,
     importQuickCommands,
+    quickGroups,
   } = useQuickCommands({
     t: (key, values) => late.t(key, values),
     showNotice,
@@ -497,7 +499,7 @@ export function installWorkbenchTerminal(deps: Deps) {
     toggleRdpResolutionMenu, toggleRdpPasteMenu, togglePanelPaletteMenu, toggleBatchQuickPopover, toggleTransferPanel, commandRunning, historyScope, commandHistoryLimit,
     applyCommandHistoryLimit, commandHistory, commandHistoryTimes, commandHistoryMeta, commandHistoryIndex, commandHistoryBackup, persistCommandHistory, persistCommandHistoryTimes,
     pushTerminalCommandHistory, recordCommandExecutionMeta, loadRemoteShellHistory, quickCommands, quickSaving, quickImportBusy, hydrateQuickCommands, deleteQuickCommand,
-    sendQuickCommand, pasteQuickCommand, sendSudoRefresh, saveQuickCommand, renameQuickCommandGroupById, dissolveQuickCommandGroupById, importQuickCommands, quickMenuOpen,
+    sendQuickCommand, pasteQuickCommand, sendSudoRefresh, saveQuickCommand, createQuickCommandGroup, quickGroups, renameQuickCommandGroupById, dissolveQuickCommandGroupById, importQuickCommands, quickMenuOpen,
     quickSearch, quickExpandedId, filteredQuickCommands, groupedQuickCommands, quickHasRealGroups, quickCollapsedGroups, quickCommandGroupSummary, toggleQuickGroupCollapse,
     quickGroupName, toggleQuickExpand,
   };

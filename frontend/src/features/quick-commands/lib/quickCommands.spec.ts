@@ -4,15 +4,23 @@ import {
   dissolveQuickCommandGroup,
   filterQuickCommands,
   groupQuickCommands,
+  loadQuickCommandGroupsFromStore,
   loadQuickCommandsFromStore,
   migrateQuickCommandGroups,
+  persistQuickCommandGroups,
   persistQuickCommands,
+  QUICK_COMMAND_GROUPS_STORE_KEY,
   QUICK_COMMANDS_LIMIT,
   QUICK_COMMANDS_STORE_KEY,
+  quickCommandExportFileName,
   quickCommandGroupCount,
+  quickCommandGroupsFromCommands,
   quickCommandText,
+  removeQuickCommandGroup,
   renameQuickCommandGroup,
+  serializeQuickCommands,
   upsertQuickCommand,
+  upsertQuickCommandGroup,
 } from "./quickCommands";
 
 const LIST = [
@@ -87,6 +95,69 @@ describe("store-backed authority (存储迁移批 1)", () => {
     // 键已存在（已迁移）时坏 JSON 不回退种子：否则清空后的旧 sidecar 数据会复活。
     pluginStore.setItem(QUICK_COMMANDS_STORE_KEY, "{not-json");
     expect(loadQuickCommandsFromStore()).toEqual([]);
+  });
+});
+
+describe("explicit group definitions", () => {
+  it("keeps empty groups in the derived tree and counts them", () => {
+    const groups = [
+      { id: "ops", name: "运维" },
+      { id: "empty", name: "待整理" },
+    ];
+    const views = groupQuickCommands([{ id: "1", name: "磁盘", command: "df -h", groupId: "ops", groupName: "运维" }], groups);
+    expect(views.map((group) => group.id)).toEqual(["ops", "empty"]);
+    expect(views.find((group) => group.id === "empty")?.commands).toEqual([]);
+    expect(quickCommandGroupCount([{ id: "1", name: "磁盘", command: "df -h", groupId: "ops" }], groups)).toBe(2);
+  });
+
+  it("derives explicit groups from legacy command fields once", () => {
+    expect(quickCommandGroupsFromCommands([
+      { id: "1", name: "a", command: "a", groupId: "ops", groupName: "运维" },
+      { id: "2", name: "b", command: "b", groupId: "ops", groupName: "运维" },
+      { id: "3", name: "c", command: "c" },
+    ])).toEqual([{ id: "ops", name: "运维" }]);
+  });
+
+  it("upserts and removes group definitions without duplicates", () => {
+    const created = upsertQuickCommandGroup([], { id: "ops", name: " 运维 " });
+    expect(created).toEqual([{ id: "ops", name: "运维" }]);
+    const renamed = upsertQuickCommandGroup(created, { id: "ops", name: "SRE" });
+    expect(renamed).toEqual([{ id: "ops", name: "SRE" }]);
+    expect(removeQuickCommandGroup(renamed, "ops")).toEqual([]);
+    expect(upsertQuickCommandGroup([], { id: "", name: "x" })).toEqual([]);
+  });
+
+  it("round-trips the group list through the plugin store", () => {
+    expect(loadQuickCommandGroupsFromStore()).toBeNull();
+    const stored = persistQuickCommandGroups([
+      { id: "ops", name: " 运维 " },
+      { id: "ops", name: "重复" },
+      { id: "bad id", name: "" },
+    ]);
+    expect(stored).toEqual([{ id: "ops", name: "运维" }]);
+    expect(loadQuickCommandGroupsFromStore()).toEqual(stored);
+    pluginStore.setItem(QUICK_COMMAND_GROUPS_STORE_KEY, "{not-json");
+    expect(loadQuickCommandGroupsFromStore()).toEqual([]);
+  });
+});
+
+describe("quick command export", () => {
+  const EXPORTABLE = [
+    { id: "1", name: "磁盘", command: "df -h", groupId: "ops", groupName: "运维" },
+    { id: "2", name: "端口", command: "ss -tlnp" },
+  ];
+
+  it("serializes name/command plus the group name for re-import", () => {
+    expect(JSON.parse(serializeQuickCommands(EXPORTABLE))).toEqual([
+      { name: "磁盘", command: "df -h", group: "运维" },
+      { name: "端口", command: "ss -tlnp" },
+    ]);
+  });
+
+  it("builds a timestamped filename with a safe scope slug", () => {
+    const now = new Date(2026, 9, 28, 9, 5);
+    expect(quickCommandExportFileName(undefined, now)).toBe("sshx-quick-commands-20261028-0905.json");
+    expect(quickCommandExportFileName("运维 / Ops", now)).toBe("sshx-quick-commands-运维-ops-20261028-0905.json");
   });
 });
 

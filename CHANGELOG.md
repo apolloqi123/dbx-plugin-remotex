@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.60] — 2026-10-28
+
+- **快速命令管理页重做为树形命令管理器**。设置·快速命令改为「命令管理」卡：顶部搜索 + 新建命令/新建分组/更多，分组以彩色文件夹树展示并带条数，命令行单行显示名称与命令预览，空分组也会持久保留。分组与命令都支持右键菜单（或行尾 ⋯）：命令可执行、粘贴到终端、复制、编辑、导出到剪贴板/文件、删除；分组可新建命令、新建分组、重命名、导出分组、删除。工具栏 ⋯ 提供导入与「当前命令/当前分组/全部」导出，文件导出走宿主 `host.saveFile` 落盘桥。分组清单独立存入 pluginStore（`ssh-quick-command-groups`），命令端组字段继续兼容；导入/导出文件携带分组名，可往返还原。深浅主题与 7 个语言均适配。
+  **Rebuilt the quick-command page as a tree command manager.** Settings → Quick commands is now a “Command manager” card with search, new command/group and a more menu; groups render as a colored folder tree with counts, command rows show the name plus a compact command preview, and empty groups persist. Groups and commands expose context menus (or a row “⋯”): commands can run, paste into the terminal, copy, edit, export to clipboard/file and delete; groups can create a command/group, rename, export and dissolve. The toolbar “⋯” menu covers import plus current-command/current-group/all exports, with file export routed through the host `host.saveFile` bridge. Group definitions live in their own pluginStore key (`ssh-quick-command-groups`) while command-level group fields stay compatible; exported files carry group names and round-trip through import. Light/dark themes and all seven locales are covered.
+
 ## [0.7.9-beta.59] — 2026-10-27
 
 - **插件标识简化为纯紫色终端符号**。去掉盾形与所有底色，只保留加粗的 `>_` 提示符：紫色 `#A855F7`、9.5 描边、透明背景，圆形底色完全交给宿主。16–64px 以及深浅宿主背景都保持清晰，连接卡的 30px 徽标与 20px 轨道端点同步更新。

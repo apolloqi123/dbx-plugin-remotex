@@ -155,6 +155,8 @@ function mountSettings(sessionId?: string) {
       highlightSaving: false,
       highlightDisplayMode: "bg",
       quickCommands: [],
+      quickGroups: [],
+      connected: true,
       quickSaving: false,
       quickImporting: false,
       t,

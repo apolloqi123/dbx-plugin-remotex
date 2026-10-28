@@ -2,14 +2,20 @@ import { ref, type Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
 import {
   dissolveQuickCommandGroup,
+  loadQuickCommandGroupsFromStore,
   loadQuickCommandsFromStore,
   migrateQuickCommandGroups,
   normalizeQuickCommands,
+  persistQuickCommandGroups,
   persistQuickCommands,
+  quickCommandGroupsFromCommands,
   quickCommandText,
+  removeQuickCommandGroup,
   renameQuickCommandGroup,
   upsertQuickCommand,
+  upsertQuickCommandGroup,
   type QuickCommand,
+  type QuickCommandGroup,
 } from "../lib/quickCommands";
 import { randomUUID } from "../../../shared/lib/uuid";
 
@@ -37,17 +43,31 @@ export function useQuickCommands(options: {
 // 快速命令：用户自定义片段（≤200 条，issue #201），可选分组（组信息反规范
 // 化在每条命令上，组视图由 lib 派生）。
 const quickCommands = ref<QuickCommand[]>([]);
+/** 显式分组定义（含空组）；命令上的 groupId/groupName 仍由 lib 派生补齐。 */
+const quickGroups = ref<QuickCommandGroup[]>([]);
 // 管理视图在途态（saving/importing 作为在途态传给设置节）。
 const quickSaving = ref(false);
 const quickImportBusy = ref(false);
 
+/** 分组清单与命令派生组取并集：已有定义名称优先，缺失的旧组补到末尾。 */
+function mergeDerivedGroups(groups: readonly QuickCommandGroup[], commands: readonly QuickCommand[]): QuickCommandGroup[] {
+  const known = new Set(groups.map((group) => group.id));
+  const additions = quickCommandGroupsFromCommands(commands).filter((group) => !known.has(group.id));
+  return additions.length ? [...groups, ...additions] : [...groups];
+}
+
 // 水合顺序：pluginStore 权威值（host 档存量，含适配器从同名 localStorage 旧键
 // 惰性搬家的值）→ 键缺失时从 sidecar 一次性搬迁（含空清单也要落键，标记
-// "已迁移"）→ sidecar 不可用（旧版/降级）保留内存态兜底。
+// "已迁移"）→ sidecar 不可用（旧版/降级）保留内存态兜底。分组清单独立键：
+// 缺失时从命令字段派生并落键（兼容分组清单上线前的存量数据）。
 async function hydrateQuickCommands() {
+  const storedGroups = loadQuickCommandGroupsFromStore();
   const stored = loadQuickCommandsFromStore();
+  quickGroups.value = storedGroups ?? [];
   if (stored !== null) {
     quickCommands.value = stored;
+    const merged = mergeDerivedGroups(storedGroups ?? [], stored);
+    quickGroups.value = storedGroups === null || merged.length !== storedGroups.length ? persistQuickCommandGroups(merged) : merged;
     return;
   }
   try {
@@ -55,6 +75,7 @@ async function hydrateQuickCommands() {
     // 首次搬迁即做分组迁移（issue #201）：旧 sidecar 数据没有组字段，消毒
     // 后天然归入未分组，写回的 pluginStore 即新 schema。
     quickCommands.value = persistQuickCommands(migrateQuickCommandGroups(normalizeQuickCommands(response.commands)));
+    quickGroups.value = persistQuickCommandGroups(mergeDerivedGroups(storedGroups ?? [], quickCommands.value));
   } catch {
     // 后端不可用（如旧版 sidecar）：键未落，下次启动重试搬迁；内存态兜底。
   }
@@ -110,11 +131,19 @@ async function saveQuickCommand(command: { id?: string; name: string; command: s
   if (quickSaving.value) return;
   quickSaving.value = true;
   try {
+    const groupId = command.groupId?.trim() ?? "";
+    let groupName = command.groupName?.trim() || groupId;
+    if (groupId) {
+      // 已存在的分组以显式定义的名称为准（命令端只是反规范化副本）。
+      const existing = quickGroups.value.find((group) => group.id === groupId);
+      groupName = existing?.name || groupName;
+      if (!existing) quickGroups.value = persistQuickCommandGroups(upsertQuickCommandGroup(quickGroups.value, { id: groupId, name: groupName }));
+    }
     const entry: QuickCommand = {
       id: command.id ?? randomUUID(),
       name: command.name,
       command: command.command,
-      ...(command.groupId?.trim() ? { groupId: command.groupId.trim(), groupName: command.groupName?.trim() || command.groupId.trim() } : {}),
+      ...(groupId ? { groupId, groupName } : {}),
     };
     quickCommands.value = persistQuickCommands(upsertQuickCommand(quickCommands.value, entry));
   } finally {
@@ -122,27 +151,61 @@ async function saveQuickCommand(command: { id?: string; name: string; command: s
   }
 }
 
-/** 分组改名（issue #201）：批量回写组名后整表落盘。 */
+/** 新建空分组（重名大小写不敏感时忽略）。 */
+async function createQuickCommandGroup(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const exists = quickGroups.value.some((group) => group.name.trim().toLowerCase() === trimmed.toLowerCase());
+  if (exists) return;
+  quickGroups.value = persistQuickCommandGroups(upsertQuickCommandGroup(quickGroups.value, { id: randomUUID(), name: trimmed }));
+}
+
+/** 分组改名（issue #201）：定义与命令端组名同步回写后整表落盘。 */
 async function renameQuickCommandGroupById(groupId: string, name: string) {
   if (!groupId.trim() || !name.trim()) return;
-  quickCommands.value = persistQuickCommands(renameQuickCommandGroup(quickCommands.value, groupId.trim(), name.trim()));
+  const id = groupId.trim();
+  const trimmed = name.trim();
+  quickGroups.value = persistQuickCommandGroups(upsertQuickCommandGroup(quickGroups.value, { id, name: trimmed }));
+  quickCommands.value = persistQuickCommands(renameQuickCommandGroup(quickCommands.value, id, trimmed));
 }
 
 /** 删除分组（issue #201）：组内命令移回未分组，命令本身保留。 */
 async function dissolveQuickCommandGroupById(groupId: string) {
   if (!groupId.trim()) return;
-  quickCommands.value = persistQuickCommands(dissolveQuickCommandGroup(quickCommands.value, groupId.trim()));
+  const id = groupId.trim();
+  quickGroups.value = persistQuickCommandGroups(removeQuickCommandGroup(quickGroups.value, id));
+  quickCommands.value = persistQuickCommands(dissolveQuickCommandGroup(quickCommands.value, id));
 }
 
-/** 批量导入：本地逐条 upsert（超限丢最旧，与单条保存同语义）后一次性落盘。 */
-async function importQuickCommands(items: Array<{ name: string; command: string }>) {
+/** 批量导入：本地逐条 upsert（超限丢最旧，与单条保存同语义）后一次性落盘；
+ *  导出文件携带的分组名按名称复原，缺失的分组自动创建。 */
+async function importQuickCommands(items: Array<{ name: string; command: string; groupName?: string }>) {
   if (!items.length || quickImportBusy.value) return;
   quickImportBusy.value = true;
   try {
+    let nextGroups = [...quickGroups.value];
     let next = [...quickCommands.value];
-    for (const item of items) {
-      next = upsertQuickCommand(next, { id: randomUUID(), name: item.name, command: item.command });
+    const byName = new Map<string, QuickCommandGroup>();
+    for (const group of mergeDerivedGroups(nextGroups, next)) {
+      nextGroups = upsertQuickCommandGroup(nextGroups, group);
+      byName.set(group.name.toLowerCase(), group);
     }
+    for (const item of items) {
+      const groupName = item.groupName?.trim();
+      let group = groupName ? byName.get(groupName.toLowerCase()) : undefined;
+      if (groupName && !group) {
+        group = { id: randomUUID(), name: groupName };
+        nextGroups = upsertQuickCommandGroup(nextGroups, group);
+        byName.set(groupName.toLowerCase(), group);
+      }
+      next = upsertQuickCommand(next, {
+        id: randomUUID(),
+        name: item.name,
+        command: item.command,
+        ...(group ? { groupId: group.id, groupName: group.name } : {}),
+      });
+    }
+    quickGroups.value = persistQuickCommandGroups(nextGroups);
     quickCommands.value = persistQuickCommands(next);
     showNotice(t("quickCommandsImportDone", { count: items.length }));
   } finally {
@@ -153,6 +216,7 @@ async function importQuickCommands(items: Array<{ name: string; command: string 
 
   return {
     quickCommands,
+    quickGroups,
     quickSaving,
     quickImportBusy,
     hydrateQuickCommands,
@@ -161,6 +225,7 @@ async function importQuickCommands(items: Array<{ name: string; command: string 
     pasteQuickCommand,
   sendSudoRefresh,
   saveQuickCommand,
+  createQuickCommandGroup,
   renameQuickCommandGroupById,
   dissolveQuickCommandGroupById,
   importQuickCommands,

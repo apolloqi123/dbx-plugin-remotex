@@ -17,7 +17,7 @@ import type { AiSettings } from "../../agent/lib/aiSettings";
 import type { ActionLinksSettings } from "../../terminal/lib/decorations/actionLinksMatcher";
 import type { GutterSettings } from "../../terminal/lib/appearance/terminalGutter";
 import type { HighlightDisplayMode, HighlightRuleView } from "../../terminal/lib/decorations/keywordHighlight";
-import type { QuickCommand } from "../../quick-commands/lib/quickCommands";
+import type { QuickCommand, QuickCommandGroup } from "../../quick-commands/lib/quickCommands";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -126,6 +126,10 @@ export interface SettingsDialogProps {
   highlightDisplayMode: HighlightDisplayMode;
   /** 快速命令（M32-A3：权威态 + RPC 在 App，本组件只读 + 上抛增量）。 */
   quickCommands: QuickCommand[];
+  /** 显式分组定义（含空组）。 */
+  quickGroups: QuickCommandGroup[];
+  /** 终端会话可执行快速命令（未连接时禁用执行/粘贴/运行）。 */
+  connected: boolean;
   quickSaving: boolean;
   quickImporting: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;

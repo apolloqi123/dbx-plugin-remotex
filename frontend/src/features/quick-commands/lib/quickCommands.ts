@@ -20,6 +20,12 @@ export interface QuickCommand {
   groupName?: string;
 }
 
+/** 显式分组定义：允许空分组长期存在（组信息在命令上反规范化的旧数据仍可派生）。 */
+export interface QuickCommandGroup {
+  id: string;
+  name: string;
+}
+
 export const QUICK_COMMANDS_LIMIT = 200;
 export const QUICK_COMMAND_NAME_MAX_LENGTH = 60;
 export const QUICK_COMMAND_TEXT_MAX_LENGTH = 500;
@@ -30,6 +36,9 @@ export const QUICK_COMMANDS_UNGROUPED_ID = "";
 
 /** pluginStore 键：与 localStorage 时代同名（适配器惰性搬家依赖同名接力）。 */
 export const QUICK_COMMANDS_STORE_KEY = "ssh-quick-commands";
+/** 显式分组清单键（空分组需要独立持久化；命令上的组字段仍保留作兼容/搜索）。 */
+export const QUICK_COMMAND_GROUPS_STORE_KEY = "ssh-quick-command-groups";
+export const QUICK_COMMAND_GROUP_LIMIT = 100;
 
 /**
  * 从 pluginStore 读权威清单；返回 null 表示键尚不存在（未迁移，调用方应走
@@ -55,6 +64,78 @@ export function persistQuickCommands(list: readonly QuickCommand[]): QuickComman
     // 持久化失败不阻断：本次会话内存态仍生效。
   }
   return normalized;
+}
+
+/** 读显式分组清单；null = 键尚不存在（调用方可从命令派生后落键）。 */
+export function loadQuickCommandGroupsFromStore(): QuickCommandGroup[] | null {
+  try {
+    const raw = pluginStore.getItem(QUICK_COMMAND_GROUPS_STORE_KEY);
+    if (raw === null) return null;
+    return normalizeQuickCommandGroups(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+/** 全量写穿分组清单（空数组同样落键，避免每次启动重复派生）。 */
+export function persistQuickCommandGroups(list: readonly QuickCommandGroup[]): QuickCommandGroup[] {
+  const normalized = normalizeQuickCommandGroups(list);
+  try {
+    pluginStore.setItem(QUICK_COMMAND_GROUPS_STORE_KEY, JSON.stringify(normalized));
+  } catch {
+    // 持久化失败不阻断：本次会话内存态仍生效。
+  }
+  return normalized;
+}
+
+/** 解析分组清单：非法项丢弃、字段截断、按 id 去重、超限截断。 */
+export function normalizeQuickCommandGroups(raw: unknown, limit = QUICK_COMMAND_GROUP_LIMIT): QuickCommandGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: QuickCommandGroup[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const id = nonEmptyString(record.id).slice(0, QUICK_COMMAND_GROUP_ID_MAX_LENGTH);
+    const name = nonEmptyString(record.name).slice(0, QUICK_COMMAND_GROUP_NAME_MAX_LENGTH);
+    if (!isValidId(id) || !name || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** 从命令反规范化字段派生出显式分组清单（首次引入分组清单时的迁移种子）。 */
+export function quickCommandGroupsFromCommands(list: readonly QuickCommand[]): QuickCommandGroup[] {
+  const seen = new Set<string>();
+  const out: QuickCommandGroup[] = [];
+  for (const item of list) {
+    const id = item.groupId?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: (item.groupName || id).slice(0, QUICK_COMMAND_GROUP_NAME_MAX_LENGTH) });
+  }
+  return out;
+}
+
+/** 新增或按 id 更新分组；空名/空 id 忽略。 */
+export function upsertQuickCommandGroup(list: readonly QuickCommandGroup[], group: QuickCommandGroup, limit = QUICK_COMMAND_GROUP_LIMIT): QuickCommandGroup[] {
+  const id = group.id.trim().slice(0, QUICK_COMMAND_GROUP_ID_MAX_LENGTH);
+  const name = group.name.trim().slice(0, QUICK_COMMAND_GROUP_NAME_MAX_LENGTH);
+  if (!id || !name) return [...list];
+  const index = list.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    const next = [...list];
+    next[index] = { id, name };
+    return next;
+  }
+  return [...list, { id, name }].slice(-limit);
+}
+
+/** 按 id 移除分组定义（命令侧的组字段由调用方另行处理）。 */
+export function removeQuickCommandGroup(list: readonly QuickCommandGroup[], id: string): QuickCommandGroup[] {
+  return list.filter((item) => item.id !== id);
 }
 
 function nonEmptyString(value: unknown): string {
@@ -105,24 +186,28 @@ export interface QuickCommandGroupView {
 }
 
 /**
- * 派生分组视图：按 groupId 聚组、保持清单首现顺序；未分组（空 id）恒排
- * 最前，组名取组内首条的 groupName。id 为空时 name 由调用方以本地化文案
- * 替换（lib 不引 i18n）。
+ * 派生分组视图：显式分组（含空组）按清单顺序在前，命令上的隐含组自动补齐；
+ * 未分组（空 id）恒排最前，组名取显式定义或组内首条的 groupName。id 为空时
+ * name 由调用方以本地化文案替换（lib 不引 i18n）。
  */
-export function groupQuickCommands(list: readonly QuickCommand[]): QuickCommandGroupView[] {
-  const groups = new Map<string, QuickCommandGroupView>();
+export function groupQuickCommands(list: readonly QuickCommand[], groups: readonly QuickCommandGroup[] = []): QuickCommandGroupView[] {
+  const views = new Map<string, QuickCommandGroupView>();
+  for (const group of groups) {
+    if (!group.id || views.has(group.id)) continue;
+    views.set(group.id, { id: group.id, name: group.name, commands: [] });
+  }
   for (const item of list) {
     const id = item.groupId ?? QUICK_COMMANDS_UNGROUPED_ID;
-    let group = groups.get(id);
+    let group = views.get(id);
     if (!group) {
       group = { id, name: item.groupName ?? "", commands: [] };
-      groups.set(id, group);
+      views.set(id, group);
     }
     group.commands.push(item);
   }
-  const views = [...groups.values()];
-  views.sort((a, b) => (a.id === QUICK_COMMANDS_UNGROUPED_ID ? -1 : b.id === QUICK_COMMANDS_UNGROUPED_ID ? 1 : 0));
-  return views;
+  const ordered = [...views.values()];
+  ordered.sort((a, b) => (a.id === QUICK_COMMANDS_UNGROUPED_ID ? -1 : b.id === QUICK_COMMANDS_UNGROUPED_ID ? 1 : 0));
+  return ordered;
 }
 
 /** 分组改名：批量回写该组全部条目的 groupName（id 相同即同组）。 */
@@ -184,9 +269,43 @@ export function filterQuickCommands(
   );
 }
 
-/** 计数视图（issue #201）：组数（未分组不计）+ 命令条数。 */
-export function quickCommandGroupCount(list: readonly QuickCommand[]): number {
-  return new Set(list.map((item) => item.groupId ?? QUICK_COMMANDS_UNGROUPED_ID).filter((id) => id !== QUICK_COMMANDS_UNGROUPED_ID)).size;
+/** 计数视图（issue #201）：组数（未分组不计，含空组）+ 命令条数。 */
+export function quickCommandGroupCount(list: readonly QuickCommand[], groups: readonly QuickCommandGroup[] = []): number {
+  const ids = new Set(groups.map((group) => group.id).filter((id) => id !== QUICK_COMMANDS_UNGROUPED_ID));
+  for (const item of list) {
+    const id = item.groupId ?? QUICK_COMMANDS_UNGROUPED_ID;
+    if (id !== QUICK_COMMANDS_UNGROUPED_ID) ids.add(id);
+  }
+  return ids.size;
+}
+
+export interface QuickCommandExportEntry {
+  name: string;
+  command: string;
+  group?: string;
+}
+
+/** 导出为可再次导入的 JSON（组名随条目携带，导入端按名称复原分组）。 */
+export function serializeQuickCommands(list: readonly QuickCommand[]): string {
+  const entries: QuickCommandExportEntry[] = list.map((item) => ({
+    name: item.name,
+    command: item.command,
+    ...(item.groupName ? { group: item.groupName } : {}),
+  }));
+  return JSON.stringify(entries, null, 2);
+}
+
+/** 导出文件名：统一 sshx-quick-commands[-scope]-YYYYMMDD-HHmm.json。 */
+export function quickCommandExportFileName(scope: string | undefined, now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const slug = (scope ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `sshx-quick-commands${slug ? `-${slug}` : ""}-${stamp}.json`;
 }
 
 /**

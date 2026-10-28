@@ -37,7 +37,7 @@ import TerminalHotkeyEditor from "../../terminal/components/TerminalHotkeyEditor
 import HighlightRulesSection from "../../terminal/components/HighlightRulesSection.vue";
 import QuickCommandsSection from "../../quick-commands/components/QuickCommandsSection.vue";
 import { HIGHLIGHT_RULES_LIMIT, type HighlightDisplayMode, type HighlightRuleView } from "../../terminal/lib/decorations/keywordHighlight";
-import { QUICK_COMMANDS_LIMIT } from "../../quick-commands/lib/quickCommands";
+import { QUICK_COMMANDS_LIMIT, type QuickCommand } from "../../quick-commands/lib/quickCommands";
 import type { TerminalColorScheme } from "../../terminal/lib/appearance/terminalScheme";
 import type { TerminalAppearanceProfile, TerminalAppearanceSettings } from "../../terminal/lib/appearance/terminalAppearance";
 import type { TerminalBehaviorSettings } from "../../terminal/lib/appearance/terminalBehavior";
@@ -116,10 +116,14 @@ const emit = defineEmits<{
   /** 快速命令增量（M32-A3；issue #201 分组字段随命令透传）：import 由 App 循环逐条 save。 */
   (e: "save-quick-command", command: { id?: string; name: string; command: string; groupId?: string; groupName?: string }): void;
   (e: "delete-quick-command", id: string): void;
-  (e: "import-quick-commands", items: Array<{ name: string; command: string }>): void;
-  /** 分组改名 / 删除分组（删除 = 组内命令移回未分组）：数据面在 App。 */
+  (e: "import-quick-commands", items: Array<{ name: string; command: string; groupName?: string }>): void;
+  /** 分组新建 / 改名 / 删除（删除 = 组内命令移回未分组）：数据面在 App。 */
+  (e: "create-quick-command-group", name: string): void;
   (e: "rename-quick-command-group", payload: { groupId: string; name: string }): void;
   (e: "dissolve-quick-command-group", groupId: string): void;
+  /** 管理页直接执行/粘贴（与工具条弹层同一 PTY 写入语义）。 */
+  (e: "run-quick-command", item: QuickCommand): void;
+  (e: "paste-quick-command", item: QuickCommand): void;
 }>();
 
 const t = props.t;
@@ -403,6 +407,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
             <div v-show="settingsCategory === 'commands'" class="settings-pane">
             <QuickCommandsSection
               :commands="quickCommands"
+              :groups="quickGroups"
+              :connected="connected"
               :saving="quickSaving"
               :importing="quickImporting"
               :limit="QUICK_COMMANDS_LIMIT"
@@ -410,8 +416,12 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
               @save="(command) => emit('save-quick-command', command)"
               @delete="(id) => emit('delete-quick-command', id)"
               @import="(items) => emit('import-quick-commands', items)"
+              @create-group="(name) => emit('create-quick-command-group', name)"
               @rename-group="(payload) => emit('rename-quick-command-group', payload)"
               @dissolve-group="(groupId) => emit('dissolve-quick-command-group', groupId)"
+              @run="(item) => emit('run-quick-command', item)"
+              @paste="(item) => emit('paste-quick-command', item)"
+              @notice="(message) => emit('notice', message)"
               @error="(cause) => emit('error', cause)"
             />
             </div>

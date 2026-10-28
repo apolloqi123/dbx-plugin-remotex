@@ -76,6 +76,7 @@ describe("ssh pluginStore wiring", () => {
         // 存储迁移批 1（IMPL_PLAN_STORAGE_SYNC）：全局偏好三域权威键，
         // sidecar JSON 降级为一次性搬迁种子。
         "ssh-quick-commands",
+        "ssh-quick-command-groups",
         "ssh-highlight-rules",
         "ssh-sftp-bookmarks",
         // MCP 设置镜像（批 1 收尾）：sidecar 即时权威 + 镜像作云同步载荷。

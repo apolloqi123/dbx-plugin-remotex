@@ -105,6 +105,8 @@ export const PLUGIN_STORE_KEYS: readonly string[] = [
   // / 关键词高亮规则 / SFTP 路径书签。原 sidecar JSON 文件降级为一次性迁移
   // 种子（各域 load*FromStore 返回 null 才搬迁，空清单不复活）。
   "ssh-quick-commands",
+  // 快速命令显式分组清单（含空组）；命令上的 groupId/groupName 仍保留作兼容。
+  "ssh-quick-command-groups",
   "ssh-highlight-rules",
   "ssh-sftp-bookmarks",
   // MCP 设置镜像（批 1 收尾）：sidecar 仍即时消费 mcp-settings.json，本键只

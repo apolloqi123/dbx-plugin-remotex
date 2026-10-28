@@ -73,7 +73,7 @@ const {
   previewImageZoomed, previewLoading, previewMode, previewOpen, previewSaving,
   previewSize, previewText, previewTitle, previewTruncated, profilesOpen,
   promptHintsEnabled, quickCollapsedGroups, quickCommandGroupSummary, quickCommands, quickExpandedId,
-  quickHasRealGroups, quickImportBusy, quickMenuOpen, quickSaving, quickSearch,
+  quickGroups, createQuickCommandGroup, quickHasRealGroups, quickImportBusy, quickMenuOpen, quickSaving, quickSearch,
   rdpCertPrompt, rdpCertRemaining, rdpCertRemember, rdpCustomHeight, rdpCustomWidth,
   rdpDesktopSize, rdpDialogOpen, rdpPasteOpen, rdpPasteText, rdpResizing,
   rdpResolutionOpen, rdpScaleMode, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
@@ -84,7 +84,7 @@ const {
   resolvePasteConfirm, resolvePendingConfirmDialog, resolveRdpCertificate, resolveUploadDuplicate, resumableLoading,
   resumableTasks, rightPanelView, runAlertTriage, saveAttributesPermissions,
   saveHighlightRule, savePreview, saveQuickCommand, saveTerminalAppearanceTheme, selectedEntries,
-  selectedShellInjectable, sendSuggestionToTerminal, serialDialogOpen, serialUploadBusy, serialUploadDialogOpen,
+  selectedShellInjectable, sendQuickCommand, pasteQuickCommand, sendSuggestionToTerminal, serialDialogOpen, serialUploadBusy, serialUploadDialogOpen,
   session, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen, sessionPillText,
   sessionStatus, setGhostEnabled, setGhostTabAccept, setHighlightDisplayMode, setHistoryPanelEnabled,
   setLocalShellPref, setPaneDirection, setPromptHintsEnabled, setWallpaperImage, setWebglEnabled,
@@ -428,6 +428,8 @@ const {
       :highlight-saving="highlightSaving"
       :highlight-display-mode="highlightDisplayMode"
       :quick-commands="quickCommands"
+      :quick-groups="quickGroups"
+      :connected="connected"
       :quick-saving="quickSaving"
       :quick-importing="quickImportBusy"
       :t="t"
@@ -440,8 +442,11 @@ const {
       @save-quick-command="saveQuickCommand"
       @delete-quick-command="deleteQuickCommand"
       @import-quick-commands="importQuickCommands"
+      @create-quick-command-group="createQuickCommandGroup"
       @rename-quick-command-group="renameQuickCommandGroupById"
       @dissolve-quick-command-group="dissolveQuickCommandGroupById"
+      @run-quick-command="sendQuickCommand"
+      @paste-quick-command="pasteQuickCommand"
       @browse-download-dir="folderPickerTarget = 'settings'"
       @update:webgl="setWebglEnabled"
       @update-behavior="updateTerminalBehavior"

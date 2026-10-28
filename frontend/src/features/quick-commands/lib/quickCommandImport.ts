@@ -14,6 +14,7 @@
 
 import {
   QUICK_COMMANDS_LIMIT,
+  QUICK_COMMAND_GROUP_NAME_MAX_LENGTH,
   QUICK_COMMAND_NAME_MAX_LENGTH,
   QUICK_COMMAND_TEXT_MAX_LENGTH,
   type QuickCommand,
@@ -22,6 +23,8 @@ import {
 export interface QuickCommandImportItem {
   name: string;
   command: string;
+  /** 可选分组名：导出文件携带 `group`，导入时按名称复原分组。 */
+  groupName?: string;
 }
 
 export interface QuickCommandImportPlan {
@@ -54,9 +57,11 @@ function mapImportItem(item: unknown): QuickCommandImportItem | null {
   const command = nonEmptyString(record.command) || nonEmptyString(record.cmd);
   if (!command) return null;
   const name = nonEmptyString(record.name) || nonEmptyString(record.title);
+  const groupName = (nonEmptyString(record.group) || nonEmptyString(record.groupName)).slice(0, QUICK_COMMAND_GROUP_NAME_MAX_LENGTH);
   return {
     name: name.slice(0, QUICK_COMMAND_NAME_MAX_LENGTH),
     command: command.slice(0, QUICK_COMMAND_TEXT_MAX_LENGTH),
+    ...(groupName ? { groupName } : {}),
   };
 }
 
@@ -95,7 +100,7 @@ export function parseQuickCommandImport(text: string, limit = QUICK_COMMANDS_LIM
       continue;
     }
     seen.add(key);
-    plan.items.push({ name, command: item.command });
+    plan.items.push({ name, command: item.command, ...(item.groupName ? { groupName: item.groupName } : {}) });
     if (plan.items.length >= limit) break;
   }
   return plan;

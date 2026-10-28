@@ -35,6 +35,19 @@ describe("parseQuickCommandImport", () => {
     ]);
   });
 
+  it("preserves optional group names from either export key", () => {
+    const plan = parseQuickCommandImport(JSON.stringify([
+      { name: "pod", command: "kubectl get pods", group: " k8s " },
+      { name: "disk", command: "df -h", groupName: "运维" },
+      { name: "who", command: "who" },
+    ]));
+    expect(plan.items).toEqual([
+      { name: "pod", command: "kubectl get pods", groupName: "k8s" },
+      { name: "disk", command: "df -h", groupName: "运维" },
+      { name: "who", command: "who" },
+    ]);
+  });
+
   it("counts items without a command as invalid", () => {
     const plan = parseQuickCommandImport(JSON.stringify([
       { name: "空" },

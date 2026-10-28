@@ -38,6 +38,7 @@ const TERMINAL_KEYS = [
   "pasteTerminal", "persistCommandHistory", "pickBatchTargets", "processRows", "processSortKey",
   "promptHintsAnchor", "promptHintsCompletionsKey", "promptHintsEnabled", "promptHintsHistoryKey", "promptHintsLineEmpty",
   "promptHintsVisible", "pushTerminalCommandHistory", "quickCollapsedGroups", "quickCommandGroupSummary", "quickCommands",
+  "createQuickCommandGroup", "quickGroups",
   "quickExpandedId", "quickGroupName", "quickHasRealGroups", "quickImportBusy", "quickMenuOpen",
   "quickSaving", "quickSearch", "quickSelectActive", "quickSelectHits", "quickSelectOpen",
   "readTerminalCellFrame", "reconnectDelayMs", "reconnectNextAt", "reconnectNow", "reconnectPending",
