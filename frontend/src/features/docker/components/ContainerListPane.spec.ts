@@ -48,7 +48,7 @@ function mountList() {
 describe("container list selection", () => {
   it("selects the first running container after the first load", async () => {
     stubHost([
-      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "db111", name: "db", state: "exited", image: "postgres:16", status: "Exited (0) 2 minutes ago" },
       { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27", ports: "0.0.0.0:8080->80/tcp" },
     ]);
     const wrapper = mountList();
@@ -62,7 +62,7 @@ describe("container list selection", () => {
 
   it("falls back to the first container when the selection disappears", async () => {
     const rows: Row[] = [
-      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "db111", name: "db", state: "exited", image: "postgres:16", status: "Exited (0) 3 minutes ago" },
       { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27" },
     ];
     stubHost(rows);
@@ -81,7 +81,7 @@ describe("container list selection", () => {
 
   it("emits null when the list empties", async () => {
     const rows: Row[] = [
-      { id: "db111", name: "db", state: "exited", image: "postgres:16" },
+      { id: "db111", name: "db", state: "exited", image: "postgres:16", status: "Exited (0) 4 minutes ago" },
       { id: "web222", name: "web-nginx", state: "running", image: "nginx:1.27" },
     ];
     stubHost(rows);
@@ -122,7 +122,7 @@ describe("container list selection", () => {
 
   it("marks row clicks as explicit selections", async () => {
     stubHost([
-      { id: "db111", name: "db", state: "exited" },
+      { id: "db111", name: "db", state: "exited", status: "Exited (0) 1 minute ago" },
       { id: "web222", name: "web-nginx", state: "running" },
     ]);
     const wrapper = mountList();

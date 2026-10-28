@@ -8,14 +8,16 @@
 //
 // 状态/轮询/动作在 composables/useDockerContainers，纯逻辑在 lib/dockerPanelModel，
 // 三个 UI 块在 DockerEnginePopover / DockerRowMenu / DockerConfirmDialog。
-import { onScopeDispose, onUnmounted, ref, watch } from "vue";
-import { Loader2, RefreshCw, X } from "@lucide/vue";
+import { computed, onScopeDispose, onUnmounted, ref, watch } from "vue";
+import { ChevronDown, Loader2, RefreshCw, X } from "@lucide/vue";
 import type { DockerEngineSettings } from "../lib/dockerEngine";
 import type { DockerActionName } from "../lib/dockerActions";
 import {
   dockerExecCommand,
   dockerStateClass,
+  filterContainers,
   isDockerContainerRunning,
+  type ContainerFilter,
   type DockerContainer,
 } from "../lib/dockerPanelModel";
 import { createRowMenuController } from "../lib/dockerRowMenu";
@@ -71,6 +73,11 @@ const {
   connectionId: () => props.connectionId,
 });
 
+// —— 状态筛选：默认只显示 running + 5 分钟内停止的容器 —————————————
+const containerFilter = ref<ContainerFilter>("recent");
+
+const filteredContainers = computed(() => filterContainers(containers.value, containerFilter.value));
+
 /** 齿轮弹层开合：只在关闭时落状态（与 reka 的 update:open 语义一致）。 */
 function setEngineOpen(open: boolean): void {
   if (!open) engineOpen.value = false;
@@ -118,7 +125,7 @@ function applySelection(rows: DockerContainer[]): void {
   emitSelection(current);
 }
 
-watch(containers, (rows) => applySelection(rows), { flush: "post" });
+watch(filteredContainers, (rows) => applySelection(rows), { flush: "post" });
 // 连接切换：旧连接的选中项/去重标记立即失效；等新列表落地（watch containers）
 // 再按规则选中，避免把上一台机器的容器重新抛给父组件。
 watch([() => props.sessionId, () => props.connectionId], () => {
@@ -202,8 +209,21 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
       <span class="ui-icon-tile ui-tone-blue container-list-logo"><DockerWhaleLogo /></span>
       <strong class="container-list-title">{{ props.t("docker.title") }}</strong>
       <span v-if="mode === 'local'" class="docker-source-badge">{{ props.t("docker.localSource") }}</span>
-      <span v-if="available && containers.length" class="docker-count">{{ containers.length }}</span>
+      <span v-if="available && filteredContainers.length" class="docker-count">{{ filteredContainers.length }}</span>
       <span class="container-list-spacer" />
+      <div class="container-filter-wrap">
+        <select
+          v-model="containerFilter"
+          class="container-filter-select"
+          :aria-label="props.t('docker.filterLabel')"
+        >
+          <option value="recent">{{ props.t("docker.filterRecent") }}</option>
+          <option value="running">{{ props.t("docker.filterRunning") }}</option>
+          <option value="stopped">{{ props.t("docker.filterStopped") }}</option>
+          <option value="all">{{ props.t("docker.filterAll") }}</option>
+        </select>
+        <ChevronDown class="container-filter-chevron" />
+      </div>
       <button
         v-if="engineSettings.cli"
         type="button"
@@ -277,11 +297,11 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
     </div>
 
     <!-- 空列表 -->
-    <p v-else-if="!containers.length" class="docker-empty">{{ props.t("docker.empty") }}</p>
+    <p v-else-if="!filteredContainers.length" class="docker-empty">{{ props.t("docker.empty") }}</p>
 
     <!-- 容器行：名称 + 状态徽标在上，镜像/端口/状态文案在下（窄列可读） -->
     <ul v-else class="container-rows" role="listbox" :aria-label="props.t('docker.title')">
-      <li v-for="container in containers" :key="container.id" class="container-row-item">
+      <li v-for="container in filteredContainers" :key="container.id" class="container-row-item">
         <button
           type="button"
           role="option"
@@ -357,6 +377,38 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
 .docker-count {
   font-size: 11px;
   opacity: 0.65;
+}
+
+.container-filter-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.container-filter-select {
+  appearance: none;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0 18px 0 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.container-filter-select:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+.container-filter-chevron {
+  position: absolute;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  color: var(--muted-foreground);
 }
 
 .docker-source-badge,
