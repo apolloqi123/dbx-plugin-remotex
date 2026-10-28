@@ -2,15 +2,14 @@
 /* 树视图锁在设置面板的可视高度内：树自身滚动，头部/工具栏/页脚始终可见。 */
 .quick-commands-section.is-tree { height: min(340px, calc(100vh - 255px)); }
 /* 工具栏弹层表面：给树更多高度，接近独立命令管理器窗口。 */
-.quick-commands-section.is-popover.is-tree { height: min(460px, calc(100vh - 180px)); }
+.quick-commands-section.is-popover.is-tree { height: min(380px, calc(100vh - 230px)); }
 
 /* —— 头部：标题 + 汇总 + 限额 —— */
-.qc-head { display: flex; align-items: center; gap: 10px; }
-.qc-head-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px; background: var(--tone-emerald-soft); color: var(--tone-emerald); }
-.qc-head-icon svg { width: 16px; height: 16px; }
-.qc-head-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.qc-head-text strong { font-size: 13px; }
-.qc-head-text span { overflow: hidden; color: var(--muted-foreground); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.qc-head { display: flex; min-height: 24px; align-items: center; gap: 8px; }
+.qc-head-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; border-radius: 7px; background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+.qc-head-icon svg { width: 14px; height: 14px; }
+.qc-head-title { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.qc-head-summary { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .qc-limit { flex: 0 0 auto; border-radius: 8px; padding: 2px 7px; background: var(--muted); color: var(--muted-foreground); font-size: 10px; line-height: 15px; }
 
 /* —— 工具栏：搜索 + 新建命令/分组 + 更多 —— */

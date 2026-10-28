@@ -434,10 +434,8 @@ watch([() => props.commands, () => props.groups], () => {
     <template v-else>
       <header class="qc-head">
         <span class="qc-head-icon"><Terminal /></span>
-        <div class="qc-head-text">
-          <strong>{{ t("quickCommandsManagerTitle") }}</strong>
-          <span>{{ summary }}</span>
-        </div>
+        <strong class="qc-head-title">{{ t("quickCommandsManagerTitle") }}</strong>
+        <span class="qc-head-summary">{{ summary }}</span>
         <span class="qc-limit">{{ commands.length }} / {{ limit }}</span>
       </header>
 

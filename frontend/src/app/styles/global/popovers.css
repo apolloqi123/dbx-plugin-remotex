@@ -5,7 +5,7 @@
    gap:0 的三者旧为块级/无间距布局，抵消 wrapper 的 gap-2.5。 */
 .quick-commands-popover { display: flex; width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100vh - 60px)); flex-direction: column; gap: 4px; padding: 8px; overflow: auto; }
 /* 工具栏「命令管理」表面：与设置页共用管理器，弹层放宽到接近独立管理器窗口。 */
-.quick-commands-popover.quick-commands-manager-popover { width: min(560px, calc(100vw - 24px)); max-height: min(640px, calc(100vh - 52px)); gap: 0; padding: 10px 12px 12px; overflow: auto; }
+.quick-commands-popover.quick-commands-manager-popover { width: min(360px, calc(100vw - 24px)); max-height: min(440px, calc(100vh - 52px)); gap: 0; padding: 8px 10px 10px; overflow: auto; }
 .connection-info-popover { gap: 0; width: min(300px, calc(100vw - 24px)); padding: 8px 12px 12px; }
 .agent-mode-popover { gap: 0; width: min(280px, calc(100vw - 24px)); padding: 8px 12px 12px; }
 .bookmark-save-popover { display: flex; width: 250px; flex-direction: column; gap: 6px; padding: 8px; }

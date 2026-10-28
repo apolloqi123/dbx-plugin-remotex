@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.62] — 2026-10-28
+
+- **工具栏「命令管理」弹层收紧到紧凑面板**。弹层从 560×约 484 收到 360×400，标题区从两行 34px 收成单行 24px（24px 图标，标题/汇总/限额同一行），树区随高度自适应；设置页标题同步收紧。搜索、新建命令/分组、更多菜单、右键菜单、编辑器/导入与导出均保留。
+  **Tightened the toolbar command manager to a compact panel.** The popover shrinks from 560×~484 to 360×400, and the title block collapses from a two-line 34px header to a 24px single row (24px icon; title, summary and limit on one line), with the tree adapting. The settings header follows the same compact treatment, while search, new command/group, more menu, context menus, editor/import and exports remain.
+
 ## [0.7.9-beta.61] — 2026-10-28
 
 - **工具栏「快速命令」入口改为「命令管理」，并与设置页复用同一套管理器**。点击工具栏图标不再弹出旧的只读列表，而是直接打开命令管理界面：搜索、彩色分组树、命令行内联运行/⋯、右键菜单（命令运行/粘贴/复制/编辑/导出/删除；分组新建命令/新建分组/重命名/导出/删除）、新建命令/分组、导入与按范围导出。弹层放宽到 560px，上下文菜单在弹层内绝对定位，避免浮层裁切；工具栏图标的 tooltip 与 aria-label 同步改为「命令管理」。7 个语言与深浅主题同步生效。
