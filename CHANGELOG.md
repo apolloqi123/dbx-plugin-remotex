@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.76] — 2026-10-28
+
+- **界面行高进一步压缩 + 编辑器搜索命中高亮修复**。按约 2/3 收紧：顶部工具栏 40→27px、编辑器页签 24→17px、终端页签 29→20px、SFTP 搜索行 33→22px、Docker 列表头 34→22px、容器详情头 39→26px；容器列表每行再略降（约 78→70px），图标与文字尺寸保持可读。文件搜索的命中区间改为 CodeMirror 装饰：全部命中淡琥珀底、当前命中加深并加描边，焦点在搜索框时也能清楚看到（此前只设置了选区，未聚焦选区几乎不可见）。
+  **Tighter rows and visible editor search hits.** Rows are now about two-thirds their previous height: toolbar 40→27px, editor tabs 24→17px, terminal tabs 29→20px, SFTP search row 33→22px, Docker list header 34→22px, container detail header 39→26px, and container rows shrink slightly (~78→70px) while icons and text stay readable. Editor search hits are now CodeMirror decorations — all matches get a soft amber background and the active match a stronger fill plus outline — so they remain visible while focus sits in the find box (the old selection-only highlight was nearly invisible when unfocused).
+
 ## [0.7.9-beta.75] — 2026-10-28
 
 - **重新打包并入最新合并的界面改动**。容器列表行高压缩到约 2/3、工具栏高度压到 22px（图标按钮尺寸不变）、文本预览与编辑器搜索/选中高亮对比度提升；同时包含 beta.74 的高延迟链路 SFTP 吞吐优化（16 MiB 接收窗口、64 路写流水线、上传 spool 3 片在途）。

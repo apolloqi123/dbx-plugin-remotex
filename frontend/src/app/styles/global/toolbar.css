@@ -113,8 +113,8 @@
 
 /* 传输弹层共享隐形锚点：固定定位在工具条右缘下，tab/panel 两个表面的按钮
    都只是开关（见 App.vue header 层的单实例 Popover）。 */
-.transfer-popover-anchor { position: fixed; top: 56px; right: 8px; width: 0; height: 0; }
-.workbench.panel-surface .transfer-popover-anchor { top: 46px; }
+.transfer-popover-anchor { position: fixed; top: 43px; right: 8px; width: 0; height: 0; }
+.workbench.panel-surface .transfer-popover-anchor { top: 36px; }
 
 /* Dock 面板配色快切弹层：窄体 + 列表内滚，短面板（宿主 dock 可调高度）下
    也不被视口裁剪；行密度与 shell-surface-item 同档。 */
@@ -283,7 +283,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
    居中 z15（保持迁移前被模态遮罩覆盖的语义）。 */
 .notice-viewport, .error-viewport { position: fixed; left: 50%; width: max-content; max-width: min(720px, calc(100vw - 32px)); transform: translateX(-50%); margin: 0; padding: 0; list-style: none; }
 .notice-viewport { bottom: 24px; z-index: 90; }
-.error-viewport { top: 56px; z-index: 15; }
+.error-viewport { top: 43px; z-index: 15; }
 .notice, .error-banner { display: flex; align-items: center; gap: 10px; border-radius: var(--radius); box-shadow: 0 6px 24px rgb(0 0 0 / 24%); }
 /* toast 通知与错误横幅同一横幅体系：令牌色弹层底 + 边框，不再反色；
    字号对齐全局 12px（原 14px 比模态标题还大）。 */

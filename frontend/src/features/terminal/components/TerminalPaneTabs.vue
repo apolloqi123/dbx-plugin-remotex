@@ -78,14 +78,15 @@ function label(tab: TerminalPaneTab): string {
 <style scoped>
 .terminal-pane-tabs {
   display: flex;
-  height: 29px;
-  flex: 0 0 29px;
+  /* 2026-10-28：29 → 20px（约 2/3）；页签本体 22 → 16px。 */
+  height: 20px;
+  flex: 0 0 20px;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   overflow-x: auto;
   overflow-y: hidden;
   border-bottom: 1px solid var(--border);
-  padding: 0 6px;
+  padding: 0 4px;
   background: var(--background);
   scrollbar-width: none;
 }
@@ -96,11 +97,11 @@ function label(tab: TerminalPaneTab): string {
 
 .terminal-pane-tab {
   display: inline-flex;
-  height: 22px;
+  height: 16px;
   flex: 0 0 auto;
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--muted) 22%, transparent);
 }
 
@@ -114,34 +115,34 @@ function label(tab: TerminalPaneTab): string {
   display: inline-flex;
   height: 100%;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   border: 0;
   border-radius: 3px;
-  padding: 0 6px;
+  padding: 0 5px;
   background: transparent;
   color: inherit;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .terminal-pane-tab-label svg {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   flex: 0 0 auto;
   stroke-width: 1.8;
 }
 
 .terminal-pane-tab-close {
   display: inline-grid;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
   place-items: center;
   border: 0;
   border-radius: 3px;
-  margin-right: 2px;
+  margin-right: 1px;
   padding: 0;
   background: transparent;
   color: var(--muted-foreground);
@@ -154,20 +155,20 @@ function label(tab: TerminalPaneTab): string {
 }
 
 .terminal-pane-tab-close svg {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   stroke-width: 1.8;
 }
 
 .terminal-pane-tab-add,
 .terminal-pane-close {
   display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: 3px;
   padding: 0;
   background: transparent;
   color: var(--muted-foreground);
@@ -187,8 +188,8 @@ function label(tab: TerminalPaneTab): string {
 
 .terminal-pane-tab-add svg,
 .terminal-pane-close svg {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   stroke-width: 1.8;
 }
 

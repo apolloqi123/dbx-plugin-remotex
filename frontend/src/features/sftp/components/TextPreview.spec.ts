@@ -37,7 +37,8 @@ const cm = vi.hoisted(() => {
     readOnlyValue: boolean;
     dispatchCount: number;
     destroyed: boolean;
-    dispatch(tr: { changes?: FakeChange | FakeChange[]; selection?: { anchor: number; head: number }; scrollIntoView?: boolean }): void;
+    dispatches: Array<{ changes?: FakeChange | FakeChange[]; selection?: { anchor: number; head: number }; scrollIntoView?: boolean; effects?: unknown[] }>;
+    dispatch(tr: { changes?: FakeChange | FakeChange[]; selection?: { anchor: number; head: number }; scrollIntoView?: boolean; effects?: unknown[] }): void;
     destroy(): void;
   }
 
@@ -77,8 +78,10 @@ const cm = vi.hoisted(() => {
       editableValue: config.state.extensions.some((ext) => ext.kind === "editable" && ext.value === true),
       readOnlyValue: config.state.extensions.some((ext) => ext.kind === "readOnly" && ext.value === true),
       dispatchCount: 0,
+      dispatches: [],
       destroyed: false,
       dispatch(tr) {
+        view.dispatches.push(tr);
         if (tr.changes) {
           const changes = Array.isArray(tr.changes) ? [...tr.changes].sort((a, b) => b.from - a.from) : [tr.changes];
           for (const change of changes) {
@@ -125,9 +128,20 @@ vi.mock("@codemirror/state", () => ({
     create: (config: { doc: string; extensions?: unknown[] }) => ({ doc: config.doc, extensions: config.extensions ?? [] }),
     readOnly: { of: (value: boolean) => ({ kind: "readOnly", value }) },
   },
+  // 查找装饰：只记录 effect 形状，state 字段的 provide/update 由真实 CodeMirror
+  // 在浏览器里执行（本 spec 断言组件发出的 effect，而不是装饰渲染）。
+  StateEffect: { define: () => ({ of: (value: unknown) => ({ kind: "findMatches", value }) }) },
+  StateField: { define: (spec: unknown) => ({ kind: "stateField", spec }) },
 }));
 
-vi.mock("@codemirror/view", () => ({ EditorView: cm.FakeEditorView }));
+vi.mock("@codemirror/view", () => ({
+  EditorView: cm.FakeEditorView,
+  Decoration: {
+    none: { kind: "none" },
+    mark: (spec: unknown) => ({ kind: "mark", spec, range: (from: number, to: number) => ({ from, to, spec }) }),
+    set: (ranges: unknown) => ranges,
+  },
+}));
 
 // .js 命中语言 → 加载成功；.md 命中但加载失败（吞错路径）；其余不命中。
 // HighlightStyle/syntaxHighlighting 为 shared editorTheme 高亮注入的运行时，
@@ -330,6 +344,29 @@ describe("TextPreview find widget", () => {
     expect(cm.views[0].state.selection.main).toMatchObject({ from: 12, to: 17 });
     await input.trigger("keydown", { key: "Enter", shiftKey: true });
     expect(cm.views[0].state.selection.main).toMatchObject({ from: 0, to: 5 });
+  });
+
+
+  it("decorates every match so hits stay visible while the find input is focused", async () => {
+    const wrapper = await openWithKey({ key: "f", ctrlKey: true });
+    const input = wrapper.get(".editor-find .editor-find-input");
+    await input.setValue("hello");
+    await vi.waitFor(() => expect(wrapper.get(".editor-find-count").text()).toBe("1/2"));
+
+    type FindEffect = { kind: string; value: { ranges: Array<{ from: number; to: number }>; active: number } };
+    const lastFindEffect = () => {
+      const last = cm.views[0].dispatches.at(-1) as { effects?: FindEffect | FindEffect[] } | undefined;
+      const effects = Array.isArray(last?.effects) ? last.effects : last?.effects ? [last.effects] : [];
+      return effects.find((entry) => entry.kind === "findMatches");
+    };
+    // 计数只说明算到了匹配；命中必须作为装饰送到编辑器（焦点在搜索框时
+    // 未聚焦选区几乎不可见，不能只靠 selection）。
+    expect(lastFindEffect()?.value.ranges).toEqual([{ from: 0, to: 5 }, { from: 12, to: 17 }]);
+    expect(lastFindEffect()?.value.active).toBe(0);
+
+    await wrapper.get(".editor-find").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(lastFindEffect()?.value.ranges).toEqual([]);
   });
 
   it("closes on Escape", async () => {

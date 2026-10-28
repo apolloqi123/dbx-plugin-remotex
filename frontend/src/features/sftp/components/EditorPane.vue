@@ -159,7 +159,8 @@ function onTextChange(text: string) {
 
 .editor-header {
   display: flex;
-  min-height: 24px;
+  /* 2026-10-28：24 → 17px（约 2/3）。页签内容（10px 字/10px 图标）仍完整。 */
+  min-height: 17px;
   flex: 0 0 auto;
   align-items: stretch;
   border-bottom: 1px solid var(--border);
@@ -190,14 +191,14 @@ function onTextChange(text: string) {
   display: inline-flex;
   min-width: 0;
   max-width: 220px;
-  min-height: 23px;
+  min-height: 16px;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   border: 0;
-  padding: 3px 6px 3px 10px;
+  padding: 1px 4px 1px 8px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 10.5px;
   cursor: pointer;
 }
 
@@ -207,9 +208,9 @@ function onTextChange(text: string) {
 }
 
 .editor-tab-icon {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
 }
 
 .editor-tab-name {
@@ -220,23 +221,23 @@ function onTextChange(text: string) {
 }
 
 .editor-tab-dirty {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
   border-radius: 50%;
   background: var(--primary);
 }
 
 .editor-tab-close {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   align-items: center;
   justify-content: center;
-  margin-right: 3px;
+  margin-right: 2px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
@@ -248,24 +249,24 @@ function onTextChange(text: string) {
 }
 
 .editor-tab-close svg {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
 }
 
 .editor-save {
   display: inline-flex;
-  min-height: 22px;
+  min-height: 15px;
   flex: 0 0 auto;
   align-self: center;
   align-items: center;
-  gap: 4px;
-  margin: 0 5px;
+  gap: 3px;
+  margin: 0 4px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 8px;
+  border-radius: 3px;
+  padding: 0 6px;
   background: var(--background);
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
 }
 
@@ -279,9 +280,9 @@ function onTextChange(text: string) {
 }
 
 .editor-save svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
 }
 
 .editor-body {

@@ -472,19 +472,21 @@ function setTreePane(el: Element | ComponentPublicInstance | null) {
 
 <style scoped>
 /* SFTP 面板扩展（工作包 B）：搜索/类型过滤、批量条、路径历史、属性弹窗。 */
-.sftp-filter-bar { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--border); padding: 3px 6px; }
-.sftp-search-input { display: flex; flex: 1; min-width: 0; height: 22px; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 6px; background: var(--background); }
+/* 2026-10-28：搜索行 33 → 22px（约 2/3），输入框/筛选器同步收紧。 */
+.sftp-filter-bar { display: flex; align-items: center; gap: 3px; border-bottom: 1px solid var(--border); padding: 2px 4px; }
+.sftp-search-input { display: flex; flex: 1; min-width: 0; height: 16px; align-items: center; gap: 3px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 5px; background: var(--background); }
 .sftp-search-input:focus-within { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); }
-.sftp-search-input svg { width: 12px; height: 12px; flex: 0 0 12px; color: var(--muted-foreground); }
-.sftp-search-input input { min-width: 0; flex: 1; border: 0; padding: 0; background: transparent; color: var(--foreground); font-size: 12px; outline: none; }
-.sftp-search-clear { display: grid; width: 14px; height: 14px; flex: 0 0 14px; border: 0; border-radius: 50%; padding: 0; place-items: center; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.sftp-search-input svg { width: 10px; height: 10px; flex: 0 0 10px; color: var(--muted-foreground); }
+.sftp-search-input input { min-width: 0; flex: 1; border: 0; padding: 0; background: transparent; color: var(--foreground); font-size: 11px; outline: none; }
+.sftp-search-clear { display: grid; width: 12px; height: 12px; flex: 0 0 12px; border: 0; border-radius: 50%; padding: 0; place-items: center; background: transparent; color: var(--muted-foreground); cursor: pointer; }
 .sftp-search-clear:hover { background: var(--accent); color: var(--foreground); }
-.sftp-search-clear svg { width: 10px; height: 10px; }
-.sftp-type-filter { flex: 0 0 auto; }
-.sftp-hidden-toggle { flex: 0 0 auto; width: 22px; height: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
+.sftp-search-clear svg { width: 9px; height: 9px; }
+.sftp-type-filter { flex: 0 0 auto; height: 18px; min-height: 18px; padding: 0 5px; font-size: 9.5px; }
+.sftp-type-filter :deep(svg) { width: 10px; height: 10px; }
+.sftp-hidden-toggle { flex: 0 0 auto; width: 18px; height: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
 .sftp-hidden-toggle:hover { background: var(--accent); color: var(--foreground); }
 .sftp-hidden-toggle.is-active { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
-.sftp-hidden-toggle svg { width: 12px; height: 12px; }
+.sftp-hidden-toggle svg { width: 10px; height: 10px; }
 .sftp-batch-bar { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding: 5px 8px; background: color-mix(in srgb, var(--primary) 8%, var(--background)); color: var(--muted-foreground); font-size: 11px; }
 .sftp-batch-bar span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sftp-batch-bar button { display: inline-flex; height: 24px; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 11px; cursor: pointer; }
