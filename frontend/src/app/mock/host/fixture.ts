@@ -21,6 +21,17 @@ if (fixtureParams.get("render") === "dom") {
   //（注意：Safari 的 vite fixture 下 WebGL 终端渲染为空白，仅 Chromium 可用）。
   pluginStore.setItem("ssh-terminal-webgl", "0");
 }
+// ?forwards=1 / ?tunnels=1：端口映射走查夹具。运行中的隧道由 tunnels.ts
+// seedTunnelFixture() 注入；保存预设写进 pluginStore（直写 localStorage 会被
+// 水合时序吃掉）。
+if (fixtureParams.has("forwards") || fixtureParams.has("tunnels")) {
+  pluginStore.setItem("ssh-tunnel-profiles", JSON.stringify([
+    { id: "fixture-preset-local", connectionId: "visual-connection", kind: "local", listenHost: "127.0.0.1", listenPort: "8080", targetHost: "db.internal", targetPort: "5432" },
+    { id: "fixture-preset-remote", connectionId: "visual-connection", kind: "remote", listenHost: "127.0.0.1", listenPort: "9000", targetHost: "localhost", targetPort: "3000" },
+    { id: "fixture-preset-web", connectionId: "visual-connection", kind: "local", listenHost: "127.0.0.1", listenPort: "3000", targetHost: "web.internal", targetPort: "80" },
+    { id: "fixture-preset-redis", connectionId: "visual-connection", kind: "local", listenHost: "127.0.0.1", listenPort: "6379", targetHost: "redis.internal", targetPort: "6379" },
+  ]));
+}
 // ?rw=1 模拟可写连接（默认只读），供拖放上传等写路径 UI 验证。
 export const writable = fixtureParams.get("rw") === "1";
 // ?err=disconnect 在会话建立 4s 后模拟一次传输断开（ssh/session/state

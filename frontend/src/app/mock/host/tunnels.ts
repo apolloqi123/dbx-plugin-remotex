@@ -9,6 +9,31 @@ import { context } from "./fixture";
 const mockForwards: Array<Record<string, unknown>> = [];
 let mockForwardSeq = 1;
 
+/** 可视化夹具：给 ?forwards=1 / ?tunnels=1 播种运行中隧道与保存预设。 */
+export function seedTunnelFixture() {
+  if (mockForwards.length) return;
+  mockForwards.push(
+    {
+      id: "fixture-local", sessionId: "", connectionId: context.connectionId, kind: "local",
+      listenHost: "127.0.0.1", listenPort: 8080, boundPort: 8080,
+      targetHost: "db.internal", targetPort: 5432, state: "active", error: null,
+      connectionsTotal: 7, connectionsActive: 2, bytesUp: 481_233, bytesDown: 3_912_004,
+    },
+    {
+      id: "fixture-remote", sessionId: "", connectionId: context.connectionId, kind: "remote",
+      listenHost: "127.0.0.1", listenPort: 9000, boundPort: 9000,
+      targetHost: "localhost", targetPort: 3000, state: "active", error: null,
+      connectionsTotal: 1, connectionsActive: 1, bytesUp: 12_800, bytesDown: 204_800,
+    },
+    {
+      id: "fixture-socks", sessionId: "", connectionId: context.connectionId, kind: "dynamic",
+      listenHost: "127.0.0.1", listenPort: 1080, boundPort: 1080,
+      targetHost: "", targetPort: 0, state: "starting", error: null,
+      connectionsTotal: 0, connectionsActive: 0, bytesUp: 0, bytesDown: 0,
+    },
+  );
+}
+
 export async function handleTunnelsInvoke(method: string, params: unknown): Promise<unknown | Unhandled> {
   if (method === "ssh/forward/list") return { forwards: mockForwards };
   if (method === "ssh/forward/interfaces") {

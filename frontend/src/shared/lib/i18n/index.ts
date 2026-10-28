@@ -52,6 +52,7 @@ import transferCompress from "./messages/supplemental/transferCompress";
 import sftpWorkbenchEnhancements from "./messages/supplemental/sftpWorkbenchEnhancements";
 import terminalTabs from "./messages/supplemental/terminalTabs";
 import editorFind from "./messages/supplemental/editorFind";
+import forwarding from "./messages/supplemental/forwarding";
 
 export type WorkbenchLocale = "en" | "es" | "it" | "ja" | "pt-BR" | "zh-CN" | "zh-TW";
 
@@ -118,6 +119,7 @@ transferCompress,
 sftpWorkbenchEnhancements,
 terminalTabs,
 editorFind,
+forwarding,
 ];
 for (const table of supplementalTables) {
   for (const locale of Object.keys(table)) {

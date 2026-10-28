@@ -21,7 +21,7 @@
  * - misc.ts      alert triage、sudo profiles、knownHosts、keys
  *
  * 参数语义（?render / ?rw / ?err / ?slow / ?fresh / ?local / ?restored /
- * ?ai / ?aipanel / ?aifix / ?surface / ?auth / ?proto / ?tunnels / ?locale /
+ * ?ai / ?aipanel / ?aifix / ?surface / ?auth / ?proto / ?tunnels / ?forwards / ?locale /
  * ?theme / ?noanim / ?docker）见 fixture.ts 顶部注释。
  */
 
@@ -54,7 +54,7 @@ import { emitTerminal, handleSshTerminalInput, handleTerminalInvoke } from "./mo
 import { exitLocalSession, handleLocalInvoke, handleLocalTerminalInput, setMockPointerSample, type MockPointerSampleState } from "./mock/host/local";
 import { handleSftpInvoke } from "./mock/host/sftpFiles";
 import { handleSftpUploadBinary, handleTransfersInvoke } from "./mock/host/transfers";
-import { handleTunnelsInvoke } from "./mock/host/tunnels";
+import { handleTunnelsInvoke, seedTunnelFixture } from "./mock/host/tunnels";
 import { handleDockerInvoke, handleDockerTerminalInput } from "./mock/host/docker";
 import { handleMetricsInvoke } from "./mock/host/metrics";
 import { handleSettingsInvoke } from "./mock/host/settings";
@@ -279,3 +279,6 @@ queueMicrotask(() => document.dispatchEvent(new CustomEvent("dbx-plugin-init", {
 
 // 供单元测试（mockDbxHost.spec.ts）以模块形式动态导入并重置状态。
 export {};
+
+// ?forwards=1 / ?tunnels=1：端口映射管理器与工具栏弹层的视觉走查数据。
+if (fixtureParams.has("forwards") || fixtureParams.has("tunnels")) seedTunnelFixture();

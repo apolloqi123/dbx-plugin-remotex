@@ -29,7 +29,7 @@ export function installWorkbenchShell(deps: Deps) {
   closeAttributes, closeDockerPane, closePreview, closeRightPanel, commandHistory,
   confirmRiskyPaste, connectLog, connected, connectionReadOnly, currentPath, customEditorOpen,
   deleteTarget, diskUsage, dockerPaneOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
-  editorPaneContainsFocus, fileMenu, folderPickerTarget, handleWatchModified, hasEditorTabs, hostKeyPrompt,
+  editorPaneContainsFocus, fileMenu, folderPickerTarget, forwardsMenuOpen, handleWatchModified, hasEditorTabs, hostKeyPrompt,
   hostTerminalFontFamily, importPanelOpen, isLocalMode, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir,
   localOpenConfirmOpen, localSession, localShellRestored, localShellSurfaceOpen, locale, markLocalExited,
   markSerialClosed, markTelnetClosed, markVncClosed, newFileDialog, openLocalShellPrefs, openTransferTarget,
@@ -385,6 +385,16 @@ export function installWorkbenchShell(deps: Deps) {
     rdpPasteOpen.value = false;
     rdpResolutionOpen.value = false;
     batchQuickOpen.value = false;
+    forwardsMenuOpen.value = false;
+  }
+
+  function toggleForwardsMenu() {
+    if (forwardsMenuOpen.value) {
+      forwardsMenuOpen.value = false;
+      return;
+    }
+    closeToolbarPopovers();
+    forwardsMenuOpen.value = true;
   }
 
   // 弹层焦点管理与 Esc 关闭链：触发元素栈/幽灵点击守卫/焦点表/逐层退出收口在
@@ -496,7 +506,7 @@ export function installWorkbenchShell(deps: Deps) {
     toggleProcessPanel, refreshProcessList, sortedProcessRows, PROCESS_VISIBLE_LIMIT, visibleProcessRows, killProcessRow, metricsView, setMetricsProcessSort,
     localTerminalActive, refreshPanelMetrics, panelMetricsVisible, panelMetricsFailed, panelMetricsErrorTitle, panelCpuPercent, panelMemPercent, panelNetRates,
     refreshDiskUsage, chmodTarget, chmodDraft, chmodSubmitting, toggleChmodPerm, toggleAttrsPerm, beginChmod, confirmChmod,
-    openSettings, closeToolbarPopovers, onDocumentMouseDownCapture, onDocumentClickCapture, trackStableFocus, onDocumentKeydown, openTransferPanel, formatModified,
+    openSettings, closeToolbarPopovers, toggleForwardsMenu, onDocumentMouseDownCapture, onDocumentClickCapture, trackStableFocus, onDocumentKeydown, openTransferPanel, formatModified,
     writeU64,
   };
 }

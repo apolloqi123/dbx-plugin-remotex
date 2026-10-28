@@ -306,3 +306,141 @@ export function formatForwardBytes(bytes: number): string {
   }
   return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${unit}`;
 }
+
+/** 保存的预设与运行行的公共形状（TunnelProfile 结构兼容）。 */
+export interface ForwardProfileLike {
+  id: string;
+  kind: ForwardKind;
+  listenHost: string;
+  listenPort: string;
+  targetHost: string;
+  targetPort: string;
+}
+
+/** 合并列表里的一行：运行中的转发或尚未启动的预设。 */
+export interface ForwardCard<P extends ForwardProfileLike = ForwardProfileLike> {
+  key: string;
+  kind: ForwardKind;
+  listenHost: string;
+  listenPort: number;
+  targetHost: string;
+  targetPort: number;
+  state: PortForward["state"] | "saved";
+  error?: string;
+  connectionsActive: number;
+  connectionsTotal: number;
+  bytesUp: number;
+  bytesDown: number;
+  forward?: PortForward;
+  profile?: P;
+}
+
+/** 监听地址的可复制形态：0 端口用实际绑定值，IPv6 字面量加方括号。 */
+export function formatForwardAddress(
+  row: Pick<PortForward, "listenHost" | "listenPort" | "boundPort">,
+): string {
+  const port = row.boundPort > 0 ? row.boundPort : row.listenPort;
+  const host = row.listenHost.trim() || "127.0.0.1";
+  const display = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `${display}:${port}`;
+}
+
+export interface ForwardSummary {
+  running: number;
+  failed: number;
+  connectionsActive: number;
+  connectionsTotal: number;
+  bytesUp: number;
+  bytesDown: number;
+}
+
+/** 摘要只统计运行中/启动中的行；错误行单独计数，流量不含已失败隧道。 */
+export function forwardSummary(rows: PortForward[]): ForwardSummary {
+  const summary: ForwardSummary = {
+    running: 0,
+    failed: 0,
+    connectionsActive: 0,
+    connectionsTotal: 0,
+    bytesUp: 0,
+    bytesDown: 0,
+  };
+  for (const row of rows) {
+    if (row.state === "error") {
+      summary.failed += 1;
+      continue;
+    }
+    if (row.state === "stopped") continue;
+    summary.running += 1;
+    summary.connectionsActive += row.connectionsActive;
+    summary.connectionsTotal += row.connectionsTotal;
+    summary.bytesUp += row.bytesUp;
+    summary.bytesDown += row.bytesDown;
+  }
+  return summary;
+}
+
+function normalizedForwardHost(host: string): string {
+  const value = host.trim().replace(/^\[(.*)\]$/, "$1").toLowerCase();
+  return value || "127.0.0.1";
+}
+
+/** 预设与运行行是否描述同一条隧道（方向、监听端点与目标都一致）。 */
+export function profileMatchesForward(profile: ForwardProfileLike, row: PortForward): boolean {
+  if (row.kind !== profile.kind) return false;
+  if (Number(profile.listenPort) !== row.listenPort) return false;
+  if (normalizedForwardHost(profile.listenHost) !== normalizedForwardHost(row.listenHost)) return false;
+  if (profile.kind === "dynamic") return true;
+  return (
+    normalizedForwardHost(profile.targetHost) === normalizedForwardHost(row.targetHost) &&
+    Number(profile.targetPort) === row.targetPort
+  );
+}
+
+/**
+ * 运行行在前、未运行预设在后，运行行附带启动它的预设（供卡片显示预设徽标与
+ * 删除入口）。运行行与预设是一对多中的首个匹配；匹配不上的预设独立成卡。
+ */
+export function mergeForwardCards<P extends ForwardProfileLike>(
+  rows: PortForward[],
+  profiles: P[],
+): ForwardCard<P>[] {
+  const claimed = new Set<string>();
+  const cards: ForwardCard<P>[] = rows.map((row) => {
+    const profile = profiles.find((candidate) => !claimed.has(candidate.id) && profileMatchesForward(candidate, row));
+    if (profile) claimed.add(profile.id);
+    return {
+      key: `forward:${row.id}`,
+      kind: row.kind,
+      listenHost: row.listenHost,
+      listenPort: row.listenPort,
+      targetHost: row.targetHost,
+      targetPort: row.targetPort,
+      state: row.state,
+      error: row.error,
+      connectionsActive: row.connectionsActive,
+      connectionsTotal: row.connectionsTotal,
+      bytesUp: row.bytesUp,
+      bytesDown: row.bytesDown,
+      forward: row,
+      profile,
+    };
+  });
+  for (const profile of profiles) {
+    if (claimed.has(profile.id)) continue;
+    cards.push({
+      key: `profile:${profile.id}`,
+      kind: profile.kind,
+      listenHost: profile.listenHost,
+      listenPort: Number(profile.listenPort),
+      targetHost: profile.targetHost,
+      targetPort: Number(profile.targetPort),
+      state: "saved",
+      connectionsActive: 0,
+      connectionsTotal: 0,
+      bytesUp: 0,
+      bytesDown: 0,
+      profile,
+    });
+  }
+  return cards;
+}

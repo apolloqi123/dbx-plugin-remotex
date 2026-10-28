@@ -114,6 +114,7 @@ export interface WorkbenchToolbarActions
   toggleDockerPane(): void;
   toggleBatchBar(): void;
   toggleAgentModeMenu(): void;
+  toggleForwardsMenu(): void;
   applyAgentMode(mode: AgentTerminalMode): void;
   toggleMetricsPanel(): void;
   openAuditLog(): void;

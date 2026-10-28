@@ -14,9 +14,11 @@ export function useDialogState() {
   // OTP 验证码 / 会话导入工具弹窗（SFTP 路径工具栏入口）。
   const otpPanelOpen = ref(false);
   const importPanelOpen = ref(false);
-  // 端口映射（-L/-R）管理弹窗：全部逻辑在 components/PortForwardDialog.vue，
-  // 这里只保留工具栏入口的开关状态。
+  // 端口映射：工具栏快捷弹层 + 完整管理器（两者共享 usePortForwards 控制器）。
+  // focusForm 让「新增映射」入口打开管理器时直接展开表单。
+  const forwardsMenuOpen = ref(false);
   const forwardsOpen = ref(false);
+  const forwardsFocusForm = ref(false);
   // 键位胶囊（Warp accept-autosuggestion-hint 同位）的下拉菜单与展示标签。
   const ghostKeycapMenuOpen = ref(false);
   // 会话下拉（新建/复制/命令会话/本地终端/Shell 选项）单入口状态；shell 视图
@@ -33,7 +35,9 @@ export function useDialogState() {
     profilesOpen,
     otpPanelOpen,
     importPanelOpen,
+    forwardsMenuOpen,
     forwardsOpen,
+    forwardsFocusForm,
     ghostKeycapMenuOpen,
     sessionMenuOpen,
     sessionMenuShellOpen,

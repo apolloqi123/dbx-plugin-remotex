@@ -9,6 +9,8 @@ import type { TransferHistoryEntry } from "../../features/transfers/lib/transfer
 import type { ResumableUploadTask } from "../../features/transfers/lib/transferResume";
 import type { BatchUploadSummary, TransferTask } from "../../features/transfers/lib/transferQueue";
 import DockerWhaleLogo from "../../features/docker/components/DockerWhaleLogo.vue";
+import PortForwardMenu from "../../features/forwarding/components/PortForwardMenu.vue";
+import type { PortForwardsController } from "../../features/forwarding/composables/usePortForwards";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
 import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import AppearanceMenu from "./AppearanceMenu.vue";
@@ -87,6 +89,8 @@ const props = defineProps<{
   recordingElapsedSec: number;
   recordingsOpen: boolean;
   recordingsCount: number;
+  /** 端口映射控制器：工具条按钮徽标与快捷弹层共用工作台的同一实例。 */
+  forwards: PortForwardsController;
   activeTransfers: number;
   // dock 面板系统信息带
   panelMetricsVisible: boolean;
@@ -150,7 +154,9 @@ const importPanelOpen = defineModel<boolean>("importPanelOpen", { required: true
 const transferPanelOpen = defineModel<boolean>("transferPanelOpen", { required: true });
 const transferHistoryClearOpen = defineModel<boolean>("transferHistoryClearOpen", { required: true });
 const serialUploadDialogOpen = defineModel<boolean>("serialUploadDialogOpen", { required: true });
+const forwardsMenuOpen = defineModel<boolean>("forwardsMenuOpen", { required: true });
 const forwardsOpen = defineModel<boolean>("forwardsOpen", { required: true });
+const forwardsFocusForm = defineModel<boolean>("forwardsFocusForm", { required: true });
 const sessionMenuOpen = defineModel<boolean>("sessionMenuOpen", { required: true });
 const sessionMenuShellOpen = defineModel<boolean>("sessionMenuShellOpen", { required: true });
 const sessionMenuShellPickOpen = defineModel<boolean>("sessionMenuShellPickOpen", { required: true });
@@ -184,6 +190,7 @@ const {
   toggleDockerPane,
   toggleBatchBar,
   toggleAgentModeMenu,
+  toggleForwardsMenu,
   applyAgentMode,
   toggleMetricsPanel,
   toggleRecording,
@@ -203,6 +210,12 @@ const {
   openNewSessionTab,
 } = props.actions;
 const recordingActions = { toggleRecording, toggleRecordings, cancelRecordCountdown };
+
+function openForwardManager(mode: "add" | "manage") {
+  forwardsMenuOpen.value = false;
+  forwardsFocusForm.value = mode === "add";
+  forwardsOpen.value = true;
+}
 </script>
 
 <template>
@@ -309,8 +322,29 @@ const recordingActions = { toggleRecording, toggleRecordings, cancelRecordCountd
       <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('reconnect')" :aria-label="t('reconnect')" :disabled="terminalState === 'connecting' && !reconnectPending" @click="reconnectNow"><WorkbenchGlyph name="reconnect" /></button>
       <!-- 一键 sudo -v：向当前 PTY 写入命令刷新 sudo 凭据缓存。 -->
       <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('sudoRefresh.title')" :aria-label="t('sudoRefresh.title')" :disabled="!connected" @click="sendSudoRefresh"><WorkbenchGlyph name="sudo-shield" /></button>
-      <!-- 端口转发入口同属 SSH 专属：本地模式整体隐藏。 -->
-      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><WorkbenchGlyph name="forwards" /></button>
+      <!-- 端口转发入口：点击先出快捷弹层，运行中数量直接标在图标上。 -->
+      <div v-if="!localUiMode && !isSerialMode && !isTelnetMode && !isVncMode">
+        <Popover :open="forwardsMenuOpen" @update:open="(open) => { if (!open) forwardsMenuOpen = false; }">
+          <PopoverAnchor as-child>
+            <button
+              class="icon-button forward-toolbar-button"
+              :class="forwards.summary.value.running ? 'icon-cyan is-active' : 'icon-cyan'"
+              :title="t('forwards.title')"
+              :aria-label="t('forwards.title')"
+              :aria-pressed="forwardsMenuOpen"
+              :disabled="!connectionId"
+              @pointerdown.stop
+              @click.stop="toggleForwardsMenu"
+            >
+              <WorkbenchGlyph name="forwards" />
+              <span v-if="forwards.summary.value.running" class="toolbar-count">{{ forwards.summary.value.running }}</span>
+            </button>
+          </PopoverAnchor>
+          <PopoverContent class="popover forward-menu-popover" align="end" :side-offset="5">
+            <PortForwardMenu :controller="forwards" :t="t" @add="openForwardManager('add')" @manage="openForwardManager('manage')" />
+          </PopoverContent>
+        </Popover>
+      </div>
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 效率工具：快命令 → 批量发送 → Agent 模式 -->
       <QuickCommandsMenu

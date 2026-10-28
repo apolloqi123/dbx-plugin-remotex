@@ -2,8 +2,10 @@
 // 工作台外壳（T32）：/main 壳模板与模板专用绑定收口于此；状态与接线仍在
 // workbench/useWorkbench，App.vue 只保留根组件与生命周期挂载。
 import WorkbenchWorkspace from "./WorkbenchWorkspace.vue";
+import { watch } from "vue";
 import FolderPickerDialog from "../../features/sftp/components/FolderPickerDialog.vue";
 import PortForwardDialog from "../../features/forwarding/components/PortForwardDialog.vue";
+import { usePortForwards } from "../../features/forwarding/composables/usePortForwards";
 import RdpConnectDialog from "../../features/remote-desktop/components/RdpConnectDialog.vue";
 import SerialConnectDialog from "../../features/serial/components/SerialConnectDialog.vue";
 import SerialUploadDialog from "../../features/serial/components/SerialUploadDialog.vue";
@@ -54,7 +56,7 @@ const {
   downloadPrompt, dropCwdTarget, dropUploadPathInput, dropUploadPrompt, dropUploadTarget,
   editorPrefsAdapter, externalEditBusy, fileBatchProgress, folderPickerTarget,
   folderUploadProgress, folderUploadSupported, formatDuration, formatModified, formatRecordedAt,
-  forwardsOpen, ghostTabAccept, gutterSettings,
+  forwardsMenuOpen, forwardsOpen, forwardsFocusForm, ghostTabAccept, gutterSettings,
   highlightDisplayMode, highlightRules, highlightSaving, hostKeyPrompt, hostTerminalFontFamily,
   hostTerminalTheme, importPanelOpen, importQuickCommands, isLocalMode, isRdpConnection,
   isRdpMode, isSerialMode, isTelnetMode, isVncMode, jsonPreviewState,
@@ -102,6 +104,25 @@ const {
   vncDialogOpen, wallpaperEnabled, wallpaperOpacity, wallpaperSessionOnly, watchModifiedPrompt,
   watchModifiedQueue, webglEnabled,
 } = bindings;
+
+// 端口映射控制器：工具栏快捷弹层与完整管理器共享同一份列表与事件订阅。
+const forwards = usePortForwards({
+  connectionId: () => connectionId.value,
+  independent: () => true,
+  sessionId: () => null,
+  clipboard: () => bindings.clipboardDeps(),
+  onError: (cause) => showError(cause, "terminal"),
+});
+
+// 工具栏徽标要在用户打开弹层前就反映存量隧道：连接 id 就绪且当前是 SSH
+// 工作台时预取一次列表（RDP/串口/Telnet/VNC/本地没有端口转发面）。
+watch(
+  [connectionId, () => isRdpConnection.value, () => isLocalMode.value, () => isSerialMode.value, () => isTelnetMode.value, () => isVncMode.value],
+  ([id, rdp, local, serial, telnet, vnc]) => {
+    if (id && !rdp && !local && !serial && !telnet && !vnc) void forwards.refresh();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -118,7 +139,10 @@ const {
       v-model:transfer-panel-open="transferPanelOpen"
       v-model:transfer-history-clear-open="transferHistoryClearOpen"
       v-model:serial-upload-dialog-open="serialUploadDialogOpen"
+      v-model:forwards-menu-open="forwardsMenuOpen"
       v-model:forwards-open="forwardsOpen"
+      v-model:forwards-focus-form="forwardsFocusForm"
+      :forwards="forwards"
       v-model:session-menu-open="sessionMenuOpen"
       v-model:session-menu-shell-open="sessionMenuShellOpen"
       v-model:session-menu-shell-pick-open="sessionMenuShellPickOpen"
@@ -314,7 +338,9 @@ const {
       :connection-id="connectionId"
       :session-id="null"
       independent
-      @update:open="forwardsOpen = $event"
+      :controller="forwards"
+      :focus-form="forwardsFocusForm"
+      @update:open="(open: boolean) => { forwardsOpen = open; if (!open) forwardsFocusForm = false; }"
       @error="showError($event, 'terminal')"
     />
 

@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.71] — 2026-10-28
+
+- **端口映射入口重做为快捷弹层 + 统一管理器**。工具栏端口映射图标改为打开 384px 快捷弹层：摘要（运行中/连接数/流量）、运行中隧道一键停止、保存预设一键启动、点击路由复制监听地址，底部进入完整管理器；有隧道运行时图标高亮并显示数量徽标。完整管理器从三段式列表重排为统一隧道卡片（方向色图标、路由、状态、连接与流量、复制/启停/删除）、摘要动作条（启动全部预设/全部停止/新增映射）与可折叠新增表单（三种方向选择卡、监听→目标紧凑两行、实时预览、保存为预设）。数据层抽为 `usePortForwards`，工具栏弹层、管理器与连接右键独立页共享同一实例；非 SSH 会话（本地/串口/Telnet/VNC/RDP）不再显示端口映射入口。七语文案同步。
+  **Redesigned the port-forward entry as a quick popover plus a unified manager.** The toolbar icon now opens a 384px quick popover with a running/connections/traffic summary, one-click stop for active tunnels, one-click start for saved presets, copy-address on the route, and a footer into the full manager; the icon highlights and shows a count badge while tunnels run. The manager replaces the three stacked lists with unified tunnel cards (direction icon, route, state, connections and traffic, copy/start/stop/delete), a summary action bar (start all presets / stop all / new mapping), and a collapsible form (three direction cards, compact listen→target rows, live preview, save-as-preset). State moved into `usePortForwards`, shared by the toolbar popover, the manager and the connection-menu page; non-SSH sessions (local/serial/Telnet/VNC/RDP) no longer show the entry. All seven locales were updated.
+
 ## [0.7.9-beta.70] — 2026-10-28
 
 - **AI 命令审批改为三档风险**。分级审批（auto）下，只读/查看命令（`ls`/`cat`/`df`/`systemctl status`/`journalctl`/`docker ps`，以及 `docker node|service|network|volume|stack` 的 `ls|ps|inspect|logs`、`kubectl get|describe|config view|auth can-i` 等）直接执行不弹窗；变更/修改命令（`restart`/`update`/`create`/`delete`/`chmod`/`install`/写文件等）弹审批；sudo/灾难命令为提权·高危，同样弹审批。全部审批（strict）仍对每条命令弹窗，关闭（off）仍完全隐藏。审批弹窗新增只读/变更/提权三档徽标（7 语），连接模式成为权威开关——`runInTerminal` 不能再强制隐藏来绕过审批；已记住命令可免审，但灾难命令即使匹配通配记忆也会重新过灾难门。

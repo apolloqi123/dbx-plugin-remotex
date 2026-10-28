@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   applyForwardState,
   findForwardConflict,
+  formatForwardAddress,
   formatForwardBytes,
   formatForwardRoute,
   forwardStartParams,
+  forwardSummary,
+  mergeForwardCards,
   parseForwards,
   parseInterfaces,
   listenHostOptions,
   validateForwardForm,
   type ForwardFormDraft,
+  type ForwardProfileLike,
   type PortForward,
 } from "./portForward";
 
@@ -233,5 +237,92 @@ describe("formatForwardBytes", () => {
     expect(formatForwardBytes(1023)).toBe("1023 B");
     expect(formatForwardBytes(2048)).toBe("2.0 KiB");
     expect(formatForwardBytes(5 * 1024 * 1024)).toBe("5.0 MiB");
+  });
+});
+
+describe("formatForwardAddress", () => {
+  it("uses the bound port and brackets IPv6 literals", () => {
+    expect(formatForwardAddress(row({}))).toBe("127.0.0.1:8080");
+    expect(formatForwardAddress(row({ listenPort: 0, boundPort: 31234 }))).toBe("127.0.0.1:31234");
+    expect(formatForwardAddress(row({ listenHost: "::1" }))).toBe("[::1]:8080");
+    expect(formatForwardAddress(row({ listenHost: "[::1]", boundPort: 0 }))).toBe("[::1]:8080");
+    expect(formatForwardAddress(row({ listenHost: "0.0.0.0", listenPort: 443, boundPort: 0 }))).toBe("0.0.0.0:443");
+  });
+});
+
+describe("forwardSummary", () => {
+  const profile: ForwardProfileLike = {
+    id: "preset-1",
+    kind: "local",
+    listenHost: "127.0.0.1",
+    listenPort: "8080",
+    targetHost: "db.internal",
+    targetPort: "5432",
+  };
+  const inactive: ForwardProfileLike = {
+    ...profile,
+    id: "preset-2",
+    listenPort: "3000",
+    targetHost: "web.internal",
+    targetPort: "80",
+  };
+
+  it("counts only runnable rows and aggregates their traffic", () => {
+    const rows = [
+      row({}),
+      row({ id: "fwd-2", state: "starting", connectionsActive: 2, connectionsTotal: 4, bytesUp: 10, bytesDown: 20 }),
+      row({ id: "fwd-3", state: "error", connectionsActive: 9, bytesUp: 500 }),
+    ];
+    expect(forwardSummary(rows)).toEqual({
+      running: 2,
+      failed: 1,
+      connectionsActive: 3,
+      connectionsTotal: 7,
+      bytesUp: 110,
+      bytesDown: 220,
+    });
+    expect(forwardSummary([])).toEqual({
+      running: 0,
+      failed: 0,
+      connectionsActive: 0,
+      connectionsTotal: 0,
+      bytesUp: 0,
+      bytesDown: 0,
+    });
+  });
+
+  it("merges running rows with the saved preset that started them", () => {
+    const rows = [row({}), row({ id: "fwd-2", kind: "dynamic", listenHost: "127.0.0.1", listenPort: 1080, boundPort: 1080, targetHost: "", targetPort: 0 })];
+    const presets = [profile, inactive];
+    const cards = mergeForwardCards(rows, presets);
+    expect(cards.map((card) => card.key)).toEqual([
+      "forward:fwd-1",
+      "forward:fwd-2",
+      "profile:preset-2",
+    ]);
+    expect(cards[0].profile?.id).toBe("preset-1");
+    expect(cards[0].state).toBe("active");
+    expect(cards[2].profile?.id).toBe("preset-2");
+    expect(cards[2].state).toBe("saved");
+    expect(cards[2].forward).toBeUndefined();
+  });
+
+  it("does not attach a preset from another direction or endpoint", () => {
+    const cards = mergeForwardCards(
+      [row({ listenHost: "0.0.0.0" }), row({ id: "fwd-2", kind: "remote" })],
+      [profile],
+    );
+    expect(cards.slice(0, 2).every((card) => !card.profile)).toBe(true);
+    expect(cards[2].profile?.id).toBe("preset-1");
+    expect(cards).toHaveLength(3);
+  });
+
+  it("normalizes bracketed hosts and blank profiles when matching", () => {
+    const cards = mergeForwardCards(
+      [row({ listenHost: "[::1]" })],
+      [{ ...profile, listenHost: "::1" }],
+    );
+    expect(cards[0].profile?.id).toBe("preset-1");
+    expect(cards).toHaveLength(1);
   });
 });

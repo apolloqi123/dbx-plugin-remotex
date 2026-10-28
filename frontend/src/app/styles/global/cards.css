@@ -801,7 +801,6 @@
 /* —— 设置 / 传输 / 安全 / 终端面板：卡片化容器 —— */
 .otp-toolbar,
 .import-nav,
-.forward-form-kinds,
 .terminal-history-search,
 .terminal-search-panel {
   border: 1px solid var(--card-border);
@@ -811,15 +810,12 @@
 .otp-list,
 .import-sources,
 .quick-manage-list,
-.forward-profiles,
 .settings-list {
   border-radius: var(--radius-md);
 }
 .otp-entry,
 .import-source,
 .quick-manage-group,
-.forward-row,
-.forward-profile,
 .terminal-history-row {
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
@@ -829,14 +825,12 @@
 .otp-entry:hover,
 .import-source:hover,
 .quick-manage-group:hover,
-.forward-row:hover,
 .terminal-history-row:hover {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--card-border));
   background: var(--card-surface-raised);
 }
 .otp-entry-head svg,
 .import-source svg,
-.forward-kind svg,
 .terminal-history-search-icon {
   color: var(--primary);
 }
@@ -856,21 +850,6 @@
   overflow: hidden;
 }
 .import-table tr:nth-child(even) { background: color-mix(in srgb, var(--card-surface-inset) 45%, transparent); }
-.forward-kind-picker { border-radius: var(--radius-control); }
-.forward-kind {
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.forward-kind.is-active,
-.forward-kind[aria-pressed="true"] {
-  background: var(--tone-blue-soft);
-  color: var(--tone-blue);
-}
-.forward-state {
-  border-radius: var(--radius-pill);
-  background: var(--card-surface-inset);
-  padding: 0 8px;
-}
 .terminal-history-panel,
 .terminal-search-panel {
   border: 1px solid var(--card-border);

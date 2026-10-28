@@ -1,42 +1,227 @@
-/* 端口映射管理弹窗（PortForwardDialog）：映射行 = 类型徽标 + 路由 + 状态 +
-   计数 + 停止；下方为添加表单（方向单选 + 监听/目标地址对）。 */
-.forwards-modal { width: min(760px, calc(100vw - 40px)); }
-.forwards-modal--manager { width: min(1040px, calc(100vw - 40px)); max-height: min(82vh, 780px); overflow: auto; }
+/* 端口映射：快捷弹层（PortForwardMenu）+ 管理器面板（PortForwardsPanel）。
+   行卡片沿用工作台卡片令牌：card-surface-raised 底、card-border 边、方向色。 */
+.forwards-modal { width: min(880px, calc(100vw - 40px)); }
+.forwards-modal--manager { width: min(980px, calc(100vw - 40px)); max-height: min(84vh, 820px); overflow: auto; }
 .tunnel-manager-root { overflow: auto; padding: 20px clamp(16px, 4vw, 48px); }
-.forwards-modal--standalone { width: min(1040px, 100%); max-height: none; min-height: 480px; margin: 0 auto; box-shadow: none; background: var(--background); }
-.forwards-modal--standalone .forwards-list { max-height: min(55vh, 560px); }
+.forwards-modal--standalone { width: min(980px, 100%); max-height: none; min-height: 480px; margin: 0 auto; box-shadow: none; background: var(--background); }
+.forwards-modal--standalone .forwards-list { max-height: min(52vh, 560px); }
 .forwards-modal--standalone h1 { margin: 0; font-size: 16px; font-weight: 600; }
-.forward-profiles { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
-.forward-profiles header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.forward-profiles h2, .forward-section-title { margin: 0; font-size: 13px; font-weight: 600; }
-.forward-profiles .forwards-list { max-height: 240px; }
-.forward-profiles .forward-form-hint { white-space: pre-wrap; }
-.forward-kind--dynamic { color: var(--success, var(--primary)); border-color: color-mix(in srgb, var(--success, var(--primary)) 45%, var(--border)); }
-.forwards-body { display: flex; flex-direction: column; gap: 14px; min-height: 200px; }
-.forwards-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
-.forward-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-.forward-kind { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: 10px; color: var(--muted-foreground); }
-.forward-kind--remote { color: var(--warning, var(--foreground)); border-color: color-mix(in srgb, var(--warning, var(--border)) 45%, var(--border)); }
-.forward-kind--local { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
-.forward-route { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono-font, monospace); font-size: 12px; }
-.forward-state { flex: 0 0 auto; font-size: 11px; color: var(--muted-foreground); }
-.forward-state--active { color: var(--success, var(--primary)); }
-.forward-state--error { color: var(--destructive); }
-.forward-state--starting { color: var(--warning, var(--muted-foreground)); }
-.forward-stats { flex: 0 0 auto; font-size: 10px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.forward-stop { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: none; color: var(--muted-foreground); cursor: pointer; }
-.forward-stop:hover:not(:disabled) { color: var(--destructive); }
-.forward-stop:disabled { opacity: 0.5; cursor: default; }
-.forward-stop svg { width: 13px; height: 13px; }
-.forward-form { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-.forward-form[disabled] { opacity: 0.55; }
-.forward-form-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.forward-form-kinds { gap: 16px; }
-.forward-kind-picker { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; }
-.forward-kind-picker input { margin: 0; }
-.forward-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; font-size: 11px; color: var(--muted-foreground); }
-.forward-field-pair { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 6px; }
-.forward-form-hint { margin: 0; font-size: 11px; color: var(--muted-foreground); }
-.forward-form-error { margin: 0; font-size: 11px; color: var(--destructive); }
-.forward-form footer { display: flex; justify-content: flex-end; }
+.forward-modal-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.forward-modal-subtitle { font-size: 11px; color: var(--muted-foreground); }
 
+.forwards-body { display: flex; flex-direction: column; gap: 14px; min-height: 200px; }
+
+/* 摘要条：运行数 / 连接数 / 流量 + 批量动作 */
+.forward-summary {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 9px 11px;
+  border: 1px solid var(--card-border); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+}
+.forward-summary-stat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: var(--radius-pill);
+  font-size: 11px; color: var(--muted-foreground); font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--card-surface-raised) 70%, transparent);
+}
+.forward-summary-stat--running { color: var(--tone-emerald); background: var(--tone-emerald-soft); }
+.forward-summary-stat--failed { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 12%, transparent); }
+.forward-summary-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.forward-action-button {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 10px;
+  border: 1px solid var(--card-border); border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+  color: var(--muted-foreground); font-size: 11px; cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+.forward-action-button:hover:not(:disabled) { color: var(--foreground); background: var(--card-surface-raised); }
+.forward-action-button:disabled { opacity: 0.5; cursor: default; }
+.forward-action-button--primary { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 35%, var(--card-border)); }
+.forward-action-button--danger { color: var(--destructive); border-color: color-mix(in srgb, var(--destructive) 28%, var(--card-border)); }
+.forward-action-button svg { width: 12px; height: 12px; }
+.forward-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tone-emerald); box-shadow: 0 0 0 3px var(--tone-emerald-soft); }
+
+/* 空状态 */
+.forward-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 30px 16px; text-align: center;
+  border: 1px dashed var(--card-border); border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+}
+.forward-empty-icon {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  border-radius: var(--radius-md); background: var(--tone-blue-soft); color: var(--tone-blue);
+}
+.forward-empty-icon svg { width: 19px; height: 19px; }
+.forward-empty strong { color: var(--foreground); font-size: 13px; }
+.forward-empty p { margin: 0; max-width: 460px; font-size: 12px; line-height: 1.5; }
+
+/* 隧道卡片（运行中 + 未启动预设统一形态） */
+.forwards-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow: auto; }
+.forward-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--card-border); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.forward-card:hover { border-color: color-mix(in srgb, var(--primary) 30%, var(--card-border)); background: var(--card-surface-raised); }
+.forward-card.is-saved { border-style: dashed; }
+.forward-card.is-error { border-color: color-mix(in srgb, var(--destructive) 40%, var(--card-border)); }
+.forward-card-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: var(--radius-sm); background: var(--tone-soft, var(--tone-blue-soft)); color: var(--tone, var(--tone-blue));
+}
+.forward-card-icon svg { width: 15px; height: 15px; }
+.forward-card-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.forward-card-route { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.forward-card-route code {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono-font, monospace); font-size: 12px; color: var(--foreground);
+}
+.forward-card-state {
+  flex: 0 0 auto; padding: 1px 7px; border-radius: var(--radius-pill);
+  font-size: 10px; color: var(--tone-emerald); background: var(--tone-emerald-soft);
+}
+.forward-card.is-saved .forward-card-state { color: var(--muted-foreground); background: var(--card-surface-inset); }
+.forward-card.is-starting .forward-card-state { color: var(--tone-amber); background: var(--tone-amber-soft); }
+.forward-card.is-error .forward-card-state { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 12%, transparent); }
+.forward-card-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 10px; color: var(--muted-foreground);
+}
+.forward-card-preset { display: inline-flex; align-items: center; gap: 4px; color: var(--tone-blue); }
+.forward-card-preset svg { width: 10px; height: 10px; }
+.forward-card-stats { font-variant-numeric: tabular-nums; }
+.forward-card-error { color: var(--destructive); }
+.forward-card-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+.forward-icon-button {
+  display: grid; place-items: center; width: 26px; height: 26px;
+  border: 1px solid transparent; border-radius: var(--radius-control);
+  background: transparent; color: var(--muted-foreground); cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.forward-icon-button:hover:not(:disabled) { color: var(--foreground); background: var(--card-surface-inset); }
+.forward-icon-button:disabled { opacity: 0.45; cursor: default; }
+.forward-icon-button.is-copied { color: var(--tone-emerald); }
+.forward-icon-button--danger:hover:not(:disabled) { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+.forward-icon-button--start { color: var(--tone-emerald); }
+.forward-icon-button--muted:hover:not(:disabled) { color: var(--destructive); }
+.forward-icon-button svg { width: 13px; height: 13px; }
+
+/* 新增表单：方向选择卡 + 横向地址行 + 实时预览 */
+.forward-form {
+  display: flex; flex-direction: column; gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--card-border); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
+}
+.forward-directions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.forward-direction {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 8px 10px; text-align: left;
+  border: 1px solid var(--card-border); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-raised) 60%, transparent);
+  color: var(--foreground); cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.forward-direction:hover { border-color: color-mix(in srgb, var(--tone) 38%, var(--card-border)); }
+.forward-direction.is-active {
+  border-color: color-mix(in srgb, var(--tone) 55%, var(--card-border));
+  background: var(--tone-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 22%, transparent);
+}
+.forward-direction-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: var(--radius-sm); background: var(--tone-soft); color: var(--tone);
+}
+.forward-direction-icon svg { width: 14px; height: 14px; }
+.forward-direction-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.forward-direction-copy strong { font-size: 12px; font-weight: 600; }
+.forward-direction-copy small { font-size: 10px; line-height: 1.3; color: var(--muted-foreground); }
+.forward-form-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.forward-field {
+  display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 8px;
+  font-size: 11px; color: var(--muted-foreground);
+}
+.forward-field-pair { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 6px; }
+.forward-preview {
+  margin: 0; padding: 6px 9px; border-radius: var(--radius-sm);
+  font-size: 11px; color: var(--tone-blue); background: var(--tone-blue-soft);
+}
+.forward-preview--remote { color: var(--tone-amber); background: var(--tone-amber-soft); }
+.forward-preview--dynamic { color: var(--tone-emerald); background: var(--tone-emerald-soft); }
+.forward-form-hint { margin: 0; font-size: 11px; line-height: 1.45; color: var(--muted-foreground); }
+.forward-form-error { margin: 0; font-size: 11px; color: var(--destructive); }
+.forward-status { white-space: pre-wrap; }
+.forward-form footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.forward-save-preset { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); cursor: pointer; }
+.forward-save-preset input { margin: 0; }
+
+/* 工具栏快捷弹层 */
+.forward-toolbar-button { position: relative; }
+.toolbar-count {
+  position: absolute; top: -3px; right: -3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 13px; height: 13px; padding: 0 3px; border-radius: var(--radius-pill);
+  font-size: 8px; font-weight: 700; line-height: 1;
+  color: var(--background); background: var(--tone-emerald);
+  box-shadow: 0 0 0 2px var(--card-surface-raised);
+}
+.forward-menu { width: 384px; max-width: calc(100vw - 24px); max-height: min(520px, calc(100vh - 60px)); overflow: auto; display: flex; flex-direction: column; gap: 9px; padding: 12px; }
+.forward-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.forward-menu-title { font-size: 13px; font-weight: 600; }
+.forward-menu-summary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 11px; color: var(--tone-emerald); background: var(--tone-emerald-soft);
+}
+.forward-menu-meta { display: flex; gap: 10px; font-size: 10px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.forward-menu-error { white-space: pre-wrap; }
+.forward-menu-empty { margin: 0; padding: 18px 8px; text-align: center; font-size: 11px; color: var(--muted-foreground); }
+.forward-menu-group h3 {
+  margin: 0 0 4px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-foreground);
+}
+.forward-menu-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 184px; overflow: auto; }
+.forward-menu-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--radius-sm); }
+.forward-menu-row:hover { background: color-mix(in srgb, var(--card-surface-raised) 78%, transparent); }
+.forward-menu-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 24px; height: 24px;
+  border-radius: var(--radius-xs); background: var(--tone-soft); color: var(--tone);
+}
+.forward-menu-icon svg { width: 12px; height: 12px; }
+.forward-menu-route {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0; border: 0; background: none; color: var(--foreground); text-align: left; cursor: pointer;
+}
+.forward-menu-route code {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono-font, monospace); font-size: 11px;
+}
+.forward-menu-copy { flex: 0 0 auto; display: inline-flex; color: var(--muted-foreground); opacity: 0; transition: opacity var(--transition-fast); }
+.forward-menu-row:hover .forward-menu-copy { opacity: 0.75; }
+.forward-menu-copy.is-copied { opacity: 1; color: var(--tone-emerald); }
+.forward-menu-copy svg { width: 11px; height: 11px; }
+.forward-menu-state { flex: 0 0 auto; font-size: 10px; color: var(--tone-emerald); }
+.forward-menu-state.is-starting { color: var(--tone-amber); }
+.forward-menu-state.is-error { color: var(--destructive); }
+.forward-menu-action {
+  flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px;
+  border: 0; border-radius: var(--radius-xs); background: none;
+  color: var(--muted-foreground); cursor: pointer;
+}
+.forward-menu-action:hover:not(:disabled) { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 10%, transparent); }
+.forward-menu-action--start { color: var(--tone-emerald); }
+.forward-menu-action:disabled { opacity: 0.45; cursor: default; }
+.forward-menu-action svg { width: 12px; height: 12px; }
+.forward-menu-footer { display: flex; gap: 6px; padding-top: 9px; border-top: 1px solid var(--border); }
+.forward-menu-manage {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; border: 1px solid var(--card-border); border-radius: var(--radius-control);
+  background: transparent; color: var(--muted-foreground); font-size: 11px; cursor: pointer;
+}
+.forward-menu-manage:hover { color: var(--foreground); background: var(--card-surface-raised); }
+.forward-menu-manage--primary { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 35%, var(--card-border)); }
+.forward-menu-manage svg { width: 12px; height: 12px; }

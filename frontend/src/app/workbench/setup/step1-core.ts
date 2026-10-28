@@ -328,7 +328,9 @@ export function installWorkbenchCore(deps: Deps) {
     profilesOpen,
     otpPanelOpen,
     importPanelOpen,
+    forwardsMenuOpen,
     forwardsOpen,
+    forwardsFocusForm,
     ghostKeycapMenuOpen,
     sessionMenuOpen,
     sessionMenuShellOpen,
@@ -364,7 +366,7 @@ export function installWorkbenchCore(deps: Deps) {
     terminalDragActive, localDownloadDir, localCanSave, SFTP_QUICK_PATHS, splitRatio, dockerSplitRatio, paneOrder, sudoMode,
     paneContainer, workbenchSplitRef, paneLayout, terminalBasis, paneSplitStyle, dockerPaneBasis, orderedPaneClass, resetDockerSplitRatio,
     settingsOpen, auditOpen, profilesOpen,
-    otpPanelOpen, importPanelOpen, forwardsOpen, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
+    otpPanelOpen, importPanelOpen, forwardsMenuOpen, forwardsOpen, forwardsFocusForm, ghostKeycapMenuOpen, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen,
   };
 }
 
