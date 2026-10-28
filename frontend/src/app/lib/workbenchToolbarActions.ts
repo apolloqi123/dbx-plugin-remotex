@@ -1,5 +1,6 @@
 import type { AgentTerminalMode } from "../../features/agent/lib/agentTerminal";
 import type { QuickCommand } from "../../features/quick-commands/lib/quickCommands";
+import type { RecordingMenuActions } from "../../features/recording/lib/recordingMenu";
 import type { TerminalColorScheme } from "../../features/terminal/lib/appearance/terminalScheme";
 import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
 import type { ResumableUploadTask } from "../../features/transfers/lib/transferResume";
@@ -100,7 +101,8 @@ export interface WorkbenchToolbarActions
   extends SessionMenuActions,
     QuickCommandsMenuActions,
     RdpToolbarActions,
-    AppearanceMenuActions {
+    AppearanceMenuActions,
+    RecordingMenuActions {
   togglePanelToolbar(): void;
   toggleConnectionInfo(): void;
   measureLatency(): void;
@@ -114,8 +116,6 @@ export interface WorkbenchToolbarActions
   toggleAgentModeMenu(): void;
   applyAgentMode(mode: AgentTerminalMode): void;
   toggleMetricsPanel(): void;
-  toggleRecording(): void;
-  toggleRecordings(): void;
   openAuditLog(): void;
   toggleTransferPanel(): void;
   showTransferHistoryMenu(event: MouseEvent, entry: TransferHistoryEntry): void;

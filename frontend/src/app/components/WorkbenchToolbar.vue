@@ -15,6 +15,7 @@ import AppearanceMenu from "./AppearanceMenu.vue";
 import ConnectionInfoPopover from "./ConnectionInfoPopover.vue";
 import DockMetricsStrip from "./DockMetricsStrip.vue";
 import QuickCommandsMenu from "./QuickCommandsMenu.vue";
+import RecordingMenu from "../../features/recording/components/RecordingMenu.vue";
 import RdpToolbarControls from "./RdpToolbarControls.vue";
 import SessionMenu from "./SessionMenu.vue";
 import TransferPopover from "./TransferPopover.vue";
@@ -82,7 +83,10 @@ const props = defineProps<{
   agentModeHint: string;
   recordingActive: boolean;
   recordingTarget: { kind: "ssh" | "local"; sessionId: string } | undefined;
+  recordCountdown: number | null;
+  recordingElapsedSec: number;
   recordingsOpen: boolean;
+  recordingsCount: number;
   activeTransfers: number;
   // dock 面板系统信息带
   panelMetricsVisible: boolean;
@@ -184,6 +188,7 @@ const {
   toggleMetricsPanel,
   toggleRecording,
   toggleRecordings,
+  cancelRecordCountdown,
   openSettings,
   openAuditLog,
   toggleTransferPanel,
@@ -197,6 +202,7 @@ const {
   onResumeFilePicked,
   openNewSessionTab,
 } = props.actions;
+const recordingActions = { toggleRecording, toggleRecordings, cancelRecordCountdown };
 </script>
 
 <template>
@@ -335,8 +341,16 @@ const {
       </div>
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 录制 -->
-      <button class="icon-button" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><WorkbenchGlyph name="record" /></button>
-      <button class="icon-button" :class="{ 'is-active': recordingsOpen }" :title="t('recordingsTitle')" :aria-label="t('recordingsTitle')" :aria-pressed="recordingsOpen" @click="toggleRecordings"><WorkbenchGlyph name="recordings" /></button>
+      <RecordingMenu
+        :t="t"
+        :can-record="!!recordingTarget"
+        :recording-active="recordingActive"
+        :record-countdown="recordCountdown"
+        :recording-elapsed-sec="recordingElapsedSec"
+        :recordings-count="recordingsCount"
+        :recordings-open="recordingsOpen"
+        :actions="recordingActions"
+      />
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 右缘固定组（从右往左：设置 → 审计 → SFTP 面板 → 传输 → 容器 → 指标）：
            指标/容器一组，传输/SFTP 面板紧邻，审计/设置固定在右缘。 -->
@@ -382,7 +396,18 @@ const {
       <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><WorkbenchGlyph name="new-tab" /></button>
       <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
       <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
-      <button v-if="!isRdpConnection" class="icon-button compact" :class="{ 'is-recording': recordingActive }" :title="recordingActive ? t('recordingStop') : t('recordingTitle')" :aria-label="recordingActive ? t('recordingStop') : t('recordingTitle')" :disabled="!recordingTarget" @click="toggleRecording"><WorkbenchGlyph name="record" /></button>
+      <RecordingMenu
+        v-if="!isRdpConnection"
+        compact
+        :t="t"
+        :can-record="!!recordingTarget"
+        :recording-active="recordingActive"
+        :record-countdown="recordCountdown"
+        :recording-elapsed-sec="recordingElapsedSec"
+        :recordings-count="recordingsCount"
+        :recordings-open="recordingsOpen"
+        :actions="recordingActions"
+      />
       <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
       <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
       <AppearanceMenu

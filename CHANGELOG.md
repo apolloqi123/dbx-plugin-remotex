@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.66] — 2026-10-28
+
+- **录制入口合并为单图标并重做录制记录页**。工具栏「录制终端」与「录制记录」合并为一个「终端录制」入口：点击只展开菜单，不会直接开始录制；菜单内选择开始/停止录制（开始沿用可取消的 3 秒倒计时）或打开录制记录。录制记录浮层重新设计：状态头、搜索、卡片列表（主机、时间、大小、时长、回放/GIF/转录/定位/删除）、空态与「开始录制」入口，宽度 520px。主工具栏与 dock panel 紧凑工具条同步。
+  **Merged recording into one entry and redesigned the recordings page.** The separate record and recordings buttons are now one Terminal recording menu: clicking it only expands the menu and never starts recording; choose start/stop (start keeps the cancellable 3-second countdown) or open recordings. The recordings float gets a status header, search, card rows (host, time, size, duration, replay/GIF/transcript/reveal/delete), an empty state and a start action, at 520px wide. Both the main toolbar and the dock panel compact toolbar share it.
+
 ## [0.7.9-beta.65] — 2026-10-28
 
 - **设置页头部/底部收紧并统一视觉密度**。设置弹窗标题栏压缩为 22px 内容行 + 全宽分隔线；云同步说明并入单行 footer（42px），操作按钮右对齐。分类栏收窄到 158px 并加浅色底，内容区 padding/gap 收紧为 10/14 与 12，设置卡片改为 10px 圆角、12px padding；表单与列表更紧凑，输入框统一 focus ring。外观、终端、快速命令、安全等所有分页同步生效。

@@ -86,3 +86,23 @@
 .popover .primary-button, .popover .danger-button { min-height: 24px; padding: 2px 8px; font-size: 11px; }
 .small-modal { width: min(420px, 100%); }
 .small-modal > input { margin-top: 16px; margin-bottom: 16px; }
+
+/* 工具栏统一录制入口：状态 + 开始/停止 + 录制记录。 */
+.recording-menu-popover { display: flex; width: 260px; flex-direction: column; gap: 8px; padding: 8px; }
+.recording-menu-head { display: flex; align-items: center; gap: 8px; padding: 2px 2px 6px; }
+.recording-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 8px; background: var(--tone-rose-soft); color: var(--tone-rose); }
+.recording-menu-icon.live { background: color-mix(in srgb, var(--destructive) 14%, transparent); color: var(--destructive); }
+.recording-menu-icon svg { width: 15px; height: 15px; }
+.recording-menu-head-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
+.recording-menu-head-text strong { font-size: 12px; font-weight: 600; }
+.recording-menu-head-text span { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.recording-menu-head-text span.live { color: var(--destructive); }
+.recording-menu-list { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--border); padding-top: 6px; }
+.recording-menu-item { display: flex; align-items: center; gap: 8px; height: 30px; border: 0; border-radius: 7px; padding: 0 8px; background: transparent; color: var(--foreground); font-size: 11.5px; text-align: left; cursor: pointer; }
+.recording-menu-item svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--muted-foreground); }
+.recording-menu-item:hover:not(:disabled) { background: var(--accent); }
+.recording-menu-item:disabled { opacity: .45; cursor: default; }
+.recording-menu-item.stop { color: var(--destructive); }
+.recording-menu-item.stop svg { color: var(--destructive); }
+.recording-menu-count { min-width: 18px; margin-left: auto; border-radius: 999px; padding: 0 5px; background: var(--muted); color: var(--muted-foreground); font-size: 9px; line-height: 15px; text-align: center; }
+.recording-menu-hint { margin: 0; padding: 0 4px 2px; color: var(--muted-foreground); font-size: 9.5px; line-height: 1.4; }

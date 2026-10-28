@@ -27,6 +27,7 @@ import restored from "./messages/supplemental/restored";
 import acceleratorMonitor from "./messages/supplemental/acceleratorMonitor";
 import metricsDashboard from "./messages/supplemental/metricsDashboard";
 import transfersPanel from "./messages/supplemental/transfersPanel";
+import recordingMenu from "./messages/supplemental/recordingMenu";
 import suggestionTransfer from "./messages/supplemental/suggestionTransfer";
 import sftpPipeline from "./messages/supplemental/sftpPipeline";
 import connNameEncoding from "./messages/supplemental/connNameEncoding";
@@ -92,6 +93,7 @@ restored,
 acceleratorMonitor,
 metricsDashboard,
 transfersPanel,
+recordingMenu,
 suggestionTransfer,
 sftpPipeline,
 connNameEncoding,

@@ -59,7 +59,8 @@ const RECORDING_FIXTURE_SUMMARY = {
   recordingId: "visual-recording-1",
   sessionId: "visual-session",
   host: "server.demo.internal",
-  startedAt: Date.now() - 3_600_000,
+  // 录制 startedAt 走秒级时间戳（formatRecordedAt 会 ×1000）。
+  startedAt: Math.floor((Date.now() - 3_600_000) / 1000),
   durationSecs: 23.5,
   bytes: 4096,
 };

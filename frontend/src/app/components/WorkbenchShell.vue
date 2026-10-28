@@ -75,8 +75,8 @@ const {
   rdpCertPrompt, rdpCertRemaining, rdpCertRemember, rdpCustomHeight, rdpCustomWidth,
   rdpDesktopSize, rdpDialogOpen, rdpPasteOpen, rdpPasteText, rdpResizing,
   rdpResolutionOpen, rdpScaleMode, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
-  reconnectCountdown, reconnectPending, recordingActive, recordingClearAllOpen, recordingClearAllSubmitting,
-  recordingDeleteSubmitting, recordingDeleteTarget, recordingTarget, recordings, recordingsOpen,
+  reconnectCountdown, reconnectPending, recordCountdown, recordingActive, recordingClearAllOpen, recordingClearAllSubmitting,
+  recordingDeleteSubmitting, recordingDeleteTarget, recordingElapsedSec, recordingTarget, recordings, recordingsOpen,
   rememberHostKey, removeImportedScheme, renameQuickCommandGroupById, resetAiFixConsent,
   resolveAgentPrompt, resolveDownloadConflict, resolveDownloadPrompt, resolveDropUpload, resolveHostKey,
   resolvePasteConfirm, resolvePendingConfirmDialog, resolveRdpCertificate, resolveUploadDuplicate, resumableLoading,
@@ -170,7 +170,10 @@ const {
       :agent-mode-hint="agentModeHint"
       :recording-active="recordingActive"
       :recording-target="recordingTarget"
+      :record-countdown="recordCountdown"
+      :recording-elapsed-sec="recordingElapsedSec"
       :recordings-open="recordingsOpen"
+      :recordings-count="recordings.length"
       :active-transfers="activeTransfers"
       :panel-metrics-visible="panelMetricsVisible"
       :panel-metrics-failed="panelMetricsFailed"
