@@ -50,6 +50,19 @@ describe("terminalCommandMarkers parser", () => {
     expect(parser.push(new TextEncoder().encode("ild\u0007"))).toEqual({});
   });
 
+  it("skips CSI-colored bytes without an OSC start and still joins a marker split at a lone ESC", () => {
+    const parser = new Osc633CommandParser();
+    const encoder = new TextEncoder();
+    // SGR color sequences are ESC but not OSC: no decode, no state change.
+    expect(parser.push(encoder.encode("\u001b[31mred\u001b[0m"))).toEqual({});
+    // Split exactly after the ESC byte of `ESC ] 633` — the trailing-ESC probe
+    // must keep the carry path alive across the boundary.
+    expect(parser.push(encoder.encode("out\u001b"))).toEqual({});
+    const tail = parser.push(encoder.encode("]633;E;echo hi\u0007"));
+    expect(tail.command).toBe("echo hi");
+    expect(tail.commandActive).toBe(true);
+  });
+
   it("does not turn a missing start mark into an epoch-sized duration", () => {
     // 命令没有前置 C（重连、恢复会话、shell 只发 D）时 currentCommandStartAt 仍是
     // null，而 Number(null) === 0 也满足 Number.isFinite——少了 > 0 这道判断，

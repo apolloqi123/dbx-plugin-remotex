@@ -154,11 +154,17 @@ impl LocalTerminalRuntime {
     }
 }
 
-/// Reader → pump output queue depth. Each slot is one PTY read (8 KiB), so
+/// Reader → pump output queue depth. Each slot is one PTY read (32 KiB), so
 /// the queue is bounded at ~2 MiB per session, matching the replay-buffer
-/// budget. When the publisher falls behind the reader drops the newest chunk
-/// (never blocks, never grows) and logs a rate-limited byte count.
-const LOCAL_READER_OUTPUT_QUEUE: usize = 256;
+/// budget. Bigger reads halve the per-frame syscall/wakeup cost of a flooding
+/// `cat`; the depth keeps the memory ceiling unchanged. When the publisher
+/// falls behind the reader drops the newest chunk (never blocks, never grows)
+/// and logs a rate-limited byte count.
+const LOCAL_READER_OUTPUT_QUEUE: usize = 64;
+
+/// One PTY read buffer. 32 KiB matches the SSH channel chunk size, so local
+/// and remote shells feed the terminal the same frame sizes.
+const LOCAL_READ_BUFFER: usize = 32 * 1024;
 
 /// Owns the PTY master for one session and multiplexes PTY output, workbench
 /// commands and the child's exit status. Terminal condition is the child's
@@ -187,7 +193,7 @@ pub(super) fn spawn_pump(
     let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(LOCAL_READER_OUTPUT_QUEUE);
     std::thread::spawn(move || {
         let mut reader = reader;
-        let mut buffer = [0u8; 8192];
+        let mut buffer = [0u8; LOCAL_READ_BUFFER];
         let mut dropped_bytes = 0_u64;
         let mut last_drop_log = std::time::Instant::now();
         loop {
@@ -230,6 +236,8 @@ pub(super) fn spawn_pump(
     let writer = Arc::new(Mutex::new(writer));
     tokio::spawn(async move {
         let mut master = Some(master);
+        // Hoisted out of the per-chunk publish path (see the SSH read loop).
+        let terminal_channel = format!("local/terminal/out/{session_id}");
         // Tracked so same-size client resizes can be dropped before ConPTY
         // (requested_pty_size) and so the CPR handshake answers with the live
         // viewport, not the spawn-time one.
@@ -278,7 +286,7 @@ pub(super) fn spawn_pump(
                 chunk = out_rx.recv() => match chunk {
                     Some(data) => {
                         resize_gate.on_output(session_started_at.elapsed());
-                        let (forward, handshake) = handshake_filter.filter(&data);
+                        let (forward, handshake) = handshake_filter.filter(data);
                         if handshake {
                             let reply = conpty_cpr_reply(cursor.0, cursor.1);
                             let mut writer = writer.lock().unwrap_or_else(|poison| poison.into_inner());
@@ -286,7 +294,7 @@ pub(super) fn spawn_pump(
                         }
                         if !forward.is_empty() {
                             observe_local_recording(&recorder, &forward);
-                            publish_local_terminal(&session_id, TerminalStream::Stdout, forward, &replay, &emitter).await;
+                            publish_local_terminal(&terminal_channel, TerminalStream::Stdout, forward, &replay, &emitter).await;
                         }
                     }
                     None => closing = true,
@@ -370,7 +378,7 @@ pub(super) fn spawn_pump(
         // user is waiting to read.
         while let Ok(Some(data)) = tokio::time::timeout(LOCAL_EXIT_DRAIN, out_rx.recv()).await {
             observe_local_recording(&recorder, &data);
-            publish_local_terminal(&session_id, TerminalStream::Stdout, data, &replay, &emitter)
+            publish_local_terminal(&terminal_channel, TerminalStream::Stdout, data, &replay, &emitter)
                 .await;
         }
         // A handshake prefix held back at the very end of the stream is the
@@ -379,7 +387,7 @@ pub(super) fn spawn_pump(
         if !residue.is_empty() {
             observe_local_recording(&recorder, &residue);
             publish_local_terminal(
-                &session_id,
+                &terminal_channel,
                 TerminalStream::Stdout,
                 residue,
                 &replay,
@@ -388,7 +396,7 @@ pub(super) fn spawn_pump(
             .await;
         }
         publish_local_terminal(
-            &session_id,
+            &terminal_channel,
             TerminalStream::State,
             b"local-terminal-exited".to_vec(),
             &replay,

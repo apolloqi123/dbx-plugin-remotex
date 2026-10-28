@@ -22,6 +22,9 @@ const focused = ref(false);
 let pendingPatches: VncFramePatch[] = [];
 let drawScheduled = false;
 let lastSequence = -1;
+// Reused ImageData (RdpSurface parity): a steady 30fps desktop otherwise
+// allocates a fresh pixel buffer per patch.
+let reusableImage: { width: number; height: number; image: ImageData } | null = null;
 
 const scaleClass = computed(() => `vnc-scale-${props.scaleMode}`);
 
@@ -43,10 +46,14 @@ function drawPatch(patch: VncFramePatch) {
     canvas.width = patch.desktopWidth;
     canvas.height = patch.desktopHeight;
     desktopSize.value = { width: patch.desktopWidth, height: patch.desktopHeight };
+    reusableImage = null;
   }
   const context = canvas.getContext("2d");
   if (!context) return;
-  const image = context.createImageData(patch.width, patch.height);
+  if (!reusableImage || reusableImage.width !== patch.width || reusableImage.height !== patch.height) {
+    reusableImage = { width: patch.width, height: patch.height, image: context.createImageData(patch.width, patch.height) };
+  }
+  const image = reusableImage.image;
   const rowBytes = patch.width * 4;
   if (patch.stride === rowBytes) {
     image.data.set(patch.payload.subarray(0, rowBytes * patch.height));
@@ -63,7 +70,7 @@ function drawPatch(patch: VncFramePatch) {
 function acceptFrame(frame: Uint8Array): boolean {
   let patch: VncFramePatch;
   try {
-    patch = decodeVncFramePatch(frame);
+    patch = decodeVncFramePatch(frame, { zeroCopy: true });
   } catch {
     // 非法帧直接丢弃（sidecar 侧同样的校验不该让坏帧走到这里）。
     return false;
@@ -80,6 +87,7 @@ function reset() {
   pendingPatches = [];
   lastSequence = -1;
   desktopSize.value = null;
+  reusableImage = null;
   const canvas = canvasRef.value;
   if (canvas) {
     canvas.width = 0;

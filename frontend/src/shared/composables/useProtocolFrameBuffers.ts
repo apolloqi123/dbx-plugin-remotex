@@ -66,7 +66,9 @@ function drainLocalTerminalFrames() {
     requestLocalReplay(localLastSequence.value, null);
     return;
   }
-  const firstPending = Math.min(...localPendingFrames.keys());
+  const firstPending = localPendingFrames.size
+    ? Math.min(...localPendingFrames.keys())
+    : Number.POSITIVE_INFINITY;
   if (Number.isFinite(firstPending) && firstPending > localLastSequence.value + 1) {
     requestLocalReplay(localLastSequence.value, firstPending - 1);
   }
@@ -137,7 +139,9 @@ function drainTelnetFrames() {
   if (telnetPendingFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
     telnetPendingFrames.clear();
   }
-  const firstPending = Math.min(...telnetPendingFrames.keys());
+  const firstPending = telnetPendingFrames.size
+    ? Math.min(...telnetPendingFrames.keys())
+    : Number.POSITIVE_INFINITY;
   if (Number.isFinite(firstPending) && firstPending > telnetLastSequence.value + 1 && !telnetReplayInFlight.value && telnetSession.value) {
     const sessionId = telnetSession.value.sessionId;
     telnetReplayInFlight.value = true;
@@ -187,7 +191,9 @@ function drainSerialFrames() {
   // 序号缺口 → serial/replay（序号制回放）：重发帧从既有二进制通道到货后
   // 由同一 drain 消费；缺口永不可填（缓冲绕回/会话重建）时按无进度上限
   // resync 游标，避免 replay 循环空转冻结工作台。
-  const firstPending = Math.min(...serialPendingFrames.keys());
+  const firstPending = serialPendingFrames.size
+    ? Math.min(...serialPendingFrames.keys())
+    : Number.POSITIVE_INFINITY;
   if (Number.isFinite(firstPending) && firstPending > serialLastSequence.value + 1 && !serialReplayInFlight.value && serialSession.value) {
     serialReplayInFlight.value = true;
     const holeAt = serialLastSequence.value;

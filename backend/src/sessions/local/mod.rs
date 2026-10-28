@@ -136,13 +136,15 @@ impl ConptyHandshakeFilter {
 
     /// Filters one PTY chunk. Returns the bytes to forward to the terminal and
     /// whether this chunk carries the handshake query — which the caller must
-    /// answer through the PTY input instead of the terminal.
-    fn filter(&mut self, chunk: &[u8]) -> (Vec<u8>, bool) {
+    /// answer through the PTY input instead of the terminal. Takes the chunk by
+    /// value: after the handshake is done (always on macOS/Linux) or once no
+    /// query prefix is held back, the buffer is forwarded without a copy.
+    fn filter(&mut self, chunk: Vec<u8>) -> (Vec<u8>, bool) {
         if self.done {
-            return (chunk.to_vec(), false);
+            return (chunk, false);
         }
         let mut scan = std::mem::take(&mut self.held);
-        scan.extend_from_slice(chunk);
+        scan.extend_from_slice(&chunk);
         if let Some(at) = scan
             .windows(CONPTY_CPR_QUERY.len())
             .position(|window| window == CONPTY_CPR_QUERY)
@@ -159,10 +161,13 @@ impl ConptyHandshakeFilter {
             .rev()
             .find(|length| scan.ends_with(&CONPTY_CPR_QUERY[..*length]))
             .unwrap_or(0);
+        if keep == 0 {
+            return (scan, false);
+        }
         let split = scan.len() - keep;
-        let forward = scan[..split].to_vec();
         self.held = scan[split..].to_vec();
-        (forward, false)
+        scan.truncate(split);
+        (scan, false)
     }
 
     /// Releases bytes still held when the stream ends.

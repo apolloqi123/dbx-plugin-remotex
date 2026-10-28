@@ -8,6 +8,9 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+- **全链路运行时开销优化（功能不变）**。终端输出：SSH/本地/Telnet/串口发布路径去掉每帧多余的 `format!` 通道字符串与一次整帧拷贝（`ReplayBuffer::push_encoded`）；无触发器/自动 sudo/AI 采集时跳过逐帧 UTF-8 解码；目录握手过滤器与 ConPTY 过滤器在稳态直接移交缓冲区；本地 PTY 与 Telnet 读缓冲 8 KiB → 32 KiB（队列相应收敛，内存上限不变）。前端：终端二进制分派不再逐帧构造 `ssh/terminal/out/{id}` 模板串与 `DataView`，帧负载改用 subarray 视图；OSC 7 / OSC 633 解析器先做原生 `indexOf` 字节预检，彩色输出不再逐帧解码（并修正 OSC 7 旧实现永久保留 32 字符尾巴导致后续每帧都解码的问题）。SFTP 列目录把小写排序键改为每项预计算一次（大目录不再 O(n log n) 次分配），路径只拼一次。端口转发/X11 中继缓冲 8 KiB → 32 KiB。VNC 画面零拷贝解码并复用 ImageData。
+  **Runtime overhead pass with unchanged behavior.** Terminal output: the SSH/local/Telnet/serial publish paths drop a per-frame channel `format!` and one full-frame copy (`ReplayBuffer::push_encoded`); per-frame UTF-8 decoding is skipped when no trigger, auto-sudo or AI capture observer is installed; the directory-handshake and ConPTY filters hand the buffer through without copying in steady state; local PTY and Telnet reads grow from 8 KiB to 32 KiB (queue depth shrinks to keep the memory ceiling). Frontend: terminal binary dispatch no longer builds an `ssh/terminal/out/{id}` template or a `DataView` per frame and uses subarray views for payloads; the OSC 7 / OSC 633 parsers pre-filter with native `indexOf`, so colored output skips the decoder (and OSC 7 no longer keeps a 32-char tail that forced every later chunk through the decoder). SFTP listings precompute the lowercase sort key once per entry and join each path once. Port-forwarding/X11 relay buffers grow from 8 KiB to 32 KiB. VNC decodes frames zero-copy and reuses its ImageData.
+
 ## [0.7.9-beta.76] — 2026-10-28
 
 - **界面行高进一步压缩 + 编辑器搜索命中高亮修复**。按约 2/3 收紧：顶部工具栏 40→27px、编辑器页签 24→17px、终端页签 29→20px、SFTP 搜索行 33→22px、Docker 列表头 34→22px、容器详情头 39→26px；容器列表每行再略降（约 78→70px），图标与文字尺寸保持可读。文件搜索的命中区间改为 CodeMirror 装饰：全部命中淡琥珀底、当前命中加深并加描边，焦点在搜索框时也能清楚看到（此前只设置了选区，未聚焦选区几乎不可见）。

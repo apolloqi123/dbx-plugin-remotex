@@ -4,17 +4,14 @@ use super::*;
 use crate::core::time::unix_now_ms;
 
 pub(crate) async fn publish_telnet_output(
-    session_id: &str,
+    channel: &str,
     stream: TerminalStream,
     data: Vec<u8>,
     replay: &Arc<tokio::sync::Mutex<ReplayBuffer>>,
     emitter: &PluginEmitter,
 ) {
-    let frame = replay.lock().await.push(stream, data);
-    if let Err(error) = emitter.binary(
-        &format!("telnet/terminal/out/{session_id}"),
-        &frame.encode(),
-    ) {
+    let frame = replay.lock().await.push_encoded(stream, data);
+    if let Err(error) = emitter.binary(channel, &frame) {
         eprintln!(
             "[dbx-plugin-sshx] telnet output publish failed: {}",
             error.message
@@ -75,11 +72,14 @@ pub(super) fn parse_telnet_output(parser: &mut TelnetParser, data: &[u8]) -> Tel
     TelnetOutput { payload, replies }
 }
 
-/// Reader → pump output queue depth. Each slot is one TCP read (8 KiB), so
+/// Reader → pump output queue depth. Each slot is one TCP read (32 KiB), so
 /// the queue is bounded at ~2 MiB per session. Overflow drops the newest
 /// chunk (the reader never blocks and never grows) and logs a rate-limited
 /// byte count; Telnet has no dropped-output protocol event.
-const TELNET_READER_OUTPUT_QUEUE: usize = 256;
+const TELNET_READER_OUTPUT_QUEUE: usize = 64;
+
+/// One socket read buffer; matches the SSH/local chunk size.
+const TELNET_READ_BUFFER: usize = 32 * 1024;
 
 /// Owns one Telnet TCP connection: dials with the 10s timeout, pumps output
 /// through the IAC parser (plus the expect engine), serves workbench commands
@@ -103,6 +103,9 @@ pub(crate) fn spawn_pump(
     sessions: Arc<RwLock<HashMap<String, Arc<TelnetSession>>>>,
 ) {
     tokio::spawn(async move {
+        // Hoisted channel name: per-frame formatting would allocate on the
+        // hottest output path (same as the SSH/local pumps).
+        let output_channel = format!("telnet/terminal/out/{session_id}");
         let emit_state = |state: &str, error: Option<String>| {
             let mut payload = json!({
                 "sessionId": session_id,
@@ -158,7 +161,7 @@ pub(crate) fn spawn_pump(
         let (out_tx, mut out_rx) = mpsc::channel::<TelnetOutput>(TELNET_READER_OUTPUT_QUEUE);
         tokio::spawn(async move {
             let mut parser = TelnetParser::new();
-            let mut buffer = vec![0u8; 8192];
+            let mut buffer = vec![0u8; TELNET_READ_BUFFER];
             let mut dropped_bytes = 0_u64;
             let mut last_drop_log = tokio::time::Instant::now();
             loop {
@@ -220,9 +223,14 @@ pub(crate) fn spawn_pump(
                         continue;
                     }
                     let payload = chunk.payload;
-                    let chunk_text = String::from_utf8_lossy(&payload).into_owned();
+                    // Only the auto-login watch and expect engine read the
+                    // decoded text; a plain interactive Telnet session must not
+                    // pay a UTF-8 decode + String allocation per chunk.
+                    let chunk_text = auto_login
+                        .as_ref()
+                        .map(|_| String::from_utf8_lossy(&payload).into_owned());
                     publish_telnet_output(
-                        &session_id,
+                        &output_channel,
                         TerminalStream::Stdout,
                         payload,
                         &replay,
@@ -237,12 +245,14 @@ pub(crate) fn spawn_pump(
                     // `strip_ansi_escapes`): a colored `$ ` prompt still hits
                     // `[$#>]\s*$`. Only the matching window is cleaned — the
                     // published payload above stays the raw bytes.
-                    let watch_event = auto_login
-                        .as_mut()
-                        .and_then(|runtime| runtime.watch.as_mut())
-                        .and_then(|watch| {
-                            watch.observe(&strip_ansi_control_sequences(&chunk_text), answered_stages)
-                        });
+                    let watch_event = chunk_text.as_deref().and_then(|text| {
+                        auto_login
+                            .as_mut()
+                            .and_then(|runtime| runtime.watch.as_mut())
+                            .and_then(|watch| {
+                                watch.observe(&strip_ansi_control_sequences(text), answered_stages)
+                            })
+                    });
                     match watch_event {
                         // D6: the event carries the outcome only — never the
                         // matched text, never an answer.
@@ -284,8 +294,10 @@ pub(crate) fn spawn_pump(
                         None => {}
                     }
                     if let Some(runtime) = auto_login.as_mut() {
-                        let hit = runtime.engine.observe(&chunk_text, unix_now_ms()).map(|decision| {
-                            (decision, runtime.engine.placeholders().clone(), runtime.engine.pacing())
+                        let hit = chunk_text.as_deref().and_then(|text| {
+                            runtime.engine.observe(text, unix_now_ms()).map(|decision| {
+                                (decision, runtime.engine.placeholders().clone(), runtime.engine.pacing())
+                            })
                         });
                         if let Some((decision, placeholders, pacing)) = hit {
                             match apply_trigger_decision(
@@ -339,7 +351,7 @@ pub(crate) fn spawn_pump(
         // Terminal-lifecycle State frame so a drained workbench observes the
         // end of the stream, mirroring `local-terminal-exited`.
         publish_telnet_output(
-            &session_id,
+            &output_channel,
             TerminalStream::State,
             b"telnet-session-closed".to_vec(),
             &replay,

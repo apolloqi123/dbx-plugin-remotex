@@ -136,14 +136,14 @@ impl SshRuntime {
             // absent values, never the listing itself.
             enrich_owner_names(self, session_id, &path, &mut result).await;
         }
-        result.sort_by(|left, right| {
-            let left_dir = left.kind == "directory";
-            let right_dir = right.kind == "directory";
-            right_dir
-                .cmp(&left_dir)
-                .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-        });
-        Ok(result)
+        // One lowercase key per entry: the comparator allocated two strings per
+        // comparison (O(n log n)); stable sort keeps the previous tie order.
+        let mut keyed = result
+            .into_iter()
+            .map(|entry| (entry.kind == "directory", entry.name.to_lowercase(), entry))
+            .collect::<Vec<_>>();
+        keyed.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        Ok(keyed.into_iter().map(|(_, _, entry)| entry).collect())
     }
 
     /// 高层客户端（russh-sftp）路径：合法 UTF-8 服务器下字节往返无损。
@@ -180,15 +180,17 @@ impl SshRuntime {
                     (None, None)
                 };
                 let name = entry.file_name();
+                // Reuse the joined path for both the URI and the content type.
+                let entry_path = entry.path();
                 SftpEntry {
                     lossy: sftp_name::is_lossy_wire(&name),
                     name,
-                    uri: sftp_uri(&entry.path()),
+                    uri: sftp_uri(&entry_path),
                     kind,
                     size: metadata.size,
                     modified_at: metadata.mtime.map(u64::from),
                     permissions: metadata.permissions.map(format_permissions),
-                    content_type: content_type_for_path(&entry.path()),
+                    content_type: content_type_for_path(&entry_path),
                     owner,
                     group,
                 }

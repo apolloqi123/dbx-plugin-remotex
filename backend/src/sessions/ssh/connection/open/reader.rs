@@ -46,6 +46,9 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
         mut terminal_rx,
     } = state;
     tokio::spawn(async move {
+        // Every published chunk rides this one channel name: formatting it per
+        // frame would allocate a string on the hottest terminal-output path.
+        let terminal_channel = format!("ssh/terminal/out/{task_id}");
         let mut directory_filter = DirectoryHandshakeFilter::default();
         let mut directory_tracking_enabled = false;
         // #90：ZMODEM 触发检测（远端 sz 发起的 ZRQINIT）。字节全透传，
@@ -73,13 +76,13 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                             );
                         }
                         if !data.is_empty() {
-                            publish_terminal(&task_id, TerminalStream::Stdout, data, &replay, &emitter).await;
+                            publish_terminal(&terminal_channel, TerminalStream::Stdout, data, &replay, &emitter).await;
                         }
                     }
                     if directory_filter.take_failed() {
                         directory_tracking_enabled = false;
                         publish_terminal(
-                            &task_id,
+                            &terminal_channel,
                             TerminalStream::State,
                             b"directory-tracking-unavailable".to_vec(),
                             &replay,
@@ -133,7 +136,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         }
                         if remote_shell == RemoteShell::Other {
                             publish_terminal(
-                                &task_id,
+                                &terminal_channel,
                                 TerminalStream::State,
                                 b"directory-tracking-unavailable".to_vec(),
                                 &replay,
@@ -147,7 +150,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         directory_tracking_enabled = true;
                         directory_filter.begin(directory_tracking_marker(&directory_marker_id));
                         publish_terminal(
-                            &task_id,
+                            &terminal_channel,
                             TerminalStream::Stdout,
                             b"\r\x1b[2K".to_vec(),
                             &replay,
@@ -198,8 +201,34 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         _ => continue,
                     };
                     if stream == TerminalStream::Stdout {
-                        let carry = &mut stdout_utf8_carry;
-                        let chunk_text = decode_stream_text(carry, &data);
+                        // Decoding every frame for the text observers (triggers,
+                        // auto-sudo, agent capture) costs a UTF-8 validation and
+                        // a String allocation. Most sessions have none installed,
+                        // so probe first and leave the bytes untouched when the
+                        // text is never consumed. Clearing the carry keeps a
+                        // partial character from a skipped frame out of a later
+                        // observer's first decode.
+                        let has_text_observers = entry
+                            .triggers
+                            .lock()
+                            .map(|slot| slot.is_some())
+                            .unwrap_or(false)
+                            || entry
+                                .auto_sudo
+                                .lock()
+                                .map(|slot| slot.is_some())
+                                .unwrap_or(false)
+                            || entry
+                                .agent_recorder
+                                .lock()
+                                .map(|slot| slot.is_some())
+                                .unwrap_or(false);
+                        let chunk_text = if has_text_observers {
+                            decode_stream_text(&mut stdout_utf8_carry, &data)
+                        } else {
+                            stdout_utf8_carry.clear();
+                            String::new()
+                        };
                         // Expect 式触发器先于终端 auto-sudo 观察（契约 D1
                         // 互斥防双答）：本 chunk 被触发器应答则跳过
                         // auto-sudo，反之亦然。锁在 .await 前释放。
@@ -311,7 +340,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                             }
                         }
                     }
-                    let Some(data) = directory_filter.filter(&data) else { continue; };
+                    let Some(data) = directory_filter.filter(data) else { continue; };
                     // #90 ZMODEM 触发检测：远端 `sz` 用 ZRQINIT 开启下载会
                     // 话。ZMODEM 下载接收已由前端 sentry（zmodem.js）承接，
                     // 字节一律原样透传给终端路径（sentry 会消费协议帧）；
@@ -338,12 +367,12 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                                 }
                             }
                         }
-                        publish_terminal(&task_id, stream, data, &replay, &emitter).await;
+                        publish_terminal(&terminal_channel, stream, data, &replay, &emitter).await;
                     }
                     if directory_filter.take_failed() {
                         directory_tracking_enabled = false;
                         publish_terminal(
-                            &task_id,
+                            &terminal_channel,
                             TerminalStream::State,
                             b"directory-tracking-unavailable".to_vec(),
                             &replay,
@@ -365,7 +394,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
             }
         }
         publish_terminal(
-            &task_id,
+            &terminal_channel,
             TerminalStream::State,
             b"ssh-transport-disconnected".to_vec(),
             &replay,

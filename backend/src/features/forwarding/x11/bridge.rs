@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// Per-direction relay buffer (32 KiB instead of tokio's 8 KiB default).
+const X11_COPY_BUFFER: usize = 32 * 1024;
+
 /// Bridges an accepted x11 channel into the local X server endpoint
 /// (unix socket first, TCP loopback fallback). The validated setup block
 /// (real cookie already substituted) is written first; the relay then
@@ -24,9 +27,14 @@ pub(crate) async fn bridge_channel(
             .write_all(&setup)
             .await
             .map_err(|error| format!("X11: cannot write the X setup block: {error}"))?;
-        let (up, down) = tokio::io::copy_bidirectional(&mut stream, &mut { local })
-            .await
-            .map_err(|error| format!("X11: bridge error: {error}"))?;
+        let (up, down) = tokio::io::copy_bidirectional_with_sizes(
+            &mut stream,
+            &mut { local },
+            X11_COPY_BUFFER,
+            X11_COPY_BUFFER,
+        )
+        .await
+        .map_err(|error| format!("X11: bridge error: {error}"))?;
         tracing_bridge_stats(up, down);
         return Ok(());
     }
@@ -51,9 +59,14 @@ pub(crate) async fn bridge_channel(
         .write_all(&setup)
         .await
         .map_err(|error| format!("X11: cannot write the X setup block: {error}"))?;
-    let (up, down) = tokio::io::copy_bidirectional(&mut stream, &mut local)
-        .await
-        .map_err(|error| format!("X11: bridge error: {error}"))?;
+    let (up, down) = tokio::io::copy_bidirectional_with_sizes(
+        &mut stream,
+        &mut local,
+        X11_COPY_BUFFER,
+        X11_COPY_BUFFER,
+    )
+    .await
+    .map_err(|error| format!("X11: bridge error: {error}"))?;
     tracing_bridge_stats(up, down);
     Ok(())
 }

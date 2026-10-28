@@ -205,12 +205,10 @@ impl SerialSessionRuntime {
         let tail_sequence = replay.tail_sequence();
         let frames = replay.after(after_sequence);
         drop(replay);
+        let channel = format!("serial/terminal/out/{session_id}");
         for frame in &frames {
             emitter
-                .binary(
-                    &format!("serial/terminal/out/{session_id}"),
-                    &frame.encode(),
-                )
+                .binary(&channel, &frame.encode())
                 .map_err(|error| error.message)?;
         }
         Ok(json!({

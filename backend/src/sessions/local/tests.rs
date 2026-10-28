@@ -187,12 +187,12 @@ fn windows_utf8_console_leaves_other_shells_and_unix_untouched() {
 #[test]
 fn handshake_filter_swallows_the_query_and_reports_it() {
     let mut filter = ConptyHandshakeFilter::new(true);
-    let (forward, handshake) = filter.filter(b"noise\x1b[6n");
+    let (forward, handshake) = filter.filter(b"noise\x1b[6n".to_vec());
     assert!(handshake);
     assert_eq!(forward, b"noise");
     // Once answered, everything passes through — terminal-visible bytes
     // never lose their tail and the terminal never sees the query.
-    let (forward, handshake) = filter.filter(b"banner");
+    let (forward, handshake) = filter.filter(b"banner".to_vec());
     assert!(!handshake);
     assert_eq!(forward, b"banner");
 }
@@ -200,11 +200,11 @@ fn handshake_filter_swallows_the_query_and_reports_it() {
 #[test]
 fn handshake_filter_catches_a_query_split_across_chunks() {
     let mut filter = ConptyHandshakeFilter::new(true);
-    let (forward, handshake) = filter.filter(b"banner\x1b[6");
+    let (forward, handshake) = filter.filter(b"banner\x1b[6".to_vec());
     // The partial query is held, not forwarded, and not yet answered.
     assert!(!handshake);
     assert_eq!(forward, b"banner");
-    let (forward, handshake) = filter.filter(b"n rest");
+    let (forward, handshake) = filter.filter(b"n rest".to_vec());
     assert!(handshake);
     assert_eq!(forward, b" rest");
 }
@@ -212,11 +212,11 @@ fn handshake_filter_catches_a_query_split_across_chunks() {
 #[test]
 fn handshake_filter_flushes_held_bytes_that_never_complete() {
     let mut filter = ConptyHandshakeFilter::new(true);
-    let (forward, handshake) = filter.filter(b"prompt\x1b[");
+    let (forward, handshake) = filter.filter(b"prompt\x1b[".to_vec());
     assert!(!handshake);
     assert_eq!(forward, b"prompt");
     // Not a query after all: the held prefix reaches the terminal.
-    let (forward, handshake) = filter.filter(b"?6n");
+    let (forward, handshake) = filter.filter(b"?6n".to_vec());
     assert!(!handshake);
     assert_eq!(forward, b"\x1b[?6n");
 }
@@ -224,12 +224,12 @@ fn handshake_filter_flushes_held_bytes_that_never_complete() {
 #[test]
 fn handshake_filter_ignores_private_dsr_and_leaves_stream_intact() {
     let mut filter = ConptyHandshakeFilter::new(true);
-    let (forward, handshake) = filter.filter(b"\x1b[?6n\x1b[?25h");
+    let (forward, handshake) = filter.filter(b"\x1b[?6n\x1b[?25h".to_vec());
     assert!(!handshake);
     assert_eq!(forward, b"\x1b[?6n\x1b[?25h");
     // DECDSR is not the handshake, so the real query is still answered —
     // and swallows only itself.
-    let (forward, handshake) = filter.filter(b"\x1b[?6n\x1b[6n\x1b[?25h");
+    let (forward, handshake) = filter.filter(b"\x1b[?6n\x1b[6n\x1b[?25h".to_vec());
     assert!(handshake);
     assert_eq!(forward, b"\x1b[?6n\x1b[?25h");
 }
@@ -238,7 +238,7 @@ fn handshake_filter_ignores_private_dsr_and_leaves_stream_intact() {
 fn handshake_filter_passes_everything_when_not_needed() {
     // Unix openpty has no handshake: not a byte is held back or dropped.
     let mut filter = ConptyHandshakeFilter::new(false);
-    let (forward, handshake) = filter.filter(b"\x1b[6n");
+    let (forward, handshake) = filter.filter(b"\x1b[6n".to_vec());
     assert!(!handshake);
     assert_eq!(forward, b"\x1b[6n");
 }
@@ -246,7 +246,7 @@ fn handshake_filter_passes_everything_when_not_needed() {
 #[test]
 fn handshake_filter_flush_releases_a_trailing_prefix() {
     let mut filter = ConptyHandshakeFilter::new(true);
-    let (forward, _) = filter.filter(b"bye\x1b[6");
+    let (forward, _) = filter.filter(b"bye\x1b[6".to_vec());
     assert_eq!(forward, b"bye");
     assert_eq!(filter.flush(), b"\x1b[6");
     assert!(filter.flush().is_empty());

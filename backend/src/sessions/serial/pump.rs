@@ -20,6 +20,9 @@ pub(crate) fn spawn_reader(
 ) {
     std::thread::spawn(move || {
         let mut buffer = [0u8; READ_BUFFER];
+        // Hoisted channel name: per-chunk formatting would allocate on the
+        // hottest output path.
+        let output_channel = format!("serial/terminal/out/{session_id}");
         loop {
             if matches!(cmd_rx.try_recv(), Ok(SerialCommand::Close)) {
                 let _ = emitter.event(
@@ -43,11 +46,8 @@ pub(crate) fn spawn_reader(
                         .replay
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .push(TerminalStream::Stdout, buffer[..n].to_vec());
-                    let _ = emitter.binary(
-                        &format!("serial/terminal/out/{session_id}"),
-                        &frame.encode(),
-                    );
+                        .push_encoded(TerminalStream::Stdout, buffer[..n].to_vec());
+                    let _ = emitter.binary(&output_channel, &frame);
                     SerialSessionRuntime::pump_upload_feed(
                         &session,
                         &session_id,

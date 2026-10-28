@@ -279,9 +279,10 @@ impl SshRuntime {
         let tail_sequence = replay.sequence;
         let frames = replay.after(after_sequence);
         drop(replay);
+        let channel = format!("ssh/terminal/out/{session_id}");
         for frame in &frames {
             emitter
-                .binary(&format!("ssh/terminal/out/{session_id}"), &frame.encode())
+                .binary(&channel, &frame.encode())
                 .map_err(plugin_error)?;
         }
         Ok(json!({

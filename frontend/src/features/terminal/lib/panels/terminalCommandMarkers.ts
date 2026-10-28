@@ -294,13 +294,26 @@ export function parseOsc633StreamChunk(output: string | Uint8Array, state: Osc63
   return { clean, updates, state };
 }
 
+/** Byte-level probe before UTF-8 decoding: OSC frames start with `ESC ]`, and
+ * a trailing lone `ESC` may begin one split across frames. Both are ASCII, so
+ * colored CSI output (the common case) skips the decoder entirely. */
+function hasOscStart(bytes: Uint8Array): boolean {
+  // Native scan per escape byte: plain output costs one indexOf call.
+  let index = bytes.indexOf(0x1b);
+  while (index !== -1) {
+    if (index === bytes.length - 1 || bytes[index + 1] === 0x5d) return true;
+    index = bytes.indexOf(0x1b, index + 1);
+  }
+  return false;
+}
+
 /** Stateful wrapper mirroring `Osc7DirectoryParser`: feed raw terminal bytes, get updates. */
 export class Osc633CommandParser {
   private state = getOsc633ParserState();
   private readonly decoder = new TextDecoder();
 
   push(chunk: Uint8Array | string): Osc633StreamUpdates {
-    if (typeof chunk !== "string" && this.state.carry.length === 0 && !chunk.includes(0x1b)) return {};
+    if (typeof chunk !== "string" && this.state.carry.length === 0 && !hasOscStart(chunk)) return {};
     const text = typeof chunk === "string" ? chunk : this.decoder.decode(chunk, { stream: true });
     return parseOsc633StreamChunk(text, this.state).updates;
   }

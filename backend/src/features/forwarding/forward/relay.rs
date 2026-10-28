@@ -119,7 +119,14 @@ pub(crate) async fn relay_local(
             return;
         }
     };
-    let (up, down) = match copy_bidirectional(&mut tcp, &mut channel).await {
+    let (up, down) = match copy_bidirectional_with_sizes(
+        &mut tcp,
+        &mut channel,
+        FORWARD_COPY_BUFFER,
+        FORWARD_COPY_BUFFER,
+    )
+    .await
+    {
         Ok((up, down)) => (up, down),
         Err(error) => {
             eprintln!("[ssh-forward] relay ended with {error}");
@@ -267,7 +274,14 @@ pub(crate) async fn relay_dynamic(
         }
     };
     socks5_reply(&mut tcp, 0).await;
-    match copy_bidirectional(&mut tcp, &mut channel).await {
+    match copy_bidirectional_with_sizes(
+        &mut tcp,
+        &mut channel,
+        FORWARD_COPY_BUFFER,
+        FORWARD_COPY_BUFFER,
+    )
+    .await
+    {
         Ok((up, down)) => {
             entry.bytes_up.fetch_add(up, Ordering::Relaxed);
             entry.bytes_down.fetch_add(down, Ordering::Relaxed);
@@ -289,7 +303,14 @@ pub(crate) async fn relay_remote(
     mut tcp: TcpStream,
 ) {
     let mut channel = channel.into_stream();
-    let (up, down) = match copy_bidirectional(&mut tcp, &mut channel).await {
+    let (up, down) = match copy_bidirectional_with_sizes(
+        &mut tcp,
+        &mut channel,
+        FORWARD_COPY_BUFFER,
+        FORWARD_COPY_BUFFER,
+    )
+    .await
+    {
         Ok((up, down)) => (up, down),
         Err(error) => {
             eprintln!("[ssh-forward] remote relay ended with {error}");

@@ -24,7 +24,11 @@ use std::sync::{Arc, Mutex};
 use dbx_plugin_sdk::PluginEmitter;
 use russh::client::Handle;
 use serde_json::{json, Value};
-use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{copy_bidirectional_with_sizes, AsyncReadExt, AsyncWriteExt};
+
+/// Per-direction relay buffer. Tokio's default is 8 KiB; 32 KiB quarters the
+/// syscall/wakeup count on bulk forwarding without changing semantics.
+pub(crate) const FORWARD_COPY_BUFFER: usize = 32 * 1024;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::sessions::ssh::{RemoteForwardTable, SshClient};

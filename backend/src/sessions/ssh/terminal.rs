@@ -98,11 +98,13 @@ impl DirectoryHandshakeFilter {
         self.failed = false;
     }
 
-    pub(crate) fn filter(&mut self, data: &[u8]) -> Option<Vec<u8>> {
+    /// Takes the chunk by value so the steady state (no handshake in flight)
+    /// moves it straight through instead of copying every frame.
+    pub(crate) fn filter(&mut self, data: Vec<u8>) -> Option<Vec<u8>> {
         let Some(marker) = self.marker.as_ref() else {
-            return Some(data.to_vec());
+            return Some(data);
         };
-        self.buffered.extend_from_slice(data);
+        self.buffered.extend_from_slice(&data);
         if self.buffered.len() > DIRECTORY_HANDSHAKE_LIMIT {
             return self.fail_open();
         }
@@ -172,6 +174,9 @@ impl ReplayBuffer {
         }
     }
 
+    /// Test-only helper: returns the stored frame with its encoding. Hot
+    /// publishers use [`Self::push_encoded`], which avoids the extra clone.
+    #[cfg(test)]
     pub(crate) fn push(&mut self, stream: TerminalStream, data: Vec<u8>) -> TerminalFrame {
         self.sequence += 1;
         let frame = TerminalFrame {
@@ -179,15 +184,38 @@ impl ReplayBuffer {
             stream,
             data,
         };
+        let echo = frame.clone();
+        self.record(frame);
+        echo
+    }
+
+    /// Hot publisher path: encodes the wire frame once and moves `data` into
+    /// the ring, skipping the clone `push` performs for its return value.
+    /// Returns the `stream | sequence | payload` frame for `PluginEmitter`.
+    pub(crate) fn push_encoded(&mut self, stream: TerminalStream, data: Vec<u8>) -> Vec<u8> {
+        self.sequence += 1;
+        let sequence = self.sequence;
+        let mut encoded = Vec::with_capacity(9 + data.len());
+        encoded.push(stream as u8);
+        encoded.extend_from_slice(&sequence.to_be_bytes());
+        encoded.extend_from_slice(&data);
+        self.record(TerminalFrame {
+            sequence,
+            stream,
+            data,
+        });
+        encoded
+    }
+
+    fn record(&mut self, frame: TerminalFrame) {
         self.bytes += frame.data.len();
-        self.frames.push_back(frame.clone());
+        self.frames.push_back(frame);
         while self.bytes > self.byte_limit {
             let Some(removed) = self.frames.pop_front() else {
                 break;
             };
             self.bytes = self.bytes.saturating_sub(removed.data.len());
         }
-        frame
     }
 
     pub(crate) fn after(&self, sequence: u64) -> Vec<TerminalFrame> {

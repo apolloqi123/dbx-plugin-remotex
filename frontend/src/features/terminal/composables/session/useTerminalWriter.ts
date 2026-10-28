@@ -313,7 +313,7 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
       if (payload.length < 9) return;
       const sequence = readU64(payload, 1);
       if (sequence <= local.lastSequence.value) return;
-      local.pendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
+      local.pendingFrames.set(sequence, { stream: payload[0], data: payload.subarray(9) });
       local.drain();
       return;
     }
@@ -327,7 +327,7 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
       if (payload.length < 9) return;
       const sequence = readU64(payload, 1);
       if (sequence <= telnet.lastSequence.value) return;
-      telnet.pendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
+      telnet.pendingFrames.set(sequence, { stream: payload[0], data: payload.subarray(9) });
       telnet.drain();
       return;
     }
@@ -346,7 +346,7 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
       }
       const sequence = readU64(payload, 1);
       if (sequence <= serial.lastSequence.value) return;
-      serial.pendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
+      serial.pendingFrames.set(sequence, { stream: payload[0], data: payload.subarray(9) });
       serial.drain();
       return;
     }
@@ -373,16 +373,26 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
       return;
     }
     const sessionId = frameStream.activeSessionId || session.value?.sessionId;
-    if (sessionId && event.channel === `ssh/terminal/out/${sessionId}`) {
+    const sshPrefix = "ssh/terminal/out/";
+    // Compare without building `ssh/terminal/out/${sessionId}` per frame:
+    // this runs on every binary message.
+    if (
+      sessionId &&
+      event.channel.length === sshPrefix.length + sessionId.length &&
+      event.channel.startsWith(sshPrefix) &&
+      event.channel.endsWith(sessionId)
+    ) {
       const payload = bridgeBinaryBytes(event, window.dbxPlugin.decodeBase64);
       if (payload.length < 9) return;
       const sequence = readU64(payload, 1);
       if (sequence <= frameStream.lastSequence) return;
-      frameStream.pendingFrames.set(sequence, { stream: payload[0], data: payload.slice(9) });
+      frameStream.pendingFrames.set(sequence, { stream: payload[0], data: payload.subarray(9) });
       drainTerminalFrames();
       return;
     }
     const downloadChunkWaiters = getDownloadChunkWaiters();
+    // No download in flight: skip the prefix probe/slice for every frame.
+    if (downloadChunkWaiters.size === 0) return;
     const taskId = event.channel.startsWith("sftp/download/") ? event.channel.slice("sftp/download/".length) : "";
     const waiter = downloadChunkWaiters.get(taskId);
     if (!waiter) return;
@@ -390,7 +400,7 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
     if (payload.length < 8 || readU64(payload, 0) !== waiter.offset) return;
     window.clearTimeout(waiter.timer);
     downloadChunkWaiters.delete(taskId);
-    waiter.resolve(payload.slice(8));
+    waiter.resolve(payload.subarray(8));
   }
 
   let replayInFlight = false;
@@ -425,7 +435,9 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
     if (frameStream.pendingFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
       frameStream.pendingFrames.clear();
     }
-    const firstPending = Math.min(...frameStream.pendingFrames.keys());
+    const firstPending = frameStream.pendingFrames.size
+      ? Math.min(...frameStream.pendingFrames.keys())
+      : Number.POSITIVE_INFINITY;
     if (Number.isFinite(firstPending) && firstPending > frameStream.lastSequence + 1 && !replayInFlight && session.value) {
       const holeAt = frameStream.lastSequence;
       replayInFlight = true;
@@ -500,5 +512,18 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
 }
 
 function readU64(bytes: Uint8Array, offset: number) {
-  return Number(new DataView(bytes.buffer, bytes.byteOffset + offset, 8).getBigUint64(0, false));
+  // Manual big-endian assembly; allocates nothing per frame (the DataView
+  // path allocated a view per call). Sequence numbers stay far below 2^53,
+  // so the high/low split is exact.
+  const high =
+    ((bytes[offset] << 24) >>> 0) +
+    (bytes[offset + 1] << 16) +
+    (bytes[offset + 2] << 8) +
+    bytes[offset + 3];
+  const low =
+    ((bytes[offset + 4] << 24) >>> 0) +
+    (bytes[offset + 5] << 16) +
+    (bytes[offset + 6] << 8) +
+    bytes[offset + 7];
+  return high * 0x1_0000_0000 + low;
 }

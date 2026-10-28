@@ -16,6 +16,13 @@ pub(super) fn directory_tracking_marker(session_id: &str) -> Vec<u8> {
 /// 不设长度阈值：大帧（现实 SSH 数据帧普遍远超 8 字节）尾部残缺字符同样
 /// 跨帧拼装，否则逐帧独立 lossy 会把字符劈成双 U+FFFD（见读循环处注释）。
 pub(super) fn decode_stream_text(carry: &mut Vec<u8>, data: &[u8]) -> String {
+    // Steady state (no incomplete character pending): one validated copy
+    // instead of the append-then-copy the carry path costs.
+    if carry.is_empty() {
+        if let Ok(text) = std::str::from_utf8(data) {
+            return text.to_owned();
+        }
+    }
     carry.extend_from_slice(data);
     let mut text = String::new();
     loop {

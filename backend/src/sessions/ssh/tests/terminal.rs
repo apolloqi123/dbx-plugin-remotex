@@ -11,6 +11,24 @@ fn replay_buffer_is_sequence_addressable() {
 }
 
 #[test]
+fn push_encoded_matches_the_replay_frame_encoding() {
+    // The hot publishers encode while moving the payload into the ring; the
+    // wire bytes must stay identical to TerminalFrame::encode.
+    let mut replay = ReplayBuffer::default();
+    let encoded = replay.push_encoded(TerminalStream::Stderr, b"payload".to_vec());
+    assert_eq!(
+        encoded,
+        b"\x01\x00\x00\x00\x00\x00\x00\x00\x01payload".to_vec()
+    );
+    let stored = replay.after(0);
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].stream, TerminalStream::Stderr);
+    assert_eq!(stored[0].data, b"payload");
+    assert_eq!(stored[0].encode(), encoded);
+    assert_eq!(replay.tail_sequence(), 1);
+}
+
+#[test]
 fn replay_buffer_honours_a_custom_byte_budget() {
     // 串口会话的 128 KiB 预算（设计稿 §3）：绕回后 first_sequence 前移，
     // after() 只回可得的尾部，complete 语义随 first_available 变化。
@@ -468,15 +486,15 @@ fn directory_handshake_filters_split_marker() {
     let marker = directory_tracking_marker("session-1");
     let mut filter = DirectoryHandshakeFilter::default();
     filter.begin(marker.clone());
-    assert_eq!(filter.filter(b"echoed script"), None);
+    assert_eq!(filter.filter(b"echoed script".to_vec()), None);
     let split = marker.len() / 2;
-    assert_eq!(filter.filter(&marker[..split]), None);
+    assert_eq!(filter.filter(marker[..split].to_vec()), None);
     let mut final_frame = marker[split..].to_vec();
     final_frame.extend_from_slice(b"prompt$ ");
     // The suppressed echo took the submitted line's CRLF with it: reset the
     // line so the post-arming prompt is not glued to the previous one.
     assert_eq!(
-        filter.filter(&final_frame),
+        filter.filter(final_frame),
         Some(b"\r\x1b[2Kprompt$ ".to_vec())
     );
 }
@@ -489,7 +507,7 @@ fn directory_handshake_clears_the_line_even_when_no_tail_follows_the_marker() {
     let mut frame = b"echoed script".to_vec();
     frame.extend_from_slice(&marker);
     assert_eq!(
-        filter.filter(&frame),
+        filter.filter(frame),
         Some(b"\r\x1b[2K".to_vec()),
         "the prompt arrives in a later frame: still reset the line now"
     );

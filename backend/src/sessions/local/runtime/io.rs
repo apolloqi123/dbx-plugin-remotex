@@ -20,9 +20,10 @@ impl LocalTerminalRuntime {
         let tail_sequence = replay.tail_sequence();
         let frames = replay.after(after_sequence);
         drop(replay);
+        let channel = format!("local/terminal/out/{session_id}");
         for frame in &frames {
             emitter
-                .binary(&format!("local/terminal/out/{session_id}"), &frame.encode())
+                .binary(&channel, &frame.encode())
                 .map_err(|error| error.message)?;
         }
         Ok(json!({
@@ -111,15 +112,14 @@ impl LocalTerminalRuntime {
 }
 
 pub(super) async fn publish_local_terminal(
-    session_id: &str,
+    channel: &str,
     stream: TerminalStream,
     data: Vec<u8>,
     replay: &Arc<AsyncMutex<ReplayBuffer>>,
     emitter: &PluginEmitter,
 ) {
-    let frame = replay.lock().await.push(stream, data);
-    if let Err(error) = emitter.binary(&format!("local/terminal/out/{session_id}"), &frame.encode())
-    {
+    let frame = replay.lock().await.push_encoded(stream, data);
+    if let Err(error) = emitter.binary(channel, &frame) {
         eprintln!(
             "[dbx-plugin-sshx] local terminal output failed: {}",
             error.message
