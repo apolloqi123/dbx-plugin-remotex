@@ -20,13 +20,13 @@
   isolation: isolate;
   overflow: visible;
   display: flex;
-  height: 36px;
-  min-height: 36px;
+  height: 26px;
+  min-height: 26px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   border-bottom: 1px solid var(--border);
-  padding: 0 8px;
+  padding: 0 6px;
   background: color-mix(in srgb, var(--background) 92%, transparent);
 }
 
@@ -44,18 +44,18 @@
 /* Dock panel surface (surface=panel): the host dock chrome provides its own
    close/collapse/maximize controls, so the workbench toolbar collapses to a
    slim right-aligned quick strip (font zoom, palette, settings) at dock
-   density — 30px row, compact 20px icon buttons. */
+   density — 22px row, compact 18px icon buttons. */
 .workbench.panel-surface .toolbar {
-  height: 30px;
-  min-height: 30px;
+  height: 22px;
+  min-height: 22px;
   gap: 4px;
   padding: 0 6px;
   /* ghost 化：条子融进终端（去底色/去分隔线），按钮低透明度、hover 才显形。 */
   background: transparent;
   border-bottom: 0;
 }
-.workbench.panel-surface .toolbar .icon-button { width: 22px; height: 22px; }
-.workbench.panel-surface .toolbar .icon-button.compact { width: 20px; height: 20px; }
+.workbench.panel-surface .toolbar .icon-button { width: 18px; height: 18px; }
+.workbench.panel-surface .toolbar .icon-button.compact { width: 16px; height: 16px; }
 .workbench.panel-surface .toolbar .icon-button {
   border: 0;
   background: transparent;
@@ -235,29 +235,29 @@
   background: transparent;
   cursor: pointer;
 }
-/* 图标按钮统一两档：工具栏 24px（svg 14px）/ 紧凑位 .compact 20px（svg 12px）。
+/* 图标按钮统一两档：工具栏 20px（svg 12px）/ 紧凑位 .compact 18px（svg 11px）。
    新增图标按钮只用这两档，不再散养 16/22/26px。 */
 .icon-button {
   display: inline-grid;
   position: relative;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   border-radius: var(--radius);
   padding: 0;
 }
-.icon-button.compact { width: 20px; height: 20px; }
+.icon-button.compact { width: 18px; height: 18px; }
 .icon-button:hover:not(:disabled),
 .file-header button:hover { background: var(--accent); }
 .icon-button:disabled, button:disabled { cursor: default; opacity: .42; }
 .icon-button svg, .path-toolbar svg,
 .file-header svg, .file-name svg, .drop-overlay svg {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
   stroke-width: 1.7;
 }
-.icon-button.compact svg { width: 12px; height: 12px; flex: 0 0 12px; }
+.icon-button.compact svg { width: 11px; height: 11px; flex: 0 0 11px; }
 /* sudo 文本按钮：文字本身就是开关，关闭暗色、开启亮色描边+前景。 */
 .sudo-toggle { display: inline-flex; align-items: center; justify-content: center; height: 20px; margin-left: 2px; border: 1px solid var(--border); border-radius: 4px; padding: 0 7px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; cursor: pointer; }
 .sudo-toggle:hover:not(:disabled):not(.is-on) { background: var(--accent); }

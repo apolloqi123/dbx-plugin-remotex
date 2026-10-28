@@ -57,14 +57,14 @@
 /* 工作台内终端页签条：主/额外 PTY 同列展示，+ 新建当前连接内的终端。 */
 .terminal-tabbar {
   display: flex;
-  height: 29px;
-  flex: 0 0 29px;
+  height: 20px;
+  flex: 0 0 20px;
   align-items: stretch;
   gap: 3px;
   overflow-x: auto;
   overflow-y: hidden;
   border-bottom: 1px solid var(--border);
-  padding: 2px 6px 0;
+  padding: 1px 6px 0;
   background: color-mix(in srgb, var(--background) 92%, var(--foreground));
   scrollbar-width: none;
 }
@@ -75,7 +75,7 @@
   align-items: center;
   border: 1px solid transparent;
   border-bottom: 0;
-  border-radius: 5px 5px 0 0;
+  border-radius: 4px 4px 0 0;
   color: var(--muted-foreground);
 }
 .terminal-tab:hover { background: var(--accent); color: var(--foreground); }
@@ -88,9 +88,9 @@
 .terminal-tab-main {
   display: inline-flex;
   min-width: 0;
-  height: 25px;
+  height: 18px;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   border: 0;
   padding: 0 3px 0 8px;
   background: transparent;
@@ -98,13 +98,13 @@
   font-size: 11px;
   cursor: pointer;
 }
-.terminal-tab-main svg { width: 12px; height: 12px; flex: 0 0 12px; }
+.terminal-tab-main svg { width: 11px; height: 11px; flex: 0 0 11px; }
 .terminal-tab-main span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-tab-close {
   display: inline-grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   place-items: center;
   border: 0;
   border-radius: 3px;
@@ -115,12 +115,12 @@
   cursor: pointer;
 }
 .terminal-tab-close:hover { background: color-mix(in srgb, var(--muted-foreground) 22%, transparent); color: var(--foreground); }
-.terminal-tab-close svg { width: 11px; height: 11px; }
+.terminal-tab-close svg { width: 10px; height: 10px; }
 .terminal-tab-add {
   display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   align-self: center;
   place-items: center;
   border: 0;
