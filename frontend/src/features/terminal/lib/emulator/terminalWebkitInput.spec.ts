@@ -78,6 +78,32 @@ describe("macOS WebKit terminal input fallback", () => {
     expect(controller.input(input("x", 201))).toBeUndefined();
   });
 
+  it("suppresses xterm input processing after CJK IME commit", () => {
+    const controller = createWebkitInputController();
+    controller.compositionStart();
+    for (const ch of "dock") {
+      controller.keydown(keydown(ch, 229, 10, true));
+    }
+    controller.compositionEnd(20);
+
+    // Within the suppression window, xterm's own input processing should be
+    // suppressed to prevent double-emission.
+    expect(controller.shouldSuppressXtermInput(30)).toBe(true);
+    expect(controller.shouldSuppressXtermInput(90)).toBe(true);
+
+    // After the window, xterm should process normally.
+    expect(controller.shouldSuppressXtermInput(200)).toBe(false);
+  });
+
+  it("does not suppress xterm input without IME keydowns during composition", () => {
+    const controller = createWebkitInputController();
+    controller.compositionStart();
+    controller.compositionEnd(10);
+
+    // No keyCode=229 keydowns during composition — xterm should not be suppressed.
+    expect(controller.shouldSuppressXtermInput(50)).toBe(false);
+  });
+
   it("does not suppress normal typing right after compositionEnd without IME keydowns", () => {
     const controller = createWebkitInputController();
     controller.compositionStart();

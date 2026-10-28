@@ -32,6 +32,12 @@ export interface WebkitInputController {
   input(sample: WebkitInputSample): string | undefined;
   compositionStart(): void;
   compositionEnd(at: number): void;
+  /**
+   * Returns true when the adapter should suppress xterm's own input
+   * processing (even if it doesn't emit data itself) to prevent
+   * double-emission after a CJK IME commit.
+   */
+  shouldSuppressXtermInput(at: number): boolean;
 }
 
 const NORMAL_KEYDOWN_WINDOW_MS = 150;
@@ -156,6 +162,13 @@ export function createWebkitInputController(): WebkitInputController {
       // Keep imeKeydownDuringComposition alive so the input() handler can
       // see it during the POST_COMPOSITION_SUPPRESS_MS window.
     },
+
+    shouldSuppressXtermInput(at) {
+      return (
+        at - compositionEndedAt <= POST_COMPOSITION_SUPPRESS_MS &&
+        imeKeydownDuringComposition
+      );
+    },
   };
 }
 
@@ -201,12 +214,22 @@ export function installMacWebkitInputFallback(options: {
       isComposing: event.isComposing,
       at: event.timeStamp,
     });
-    if (data === undefined) return;
-    event.stopImmediatePropagation();
-    // Stale direct commits would otherwise be rediscovered by a later
-    // keyCode=229 textarea diff. Screen-reader mode skips this adapter above.
-    textarea.value = "";
-    options.onData(data);
+    if (data !== undefined) {
+      event.stopImmediatePropagation();
+      // Stale direct commits would otherwise be rediscovered by a later
+      // keyCode=229 textarea diff. Screen-reader mode skips this adapter above.
+      textarea.value = "";
+      options.onData(data);
+      return;
+    }
+    // Even when the controller doesn't emit data, suppress xterm's own input
+    // processing within the post-composition window.  xterm's composition
+    // helper already emitted the committed text through onData; letting its
+    // textarea diff fire again would cause double-typing.
+    if (controller.shouldSuppressXtermInput(event.timeStamp)) {
+      event.stopImmediatePropagation();
+      textarea.value = "";
+    }
   };
 
   const onCompositionStart = (event: CompositionEvent) => {
