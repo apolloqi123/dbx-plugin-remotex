@@ -20,13 +20,13 @@
   isolation: isolate;
   overflow: visible;
   display: flex;
-  height: 26px;
-  min-height: 26px;
+  height: 22px;
+  min-height: 22px;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   border-bottom: 1px solid var(--border);
-  padding: 0 6px;
+  padding: 0 4px;
   background: color-mix(in srgb, var(--background) 92%, transparent);
 }
 

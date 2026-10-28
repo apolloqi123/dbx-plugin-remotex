@@ -281,10 +281,18 @@ function previewTheme() {
     ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: colors.accent },
     ".cm-cursor": { borderLeftColor: colors.foreground, borderLeftWidth: "2px" },
     // 选区色随明暗切换，与终端 xterm selectionBackground 保持同一观感。
-    // 透明度 0x88 的旧值在亮色白底上混合后对比度仅 ~1.2:1（issue #155：
-    // 选区与背景几乎一样），提高到 0xad 并加深色相，选中区域清晰可辨。
+    // 透明度提高到 0xd0 并加深色相，确保选区在任意背景下都清晰可见（issue #155）。
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-      backgroundColor: props.appearance.colorScheme === "dark" ? "#6481b8ad" : "#7cabecad",
+      backgroundColor: props.appearance.colorScheme === "dark" ? "#6481b8d0" : "#5a9fd4d0",
+    },
+    // 搜索匹配高亮：使用更鲜明的颜色确保可见性
+    ".cm-searchMatch": {
+      backgroundColor: props.appearance.colorScheme === "dark" ? "#fbbf2450" : "#f59e0b60",
+      outline: `1px solid ${props.appearance.colorScheme === "dark" ? "#fbbf24" : "#f59e0b"}`,
+    },
+    ".cm-searchMatch.cm-searchMatch-selected": {
+      backgroundColor: props.appearance.colorScheme === "dark" ? "#fbbf2480" : "#f59e0b90",
+      outline: `2px solid ${props.appearance.colorScheme === "dark" ? "#fbbf24" : "#f59e0b"}`,
     },
   }, { dark: props.appearance.colorScheme === "dark" });
 }
