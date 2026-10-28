@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.67] — 2026-10-28
+
+- **修复录制记录时长恒为 0 秒**。录制时长原先只取最后一条输出事件的时间：录制期间终端没有输出时（例如只开启录制等待若干秒后停止）文件只有头部，列表永远显示 0 秒，且正常录制也会低估末尾的静默时间。现在停止录制时会在文件末尾写入一条 asciicast 标记事件（`m`），记录真实墙钟时长，列表按它显示；回放/搜索只消费输出事件，不受影响。升级前遗留的无标记录制会用文件修改时间估算时长。本地 shell 与 SSH 会话共用同一修复。
+  **Fixed recordings always showing 0 seconds.** Duration used to come only from the last output event, so a silent recording (start, wait, stop) had a header-only file and always listed as 0s — and normal recordings undercounted their trailing idle time. Stopping now appends an asciicast marker event (`m`) carrying the wall-clock duration, which the list reads; replay and search still consume only output events. Legacy marker-less recordings fall back to the file mtime. Local shells and SSH sessions share the fix.
+
 ## [0.7.9-beta.66] — 2026-10-28
 
 - **录制入口合并为单图标并重做录制记录页**。工具栏「录制终端」与「录制记录」合并为一个「终端录制」入口：点击只展开菜单，不会直接开始录制；菜单内选择开始/停止录制（开始沿用可取消的 3 秒倒计时）或打开录制记录。录制记录浮层重新设计：状态头、搜索、卡片列表（主机、时间、大小、时长、回放/GIF/转录/定位/删除）、空态与「开始录制」入口，宽度 520px。主工具栏与 dock panel 紧凑工具条同步。

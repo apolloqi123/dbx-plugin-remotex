@@ -17,7 +17,16 @@ describe("replay event pages", () => {
   it("merges pages and drops non-output events", () => {
     const events = mergeEventPages([
       page(0, [[0, "hello "], [0.5, "world"]], 3, true),
-      { events: [{ time: 1, type: "i", data: "x" }, { time: 1.2, type: "o", data: "!" }], total: 3, hasMore: false },
+      {
+        events: [
+          { time: 1, type: "i", data: "x" },
+          { time: 1.2, type: "o", data: "!" },
+          // 停止时写入的时长标记（m）只给列表算时长，不进回放。
+          { time: 9, type: "m", data: "" },
+        ],
+        total: 4,
+        hasMore: false,
+      },
     ]);
     expect(events).toEqual([
       { time: 0, data: "hello " },

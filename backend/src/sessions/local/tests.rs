@@ -692,9 +692,11 @@ fn observe_local_recording_writes_stdout_events() {
     let path = session_recording::cast_path(&dir, "unit-local-rec").expect("cast path");
     let text = std::fs::read_to_string(&path).expect("read cast");
     let events: Vec<&str> = text.lines().skip(1).collect();
-    assert_eq!(events.len(), 2);
+    // 两条输出事件 + 停止时的时长标记。
+    assert_eq!(events.len(), 3);
     assert!(events[0].contains("\"eventdata\":\"hello \""));
     assert!(events[1].contains("\"eventdata\":\"world\""));
+    assert!(events[2].contains("\"eventtype\":\"m\""));
     std::fs::remove_dir_all(&dir).ok();
 }
 

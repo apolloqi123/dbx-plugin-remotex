@@ -71,6 +71,12 @@ pub fn clear_recordings(data_dir: &Path) -> usize {
 }
 
 /// Reads one recording's header and last event into a list row.
+///
+/// Duration is the stop marker's `time` written by `SessionRecorder::finish`
+/// (falling back to the last output event for files finalized before the
+/// marker existed). A recording that captured no output at all — old files or
+/// a crash before the marker — is estimated from the file mtime so a silent
+/// recording no longer reports 0 seconds forever.
 pub(super) fn describe_recording(path: &Path, recording_id: &str) -> Option<Value> {
     let mut lines = std::io::BufReader::new(std::fs::File::open(path).ok()?).lines();
     let first = lines.next()?.ok()?;
@@ -89,13 +95,26 @@ pub(super) fn describe_recording(path: &Path, recording_id: &str) -> Option<Valu
     if let Ok(event) = serde_json::from_str::<Value>(last_line.trim()) {
         last_time = event.get("time").and_then(Value::as_f64).unwrap_or(0.0);
     }
+    let started_at = head.get("timestamp").and_then(Value::as_f64).unwrap_or(0.0);
+    let duration = if last_time > 0.0 {
+        last_time
+    } else {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|elapsed| elapsed.as_secs_f64())
+            .filter(|modified| *modified > started_at)
+            .map(|modified| modified - started_at)
+            .unwrap_or(0.0)
+    };
     Some(json!({
         "recordingId": recording_id,
         "sessionId": meta.get("sessionId").cloned().unwrap_or(json!("")),
         "connectionId": meta.get("connectionId").cloned().unwrap_or(json!("")),
         "host": meta.get("host").cloned().unwrap_or(json!("")),
         "startedAt": head.get("timestamp").cloned().unwrap_or(json!(0)),
-        "durationSecs": last_time,
+        "durationSecs": duration,
         "bytes": std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0),
     }))
 }

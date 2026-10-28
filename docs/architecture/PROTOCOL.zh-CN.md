@@ -1331,7 +1331,9 @@ sudo 模式下向登录用户不可写目录（如 `/root`）上传（对标 sud
 （stdout+stderr、目录跟随过滤后、不含 State 帧）以 asciicast v2 JSONL 写入
 `<data_dir>/recordings/<recordingId>.cast`——首行为 v2 头（`version/width/height/timestamp/env/meta`，
 `meta` 携带 `sessionId/connectionId/host`），其后每行 `{"time": <秒>, "eventtype": "o", "eventdata": "…"}`
-（单事件截断 256 KiB）。每会话同时最多一段录制，重复 start 报错；会话关闭（读循环退出）自动
+（单事件截断 256 KiB）；stop/finish 时追加一条 `{"time": <录制墙钟秒数>, "eventtype": "m", "eventdata": ""}`
+时长标记（列表读最后一行事件，静默录制也能量出真实时长；回放/搜索只消费 `o` 事件，忽略该标记；
+旧文件无标记时回退到最后输出事件，完全无输出时用文件 mtime 估算）。每会话同时最多一段录制，重复 start 报错；会话关闭（读循环退出）自动
 finish，无需显式 stop。`stop` 返回摘要
 `{ recordingId, sessionId, connectionId, host, path, startedAt, durationSecs, events, bytes }`。
 

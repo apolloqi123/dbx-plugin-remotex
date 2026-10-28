@@ -59,11 +59,16 @@ fn start_observe_finish_writes_asciicast_v2() {
     let events: Vec<Value> = lines
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3, "two output events plus the stop marker");
     assert_eq!(events[0]["eventtype"], "o");
     assert_eq!(events[0]["eventdata"], "hello ");
     assert_eq!(events[1]["eventdata"], "world\n");
     assert!(events[0]["time"].as_f64().unwrap() <= events[1]["time"].as_f64().unwrap());
+    // 尾标记记录墙钟时长：列表据此显示时长，静默录制也不会是 0。
+    assert_eq!(events[2]["eventtype"], "m");
+    assert_eq!(events[2]["eventdata"], "");
+    assert!(events[2]["time"].as_f64().unwrap() >= events[1]["time"].as_f64().unwrap());
+    assert_eq!(events[2]["time"], summary["durationSecs"]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -110,27 +115,33 @@ fn read_events_paginates_and_counts() {
     }
     recorder.finish().unwrap();
     let page = read_events(&dir, "rec-3", 0, 5).unwrap();
-    assert_eq!(page["total"], 7);
+    // 7 条输出事件 + 1 条收尾标记（非输出），分页按文件行计。
+    assert_eq!(page["total"], 8);
     assert_eq!(page["events"].as_array().unwrap().len(), 5);
     assert_eq!(page["hasMore"], true);
     let tail = read_events(&dir, "rec-3", 5, 5).unwrap();
-    assert_eq!(tail["events"].as_array().unwrap().len(), 2);
+    assert_eq!(tail["events"].as_array().unwrap().len(), 3);
     assert_eq!(tail["hasMore"], false);
     assert_eq!(
         tail["events"][1]["data"],
         json!("line-6\n"),
         "event order is oldest first"
     );
+    assert_eq!(tail["events"][2]["type"], "m");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Issue #12 回归：「只点击了录制然后终止」产出仅含 header 的录制
-/// （0 事件），必须照常列入列表且可经 RPC 同路径（cast_path + 删文件）
+/// （0 输出事件），必须照常列入列表且可经 RPC 同路径（cast_path + 删文件）
 /// 删除，删除后从列表消失。
+///
+/// 静默录制同样要有真实时长：时长取自停止时写入的墙钟标记，而不是最后
+/// 一条输出事件（没有输出时旧实现恒为 0 秒）。
 #[test]
 fn header_only_recording_is_listed_and_deletable() {
     let dir = temp_dir();
     let recorder = SessionRecorder::start(&dir, "rec-empty", "c", "h", "s", 80, 24).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(40));
     recorder.finish().unwrap();
 
     let list = list_recordings(&dir);
@@ -140,17 +151,49 @@ fn header_only_recording_is_listed_and_deletable() {
         "header-only recording still shows in the list"
     );
     assert_eq!(list[0]["recordingId"], "rec-empty");
-    assert_eq!(
-        list[0]["durationSecs"], 0.0,
-        "no events means zero duration"
+    assert!(
+        list[0]["durationSecs"].as_f64().unwrap() >= 0.03,
+        "silent recording keeps its wall-clock duration"
     );
 
     let path = cast_path(&dir, "rec-empty").unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let marker = text.lines().last().unwrap();
+    let marker: Value = serde_json::from_str(marker).unwrap();
+    assert_eq!(marker["eventtype"], "m");
+
     std::fs::remove_file(&path).unwrap();
     assert!(!path.exists());
     assert!(
         list_recordings(&dir).is_empty(),
         "deleted recording leaves the list"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 旧版本（无收尾标记、无输出事件）的录制：用文件修改时间与 header 启动
+/// 时间估算墙钟时长，避免升级后旧记录永远显示 0 秒。
+#[test]
+fn legacy_header_only_recording_estimates_duration_from_mtime() {
+    let dir = temp_dir();
+    let recordings = recordings_dir(&dir);
+    std::fs::create_dir_all(&recordings).unwrap();
+    let started = crate::core::time::unix_now_secs().saturating_sub(42);
+    let header = json!({
+        "version": 2,
+        "width": 80,
+        "height": 24,
+        "timestamp": started,
+        "meta": { "sessionId": "s", "connectionId": "c", "host": "h" },
+    });
+    std::fs::write(recordings.join("rec-legacy.cast"), format!("{header}\n")).unwrap();
+
+    let list = list_recordings(&dir);
+    assert_eq!(list.len(), 1);
+    let duration = list[0]["durationSecs"].as_f64().unwrap();
+    assert!(
+        (40.0..44.0).contains(&duration),
+        "legacy header-only recording estimates ~42s, got {duration}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

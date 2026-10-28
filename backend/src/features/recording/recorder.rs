@@ -106,6 +106,12 @@ impl SessionRecorder {
 
     /// Flushes and closes the recording, returning its summary.
     pub fn finish(mut self) -> Result<Value, String> {
+        let duration = self.started_at.elapsed().as_secs_f64();
+        // 列表时长读最后一条事件的时间；只靠输出事件会让静默录制恒为 0
+        // 并低估真实时长。停止时补一条非输出标记事件（asciicast `m`），
+        // 把墙钟时长写进文件；回放/搜索只消费 `o` 事件，不受影响。
+        let marker = json!({ "time": duration, "eventtype": "m", "eventdata": "" });
+        let _ = writeln!(self.file, "{marker}");
         let _ = self.file.flush();
         drop(self.file);
         Ok(json!({
@@ -115,7 +121,7 @@ impl SessionRecorder {
             "host": self.host,
             "path": self.path.display().to_string(),
             "startedAt": self.started_at_ms,
-            "durationSecs": self.started_at.elapsed().as_secs_f64(),
+            "durationSecs": duration,
             "events": self.events,
             "bytes": self.bytes,
         }))
