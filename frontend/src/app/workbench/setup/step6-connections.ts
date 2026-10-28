@@ -4,7 +4,6 @@
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS } from "../../../features/terminal/composables/session/useTerminalTransportWatch";
 import { type ReplayResult, useSshConnection } from "../../../features/connections/composables/useSshConnection";
 import { useAgentTerminalMode } from "../../../features/agent/composables/useAgentTerminalMode";
-import { useAlertTriage } from "../../../features/security/composables/useAlertTriage";
 import { useAuditLogViewer } from "../../../features/security/composables/useAuditLogViewer";
 import { useConnectCard } from "../../../features/connections/composables/useConnectCard";
 import { useHighlightRules } from "../../../features/terminal/composables/ui/useHighlightRules";
@@ -247,20 +246,6 @@ export function installWorkbenchConnections(deps: Deps) {
     applyAgentMode,
   } = useAgentTerminalMode({ t, showError, session, connectionId: () => connectionId.value, sendTerminalBytes, closeToolbarPopovers: () => late.closeToolbarPopovers() });
 
-  // 告警排查：状态与分诊交互收口在 composables/useAlertTriage。
-  const {
-    alertTriageOpen,
-    alertTriageBusy,
-    alertTriageError,
-    alertTriagePayload,
-    alertTriageResult,
-    openAlertTriage,
-    runAlertTriage,
-    sendSuggestionToTerminal,
-    copySuggestions,
-  } = useAlertTriage({ t, showError, showNotice, session, terminal: () => terminal.value, trackPendingInput, sendTerminalBytes, clipboardDeps });
-
-
   // 容器管理已改为终端列底部的独立分屏（ContainerManagerPane），不再占用
   // 右侧栏；本步骤不再涉及容器视图。
 
@@ -398,8 +383,7 @@ export function installWorkbenchConnections(deps: Deps) {
     transferHistoryFailed, transferHistoryClearOpen, refreshTransferHistory, confirmTransferHistoryClear, resumableTasks, resumableLoading, resumeTargetTaskId, refreshResumableUploads,
     beginResumeUpload, onResumeFilePicked, agentPromptCommand, agentPromptRemaining, agentPromptExpired, agentPromptRemember, agentPromptQueue, agentRunning,
     agentModeOpen, agentMode, agentModeBusy, agentModeHint, agentPromptHead, clearAgentPrompts, stopAgentPromptTimer, dismissAgentPrompt,
-    resolveAgentPrompt, interruptAgentRun, toggleAgentModeMenu, refreshAgentMode, applyAgentMode, alertTriageOpen, alertTriageBusy, alertTriageError,
-    alertTriagePayload, alertTriageResult, openAlertTriage, runAlertTriage, sendSuggestionToTerminal, copySuggestions, highlightRules, highlightSaving,
+    resolveAgentPrompt, interruptAgentRun, toggleAgentModeMenu, refreshAgentMode, applyAgentMode, highlightRules, highlightSaving,
     highlightEnabled, highlightDisplayMode, compiledHighlightRules, hydrateHighlightRules, saveHighlightRule, toggleHighlightRule, deleteHighlightRule, setHighlightDisplayMode,
     attachHighlightRender, detachHighlightRender, rescanHighlightViewport, persistTerminalFeaturePrefs, actionLinksSettings, actionLinksEnabled, actionLinkHint, attachActionLinks,
     detachActionLinks, scheduleActionLinkScan, handleDockerOpenInTerminal, updateActionLinksSettings, gutterSettings, gutterRows, gutterPaneVisible, gutterWidth,

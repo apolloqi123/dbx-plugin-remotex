@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.64] — 2026-10-28
+
+- **移除工具栏「告警排查」入口及告警分诊功能**。删除工具栏 Siren 按钮、告警排查弹窗、前端分诊 lib/composable/样式、AI 修复 prompt 中的本地分诊提示，以及后端 `ssh/alert/triage` RPC / 分类 playbook、mock、测试与七语文案。执行审计、Quick Sudo 等其余安全能力不受影响。
+  **Removed the toolbar Alert triage entry and the alert-triage feature.** Deleted the Siren button, the triage dialog, the frontend triage lib/composable/styles, the local triage hint in the AI-fix prompt, and the backend `ssh/alert/triage` RPC/classification playbook, together with its mocks, tests and locale strings. Audit logging, Quick Sudo and the other security features are unaffected.
+
 ## [0.7.9-beta.63] — 2026-10-28
 
 - **命令管理列表改为名称优先**。命令行只显示完整的命令名称，不再被行内原始命令预览挤占宽度；原始命令改到鼠标悬浮提示中显示。设置页与工具栏弹层同步，长名称在 360px 弹层内也能完整读出。

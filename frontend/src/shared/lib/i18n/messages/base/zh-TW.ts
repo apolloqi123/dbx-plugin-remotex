@@ -121,7 +121,6 @@ const messages = {
       error: { targetHost: "目標位址必須是合法的 IPv4、IPv6 或主機名稱。", listenHost: "監聽位址必須是合法的 IPv4、IPv6 或主機名稱。", port: "連接埠必須是 0-65535 的整數（0 = 自動）。", conflict: "監聽端點 {route} 已有映射（{existing}）。", noSession: "請先建立並保持 SSH 連線，再新增連接埠映射。" },
     },
     settingsLoadFailed: "SSH 設定載入失敗，請重試後再儲存。",
-    alertTriageLoadFailed: "告警分析失敗：{error}",
     open: "開啟",
     notification: "通知",
     connecting: "正在連線 SSH...",

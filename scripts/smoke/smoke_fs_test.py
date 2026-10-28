@@ -981,31 +981,6 @@ def main() -> None:
                 raise AssertionError("destructive rememberedCommands line unexpectedly accepted")
             req("ssh/settings/set", {"sessionId": session_id, "rememberedCommands": []})
 
-        def case_alert_triage():
-            payload = json.dumps({
-                "alertId": "smoke-1", "title": "CPU 使用率过高", "severity": "CRITICAL",
-                "source": "prometheus", "message": "node-1 cpu_usage above 0.9",
-                "data": {"instance": "node-1"},
-            })
-            result = req("ssh/alert/triage", {"payload": payload})
-            normalized = result.get("normalized") or {}
-            if normalized.get("alertId") != "smoke-1" or normalized.get("severity") != "critical":
-                raise AssertionError(f"normalized={normalized!r}")
-            if result.get("category") != "cpu":
-                raise AssertionError(f"category={result.get('category')!r}, want 'cpu'")
-            suggestions = result.get("suggestions") or []
-            if not suggestions or not all(item.get("command") for item in suggestions):
-                raise AssertionError(f"suggestions={suggestions!r}")
-            if any("sudo" in str(item.get("command", "")) for item in suggestions):
-                raise AssertionError(f"sudo leaked into playbook: {suggestions!r}")
-            # 非 JSON 纯文本回退（整包作为 message）+ 双语分类。
-            fallback = req("ssh/alert/triage", {"payload": "磁盘空间不足 disk full"})
-            if fallback.get("category") != "disk":
-                raise AssertionError(f"fallback category={fallback.get('category')!r}")
-            if (fallback.get("normalized") or {}).get("message") != "磁盘空间不足 disk full":
-                raise AssertionError(f"fallback normalized={fallback.get('normalized')!r}")
-            print(f"    cpu suggestions={len(suggestions)}, fallback category=disk")
-
         def case_audit_list():
             result = req("ssh/audit/list", {"limit": 100})
             entries = result.get("entries") or []
@@ -2619,9 +2594,7 @@ def main() -> None:
                 raise AssertionError(f"removed dir still listed per MCP tool: {remaining[:10]}…")
             print("    mcp list/stat + shell-mutation round-trip ok")
 
-        print("\n--- alert triage + audit group ---")
-        report.run("ssh/alert/triage normalize+classify+playbook", "ssh/alert/triage",
-                   case_alert_triage)
+        print("\n--- audit group ---")
         report.run("ssh/audit/list returns approval trail", "ssh/audit/list",
                    case_audit_list,
                    needs="agent remembered list settings + destructive refused")

@@ -947,11 +947,6 @@ async fn sftp_and_exec_resolve_saved_reference_before_dialing() {
     }
 }
 
-/// The MCP tool surface must expose the alert triage playbook: the
-/// stdio smoke asserts the tool by name, so a dispatch-only protocol
-/// method (`ssh/alert/triage`) without an MCP tool would regress the
-/// intent-recognition surface. Offline: no connection I/O involved.
-
 /// 降级矩阵 ②：连接寻址双源（bridge registry vs session registry）
 /// 同 id 冲突时桥数据胜出且不产生重复条目；不同 id 各自成列；作用域
 /// 对两个来源都生效。
@@ -1004,8 +999,6 @@ fn connection_list_merge_resolves_dual_source_conflicts() {
     assert_eq!(degraded["connections"].as_array().unwrap().len(), 2);
 }
 
-/// alert_triage 工具面（ssh_alert_triage）扩类：network / oom /
-/// service / generic / 中英混合按 KEYWORDS 表实际行为断言；每条建议
 /// settings 联动回归：mcp/settings/set 的每个可调项都能立即驱动受影响
 /// 工具的行为（传输根收窄、上传限额、confirm 档 fail-closed、scope 闸），
 /// settings_get 回显生效值与 persisted 值。

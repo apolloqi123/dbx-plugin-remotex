@@ -121,8 +121,7 @@ stdio 分发循环对敌意输入保持"进程不崩、连接不挂、后续请�
 > **#203 工具瘦身**：MCP 面从 33 个工具收缩到 16 个（0.7.8 起）。移除的都是
 > 冗余、可推导或与 shell 命令语义重复的工具：`sftp_exists`（`sftp_stat` 是
 > 严格超集）、`sftp_pwd`（家目录即默认 cwd）、`ssh_test_connection`（首次
-> 真实调用暴露同样信息）、`ssh_alert_triage`（工作台入口与 `ssh/alert/triage`
-> sidecar 方法保留）、`ssh_quick_sudo_profiles_*`（管理走工作台 UI，
+> 真实调用暴露同样信息）、`ssh_alert_triage`、`ssh_quick_sudo_profiles_*`（管理走工作台 UI，
 > `ssh_exec_sudo` 的 `quickSudoProfile` 引用保留）、`ssh_metrics` /
 > `sftp_disk_usage`（内部本是 uptime/df，改用 `ssh_exec` 执行，只读白名单
 > 同样放行）、`docker_list` / `docker_action`（`docker ps` 在只读白名单内）、
@@ -364,15 +363,6 @@ confirm fail-closed 与 scope fail-closed（含 list 在作用域下可用）。
 
 既有只读白名单（含敏感路径拒绝清单）、灾难 `confirmDestructive`、进程级只读
 开关先于路由判定生效，`runInTerminal` 不放宽任何安全门。
-
-## 告警 → 排查（工作台入口）
-
-MCP 工具 `ssh_alert_triage` 已随 #203 工具瘦身移出 MCP 面（分类逻辑保留在
-sidecar `ssh/alert/triage` 方法）。告警分诊的组合用法保留在工作台工具栏
-「告警排查」（Siren 图标）弹窗：粘贴告警文本 → 分析 → 逐条发送到当前终端 /
-全部复制；建议命令仍全部命中只读命令白名单，agent 侧如需同类动作，可直接用
-`ssh_exec` 执行 uptime / free / df / journalctl 等巡检命令（门禁照常，超过
-~10s 的改用 `ssh_run_bg`）。
 
 ## MCP 工具命名与语义
 

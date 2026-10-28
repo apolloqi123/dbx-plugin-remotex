@@ -77,13 +77,10 @@ describe("buildAiAssistRequest", () => {
 });
 
 describe("直连 prompt 与 agentMode（面板会话档位）", () => {
-  it("buildAiFixPrompt：triage 提示位随缘出现，格式指令恒在", () => {
+  it("buildAiFixPrompt：格式指令恒在", () => {
     const base = buildAiFixPrompt({ command: "x", exitCode: 1, output: "boom" });
     expect(base).toContain("first line = the exact corrected command");
-    expect(base).not.toContain("triage");
-    const withHint = buildAiFixPrompt({ command: "x", exitCode: 1, output: "boom", triageHint: "category=disk, whitelisted suggestions: df -h" });
-    expect(withHint).toContain("Local heuristic triage hint");
-    expect(withHint).toContain("category=disk");
+    expect(base).toContain("Why: ");
   });
 
   it("buildAiFixRequest / buildAiAssistRequest 的 mode 随 agentMode 档位", () => {

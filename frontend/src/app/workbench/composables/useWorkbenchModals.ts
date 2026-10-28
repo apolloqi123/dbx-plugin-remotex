@@ -51,7 +51,6 @@ export function useWorkbenchModals(options: {
   auditOpen: Ref<boolean>;
   auditClearOpen: Ref<boolean>;
   settingsOpen: Ref<boolean>;
-  alertTriageOpen: Ref<boolean>;
   hostKeyPrompt: DialogState;
   agentPromptHead: DialogState;
   spawnSessionDialogOpen: ReadonlyValue<boolean>;
@@ -91,7 +90,7 @@ export function useWorkbenchModals(options: {
     deleteTarget, batchDeleteOpen, recordingDeleteTarget, recordingClearAllOpen,
     transferHistoryClearOpen, chmodTarget, newFileDialog, operationDialog, symlinkDialog,
     watchModifiedQueue, customEditorOpen, profilesOpen, auditOpen,
-    auditClearOpen, settingsOpen, alertTriageOpen, hostKeyPrompt, agentPromptHead,
+    auditClearOpen, settingsOpen, hostKeyPrompt, agentPromptHead,
     spawnSessionDialogOpen,
     batchDeleteSubmitting, recordingDeleteSubmitting, recordingClearAllSubmitting,
     auditClearSubmitting, metricsOpen, recordingsOpen, batchSaveMode, dockerPaneOpen,
@@ -175,7 +174,6 @@ export function useWorkbenchModals(options: {
     auditOpen.value,
     auditClearOpen.value,
     settingsOpen.value,
-    alertTriageOpen.value,
     hostKeyPrompt.value,
     agentPromptHead.value,
     spawnSessionDialogOpen.value,
@@ -329,10 +327,6 @@ export function useWorkbenchModals(options: {
     }
     if (operationDialog.value) {
       operationDialog.value = null;
-      return;
-    }
-    if (alertTriageOpen.value) {
-      alertTriageOpen.value = false;
       return;
     }
     if (profilesOpen.value) {

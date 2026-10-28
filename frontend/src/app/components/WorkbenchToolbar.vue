@@ -177,7 +177,6 @@ const {
   adjustTerminalZoom,
   reconnectNow,
   sendSudoRefresh,
-  openAlertTriage,
   toggleDockerPane,
   toggleBatchBar,
   toggleAgentModeMenu,
@@ -306,7 +305,6 @@ const {
       <button v-if="!localUiMode" class="icon-button icon-emerald" :title="t('sudoRefresh.title')" :aria-label="t('sudoRefresh.title')" :disabled="!connected" @click="sendSudoRefresh"><WorkbenchGlyph name="sudo-shield" /></button>
       <!-- 端口转发入口同属 SSH 专属：本地模式整体隐藏。 -->
       <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('forwards.title')" :aria-label="t('forwards.title')" :disabled="!connectionId" @click="forwardsOpen = true"><WorkbenchGlyph name="forwards" /></button>
-      <button v-if="!localUiMode" class="icon-button icon-cyan" :title="t('alertTriage.title')" :aria-label="t('alertTriage.title')" @click="openAlertTriage"><WorkbenchGlyph name="alert" /></button>
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 效率工具：快命令 → 批量发送 → Agent 模式 -->
       <QuickCommandsMenu

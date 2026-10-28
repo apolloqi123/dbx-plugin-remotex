@@ -34,7 +34,6 @@ const {
   RDP_RESOLUTION_PRESETS, actionLinksSettings, activeAppearanceThemeId, activeTransfers, addImportedSchemes,
   agentMode, agentModeBusy, agentModeHint, agentModeOpen, agentPromptCommand,
   agentPromptHead, agentPromptRemaining, agentPromptRemember, aiBridgeReady, aiSettingsState,
-  alertTriageBusy, alertTriageError, alertTriageOpen, alertTriagePayload, alertTriageResult,
   appearance, applePlatform, applyCommandHistoryLimit, applyTerminalAppearanceTheme, applyTerminalFontSettings,
   attrsInfo, attrsLoading, attrsMode, attrsOwnerDisplay, attrsSubmitting,
   attrsTarget, auditClearOpen, auditClearSubmitting, auditEntries, auditKindFilter,
@@ -48,7 +47,7 @@ const {
   confirmLocalTerminal, confirmRecordingClearAll, confirmRecordingDelete, confirmTransferHistoryClear, connectViaRdpDialog,
   connected, connection, connectionAuthMethodLabel, connectionId, connectionIdentity,
   connectionInfoOpen, connectionLatency, connectionLatencyBusy, connectionLatencyFailed, connectionReadOnly,
-  copySuggestions, createDirectory, createNewFile, ctxSearchEnginesText, customEditorCommand,
+  createDirectory, createNewFile, ctxSearchEnginesText, customEditorCommand,
   customEditorName, customEditorOpen, customEditorPattern, customEditorRemember, deleteHighlightRule,
   deleteQuickCommand, deleteSubmitting, deleteTarget, deleteTerminalAppearanceTheme, dismissWatchModified,
   dissolveQuickCommandGroupById, dockConnections, dockerPaneOpen, downloadConflictPrompt, downloadPrefsAdapter,
@@ -81,9 +80,9 @@ const {
   rememberHostKey, removeImportedScheme, renameQuickCommandGroupById, resetAiFixConsent,
   resolveAgentPrompt, resolveDownloadConflict, resolveDownloadPrompt, resolveDropUpload, resolveHostKey,
   resolvePasteConfirm, resolvePendingConfirmDialog, resolveRdpCertificate, resolveUploadDuplicate, resumableLoading,
-  resumableTasks, rightPanelView, runAlertTriage, saveAttributesPermissions,
+  resumableTasks, rightPanelView, saveAttributesPermissions,
   saveHighlightRule, savePreview, saveQuickCommand, saveTerminalAppearanceTheme, selectedEntries,
-  selectedShellInjectable, sendQuickCommand, pasteQuickCommand, sendSuggestionToTerminal, serialDialogOpen, serialUploadBusy, serialUploadDialogOpen,
+  selectedShellInjectable, sendQuickCommand, pasteQuickCommand, serialDialogOpen, serialUploadBusy, serialUploadDialogOpen,
   session, sessionMenuOpen, sessionMenuShellOpen, sessionMenuShellPickOpen, sessionPillText,
   sessionStatus, setGhostEnabled, setGhostTabAccept, setHighlightDisplayMode, setHistoryPanelEnabled,
   setLocalShellPref, setPaneDirection, setPromptHintsEnabled, setWallpaperImage, setWebglEnabled,
@@ -485,12 +484,6 @@ const {
       v-model:agentPromptCommand="agentPromptCommand"
       v-model:agentPromptRemember="agentPromptRemember"
       :agent-prompt-remaining="agentPromptRemaining"
-      v-model:alertTriageOpen="alertTriageOpen"
-      v-model:alert-triage-payload="alertTriagePayload"
-      :alert-triage-busy="alertTriageBusy"
-      :alert-triage-error="alertTriageError"
-      :alert-triage-result="alertTriageResult"
-      :has-session="!!session"
       :paste-confirm="pasteConfirm"
       :pending-confirm-dialog="pendingConfirmDialog"
       v-model:localOpenConfirmOpen="localOpenConfirmOpen"
@@ -499,9 +492,6 @@ const {
       @resolve-host-key="resolveHostKey"
       @resolve-rdp-certificate="resolveRdpCertificate"
       @resolve-agent-prompt="resolveAgentPrompt"
-      @run-alert-triage="runAlertTriage"
-      @send-suggestion="sendSuggestionToTerminal"
-      @copy-suggestions="copySuggestions"
       @resolve-paste-confirm="resolvePasteConfirm"
       @resolve-pending-confirm="resolvePendingConfirmDialog"
       @confirm-local-terminal="confirmLocalTerminal"

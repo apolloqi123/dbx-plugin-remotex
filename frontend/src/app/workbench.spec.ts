@@ -755,7 +755,7 @@ describe("connection info auth method label", () => {
 
 // ---------------------------------------------------------------------------
 // App.vue 弹层接入结构防线（round2）：UI 扫描六轮收敛后新增弹层已三次漏接入
-// 收口机制（highlight/agentMode 漏 Esc 链、alertTriage 漏焦点表 + Esc 链）。
+// 收口机制（highlight/agentMode 漏 Esc 链等）。
 // 本组用例从 App.vue 源码反向提取模板中所有 modal/popover 的守卫状态 ref，
 // 断言每个 ref 至少被 modalOpenStates（焦点管理）/ onDocumentKeydown（Esc
 // 关闭链）/ closeToolbarPopovers（互斥族）之一覆盖，防"新增弹层漏接入"复发。
@@ -886,7 +886,7 @@ describe("App.vue popover/modal wiring structural guard", () => {
     // settingsDialog 抽出独立组件后，settingsOpen/profilesOpen 的 Dialog 模板
     // 不在 App.vue 里，modal 清单只剩 App 内联弹窗；两个 open ref 仍在
     // modalOpenStates（Esc 链）里覆盖。
-    for (const ref of ["alertTriageOpen", "hostKeyPrompt", "folderPickerTarget"]) {
+    for (const ref of ["hostKeyPrompt", "folderPickerTarget"]) {
       expect(modalRefs, `modal 提取丢失 ${ref}`).toContain(ref);
     }
   });
@@ -899,7 +899,6 @@ describe("App.vue popover/modal wiring structural guard", () => {
 
   it("keeps every Dialog modal ref inside modalOpenStates (focus trap table)", () => {
     // modalOpenStates 驱动弹层焦点进入 / Tab 陷阱 / 触发元素归还（R3-P1-2）；
-    // alertTriage 曾因不在表内导致打开不聚焦、Esc 关不掉（round1 P1-1）。
     const missing = modalRefs.filter((ref) => !focusTableRefs.has(ref));
     expect(missing, `modal 未进 modalOpenStates（焦点管理失效）: ${missing.join(", ")}`).toEqual([]);
   });
@@ -932,10 +931,6 @@ describe("App.vue popover/modal wiring structural guard", () => {
     expect(appTemplateSurface.match(/@pointerdown\.stop/g)?.length ?? 0, "存在未阻止 pointerdown 的锚点按钮").toBeGreaterThanOrEqual(anchors.length);
   });
 
-  it("binds the alert triage payload two-way", () => {
-    // 告警排查 textarea 的输入必须回写 App；只传单向 prop 时「分析」按钮永久禁用。
-    expect(appTemplateSurface).toContain('v-model:alert-triage-payload="alertTriagePayload"');
-  });
 });
 
 // issue #93 防线：下载落盘不允许回退到插件 iframe 内的 <a download>。

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/dialog/index";
-import { Loader2, TriangleAlert, X } from "@lucide/vue";
-import { purposeKeyLabel, sanitizeTriagePayload, severityClass, type TriageResult } from "../../features/security/lib/alertTriage";
+import { TriangleAlert, X } from "@lucide/vue";
 import { rdpCertStatusKey } from "../../features/remote-desktop/lib/rdpFrame";
 import type { PasteConfirmation } from "../../features/terminal/lib/behavior/dangerousCommands";
 
-/** 会话/安全弹窗组：命令会话、主机密钥、RDP 证书、Agent 审批、告警排查、
+/** 会话/安全弹窗组：命令会话、主机密钥、RDP 证书、Agent 审批、
  *  粘贴确认、通用确认、本地终端确认。状态与决议 Promise 仍由 App 的
  *  composables 持有；弹窗壳走全局 modal 样式（reka portal）。
  *  拖入上传落点弹窗暂留 App：其输入框 ref 被 useUploadChain 直接 focus。 */
@@ -26,12 +25,6 @@ const props = defineProps<{
   agentPromptCommand: string;
   agentPromptRemember: boolean;
   agentPromptRemaining: number;
-  alertTriageOpen: boolean;
-  alertTriagePayload: string;
-  alertTriageBusy: boolean;
-  alertTriageError: string;
-  alertTriageResult: TriageResult | undefined;
-  hasSession: boolean;
   pasteConfirm: PasteConfirmation | undefined;
   pendingConfirmDialog: PendingConfirmView | null | undefined;
   localOpenConfirmOpen: boolean;
@@ -45,16 +38,11 @@ const emit = defineEmits<{
   (e: "update:rdpCertRemember", value: boolean): void;
   (e: "update:agentPromptCommand", value: string): void;
   (e: "update:agentPromptRemember", value: boolean): void;
-  (e: "update:alertTriageOpen", value: boolean): void;
-  (e: "update:alertTriagePayload", value: string): void;
   (e: "update:localOpenConfirmOpen", value: boolean): void;
   (e: "confirm-command-session-tab"): void;
   (e: "resolve-host-key", accept: boolean): void;
   (e: "resolve-rdp-certificate", accept: boolean): void;
   (e: "resolve-agent-prompt", decision: "approve" | "deny"): void;
-  (e: "run-alert-triage"): void;
-  (e: "send-suggestion", command: string): void;
-  (e: "copy-suggestions"): void;
   (e: "resolve-paste-confirm", accepted: boolean): void;
   (e: "resolve-pending-confirm", accepted: boolean): void;
   (e: "confirm-local-terminal"): void;
@@ -137,42 +125,6 @@ const t = props.t;
         <p class="muted agent-prompt-countdown">{{ t("agentPromptTimeoutHint", { seconds: Math.ceil(agentPromptRemaining) }) }}</p>
         <footer><button @click="emit('resolve-agent-prompt', 'deny')">{{ t("agentPromptDeny") }}</button><button class="primary-button" @click="emit('resolve-agent-prompt', 'approve')">{{ t("agentPromptApprove") }}</button></footer>
         </template>
-      </DialogContent>
-    </Dialog>
-    <!-- 告警排查：异构告警 → 结构化 + 分类 + 只读诊断命令清单 -->
-    <Dialog :open="alertTriageOpen" @update:open="(open) => { if (!open) emit('update:alertTriageOpen', false); }">
-      <DialogContent class="modal alert-triage-modal" @escape-key-down.prevent>
-        <header>
-          <DialogTitle>{{ t("alertTriage.title") }}</DialogTitle>
-          <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:alertTriageOpen', false)"><X /></button>
-        </header>
-        <p class="muted alert-triage-hint">{{ t("alertTriage.hint") }}</p>
-        <textarea :value="alertTriagePayload" @input="emit('update:alertTriagePayload', ($event.target as HTMLTextAreaElement).value)" class="mono alert-triage-payload" rows="6" :placeholder="t('alertTriage.placeholder')" :disabled="alertTriageBusy" spellcheck="false" autofocus />
-        <p v-if="alertTriageError" class="task-error" role="alert">{{ alertTriageError }}</p>
-        <footer class="alert-triage-actions">
-          <button class="primary-button" :disabled="alertTriageBusy || !sanitizeTriagePayload(alertTriagePayload)" @click="emit('run-alert-triage')">{{ t("alertTriage.analyze") }}</button>
-        </footer>
-        <div v-if="alertTriageBusy" class="empty compact" role="status"><Loader2 class="spinning" />{{ t("loading") }}</div>
-        <div v-else-if="!alertTriageResult && !alertTriageError" class="empty compact">{{ t("alertTriage.emptyResult") }}</div>
-        <div v-else-if="alertTriageResult" class="alert-triage-result">
-          <div class="alert-triage-summary">
-            <span class="alert-severity-badge" :class="severityClass(alertTriageResult.normalized.severity)">{{ t(`alertTriage.severity.${severityClass(alertTriageResult.normalized.severity)}`) }}</span>
-            <span class="alert-category">{{ t(`alertTriage.category.${alertTriageResult.category}`) }}</span>
-            <strong v-if="alertTriageResult.normalized.title" class="alert-title">{{ alertTriageResult.normalized.title }}</strong>
-          </div>
-          <p v-if="alertTriageResult.normalized.message" class="muted alert-message mono">{{ alertTriageResult.normalized.message }}</p>
-          <p v-if="!alertTriageResult.suggestions.length" class="muted">{{ t("alertTriage.emptyResult") }}</p>
-          <ul v-else class="alert-suggestion-list">
-            <li v-for="suggestion in alertTriageResult.suggestions" :key="suggestion.command" class="alert-suggestion-row">
-              <code class="mono alert-suggestion-command">{{ suggestion.command }}</code>
-              <span class="alert-purpose muted">{{ purposeKeyLabel(suggestion.purposeKey, t) }}</span>
-              <button :disabled="!hasSession" :title="!hasSession ? t('alertTriage.noSession') : ''" :aria-label="!hasSession ? t('alertTriage.noSession') : ''" @click="emit('send-suggestion', suggestion.command)">{{ t("alertTriage.sendToTerminal") }}</button>
-            </li>
-          </ul>
-          <footer v-if="alertTriageResult.suggestions.length" class="alert-triage-actions">
-            <button @click="emit('copy-suggestions')">{{ t("alertTriage.copyAll") }}</button>
-          </footer>
-        </div>
       </DialogContent>
     </Dialog>
     <Dialog :open="!!pasteConfirm" @update:open="(open) => { if (!open) emit('resolve-paste-confirm', false); }">

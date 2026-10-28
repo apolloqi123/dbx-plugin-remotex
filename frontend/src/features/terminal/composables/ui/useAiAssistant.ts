@@ -127,20 +127,6 @@ export function useAiAssistant(options: {
     void clearAiRecommendations(window.dbxPlugin).catch(() => undefined);
   }
 
-  /** 本地白名单分诊（ssh/alert/triage 既有 RPC，best-effort）：category +
-   *  白名单建议命令作 prompt 提示位，帮 LLM 收窄误诊面；失败静默跳过。 */
-  async function aiFixTriageHint(output: string): Promise<string | undefined> {
-    if (!output.trim()) return undefined;
-    try {
-      const view = await window.dbxPlugin.invoke<{ category?: string; suggestions?: Array<{ command?: string }> }>("ssh/alert/triage", { payload: output });
-      const commands = (view?.suggestions ?? []).map((item) => item?.command).filter((c): c is string => typeof c === "string" && c.length > 0).slice(0, 3);
-      if (!view?.category && !commands.length) return undefined;
-      return [`category=${view?.category ?? "unknown"}`, ...(commands.length ? [`whitelisted suggestions: ${commands.join("; ")}`] : [])].join(", ");
-    } catch {
-      return undefined;
-    }
-  }
-
   /** 修复条发起：优先直连生成（aiCompletion 能力位，桌面运行时）——列模型 →
    *  挑默认 → generateText → **用户显式确认后回填输入行**（不回车不执行，
    *  红线不变）；直连不可用/失败/取消回退面板会话（ask/agent 由设置 opt-in）。
@@ -163,8 +149,7 @@ export function useAiAssistant(options: {
       try {
         const model = pickDefaultAiModel(await listAiModels(api));
         if (!model) throw new Error("no configured ai model");
-        const triageHint = await aiFixTriageHint(bar.output);
-        const prompt = buildAiFixPrompt({ command: bar.command, exitCode: bar.exitCode, output: bar.output, triageHint });
+        const prompt = buildAiFixPrompt({ command: bar.command, exitCode: bar.exitCode, output: bar.output });
         const result = (await generateAiText(api, { configId: model.configId, model: model.model, prompt })).trim();
         // Warp 同款默认插入（2026-10-02 体验反馈，与 `#` 路径一致）：生成即回填
         // 光标处，不弹回填确认——回填不等于执行，回车权仍在用户；Why 行走通知。

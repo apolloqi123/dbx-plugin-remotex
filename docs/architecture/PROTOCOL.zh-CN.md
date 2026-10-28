@@ -76,7 +76,6 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `ssh/forward/list`、`ssh/forward/start`、`ssh/forward/stop` | 用户级端口映射（ssh(1) -L/-R/-D，见「端口映射」节）：`list` 按 `{connectionId?}`/`{sessionId?}` 过滤返回 `{forwards: [row]}`；`start` `{sessionId?\|connectionId?, kind: "local"\|"remote"\|"dynamic", listenHost?, listenPort, targetHost?, targetPort?}`（至少一个归属 id；`dynamic` 无固定目标，省略 target 字段；`listenHost` 缺省 127.0.0.1；`listenPort: 0` 自动挑选，`boundPort` 回报实际端口）→ `{forward: row}`；`stop` `{id}` → `{success, forward}`，未知 id 报错。独立映射的 `sessionId` 为 `""`。row 字段 camelCase：`id/sessionId/connectionId/kind/listenHost/listenPort/boundPort/targetHost/targetPort/state("starting"\|"active"\|"stopped"\|"error")/error?/connectionsTotal/connectionsActive/bytesUp/bytesDown`。状态迁移发 `ssh/forward/state`（notify）`{id, sessionId, connectionId, state, error?}`。管理界面的端口映射预设按连接保存在宿主 `host.storage` 键 `ssh-tunnel-profiles`，不改变运行态 RPC 及其清理语义。 |
 | `contextMenu/resolve/manage-tunnels`、`contextMenu/manage-tunnels` | DBX 动态连接右键菜单（需宿主 ≥0.6.30 的 `dynamic` 贡献点）。resolve 接收 `{connection:{id,dbType,name,database},locale?,ownerPluginId?}`；仅当 `ownerPluginId` 为 `io.dbx.sshx` 时，从本插件数据目录的 `ui-storage.json` 只读现有 `ssh-tunnel-profiles`，结合 `ssh/forward/list` 返回一层 `{items:[{label:"Port forwards",children:[...]}]}`，其他数据源返回空菜单。无预设时仅有“管理端口映射”，有未运行预设时显示“启用已保存端口映射”，有运行映射时显示“停止所有端口映射”，每条预设按当前状态显示启动/停止和勾选。宿主每级菜单限制 40 项，右键最多列出前 36 条预设，其余仍可在管理页操作。点击 invoke 子项时宿主发送原连接上下文加 `itemId`（`start-all`、`stop-all` 或 `toggle/<profileId>`）；后端按连接范围操作，返回 `{message}` 供宿主提示。启动动作声明 `reopenConnectionOnMissing:true`，若 sidecar 尚无连接配置，宿主按用户点击触发的连接恢复后重试一次。管理项使用 `open-workbench` 加 `presentation:"dialog"`，由宿主弹框打开，无需终端或新标签页。 |
 | `ssh/agent/resolve` | 处理 AI 终端同步执行的命令审批（按 `challengeId`，一次性；approve 可携 `command` 编辑后原文与 `remember: true` 记住标记，见「审批记忆」节） |
-| `ssh/alert/triage` | 告警分诊：异构告警 JSON/纯文本 → 结构化 + 分类 + 只读诊断命令清单（无需连接，从不执行；见「告警分诊」节） |
 | `ssh/audit/list` | 执行审计台账只读回放：`{limit?, beforeTs?}` → `{entries, truncated}`（见「执行审计」节） |
 | `ssh/audit/clear` | 清空执行审计台账（工作台设置「审计日志」按钮）：无参 → `{success: true}`。截断活动 `audit-log.jsonl` 并删除轮转 `.1` 代——**保留文件本体**（并发 O_APPEND 写入端不见文件消失），清空后新审计自然开启新代 |
 | `ssh/agent/mode/get` | 连接级 AI 终端模式探针（供宿主 MCP 桥转发前判定路由）：`{connectionId}` → `{agentTerminalMode: "off"\|"auto"\|"strict", hasTerminalSession: bool}`；未知连接降级为 `off` + `false` 而非报错，宿主侧任何失败同样回落静默路径 |
@@ -260,22 +259,6 @@ sidecar）记账，不双计。
 
 - `ssh/audit/list`：`{limit?: 1–500 缺省 100, beforeTs?: ms}` → `{entries: [行…],
   truncated}`，文件序（旧→新）取末尾 limit 条，只读。
-
-## 告警分诊（alert triage）
-
-`ssh/alert/triage {payload: string}`：把异构告警体（JSON 文本任意 schema，或纯文本）
-标准化为固定结构并给出**只读诊断命令清单**。兼容语义对齐 openocta `/hooks/alert`：
-JSON 解析失败或 `message` 为空时整包文本作为 message；`data` 字段（object）原样
-序列化进 `dataJson`。分类为双语关键词计分（`cpu|memory|disk|inode|network|oom|
-service|generic`，同分按固定序、全零落 generic）。响应：
-`{normalized: {alertId, title, message, severity, source, dataJson}, category,
-suggestions: [{command, purposeKey}]}`（字段钳制：title/message ≤2 KiB、dataJson
-≤16 KiB）。硬约束：playbook 每条命令必须过 `mcp_safety` 只读白名单（单测钉死），
-无重定向/`$()`/`sudo`——建议命令在只读连接上可直接经既有 exec 门执行。该方法是
-纯分诊、无需连接、从不执行命令；执行由调用方经 `ssh_exec` 等门禁完成。工作台
-工具栏「告警排查」（Siren 图标）弹窗提供粘贴→分析→逐条发送到终端/全部复制。
-MCP 工具面同名工具 `ssh_alert_triage` 已随 #203 工具瘦身移出（分类逻辑仍经本
-sidecar 方法提供）。
 
 ## Quick Sudo 全局配置
 

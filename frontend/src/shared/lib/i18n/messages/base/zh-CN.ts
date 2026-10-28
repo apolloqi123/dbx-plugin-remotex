@@ -121,7 +121,6 @@ const messages = {
       error: { targetHost: "目标地址必须是合法的 IPv4、IPv6 或主机名。", listenHost: "监听地址必须是合法的 IPv4、IPv6 或主机名。", port: "端口必须是 0-65535 的整数（0 = 自动）。", conflict: "监听端点 {route} 已有映射（{existing}）。", noSession: "请先建立并保持 SSH 会话，再添加端口映射。" },
     },
     settingsLoadFailed: "SSH 设置加载失败，请重试后再保存。",
-    alertTriageLoadFailed: "告警分析失败：{error}",
     open: "打开",
     notification: "通知",
     connecting: "正在连接 SSH...",

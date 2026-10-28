@@ -123,7 +123,6 @@ const messages = {
       error: { targetHost: "L'host di destinazione deve essere IPv4, IPv6 o un nome host valido.", listenHost: "L'host di ascolto deve essere IPv4, IPv6 o un nome host valido.", port: "Le porte devono essere interi tra 0 e 65535 (0 = auto).", conflict: "L'endpoint di ascolto {route} è già inoltrato ({existing}).", noSession: "Stabilire e mantenere una sessione SSH prima di aggiungere una mappatura delle porte." },
     },
     settingsLoadFailed: "Impossibile caricare le impostazioni SSH. Riprova prima di salvare.",
-    alertTriageLoadFailed: "Impossibile analizzare questo avviso: {error}",
     open: "Apri",
     notification: "Notifica",
     connecting: "Connessione SSH...",

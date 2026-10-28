@@ -10,13 +10,6 @@ impl Plugin {
         _emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         match method {
-            "ssh/alert/triage" => {
-                let payload = required_string(&params, "payload")?;
-                Ok(crate::features::security::alerts::triage_view(
-                    &crate::features::security::alerts::triage(payload),
-                ))
-            }
-
             "ssh/audit/list" => {
                 let limit = params
                     .get("limit")

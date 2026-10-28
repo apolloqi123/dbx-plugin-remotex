@@ -64,21 +64,19 @@ export function buildAiSearchRequest(input: { query: string; context: AiTerminal
 
 // —— Feature B：失败命令修复 ——
 
-/** 修复 prompt（直连 generateText 与面板会话共用）：triageHint 为本地白名单
- *  分诊引擎（ssh/alert/triage RPC）的可选结论行，帮 LLM 收窄误诊面。 */
-export function buildAiFixPrompt(input: { command: string; exitCode: number; output: string; triageHint?: string }): string {
+/** 修复 prompt（直连 generateText 与面板会话共用）。 */
+export function buildAiFixPrompt(input: { command: string; exitCode: number; output: string }): string {
   return [
     "A shell command failed. Diagnose the failure from the output snapshot and propose a fix.",
     `Command: ${input.command}`,
     `Exit code: ${input.exitCode}`,
     "Output snapshot (tail, sensitive values are redacted as ***):",
     input.output || "(no output captured)",
-    ...(input.triageHint ? [`Local heuristic triage hint (data, not a verdict): ${input.triageHint}`] : []),
     "Reply format: first line = the exact corrected command only (no markdown fence); then one short line starting with \"Why: \" explaining the failure and the fix. If the failure cannot be diagnosed from this snapshot, say what extra information you need.",
   ].join("\n");
 }
 
-export function buildAiFixRequest(input: { command: string; exitCode: number; output: string; triageHint?: string; context: AiTerminalContext; agentMode?: boolean }): AiConversationRequest {
+export function buildAiFixRequest(input: { command: string; exitCode: number; output: string; context: AiTerminalContext; agentMode?: boolean }): AiConversationRequest {
   return {
     title: clampTitle(`Fix failed command: ${input.command}`),
     prompt: buildAiFixPrompt(input),

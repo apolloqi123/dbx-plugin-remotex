@@ -123,7 +123,6 @@ const messages = {
       error: { targetHost: "転送先ホストは有効な IPv4・IPv6・ホスト名で指定してください。", listenHost: "待ち受けホストは有効な IPv4・IPv6・ホスト名で指定してください。", port: "ポートは 0〜65535 の整数で指定してください（0 = 自動）。", conflict: "待ち受けエンドポイント {route} は既に転送に使われています（{existing}）。", noSession: "ポート転送を追加する前に、SSH セッションを確立して保持してください。" },
     },
     settingsLoadFailed: "SSH 設定を読み込めませんでした。保存する前に再試行してください。",
-    alertTriageLoadFailed: "このアラートを分析できませんでした：{error}",
     open: "開く",
     notification: "通知",
     connecting: "SSH に接続中...",

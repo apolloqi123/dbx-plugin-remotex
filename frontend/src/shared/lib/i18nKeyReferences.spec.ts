@@ -24,8 +24,6 @@ const CALL_REFERENCE = /(?<![\w$])(?:\$t|t|translate|workbenchMessage)\s*\(\s*([
  * A generic `*Key` / `*Keys` pattern was tried first and matched a lot of things
  * that are emphatically not translations, so the names are listed instead:
  *   - `shiftKey` / `ctrlKey` / `altKey` / `metaKey` — DOM KeyboardEvent flags
- *   - `purposeKey` — a stable backend playbook key, mapped to
- *     `alertTriage.purpose.<key>` by `lib/alertTriage.ts` before it reaches `t`
  *   - `hostKey` / `authMethodPrivateKey` — SSH domain concepts, not copy
  *   - `hotkey` — a keybinding value that merely happens to end in "key"
  */

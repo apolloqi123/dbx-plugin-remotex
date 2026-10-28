@@ -123,7 +123,6 @@ const messages = {
       error: { targetHost: "El host de destino debe ser IPv4, IPv6 o un nombre de host válido.", listenHost: "El host de escucha debe ser IPv4, IPv6 o un nombre de host válido.", port: "Los puertos deben ser enteros entre 0 y 65535 (0 = auto).", conflict: "El punto de escucha {route} ya está redirigido ({existing}).", noSession: "Establezca y mantenga una sesión SSH antes de añadir una asignación de puertos." },
     },
     settingsLoadFailed: "No se pudo cargar la configuración SSH. Vuelve a intentarlo antes de guardar.",
-    alertTriageLoadFailed: "No se pudo analizar esta alerta: {error}",
     open: "Abrir",
     notification: "Notificación",
     connecting: "Conectando SSH...",

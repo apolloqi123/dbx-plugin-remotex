@@ -123,7 +123,6 @@ const messages = {
       error: { targetHost: "Target host must be a valid IPv4, IPv6 or hostname.", listenHost: "Listen host must be a valid IPv4, IPv6 or hostname.", port: "Ports must be integers within 0-65535 (0 = auto).", conflict: "Listen endpoint {route} is already forwarded ({existing}).", noSession: "Establish and keep an SSH session before adding a port mapping." },
     },
     settingsLoadFailed: "Could not load SSH settings. Retry before saving.",
-    alertTriageLoadFailed: "Could not analyze this alert: {error}",
     open: "Open",
     notification: "Notification",
     connecting: "Connecting SSH...",

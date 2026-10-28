@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TriageResult } from "../features/security/lib/alertTriage";
 import { WORKBENCH_ID } from "../shared/lib/pluginIds";
 
 // mockDbxHost 是可视化夹具（mock.html 的宿主模拟器）。这里的用例锁定两个
@@ -126,39 +125,6 @@ describe("mockDbxHost fixture", () => {
     const tmp = (await plugin.invoke("sftp/list", { path: "/tmp" })) as { entries: Array<{ name: string }> };
     expect(home.entries.map((entry) => entry.name)).not.toContain("server.log");
     expect(tmp.entries.map((entry) => entry.name)).toContain("server.log");
-  });
-
-  // round2：锁定 ssh/alert/triage mock 的契约形状（镜像后端 alert_triage::
-  // TriageResult：normalized/category/suggestions + purposeKey），让告警排查
-  // 弹窗在 mock.html 可无手填走查（P1-1 焦点/Esc 修复的浏览器级验证面）。
-  it("ssh/alert/triage mirrors the sidecar TriageResult shape for JSON and plain-text payloads", async () => {
-    const plugin = await loadMock("");
-    const payloadText = JSON.stringify({ alertId: "a-1", title: "Disk pressure", severity: "Critical", source: "Node", data: { used: "87%" } });
-    const json = (await plugin.invoke("ssh/alert/triage", { payload: payloadText })) as TriageResult;
-    expect(json.category).toBe("disk");
-    // severity/source 小写化；message 缺失时回退整段 payload（后端 openocta
-    // 兼容语义，不因 title 存在而变空）；data 对象转 pretty JSON。
-    expect(json.normalized.alertId).toBe("a-1");
-    expect(json.normalized.title).toBe("Disk pressure");
-    expect(json.normalized.message).toBe(payloadText);
-    expect(json.normalized.severity).toBe("critical");
-    expect(json.normalized.source).toBe("node");
-    expect(json.normalized.dataJson).toContain('"used"');
-    // disk 分类命中后端 Disk playbook 的同款命令清单。
-    expect(json.suggestions).toEqual([
-      { command: "df -h", purposeKey: "diskUsage" },
-      { command: "du -x -d 1 / | sort -rh | head -15", purposeKey: "diskDu" },
-    ]);
-
-    const plain = (await plugin.invoke("ssh/alert/triage", { payload: "  kernel: oom killer triggered on pid 4211  " })) as TriageResult;
-    expect(plain.category).toBe("oom");
-    // 纯文本告警：trim 后整段作为 message，severity 兜底 unknown。
-    expect(plain.normalized.message).toBe("kernel: oom killer triggered on pid 4211");
-    expect(plain.normalized.severity).toBe("unknown");
-    for (const suggestion of plain.suggestions) {
-      expect(typeof suggestion.command).toBe("string");
-      expect(suggestion.purposeKey.length).toBeGreaterThan(0);
-    }
   });
 
   // X-P2/P5 对齐真桥：无 onLocaleChange 订阅（真桥 API 面不存在），locale 经

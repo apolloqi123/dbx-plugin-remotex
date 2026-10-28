@@ -109,7 +109,6 @@ export interface WorkbenchToolbarActions
   adjustTerminalZoom(delta: number): void;
   reconnectNow(): void;
   sendSudoRefresh(): void;
-  openAlertTriage(): void;
   toggleDockerPane(): void;
   toggleBatchBar(): void;
   toggleAgentModeMenu(): void;

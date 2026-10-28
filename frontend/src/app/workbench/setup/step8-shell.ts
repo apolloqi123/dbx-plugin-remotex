@@ -23,7 +23,7 @@ type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & Instal
 
 export function installWorkbenchShell(deps: Deps) {
   const {
-  agentModeOpen, agentPromptHead, agentPromptQueue, agentRunning, alertTriageOpen, appearance,
+  agentModeOpen, agentPromptHead, agentPromptQueue, agentRunning, appearance,
   applyChosenDirAsDefault, askDownloadTarget, attrsMode, attrsTarget, auditClearOpen, auditClearSubmitting,
   auditOpen, batchDeleteOpen, batchDeleteSubmitting, bookmarkSaveOpen, canWrite, clearSftpDetailCache,
   closeAttributes, closeDockerPane, closePreview, closeRightPanel, commandHistory,
@@ -424,7 +424,6 @@ export function installWorkbenchShell(deps: Deps) {
     auditOpen,
     auditClearOpen,
     settingsOpen,
-    alertTriageOpen,
     hostKeyPrompt,
     agentPromptHead,
     spawnSessionDialogOpen,

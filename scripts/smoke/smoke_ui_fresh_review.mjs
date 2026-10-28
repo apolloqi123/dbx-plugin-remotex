@@ -105,42 +105,6 @@ try {
   console.log("PASS settings: loading / failure block writes; retry restores editing and saving");
 
   await reload();
-  await page.locator('button[title="Alert triage"]').click();
-  const payload = page.locator(".alert-triage-payload");
-  const analyze = page.locator(".alert-triage-modal .primary-button");
-  await payload.fill("Disk space is full");
-  await analyze.click();
-  await page.locator(".alert-triage-result").waitFor();
-  await page.evaluate(() => {
-    const base = window.dbxPlugin.invoke;
-    window.__freshReview = { pending: true };
-    window.dbxPlugin.invoke = (method, ...args) => {
-      if (method === "ssh/alert/triage" && window.__freshReview.pending) {
-        return new Promise((_resolve, reject) => { window.__freshReview.reject = reject; });
-      }
-      return base(method, ...args);
-    };
-  });
-  await payload.fill("CPU load is high");
-  assert.equal(await page.locator(".alert-triage-result").count(), 0, "editing invalidates the old result");
-  await analyze.click();
-  await page.locator('.alert-triage-modal [role="status"]').waitFor();
-  assert.equal(await payload.isDisabled(), true, "in-flight payload stays paired with its response");
-  await page.evaluate(() => window.__freshReview.reject(new Error("fixture analysis failure")));
-  await page.locator('.alert-triage-modal [role="alert"]').waitFor();
-  assert.equal(await page.locator(".alert-triage-result").count(), 0);
-  assert.match(await page.locator('.alert-triage-modal [role="alert"]').innerText(), /Could not analyze this alert/);
-  assert.equal(await payload.isDisabled(), false);
-  assert.equal(await analyze.isDisabled(), false);
-  await page.screenshot({ path: `${shots}/round4-alert-failed.png` });
-  await page.evaluate(() => { window.__freshReview.pending = false; });
-  await analyze.click();
-  await page.locator(".alert-triage-result").waitFor();
-  assert.equal(await page.locator(".alert-category").innerText(), "CPU");
-  assert.equal(await page.locator('.alert-triage-modal [role="alert"]').count(), 0);
-  console.log("PASS alerts: editing clears stale results; pending / failure / retry stay in the dialog");
-
-  await reload();
   // 粘贴组合键（mod+V）keydown 不 preventDefault 是有意设计：放行浏览器原生
   // paste 事件（自带真实 clipboardData），由 terminalHost 捕获拦截器统一走风险
   // 确认（App.vue interceptTerminalPaste）；keydown 只 stopPropagation + 让 xterm
