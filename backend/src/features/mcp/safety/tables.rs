@@ -114,32 +114,72 @@ pub(crate) const SUBCOMMAND_VERBS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "docker",
-        &[
-            "ps", "images", "stats", "version", "info", "logs", "inspect", "top", "port", "events",
-            "search",
-        ],
-    ),
-    // `git` has its own shape-sensitive rules: see `git_segment_risk`.
-    (
-        "kubectl",
-        &[
-            "get",
-            "describe",
-            "top",
-            "logs",
-            "version",
-            "explain",
-            "api-resources",
-            "api-versions",
-        ],
-    ),
-    (
         "ip",
         &[
             "addr", "a", "address", "l", "link", "route", "r", "rule", "neigh", "n",
         ],
     ),
+];
+
+/// Top-level `docker <sub>` forms that only inspect (no object command).
+pub(crate) const DOCKER_READ_SUBCOMMANDS: &[&str] = &[
+    "ps", "images", "stats", "version", "info", "logs", "inspect", "top", "port", "events",
+    "search",
+];
+
+/// `docker <object> <sub>` inspection forms. Mutating object commands
+/// (create/rm/update/restart/deploy/prune/…) stay out on purpose.
+pub(crate) const DOCKER_READ_OBJECTS: &[(&str, &[&str])] = &[
+    (
+        "container",
+        &["ls", "ps", "inspect", "logs", "top", "port", "stats"],
+    ),
+    ("image", &["ls", "images", "inspect", "history"]),
+    ("network", &["ls", "inspect"]),
+    ("node", &["ls", "ps", "inspect", "top"]),
+    ("service", &["ls", "ps", "inspect", "logs", "top"]),
+    ("stack", &["ls", "ps", "services", "config"]),
+    ("volume", &["ls", "inspect"]),
+    ("system", &["df", "info", "events"]),
+    ("compose", &["ps", "logs", "config", "ls"]),
+    ("context", &["ls", "show"]),
+];
+
+/// Top-level `kubectl <sub>` forms that only inspect.
+pub(crate) const KUBECTL_READ_SUBCOMMANDS: &[&str] = &[
+    "get",
+    "describe",
+    "top",
+    "logs",
+    "version",
+    "explain",
+    "api-resources",
+    "api-versions",
+    "cluster-info",
+    "events",
+    "wait",
+];
+
+/// `kubectl <object> <sub>` inspection forms; mutating object commands
+/// (use-context, rollout undo/restart, apply, create, delete, …) stay out.
+pub(crate) const KUBECTL_READ_OBJECTS: &[(&str, &[&str])] = &[
+    (
+        "config",
+        &["view", "get-contexts", "current-context", "get-clusters"],
+    ),
+    ("auth", &["can-i", "whoami"]),
+    ("rollout", &["status", "history"]),
+];
+
+/// Flags whose following token is a value (namespace, output, filter, …).
+/// Used only to find the real subcommand; unknown flags make the lookup
+/// conservative (the next token is treated as the subcommand → not read-only).
+pub(crate) const COMMAND_VALUE_FLAGS: &[&str] = &[
+    "-n", "--namespace", "-c", "--container", "-o", "--output", "-l", "--selector", "-f",
+    "--filter", "--field-selector", "--sort-by", "--tail", "--since", "--until", "--name",
+    "--format", "--context", "-H", "--host", "--config", "--log-level", "--kubeconfig",
+    "--cluster", "--user", "--server", "--token", "--as", "--as-group", "--request-timeout",
+    "--chunk-size",
 ];
 
 /// git inspection subcommands; `branch`/`tag`/`remote`/`reflog` are further

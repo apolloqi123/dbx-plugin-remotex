@@ -8,7 +8,6 @@ impl McpState {
         name: &str,
         command: &str,
         connection_id: &str,
-        explicit: bool,
         timeout_secs: Option<Duration>,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
@@ -23,8 +22,11 @@ impl McpState {
             agent_terminal::CommandRisk::Elevated
         } else {
             match mcp_safety::assess_command(command) {
-                mcp_safety::CommandRisk::Destructive(_) => agent_terminal::CommandRisk::Elevated,
-                _ => agent_terminal::CommandRisk::Low,
+                mcp_safety::CommandRisk::Destructive(_) => {
+                    agent_terminal::CommandRisk::Elevated
+                }
+                mcp_safety::CommandRisk::ReadOnly => agent_terminal::CommandRisk::ReadOnly,
+                mcp_safety::CommandRisk::Unknown => agent_terminal::CommandRisk::Mutating,
             }
         };
         let timeout = timeout_secs.map(|duration| duration.as_secs());
@@ -62,12 +64,15 @@ impl McpState {
         // settings view (sudoers-style token rules on the exact typed
         // command); the disaster gate stays last — it lives inside
         // `exec_in_terminal` and is never bypassed by memory (D2).
-        let remembered = agent_approvals::matches(
-            &agent_approvals::load_store(&self.runtime.data_dir()),
-            connection_id,
+        let remembered = agent_terminal::remembered_bypasses_prompt(
             &command,
+            agent_approvals::matches(
+                &agent_approvals::load_store(&self.runtime.data_dir()),
+                connection_id,
+                &command,
+            ),
         );
-        match agent_terminal::decide_with_memory(mode, risk, explicit, remembered) {
+        match agent_terminal::decide_with_memory(mode, risk, remembered) {
             agent_terminal::RoutingDecision::Run => {
                 self.runtime
                     .exec_in_terminal(&session_id, name, &command, risk, timeout, emitter)

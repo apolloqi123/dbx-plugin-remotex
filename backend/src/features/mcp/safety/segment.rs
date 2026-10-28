@@ -47,6 +47,78 @@ pub(crate) fn git_segment_risk(args: &[String], sensitive: bool) -> CommandRisk 
     CommandRisk::ReadOnly
 }
 
+/// Docker inspection forms, including nested object commands
+/// (`docker service ls`, `docker node ps`, …). Any object subcommand not in
+/// the inspection list (create/rm/update/restart/deploy/prune/…) stays
+/// `Unknown` and therefore requires approval in graded mode.
+pub(crate) fn docker_segment_risk(args: &[String], sensitive: bool) -> CommandRisk {
+    command_read_risk(
+        args,
+        sensitive,
+        DOCKER_READ_SUBCOMMANDS,
+        DOCKER_READ_OBJECTS,
+    )
+}
+
+/// Kubernetes inspection forms (`kubectl -n prod get pods`,
+/// `kubectl config view`, `kubectl auth can-i`, …). Mutating verbs stay out.
+pub(crate) fn kubectl_segment_risk(args: &[String], sensitive: bool) -> CommandRisk {
+    command_read_risk(
+        args,
+        sensitive,
+        KUBECTL_READ_SUBCOMMANDS,
+        KUBECTL_READ_OBJECTS,
+    )
+}
+
+/// Shared `verb [object] sub` inspection matcher. Flags and their values are
+/// skipped before the positional lookup so `kubectl -n prod get pods` /
+/// `docker --context prod ps` still classify as reads.
+fn command_read_risk(
+    args: &[String],
+    sensitive: bool,
+    top_level: &[&str],
+    objects: &[(&str, &[&str])],
+) -> CommandRisk {
+    if sensitive {
+        return CommandRisk::Unknown;
+    }
+    let Some(position) = first_positional(args) else {
+        return CommandRisk::Unknown;
+    };
+    let verb = args[position].as_str();
+    if top_level.contains(&verb) {
+        return CommandRisk::ReadOnly;
+    }
+    let Some((_, allowed)) = objects.iter().find(|(object, _)| *object == verb) else {
+        return CommandRisk::Unknown;
+    };
+    let Some(offset) = first_positional(&args[position + 1..]) else {
+        return CommandRisk::Unknown;
+    };
+    let sub = args[position + 1 + offset].as_str();
+    if allowed.contains(&sub) {
+        CommandRisk::ReadOnly
+    } else {
+        CommandRisk::Unknown
+    }
+}
+
+/// First positional token, skipping flags and the values they consume.
+fn first_positional(args: &[String]) -> Option<usize> {
+    let mut index = 0usize;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if arg.starts_with('-') {
+            let takes_value = COMMAND_VALUE_FLAGS.contains(&arg);
+            index += if takes_value && !arg.contains('=') { 2 } else { 1 };
+            continue;
+        }
+        return Some(index);
+    }
+    None
+}
+
 /// Tokenizes a segment, strips leading `FOO=bar` assignments, and unwraps
 /// prefix wrappers (`timeout 10 df`, `nohup ./job`, `env X=1 cmd`, ...) so
 /// the inner command is what gets assessed.

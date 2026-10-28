@@ -315,10 +315,11 @@ confirm fail-closed 与 scope fail-closed（含 list 在作用域下可用）。
 
 ## AI 终端同步执行（runInTerminal）
 
-`ssh_exec` / `ssh_exec_sudo` 均接受可选 `runInTerminal: boolean`，把命令路由到
-**用户当前打开的终端 UI**（工作台 PTY 交互 shell）执行——命令回显在终端、输出
-实时可见、人可随时打字或 Ctrl+C 介入，AI 拿到录制捕获的输出文本
+`ssh_exec` / `ssh_exec_sudo` 在连接级 `agentTerminalMode` 为 `auto` / `strict` 时把
+命令路由到**用户当前打开的终端 UI**（工作台 PTY 交互 shell）执行——命令回显在
+终端、输出实时可见、人可随时打字或 Ctrl+C 介入，AI 拿到录制捕获的输出文本
 （`{output, exitCode: null, mode: "terminal", incomplete, interrupted}`）。
+`runInTerminal` 参数仅为兼容保留，不再决定路由或审批。
 
 - **stdio 方式亦可转发**：stdio 模式传 `runInTerminal: true` 时，sidecar 通过 DBX
   app 的本地 TCP 桥（`<app-data>/mcp-bridge-port`，可用 `DBX_APP_DATA_DIR` 重定向；
@@ -336,23 +337,25 @@ confirm fail-closed 与 scope fail-closed（含 list 在作用域下可用）。
 - 连接级默认行为由工作台设置 `agentTerminalMode` 决定（`off` 默认不路由 /
   `auto` 分级审批 / `strict` 每条必审，协议见 PROTOCOL「AI 终端同步执行」）。
   **连接模式是权威开关**：`off` 下即使 agent 显式传 `runInTerminal: true` 也保持
-  静默隐藏通道，命令不会注入/回显到终端；只有非 `off` 模式下 `runInTerminal`
-  才生效（`true` 强制终端路径、`false` 强制隐藏、缺省按连接模式）。
+  静默隐藏通道；`auto`/`strict` 下全部命令经终端路由。`runInTerminal` 仅为兼容
+  保留的参数——不能在 off 下打开终端，也不能在 auto/strict 下强制隐藏来绕过审批。
   **终端工具栏快速开关**：工作台按钮行
   的「终端 MCP 模式」弹出层（`Bot` 图标，非 `off` 高亮）可就地切换连接级模式——
   开启后 MCP exec 命令（即使不传 `runInTerminal`）都经该终端可见执行（审计/学习），
   关闭则全部走静默隐藏通道。**模式持久化**：`agentTerminalMode` 落盘到
   插件数据目录 `agent-modes.json`（按 connectionId 记录，off 移除条目），
   app/sidecar 重启后保持。
-- **agent 可自主决定（非 off 连接）**：`runInTerminal` 是 agent 决策参数——工具
-  schema 引导 AI 在任务需要可见性、人工监督或交互性时主动传 `true`，不必等用户
-  开模式。但用户把连接切到 `off` 后，显式 `true` 不会重新打开终端，也不会触发
-  审批；命令按 off 语义走隐藏 exec 通道。
+- **命令风险三档**：只读/查看（`ls`/`cat`/`df`/`systemctl status`/`journalctl`/
+  `docker ps` 及 `docker node|service|network|volume|stack` 的 `ls|ps|inspect|logs`、
+  `kubectl get|describe|config view|auth can-i` 等）在 `auto` 下直接执行；变更/修改
+  （`restart`/`update`/`create`/`delete`/`chmod`/`install`/重定向写文件等）在 `auto`
+  下弹审批；sudo / 灾难命令为提权/高危，同样弹审批。`strict` 对只读也弹审批。
+  审批事件的 `risk` 为 `readonly` / `mutating` / `elevated`（旧 `low` 兼容映射为只读）。
 - **静默调用不打扰**：宿主桥转发前按「工具是否为 ssh_exec 族 + 显式 `runInTerminal`
   + 连接模式探针（`ssh/agent/mode/get`，任何失败回落 `off`）」判定是否需要打开
   工作台标签；静默调用（隐藏通道）不自动开标签，事件监听也不抢 macOS 窗口
   焦点——标签在后台就位、命令写入终端缓冲，用户回到 DBX 时可完整回看。
-- 审批：`auto` 下 elevated（sudo / 灾难命中）与 `strict` 下全部命令会触发工作台
+- 审批：`auto` 下变更/修改与提权/高危命令、`strict` 下全部命令会触发工作台
   弹窗（完整命令原文 + 风险徽标 + 倒计时，默认 120s 超时即拒绝）；AI 侧表现为
   明确的 denied/timed out 错误。`off` 连接不会进入审批路径（终端路由已关闭）。
 - **审批记忆**：弹窗提供「记住此命令」勾选（resolve 请求 `remember: true`），

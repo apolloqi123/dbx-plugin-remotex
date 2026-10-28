@@ -86,16 +86,25 @@ describe("decodeAgentPromptPayload", () => {
     expect(decodeAgentPromptPayload({ ...valid, challengeId: 7 })).toBeNull();
     expect(decodeAgentPromptPayload([])).toBeNull();
   });
+
+  it("三档 risk 都可解码，旧 low 映射为只读", () => {
+    expect(decodeAgentPromptPayload({ ...valid, risk: "readonly" })?.risk).toBe("readonly");
+    expect(decodeAgentPromptPayload({ ...valid, risk: "mutating" })?.risk).toBe("mutating");
+    expect(decodeAgentPromptPayload({ ...valid, risk: "elevated" })?.risk).toBe("elevated");
+    expect(decodeAgentPromptPayload({ ...valid, risk: "low" })?.risk).toBe("readonly");
+  });
 });
 
 describe("decodeAgentNoticePayload / decodeAgentFinishPayload", () => {
   it("合法与畸形", () => {
+    // 旧 sidecar 的 low 兼容映射为只读；三档 risk 都可解码。
     expect(decodeAgentNoticePayload({ sessionId: "s", tool: "t", command: "c", risk: "low" })).toEqual({
       sessionId: "s",
       tool: "t",
       command: "c",
-      risk: "low",
+      risk: "readonly",
     });
+    expect(decodeAgentNoticePayload({ sessionId: "s", tool: "t", command: "c", risk: "mutating" })?.risk).toBe("mutating");
     expect(decodeAgentNoticePayload({ sessionId: "s", tool: "t", command: "c" })).toBeNull();
     expect(decodeAgentFinishPayload({ sessionId: "s", status: "denied" })).toEqual({ sessionId: "s", status: "denied" });
     expect(decodeAgentFinishPayload({ sessionId: "s", status: "ok" })).toEqual({ sessionId: "s", status: "ok" });

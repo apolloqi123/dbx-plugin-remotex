@@ -1,186 +1,78 @@
 use super::*;
 
 #[test]
-fn off_mode_keeps_even_explicit_requests_on_the_hidden_channel() {
-    // The connection setting is authoritative: an agent asking for
-    // visibility cannot reopen a terminal the user switched off.
-    assert!(!routes_to_terminal(AgentTerminalMode::Off, Some(true)));
-    assert!(!routes_to_terminal(AgentTerminalMode::Off, None));
-    assert!(!routes_to_terminal(AgentTerminalMode::Off, Some(false)));
-    // auto/strict follow the flag, defaulting to visible when it is absent.
-    assert!(routes_to_terminal(AgentTerminalMode::Auto, None));
-    assert!(routes_to_terminal(AgentTerminalMode::Auto, Some(true)));
-    assert!(!routes_to_terminal(AgentTerminalMode::Auto, Some(false)));
-    assert!(routes_to_terminal(AgentTerminalMode::Strict, None));
-    assert!(routes_to_terminal(AgentTerminalMode::Strict, Some(true)));
-    assert!(!routes_to_terminal(AgentTerminalMode::Strict, Some(false)));
+fn routes_to_terminal_is_mode_authoritative() {
+    // The per-call flag cannot bypass the connection mode: off hides,
+    // auto/strict go through the terminal.
+    assert!(!routes_to_terminal(AgentTerminalMode::Off));
+    assert!(routes_to_terminal(AgentTerminalMode::Auto));
+    assert!(routes_to_terminal(AgentTerminalMode::Strict));
 }
 
 #[test]
-fn decide_covers_the_full_policy_matrix() {
-    // off matrix rows are retained for completeness, but exec routing
-    // (`routes_to_terminal`) never sends an off connection here.
+fn graded_mode_runs_reads_and_prompts_for_changes() {
+    // Read-only views auto-run without a prompt in graded mode.
     assert_eq!(
-        decide(AgentTerminalMode::Off, CommandRisk::Low, false),
+        decide(AgentTerminalMode::Auto, CommandRisk::ReadOnly),
         RoutingDecision::Run
     );
+    // Anything that can change state prompts.
     assert_eq!(
-        decide(AgentTerminalMode::Off, CommandRisk::Low, true),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide(AgentTerminalMode::Off, CommandRisk::Elevated, true),
+        decide(AgentTerminalMode::Auto, CommandRisk::Mutating),
         RoutingDecision::Prompt
     );
-    assert!(matches!(
-        decide(AgentTerminalMode::Off, CommandRisk::Elevated, false),
-        RoutingDecision::Deny(_)
-    ));
-    // auto: low runs, elevated needs approval.
+    // sudo / catastrophic commands prompt with the elevated badge.
     assert_eq!(
-        decide(AgentTerminalMode::Auto, CommandRisk::Low, false),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide(AgentTerminalMode::Auto, CommandRisk::Elevated, false),
+        decide(AgentTerminalMode::Auto, CommandRisk::Elevated),
         RoutingDecision::Prompt
     );
-    // strict: everything needs approval.
-    assert_eq!(
-        decide(AgentTerminalMode::Strict, CommandRisk::Low, false),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide(AgentTerminalMode::Strict, CommandRisk::Elevated, false),
-        RoutingDecision::Prompt
-    );
+    // strict prompts for every command, read-only included.
+    for risk in [
+        CommandRisk::ReadOnly,
+        CommandRisk::Mutating,
+        CommandRisk::Elevated,
+    ] {
+        assert_eq!(
+            decide(AgentTerminalMode::Strict, risk),
+            RoutingDecision::Prompt
+        );
+    }
+    // off is hidden by routing; the matrix still fails closed if reached.
+    for risk in [
+        CommandRisk::ReadOnly,
+        CommandRisk::Mutating,
+        CommandRisk::Elevated,
+    ] {
+        assert!(matches!(
+            decide(AgentTerminalMode::Off, risk),
+            RoutingDecision::Deny(_)
+        ));
+    }
 }
 
 #[test]
-fn decide_with_memory_downgrades_only_prompt_to_run() {
-    // Full matrix: 3 modes x 2 risks x explicit x remembered. A
-    // remembered approval only ever turns a `Prompt` into a `Run`
-    // (marked below); `Run` stays `Run` and `Deny` stays `Deny` (D1).
-    // off / low: already running, remembering changes nothing.
+fn remembered_approval_only_skips_a_prompt() {
     assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Low, false, false),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Low, false, true),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Low, true, false),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Low, true, true),
-        RoutingDecision::Run
-    );
-    // off / elevated without explicit runInTerminal: mode-level denial is
-    // never overridden by a remembered approval.
-    assert!(matches!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, false, false),
-        RoutingDecision::Deny(_)
-    ));
-    assert!(matches!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, false, true),
-        RoutingDecision::Deny(_)
-    ));
-    // off / elevated with explicit runInTerminal: matrix-only rows (routing
-    // keeps off connections hidden); remembered approval would replace the
-    // per-command human prompt if routing ever reached them.
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, true, false),
+        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Mutating, false),
         RoutingDecision::Prompt
     );
     assert_eq!(
-        decide_with_memory(AgentTerminalMode::Off, CommandRisk::Elevated, true, true),
-        RoutingDecision::Run
-    );
-    // auto / low: already running.
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Low, false, false),
+        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Mutating, true),
         RoutingDecision::Run
     );
     assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Low, false, true),
+        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::ReadOnly, true),
         RoutingDecision::Run
     );
     assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Low, true, false),
+        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::ReadOnly, true),
         RoutingDecision::Run
     );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Low, true, true),
-        RoutingDecision::Run
-    );
-    // auto / elevated: remembered approval skips the prompt.
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Elevated, false, false),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Elevated, false, true),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Elevated, true, false),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Auto, CommandRisk::Elevated, true, true),
-        RoutingDecision::Run
-    );
-    // strict: every remembered command skips its approval prompt.
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::Low, false, false),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::Low, false, true),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::Low, true, false),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::Low, true, true),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(
-            AgentTerminalMode::Strict,
-            CommandRisk::Elevated,
-            false,
-            false
-        ),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(
-            AgentTerminalMode::Strict,
-            CommandRisk::Elevated,
-            false,
-            true
-        ),
-        RoutingDecision::Run
-    );
-    assert_eq!(
-        decide_with_memory(
-            AgentTerminalMode::Strict,
-            CommandRisk::Elevated,
-            true,
-            false
-        ),
-        RoutingDecision::Prompt
-    );
-    assert_eq!(
-        decide_with_memory(AgentTerminalMode::Strict, CommandRisk::Elevated, true, true),
-        RoutingDecision::Run
-    );
+    // A wildcard remembered line never blesses a catastrophic command (D2).
+    assert!(!remembered_bypasses_prompt("rm -rf /", true));
+    assert!(!remembered_bypasses_prompt("mkfs.ext4 /dev/sda1", true));
+    assert!(remembered_bypasses_prompt("systemctl restart nginx", true));
+    assert!(!remembered_bypasses_prompt("systemctl restart nginx", false));
 }
 
 #[test]

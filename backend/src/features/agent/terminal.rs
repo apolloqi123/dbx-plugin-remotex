@@ -55,11 +55,13 @@ impl AgentTerminalMode {
     }
 }
 
-/// Risk of one MCP command as seen by the terminal routing. Sudo commands
-/// and catastrophic `mcp_safety` hits are elevated; everything else is low.
+/// Risk of one MCP command as seen by the terminal routing. Read-only views
+/// auto-run in graded mode; anything that can change remote state prompts;
+/// sudo/catastrophic commands are elevated (also prompt, distinct badge).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandRisk {
-    Low,
+    ReadOnly,
+    Mutating,
     Elevated,
 }
 
@@ -67,7 +69,8 @@ impl CommandRisk {
     /// Canonical name carried in `ssh/agent/prompt` / `ssh/agent/notice`.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Low => "low",
+            Self::ReadOnly => "readonly",
+            Self::Mutating => "mutating",
             Self::Elevated => "elevated",
         }
     }

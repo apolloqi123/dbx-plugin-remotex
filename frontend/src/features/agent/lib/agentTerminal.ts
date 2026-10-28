@@ -18,7 +18,8 @@ export function sanitizeAgentTerminalMode(value: unknown): AgentTerminalMode {
   return (AGENT_MODES as readonly string[]).includes(value as string) ? (value as AgentTerminalMode) : "off";
 }
 
-export type AgentRisk = "low" | "elevated";
+/** 审批风险三档：只读（分级模式直接执行）、变更（需审批）、提权/高危。 */
+export type AgentRisk = "readonly" | "mutating" | "elevated";
 
 /** 已知状态 + 未来新增字符串状态：未知状态按“终态”处理（见 decoder/事件派发），
  * 避免 sidecar 版本漂移时 agentRunning 永久悬挂。 */

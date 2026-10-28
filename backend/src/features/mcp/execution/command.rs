@@ -31,23 +31,16 @@ impl McpState {
         match (emitter, connection_id) {
             (Some(emitter), Some(connection_id)) => {
                 let mode = self.runtime.agent_terminal_mode(connection_id);
-                // The connection mode is authoritative: `off` keeps AI
-                // commands on the hidden channel even when the agent asks
-                // for `runInTerminal: true`; an explicit false always stays
-                // hidden; non-off modes let the flag (or the mode default)
-                // route into the visible terminal.
-                let route = agent_terminal::routes_to_terminal(mode, run_in_terminal);
+                // The connection mode is authoritative: off hides, auto
+                // grades by command risk, strict prompts for everything.
+                // The per-call flag cannot opt out of approvals.
+                let route = agent_terminal::routes_to_terminal(mode);
                 if route {
-                    // Whether the agent explicitly opted into the visible
-                    // terminal decides the `off` + elevated matrix cell
-                    // (approve with explicit opt-in, deny without it).
-                    let explicit = run_in_terminal == Some(true);
                     return self
                         .ssh_exec_terminal_tool(
                             name,
                             command,
                             connection_id,
-                            explicit,
                             timeout_secs,
                             emitter,
                         )

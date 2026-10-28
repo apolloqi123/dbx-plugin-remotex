@@ -185,19 +185,25 @@ DBX 内嵌 AI 通道（`mcp/call` 携 lifecycle `connectionId`）的 `ssh_exec` 
 信任域，无 shell 拼接面；C0 控制字符先剥离），输出经终端录制（提示符回归 + 300ms
 静默判定收尾；1 MiB 有界缓冲，ANSI 剥离后返回）。模式矩阵：
 
-| `agentTerminalMode` | low 风险 | elevated（sudo / 灾难模式命中） |
-| --- | --- | --- |
-| `off`（默认） | 既有隐藏 exec 通道 | 既有隐藏 exec 通道 |
-| `auto` | 直接注入（发 `ssh/agent/notice`） | 审批后注入 |
-| `strict` | 审批后注入 | 审批后注入 |
+| `agentTerminalMode` | 只读/查看 | 变更/修改（非提权） | 提权/高危（sudo / 灾难命中） |
+| --- | --- | --- | --- |
+| `off`（默认） | 隐藏 exec 通道 | 隐藏 exec 通道 | 隐藏 exec 通道 |
+| `auto` | 直接注入（发 `ssh/agent/notice`） | 审批后注入 | 审批后注入 |
+| `strict` | 审批后注入 | 审批后注入 | 审批后注入 |
 
-- 连接模式是权威开关：`off` 下 AI 命令一律走隐藏 exec 通道，agent 显式
-  `runInTerminal: true` 也不能把命令注入终端（UI 文案承诺「关闭 = 不在终端回显」）；
-  非 `off` 模式下调用级参数才生效（`true` 强制终端路径，`false` 强制隐藏，
-  缺省按连接模式）。stdio `--mcp` 模式的连接类调用自动经宿主桥转发到运行中的
-  DBX 应用执行（embedded sidecar 按同一规则决策），因此连接级开关在 stdio 场景
-  同样生效；宿主桥仅在显式 `runInTerminal: true` 或探针确认模式非 `off` 时才打开
-  工作台标签，静默调用不再开标签也不再抢窗口焦点。
+- 风险分类：`mcp_safety` 的 `ReadOnly` → **只读**（`ls`/`cat`/`df`/`systemctl status`/
+  `journalctl`/`docker ps` 及 `docker node|service|network|volume|stack` 的 `ls|ps|inspect|logs`、
+  `kubectl get|describe|config view|auth can-i` 等查看形态）；`Unknown` → **变更**
+  （`restart`/`update`/`create`/`delete`/`chmod`/`install`/重定向写文件等非白名单形态）；
+  `sudo` 或 `Destructive` → **提权/高危**。`auto` 只自动放行只读，变更与提权都弹审批。
+- 连接模式是权威开关：`off` 下 AI 命令一律走隐藏 exec 通道；`auto`/`strict` 下全部
+  经终端路由。`runInTerminal` 仅为兼容保留的参数——既不能在 `off` 下打开终端，
+  也不能在 `auto`/`strict` 下强制隐藏来绕过审批。stdio `--mcp` 模式的连接类调用
+  自动经宿主桥转发到运行中的 DBX 应用执行（embedded sidecar 按同一规则决策），
+  因此连接级开关在 stdio 场景同样生效；宿主桥仅在显式 `runInTerminal: true` 或
+  探针确认模式非 `off` 时才打开工作台标签，静默调用不再开标签也不再抢窗口焦点。
+- 审批事件 `risk` 取值 `readonly` / `mutating` / `elevated`（旧版 `low` 由前端兼容
+  映射为只读）；弹窗徽标对应「只读 / 变更 / 提权·高危」。
 - 持久化：连接级 `agentTerminalMode` 落盘 `<plugin_data_dir>/agent-modes.json`
   （版本化 JSON：`{version, modes: {connectionId: "auto"|"strict"}}`，原子写，
   `off` 移除条目；损坏按空表处理），sidecar/app 重启后保持，不再回落 `off`。
@@ -233,9 +239,10 @@ AI 终端审批弹窗勾选「记住此命令」后，批准的命令（用户�
 - 双重灾难锁（D2）：破坏性命令（`mcp_safety::assess_command == Destructive`）拒绝
   入库（`remember`/`ssh/settings/set rememberedCommands` 均拒绝，后者错误信息带
   行号），且命中清单前的重检对破坏性文本一律无效——灾难确认门永不绕过。
-- 生效范围：`decide_with_memory` 只把 `Prompt` 降为 `Run`，`Deny`（off 模式未显式
-  opt-in）不覆盖；off/auto/strict 三档下的已记住命令均可免审执行（用户显式动作
-  优先于模式默认）。
+- 生效范围：`decide_with_memory` 只把 `Prompt` 降为 `Run`，`Deny` 不覆盖；`off`
+  会话根本不到审批矩阵（隐藏通道），`auto`/`strict` 下已记住的命令可免审执行
+  （用户显式动作优先于模式默认）。命中清单前对**实际命令**重过灾难分类：即使
+  通配行匹配到 `rm -rf /` / `mkfs` 等文本，破坏性命令仍不免审（D2）。
 - 管理：`ssh/settings/get` 返回 `rememberedCommands`（原始行数组）；`ssh/settings/set`
   接受 `rememberedCommands` 全量替换（每行 ≤500 字符、每连接 ≤50 行、去重）。
 - 设置弹窗「AI 终端」区块提供清单展示与删除（保存随设置链全量提交）。

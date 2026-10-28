@@ -13,6 +13,15 @@ type RdpCertPromptView = { host: string; port: number; fingerprint: string; know
 type AgentPromptHeadView = { source?: string; tool: string; risk: string };
 type PendingConfirmView = { message: string; danger: boolean };
 
+/** 审批风险徽标：三档文案与配色；旧 sidecar 的 `low` 按只读兜底。 */
+function agentRiskKey(risk: string): string {
+  return risk === "elevated" ? "agentPromptRiskElevated" : risk === "mutating" ? "agentPromptRiskMutating" : "agentPromptRiskReadonly";
+}
+
+function agentRiskClass(risk: string): string {
+  return risk === "elevated" ? "elevated" : risk === "mutating" ? "mutating" : "readonly";
+}
+
 const props = defineProps<{
   spawnSessionDialogOpen: boolean;
   spawnSessionCommand: string;
@@ -109,7 +118,7 @@ const t = props.t;
         <header><DialogTitle>{{ agentPromptHead.source === "mcp" ? t("agentPrompt.mcpSource", { tool: agentPromptHead.tool }) : t("agentPromptTitle") }}</DialogTitle></header>
         <div class="agent-prompt-meta">
           <span>{{ t("agentPromptSource") }} <code class="mono">{{ agentPromptHead.tool }}</code></span>
-          <span class="agent-risk-badge" :class="agentPromptHead.risk === 'elevated' ? 'elevated' : 'low'">{{ agentPromptHead.risk === "elevated" ? t("agentPromptRiskElevated") : t("agentPromptRiskLow") }}</span>
+          <span class="agent-risk-badge" :class="agentRiskClass(agentPromptHead.risk)">{{ t(agentRiskKey(agentPromptHead.risk)) }}</span>
         </div>
         <label class="agent-prompt-command">
           <span>{{ t("agentPromptCommandLabel") }}</span>
@@ -193,7 +202,8 @@ const t = props.t;
 .rdp-cert-expires { margin: 0 0 8px; font-size: 11px; }
 .agent-prompt-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; }
 .agent-risk-badge { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
-.agent-risk-badge.low { border: 1px solid var(--border); background: var(--accent); color: var(--muted-foreground); }
+.agent-risk-badge.readonly { border: 1px solid var(--border); background: var(--accent); color: var(--muted-foreground); }
+.agent-risk-badge.mutating { border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent); background: var(--tone-amber-soft); color: var(--warning); }
 .agent-risk-badge.elevated { border: 1px solid color-mix(in srgb, var(--destructive) 55%, transparent); background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive); }
 .agent-prompt-command { display: flex; flex-direction: column; gap: 5px; padding: 4px 0 8px; font-size: 12px; }
 .agent-prompt-command span { color: var(--muted-foreground); }

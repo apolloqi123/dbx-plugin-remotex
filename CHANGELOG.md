@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.70] — 2026-10-28
+
+- **AI 命令审批改为三档风险**。分级审批（auto）下，只读/查看命令（`ls`/`cat`/`df`/`systemctl status`/`journalctl`/`docker ps`，以及 `docker node|service|network|volume|stack` 的 `ls|ps|inspect|logs`、`kubectl get|describe|config view|auth can-i` 等）直接执行不弹窗；变更/修改命令（`restart`/`update`/`create`/`delete`/`chmod`/`install`/写文件等）弹审批；sudo/灾难命令为提权·高危，同样弹审批。全部审批（strict）仍对每条命令弹窗，关闭（off）仍完全隐藏。审批弹窗新增只读/变更/提权三档徽标（7 语），连接模式成为权威开关——`runInTerminal` 不能再强制隐藏来绕过审批；已记住命令可免审，但灾难命令即使匹配通配记忆也会重新过灾难门。
+  **Three-tier AI command approval.** In graded mode (auto), read-only views (`ls`/`cat`/`df`/`systemctl status`/`journalctl`/`docker ps`, plus `docker node|service|network|volume|stack` `ls|ps|inspect|logs` and `kubectl get|describe|config view|auth can-i`) run directly without a prompt; state-changing commands (`restart`/`update`/`create`/`delete`/`chmod`/`install`/file writes) prompt; sudo/catastrophic commands are elevated and prompt too. Strict still prompts for every command; off still hides everything. The approval dialog gains read-only/state-change/elevated badges in all seven locales, and the connection mode is authoritative — `runInTerminal` can no longer force the hidden channel to dodge approvals. Remembered commands still skip prompts, but catastrophic commands re-check the disaster gate even when a wildcard line matches.
+
 ## [0.7.9-beta.69] — 2026-10-28
 
 - **修复「AI 终端同步」关闭后 AI 命令仍在终端回显**。连接级模式 `off` 现在是权威开关：即使 AI 显式传 `runInTerminal: true`，`ssh_exec` / `ssh_exec_sudo` 也保持静默隐藏通道，不再把命令注入终端；只有 `auto` / `strict` 模式下调用级 `runInTerminal` 才生效（`true` 走终端、`false` 强制隐藏、缺省按连接模式）。`auto` / `strict` 的审批流程不变，工具 schema、协议与 MCP 文档同步更新。

@@ -18,7 +18,14 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
-const AGENT_RISKS = ["low", "elevated"] as const;
+const AGENT_RISKS = ["readonly", "mutating", "elevated", "low"] as const;
+
+/** Older sidecars used two tiers (`low`/`elevated`); map `low` onto the new
+ * read-only tier so mixed-version prompts still decode. */
+function decodeAgentRisk(value: unknown): "readonly" | "mutating" | "elevated" | null {
+  if (!AGENT_RISKS.includes(value as (typeof AGENT_RISKS)[number])) return null;
+  return value === "low" ? "readonly" : (value as "readonly" | "mutating" | "elevated");
+}
 const SERIAL_PROTOCOLS: readonly SerialUploadProtocol[] = ["xmodem", "ymodem", "zmodem"];
 const SERIAL_UPLOAD_STATES = ["running", "file_complete", "complete", "failed"] as const;
 
@@ -99,7 +106,7 @@ export function decodeAgentPromptPayload(value: unknown): AgentPromptPayload | n
     sessionId === null ||
     !isString(value.tool) ||
     !isString(value.command) ||
-    !AGENT_RISKS.includes(value.risk as (typeof AGENT_RISKS)[number]) ||
+    decodeAgentRisk(value.risk) === null ||
     !isFiniteNumber(value.requestedAt) ||
     !isFiniteNumber(value.timeoutSecs)
   ) {
@@ -110,7 +117,7 @@ export function decodeAgentPromptPayload(value: unknown): AgentPromptPayload | n
     sessionId,
     tool: value.tool,
     command: value.command,
-    risk: value.risk as AgentPromptPayload["risk"],
+    risk: decodeAgentRisk(value.risk)!,
     requestedAt: value.requestedAt,
     timeoutSecs: value.timeoutSecs,
     ...(source ? { source } : {}),
@@ -124,7 +131,7 @@ export function decodeAgentNoticePayload(value: unknown): AgentNoticePayload | n
     !isString(value.sessionId) ||
     !isString(value.tool) ||
     !isString(value.command) ||
-    !AGENT_RISKS.includes(value.risk as (typeof AGENT_RISKS)[number])
+    decodeAgentRisk(value.risk) === null
   ) {
     return null;
   }
@@ -132,7 +139,7 @@ export function decodeAgentNoticePayload(value: unknown): AgentNoticePayload | n
     sessionId: value.sessionId,
     tool: value.tool,
     command: value.command,
-    risk: value.risk as AgentNoticePayload["risk"],
+    risk: decodeAgentRisk(value.risk)!,
   };
 }
 

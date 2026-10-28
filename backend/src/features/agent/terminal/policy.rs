@@ -16,65 +16,60 @@ pub enum RoutingDecision {
 /// Whether one exec call enters the visible terminal at all.
 ///
 /// The connection-level setting is authoritative: `off` means "AI commands
-/// stay on the hidden channel" (the UI's off hint promises no terminal echo),
-/// so an agent's explicit `runInTerminal: true` cannot reopen the terminal.
-/// An explicit `false` always forces the hidden channel regardless of mode.
-/// Only a non-off mode with an unset/true flag reaches the approval matrix
-/// below.
-pub fn routes_to_terminal(
-    mode: AgentTerminalMode,
-    run_in_terminal: Option<bool>,
-) -> bool {
-    mode != AgentTerminalMode::Off && run_in_terminal != Some(false)
+/// stay on the hidden channel" and `auto`/`strict` route through the terminal.
+/// The per-call `runInTerminal` flag is only a hint kept for schema
+/// compatibility — it can no longer force the hidden channel to dodge the
+/// approval matrix, nor reopen a terminal the user disabled.
+pub fn routes_to_terminal(mode: AgentTerminalMode) -> bool {
+    mode != AgentTerminalMode::Off
 }
 
-/// The §1 matrix: `auto` approves low-risk commands and prompts for
-/// elevated ones; `strict` prompts for everything.
+/// The approval matrix for a terminal-routed command.
 ///
-/// `Off` branches are retained as the documented matrix but are unreachable
-/// through exec routing: [`routes_to_terminal`] keeps `off` connections on
-/// the hidden channel even when the agent sets `runInTerminal: true`.
-pub fn decide(
-    mode: AgentTerminalMode,
-    risk: CommandRisk,
-    explicit_run_in_terminal: bool,
-) -> RoutingDecision {
+/// `auto` (graded approval): provably read-only views run directly; any
+/// command that can change remote state (mutating) or escalate (sudo /
+/// catastrophic) raises the approval prompt. `strict` prompts for every
+/// command, including read-only ones. `off` never reaches here because
+/// [`routes_to_terminal`] keeps those commands on the hidden channel (the
+/// branch stays as a fail-closed fallback).
+pub fn decide(mode: AgentTerminalMode, risk: CommandRisk) -> RoutingDecision {
     match (mode, risk) {
-        (AgentTerminalMode::Off, CommandRisk::Low) => RoutingDecision::Run,
-        (AgentTerminalMode::Off, CommandRisk::Elevated) if explicit_run_in_terminal => {
+        (AgentTerminalMode::Off, _) => RoutingDecision::Deny(
+            "Agent terminal mode is off; AI commands stay on the hidden channel",
+        ),
+        (AgentTerminalMode::Auto, CommandRisk::ReadOnly) => RoutingDecision::Run,
+        (AgentTerminalMode::Auto, CommandRisk::Mutating | CommandRisk::Elevated) => {
             RoutingDecision::Prompt
         }
-        (AgentTerminalMode::Off, CommandRisk::Elevated) => RoutingDecision::Deny(
-            "Agent terminal mode is off; retry with runInTerminal: true to ask the user to \
-             approve this command in the terminal, or keep it on the hidden channel",
-        ),
-        (AgentTerminalMode::Auto, CommandRisk::Low) => RoutingDecision::Run,
-        (AgentTerminalMode::Auto, CommandRisk::Elevated) => RoutingDecision::Prompt,
-        (AgentTerminalMode::Strict, CommandRisk::Low) => RoutingDecision::Prompt,
-        (AgentTerminalMode::Strict, CommandRisk::Elevated) => RoutingDecision::Prompt,
+        (AgentTerminalMode::Strict, _) => RoutingDecision::Prompt,
     }
 }
 
-/// §IMPL_PLAN D1: a remembered approval downgrades `Prompt` to `Run`;
-/// `Deny` is never overridden (mode-level semantics stay intact).
-///
-/// The remember list is a single-command exemption: a command the user
-/// already approved (possibly hand-generalized into a wildcard) skips the
-/// approval prompt, but it cannot widen what a mode allows — `off` without
-/// an explicit `runInTerminal` still refuses elevated commands outright, so
-/// remembering can never turn a silent denial into a silent run. Callers
-/// must additionally exclude `Destructive` commands before treating
-/// `remembered` as true (decision D2: the disaster gate stays last).
+/// §IMPL_PLAN D1: a remembered approval downgrades `Prompt` to `Run`; `Deny`
+/// is never overridden. The disaster gate stays last: callers must pass
+/// `remembered = false` for a catastrophic command (see
+/// [`remembered_bypasses_prompt`]), so a wildcard remembered line can never
+/// bless `rm -rf /` or `mkfs`.
 pub fn decide_with_memory(
     mode: AgentTerminalMode,
     risk: CommandRisk,
-    explicit_run_in_terminal: bool,
     remembered: bool,
 ) -> RoutingDecision {
-    match decide(mode, risk, explicit_run_in_terminal) {
+    match decide(mode, risk) {
         RoutingDecision::Prompt if remembered => RoutingDecision::Run,
         other => other,
     }
+}
+
+/// Whether a remembered approval may skip the prompt for this exact command.
+/// Re-checks the disaster classifier (D2) so a stored wildcard cannot widen
+/// into a catastrophic command.
+pub fn remembered_bypasses_prompt(command: &str, remembered: bool) -> bool {
+    remembered
+        && !matches!(
+            crate::features::mcp::safety::assess_command(command),
+            crate::features::mcp::safety::CommandRisk::Destructive(_)
+        )
 }
 
 /// File the per-connection mode map persists to, relative to the plugin data

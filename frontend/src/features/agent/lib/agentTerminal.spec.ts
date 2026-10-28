@@ -79,7 +79,7 @@ describe("agent prompt routing", () => {
 
 describe("agent prompt queue helpers", () => {
   const first: AgentPromptPayload = {
-    challengeId: "c1", sessionId: "s1", tool: "ssh_exec", command: "ls", risk: "low", requestedAt: 1000, timeoutSecs: 120,
+    challengeId: "c1", sessionId: "s1", tool: "ssh_exec", command: "ls", risk: "readonly", requestedAt: 1000, timeoutSecs: 120,
   };
   const second: AgentPromptPayload = { ...first, challengeId: "c2", risk: "elevated" };
   const third: AgentPromptPayload = { ...first, challengeId: "c3", sessionId: "s2" };

@@ -47,6 +47,50 @@ fn inspection_commands_are_read_only() {
 }
 
 #[test]
+fn docker_and_kubectl_inspection_forms_are_read_only() {
+    // Nested object commands used by the AI's server audits.
+    read_only("docker node ls");
+    read_only("docker node ps node-1");
+    read_only("docker node inspect node-1");
+    read_only("docker service ls");
+    read_only("docker service ps api");
+    read_only("docker service logs --tail 100 api");
+    read_only("docker network ls");
+    read_only("docker network inspect bridge");
+    read_only("docker volume ls");
+    read_only("docker volume inspect data");
+    read_only("docker stack services app");
+    read_only("docker stack config -c stack.yml");
+    read_only("docker system df -v");
+    read_only("docker compose ps");
+    read_only("docker compose logs --tail 50");
+    read_only("docker container ls");
+    read_only("docker image ls");
+    read_only("docker --context prod ps");
+    // Mutating object verbs stay Unknown (graded mode prompts).
+    unknown("docker service update --image nginx:1.27 api");
+    unknown("docker node update --availability drain node-1");
+    unknown("docker network create app-net");
+    unknown("docker volume rm data");
+    unknown("docker stack deploy -c stack.yml app");
+    unknown("docker compose up -d");
+    unknown("docker restart api");
+    // kubectl reads, including flags before the verb.
+    read_only("kubectl -n prod get pods");
+    read_only("kubectl --context prod get nodes");
+    read_only("kubectl config view --minify");
+    read_only("kubectl config get-contexts");
+    read_only("kubectl auth can-i get pods");
+    read_only("kubectl rollout status deployment/api");
+    read_only("kubectl cluster-info");
+    unknown("kubectl config use-context prod");
+    unknown("kubectl rollout restart deployment/api");
+    unknown("kubectl apply -f app.yaml");
+    unknown("kubectl delete pod api-0");
+    unknown("kubectl -n prod exec -it api-0 -- sh");
+}
+
+#[test]
 fn runs_under_sudo_detects_inline_privilege_escalation() {
     assert!(super::runs_under_sudo("sudo whoami"));
     assert!(super::runs_under_sudo("sudo -u postgres psql -l"));
@@ -143,7 +187,6 @@ fn mutating_or_unclear_commands_are_unknown() {
     unknown("systemctl stop mysqld");
     unknown("echo x > /tmp/out.txt");
     unknown("cat /etc/passwd >> /tmp/copy");
-    unknown("docker system df -v"); // `system` is not a whitelisted subcommand
     unknown("sed -i s/a/b/ file");
     unknown("awk '{print $1}' file");
     unknown("mysql -e 'UPDATE t SET x=1'");

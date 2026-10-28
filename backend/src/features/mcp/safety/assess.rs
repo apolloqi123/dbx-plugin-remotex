@@ -359,6 +359,12 @@ pub(crate) fn assess_segment(segment: &str, depth: u8) -> CommandRisk {
             CommandRisk::Unknown
         };
     }
+    if verb == "docker" {
+        return docker_segment_risk(args, sensitive);
+    }
+    if verb == "kubectl" {
+        return kubectl_segment_risk(args, sensitive);
+    }
     if let Some((_, allowed)) = SUBCOMMAND_VERBS.iter().find(|(owner, _)| *owner == verb) {
         let Some(position) = args.iter().position(|arg| !arg.starts_with('-')) else {
             return CommandRisk::Unknown;
