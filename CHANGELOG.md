@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.75] — 2026-10-28
+
+- **重新打包并入最新合并的界面改动**。容器列表行高压缩到约 2/3、工具栏高度压到 22px（图标按钮尺寸不变）、文本预览与编辑器搜索/选中高亮对比度提升；同时包含 beta.74 的高延迟链路 SFTP 吞吐优化（16 MiB 接收窗口、64 路写流水线、上传 spool 3 片在途）。
+  **Repackaged with the latest merged UI changes.** Docker container rows are ~2/3 as tall, the toolbar drops to 22px while keeping icon-button sizes, and text-preview/editor search and selection highlights gain contrast. The package also carries beta.74's high-latency SFTP throughput work (16 MiB receive window, 64-deep write pipeline, 3-chunk upload spool window).
+
 ## [0.7.9-beta.74] — 2026-10-28
 
 - **高延迟链路下的 SFTP 吞吐优化**。SSH 通道接收窗口从 2 MiB 提到 16 MiB（下载吞吐上限 ≈ 窗口 / RTT）：40 ms RTT 下单文件下载 17 → 43–83 MB/s、10 ms 下 83 → 125–172 MB/s；上传写流水线从 32 路提到 64 路（32 KiB 写包，约 2 MiB 在途），40 ms RTT 下上传 14.6 → 22.6 MB/s；不取更深的队列是为了不让 60 秒请求超时误杀超低速链路。上传 spool 阶段改为最多 3 片在途（宿主读盘与 sidecar 落盘确认重叠）。实测确认上传仍受服务端接收窗口限制：更大写包、分片通道、多文件并发都不会更快，因此保持单通道 32 KiB 写包，兼容模式仍为串行。
