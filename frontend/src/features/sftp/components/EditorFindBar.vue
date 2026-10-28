@@ -192,15 +192,15 @@ function onFindKeydown(event: KeyboardEvent): void {
 .editor-find {
   position: absolute;
   top: 8px;
-  right: 18px;
+  right: 12px;
   z-index: 6;
   display: flex;
-  width: min(460px, calc(100% - 36px));
+  width: min(360px, calc(100% - 24px));
   flex-direction: column;
   gap: 4px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-control);
-  padding: 5px 6px;
+  padding: 4px 5px;
   background: var(--popover);
   box-shadow: var(--shadow-popover);
   color: var(--foreground);
@@ -211,16 +211,16 @@ function onFindKeydown(event: KeyboardEvent): void {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .editor-find-input {
   min-width: 0;
   flex: 1 1 auto;
-  height: 24px;
+  height: 22px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xs);
-  padding: 0 7px;
+  padding: 0 6px;
   background: var(--background);
   color: var(--foreground);
   font-size: 11px;
@@ -238,7 +238,8 @@ function onFindKeydown(event: KeyboardEvent): void {
 
 .editor-find-count {
   flex: 0 0 auto;
-  min-width: 34px;
+  min-width: 28px;
+  padding: 0 3px;
   color: var(--muted-foreground);
   font-size: 10px;
   text-align: right;
@@ -247,9 +248,9 @@ function onFindKeydown(event: KeyboardEvent): void {
 
 .editor-find-icon {
   display: inline-grid;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
   place-items: center;
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
@@ -260,8 +261,8 @@ function onFindKeydown(event: KeyboardEvent): void {
 }
 
 .editor-find-icon svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .editor-find-icon:hover {
@@ -291,7 +292,7 @@ function onFindKeydown(event: KeyboardEvent): void {
 }
 
 .editor-find-replace {
-  padding-left: 25px;
+  padding-left: 23px;
 }
 
 .editor-find-spacer {
@@ -300,10 +301,10 @@ function onFindKeydown(event: KeyboardEvent): void {
 
 .editor-find-action {
   flex: 0 0 auto;
-  height: 24px;
+  height: 22px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-xs);
-  padding: 0 8px;
+  padding: 0 7px;
   background: var(--card-surface-raised);
   color: var(--foreground);
   font-size: 11px;

@@ -270,9 +270,16 @@ function previewTheme() {
       overflow: "auto",
       fontFamily: props.appearance.terminal.fontFamily,
       fontSize: `${props.appearance.terminal.fontSize}px`,
+      lineHeight: "1.6",
     },
-    ".cm-gutters": { backgroundColor: colors.muted, color: colors.mutedForeground, borderRightColor: colors.border },
+    ".cm-gutters": {
+      backgroundColor: colors.muted,
+      color: colors.mutedForeground,
+      borderRightColor: colors.border,
+      paddingRight: "8px",
+    },
     ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: colors.accent },
+    ".cm-cursor": { borderLeftColor: colors.foreground, borderLeftWidth: "2px" },
     // 选区色随明暗切换，与终端 xterm selectionBackground 保持同一观感。
     // 透明度 0x88 的旧值在亮色白底上混合后对比度仅 ~1.2:1（issue #155：
     // 选区与背景几乎一样），提高到 0xad 并加深色相，选中区域清晰可辨。

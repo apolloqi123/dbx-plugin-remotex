@@ -159,11 +159,11 @@ function onTextChange(text: string) {
 
 .editor-header {
   display: flex;
-  min-height: 30px;
+  min-height: 32px;
   flex: 0 0 auto;
   align-items: stretch;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--background) 94%, var(--foreground));
+  background: color-mix(in srgb, var(--background) 96%, var(--foreground));
 }
 
 .editor-tabs {
@@ -190,11 +190,11 @@ function onTextChange(text: string) {
   display: inline-flex;
   min-width: 0;
   max-width: 220px;
-  min-height: 29px;
+  min-height: 31px;
   align-items: center;
   gap: 5px;
   border: 0;
-  padding: 4px 4px 4px 9px;
+  padding: 4px 6px 4px 10px;
   background: transparent;
   color: var(--muted-foreground);
   font-size: 11px;
