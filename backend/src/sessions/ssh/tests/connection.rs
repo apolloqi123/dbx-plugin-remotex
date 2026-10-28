@@ -376,9 +376,17 @@ fn negotiated_algorithms_cover_legacy_without_weakening_secure_order() {
     assert_eq!(config.gex.min_group_size(), 2048);
     assert_eq!(config.gex.preferred_group_size(), 3072);
     assert_eq!(config.gex.max_group_size(), 8192);
+}
+
+#[test]
+fn client_config_advertises_a_large_receive_window_for_transfers() {
     // 下载吞吐上限 ≈ 接收窗口 / RTT：russh 默认 2MiB 在高 RTT 链路上把
     // 单文件下载压到 ~17MB/s，16MiB 才够喂满 40ms RTT 下的几百 MB/s。
-    assert_eq!(config.window_size, 16 * 1024 * 1024);
+    let connection = StoredConnection::from_lifecycle_params(&json!({
+        "connection": { "id": "window", "host": "example.com", "port": 22, "username": "user", "password": "secret" }
+    }))
+    .unwrap();
+    assert_eq!(ssh_client_config(&connection).window_size, 16 * 1024 * 1024);
 }
 
 // —— 私钥来源解析：粘贴内容优先于路径（connection_secrets.private_key）———

@@ -8,7 +8,6 @@ import {
   enqueueUploadAck,
   rejectUploadAcks,
   removeUploadAck,
-  resolveUploadAck,
   type UploadAckWaiter,
   type UploadAckWaiters,
 } from "../lib/uploadAck";
@@ -98,6 +97,12 @@ export function useTransferOperations(options: {
           throw Object.assign(cause instanceof Error ? cause : new Error(String(cause)), { code: "upload-read-failed" });
         }
         if (!chunk.byteLength) throw new Error(t("errors.localFileShortRead"));
+        // 读盘期间到达的取消：此时任务可能已被后端摘除，再发一帧只会拿到
+        // upload-append-failed（非取消码），把整批剩余项一起中止——按用户
+        // 取消出局，让 runTransfers 继续派发。
+        if (cancelledTransferTasks.has(info.taskId)) {
+          throw Object.assign(new Error(t("transferStatus.cancelled")), { code: "transfer-cancelled" });
+        }
         const payload = new Uint8Array(8 + chunk.byteLength);
         writeU64(payload, 0, offset);
         payload.set(chunk, 8);

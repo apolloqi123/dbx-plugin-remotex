@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 import { initialSerialUploadState, type SerialUploadUiState } from "../../../features/serial/lib/serialUpload";
 import { registerDockerLogStream } from "../../../features/docker/lib/dockerLogEvents";
+import { enqueueUploadAck, type UploadAckWaiters } from "../../../features/transfers/lib/uploadAck";
 import { usePluginEvents } from "./usePluginEvents";
 
 /** issue #193a 回归锁：会话生命周期事件按 sessionId 严格隔离。关闭/断开某个
@@ -127,5 +129,36 @@ describe("usePluginEvents docker log routing", () => {
     } finally {
       dispose();
     }
+  });
+});
+
+describe("usePluginEvents upload ack routing", () => {
+  it("releases cumulative acks and rejects every waiter on upload/error", () => {
+    const waiters: UploadAckWaiters = new Map();
+    const { handlePluginEvent } = buildHarness({ uploadAckWaiters: waiters });
+    const firstResolve = vi.fn();
+    const firstReject = vi.fn();
+    const secondReject = vi.fn();
+    enqueueUploadAck(waiters, "t1", {
+      nextOffset: 1,
+      resolve: firstResolve,
+      reject: firstReject,
+      timer: window.setTimeout(() => undefined, 10_000),
+    });
+
+    // ack 携带累计 offset：2 同时证明 1 已落盘。
+    handlePluginEvent(backendEvent("sftp/upload/ack", { taskId: "t1", nextOffset: 2 }));
+    expect(firstResolve).toHaveBeenCalledTimes(1);
+    expect(waiters.size).toBe(0);
+
+    enqueueUploadAck(waiters, "t1", {
+      nextOffset: 5,
+      resolve: vi.fn(),
+      reject: secondReject,
+      timer: window.setTimeout(() => undefined, 10_000),
+    });
+    handlePluginEvent(backendEvent("sftp/upload/error", { taskId: "t1", error: "rejected" }));
+    expect(secondReject).toHaveBeenCalledWith(expect.objectContaining({ code: "upload-append-failed" }));
+    expect(waiters.size).toBe(0);
   });
 });

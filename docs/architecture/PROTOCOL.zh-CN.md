@@ -735,10 +735,12 @@ sidecar 用 `read_filled` 读满整片（russh-sftp 单次 `read` 只返回一�
 仍为 1）。SSH 通道**接收窗口**提高到 16 MiB（russh 默认 2 MiB）：窗口是下载
 吞吐的上限 ≈ 窗口 / RTT，40 ms RTT 下单文件下载 17 → 43–83 MB/s、10 ms 下
 83 → 125–172 MB/s；窗口是信用额度，russh 仍按 `channel_buffer_size` 有界缓冲。
-上传分片同为 1 MiB，推送侧写流水线 128 路（32 KiB 写包，约 4 MiB 在途）：
-40 ms RTT 下单文件上传 14.6 → 22.8 MB/s；服务端接收窗口（实测约 0.8 MiB/RTT）
-仍是硬上限，加写包大小/分片通道/多文件并发都不会更快（与 OpenSSH `sftp` 客户端
-同口径）。`saveToLocal` 下载与目录树下载传 `emitChunks: false`，字节只落
+上传分片同为 1 MiB，推送侧写流水线 64 路（32 KiB 写包，约 2 MiB 在途）：
+40 ms RTT 下单文件上传 14.6 → 22.6 MB/s（128 路实测无额外收益）；服务端接收
+窗口（实测约 0.8 MiB/RTT）仍是硬上限，加写包大小/分片通道/多文件并发都不会
+更快（与 OpenSSH `sftp` 客户端同口径）。写流水线不取更深还因为 60 s 请求
+超时从请求创建时开始计，更深队列会把 ~0.27 Mbps 以下的链路拖进超时（#206
+同类问题）。`saveToLocal` 下载与目录树下载传 `emitChunks: false`，字节只落
 sidecar 本地盘、不经 IPC。工作台上传的 spool 阶段最多 3 片在途（等 ack 与
 宿主读盘重叠，二进制通道保序，sidecar 的偏移校验/断点续传前缀语义不变）。
 latin-1 raw 车道仍按 32 KiB 顺序 READ 循环（裸包客户端无高层流水线）。
