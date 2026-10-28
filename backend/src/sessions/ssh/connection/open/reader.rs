@@ -11,6 +11,17 @@ use crate::core::time::{unix_now_ms, unix_now_secs};
 
 use super::pty::TerminalChannel;
 
+/// Lazily decodes one stdout frame for the text observers. The cell makes the
+/// trigger engine, auto-sudo and agent capture share a single decode, and the
+/// lazy form keeps sessions without observers free of the per-frame cost.
+fn observer_text<'a>(
+    cell: &'a std::cell::OnceCell<String>,
+    carry: &mut Vec<u8>,
+    data: &[u8],
+) -> &'a str {
+    cell.get_or_init(|| decode_stream_text(carry, data)).as_str()
+}
+
 /// State handed to the detached read loop.
 pub(super) struct ReadLoop {
     /// Runtime handle for post-disconnect cleanup (a 'static spawn cannot
@@ -201,34 +212,15 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         _ => continue,
                     };
                     if stream == TerminalStream::Stdout {
-                        // Decoding every frame for the text observers (triggers,
-                        // auto-sudo, agent capture) costs a UTF-8 validation and
-                        // a String allocation. Most sessions have none installed,
-                        // so probe first and leave the bytes untouched when the
-                        // text is never consumed. Clearing the carry keeps a
-                        // partial character from a skipped frame out of a later
-                        // observer's first decode.
-                        let has_text_observers = entry
-                            .triggers
-                            .lock()
-                            .map(|slot| slot.is_some())
-                            .unwrap_or(false)
-                            || entry
-                                .auto_sudo
-                                .lock()
-                                .map(|slot| slot.is_some())
-                                .unwrap_or(false)
-                            || entry
-                                .agent_recorder
-                                .lock()
-                                .map(|slot| slot.is_some())
-                                .unwrap_or(false);
-                        let chunk_text = if has_text_observers {
-                            decode_stream_text(&mut stdout_utf8_carry, &data)
-                        } else {
-                            stdout_utf8_carry.clear();
-                            String::new()
-                        };
+                        // Text observers (triggers, auto-sudo, agent capture)
+                        // need a UTF-8 decode per frame; most sessions have none
+                        // installed, so the decode is lazy: it only runs when one
+                        // of the guards below actually holds an observer. Sharing
+                        // one OnceCell keeps a single decode for the two engines,
+                        // and doing it inside the guard removes any window where
+                        // an observer installed between a probe and its use would
+                        // miss this frame (the old unconditional decode covered it).
+                        let chunk_text = std::cell::OnceCell::new();
                         // Expect 式触发器先于终端 auto-sudo 观察（契约 D1
                         // 互斥防双答）：本 chunk 被触发器应答则跳过
                         // auto-sudo，反之亦然。锁在 .await 前释放。
@@ -238,7 +230,12 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                                 .lock()
                                 .unwrap_or_else(|poison| poison.into_inner());
                             slot.as_mut().and_then(|engine| {
-                                engine.observe(&chunk_text, unix_now_ms()).map(|decision| {
+                                let text = observer_text(
+                                    &chunk_text,
+                                    &mut stdout_utf8_carry,
+                                    &data,
+                                );
+                                engine.observe(text, unix_now_ms()).map(|decision| {
                                     (
                                         decision,
                                         engine.placeholders().clone(),
@@ -253,7 +250,14 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                                 .lock()
                                 .unwrap_or_else(|poison| poison.into_inner())
                                 .as_mut()
-                                .and_then(|auto| auto.observe(&chunk_text))
+                                .and_then(|auto| {
+                                    let text = observer_text(
+                                        &chunk_text,
+                                        &mut stdout_utf8_carry,
+                                        &data,
+                                    );
+                                    auto.observe(text)
+                                })
                         } else {
                             None
                         };
@@ -336,7 +340,9 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                         // what the terminal shows.
                         if let Ok(mut slot) = entry.agent_recorder.lock() {
                             if let Some(recorder) = slot.as_mut() {
-                                recorder.observe(&chunk_text);
+                                let text =
+                                    observer_text(&chunk_text, &mut stdout_utf8_carry, &data);
+                                recorder.observe(text);
                             }
                         }
                     }

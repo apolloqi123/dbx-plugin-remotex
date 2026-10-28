@@ -13,19 +13,23 @@ fn replay_buffer_is_sequence_addressable() {
 #[test]
 fn push_encoded_matches_the_replay_frame_encoding() {
     // The hot publishers encode while moving the payload into the ring; the
-    // wire bytes must stay identical to TerminalFrame::encode.
-    let mut replay = ReplayBuffer::default();
-    let encoded = replay.push_encoded(TerminalStream::Stderr, b"payload".to_vec());
-    assert_eq!(
-        encoded,
-        b"\x01\x00\x00\x00\x00\x00\x00\x00\x01payload".to_vec()
-    );
-    let stored = replay.after(0);
-    assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].stream, TerminalStream::Stderr);
-    assert_eq!(stored[0].data, b"payload");
-    assert_eq!(stored[0].encode(), encoded);
-    assert_eq!(replay.tail_sequence(), 1);
+    // wire bytes must stay identical to TerminalFrame::encode for every tag.
+    for stream in [
+        TerminalStream::Stdout,
+        TerminalStream::Stderr,
+        TerminalStream::State,
+        TerminalStream::Stdin,
+    ] {
+        let mut replay = ReplayBuffer::default();
+        let encoded = replay.push_encoded(stream, b"payload".to_vec());
+        let stored = replay.after(0);
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].stream, stream);
+        assert_eq!(stored[0].data, b"payload");
+        assert_eq!(stored[0].encode(), encoded);
+        assert_eq!(encoded[0], stream as u8);
+        assert_eq!(replay.tail_sequence(), 1);
+    }
 }
 
 #[test]

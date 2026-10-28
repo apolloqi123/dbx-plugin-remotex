@@ -20,6 +20,7 @@ import type { Osc7DirectoryParser } from "../../lib/emulator/terminalDirectoryTr
 import type { PromptNewlineTransformer } from "../../lib/emulator/terminalPromptNewline";
 import { shouldOsc7FollowOverrideUserVarCwd } from "../../lib/emulator/terminalOscChannels";
 import type { Osc633CommandParser, Osc633StreamUpdates } from "../../lib/panels/terminalCommandMarkers";
+import { readU64 } from "../../lib/emulator/terminalFrameSequence";
 import { isSessionGoneError } from "../../lib/behavior/terminalReconnect";
 import { detectTrzszAnnounceFromBytes, type TrzszAnnounce } from "../../lib/transfer/terminalTrzsz";
 import { isKnownStreamTag } from "../../../serial/lib/serialTerminalFrames";
@@ -304,6 +305,11 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
   // 本地终端输出与 SSH 同一帧协议（stream + u64 sequence），复用乱序重组与
   // 空洞补发；State 帧到来即落退出态。补发不完整只 resync 到缓冲尾部——
   // 环形缓冲淘汰不可恢复，但活会话不能被误判成已退出。
+  //
+  // Payloads below are retained as `subarray` views of the event buffer: the
+  // host bridge hands every binary event its own transferred buffer, so the
+  // view stays valid while referenced (pending frames, browser-save chunk
+  // lists). RDP/VNC frames rely on the same contract.
   function handleBinary(event: DbxPluginBinaryEvent) {
     if (event.channel.startsWith("local/terminal/out/")) {
       const local = localFrames();
@@ -509,21 +515,4 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
     drainTerminalFrames,
     disposeOutputPipeline,
   };
-}
-
-function readU64(bytes: Uint8Array, offset: number) {
-  // Manual big-endian assembly; allocates nothing per frame (the DataView
-  // path allocated a view per call). Sequence numbers stay far below 2^53,
-  // so the high/low split is exact.
-  const high =
-    ((bytes[offset] << 24) >>> 0) +
-    (bytes[offset + 1] << 16) +
-    (bytes[offset + 2] << 8) +
-    bytes[offset + 3];
-  const low =
-    ((bytes[offset + 4] << 24) >>> 0) +
-    (bytes[offset + 5] << 16) +
-    (bytes[offset + 6] << 8) +
-    bytes[offset + 7];
-  return high * 0x1_0000_0000 + low;
 }

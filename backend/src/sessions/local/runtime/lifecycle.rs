@@ -156,7 +156,7 @@ impl LocalTerminalRuntime {
 
 /// Reader → pump output queue depth. Each slot is one PTY read (32 KiB), so
 /// the queue is bounded at ~2 MiB per session, matching the replay-buffer
-/// budget. Bigger reads halve the per-frame syscall/wakeup cost of a flooding
+/// budget. Bigger reads cut the per-frame syscall/wakeup cost of a flooding
 /// `cat`; the depth keeps the memory ceiling unchanged. When the publisher
 /// falls behind the reader drops the newest chunk (never blocks, never grows)
 /// and logs a rate-limited byte count.
