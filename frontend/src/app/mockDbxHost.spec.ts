@@ -323,7 +323,7 @@ describe("mockDbxHost fixture", () => {
     const info = await plugin.invoke<{ taskId: string; fileName: string; size: number; chunkSize: number; sudo: boolean }>("sudo/download/start", { sessionId: "visual-session", path: "/etc/nginx/nginx.conf" });
     expect(info.taskId).toMatch(/^sudo-download-/);
     expect(info.sudo).toBe(true);
-    expect(info.chunkSize).toBe(262144);
+    expect(info.chunkSize).toBe(1048576);
     let offset = 0;
     let eof = false;
     while (!eof) {

@@ -50,6 +50,9 @@ function mountDownload(options: {
     openTransferPanel: vi.fn(),
     pathFromUri: (uri) => uri,
     sudoDownload: () => false,
+    loadTransferConcurrency: () => 1,
+    loadTransferMaxActive: () => 1,
+    loadSftpCompatMode: () => false,
   });
   return { download, entries, showError, localCanSave };
 }

@@ -15,6 +15,7 @@ impl SshRuntime {
         remote_path: &str,
         download_dir: Option<&str>,
         encoding: NameEncoding,
+        emit_chunks: bool,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         if self.active_transfer_count(session_id)? as u64 >= self.transfer_depth_limit() {
@@ -205,6 +206,7 @@ impl SshRuntime {
                 size: total,
                 next_offset: 0,
                 sink: None,
+                emit_chunks,
                 tree: Some(Arc::new(TreeDownloadState::new(
                     root_local.clone(),
                     file_count,

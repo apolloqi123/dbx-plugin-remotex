@@ -8,6 +8,8 @@ import { formatBytes } from "../../../../shared/lib/format";
 import { MIB } from "../../../settings/lib/settingsModel";
 import { folderDownloadOutcome, type FolderDownloadFinish } from "../../lib/transfer/sftpFolderDownload";
 import { standaloneArrayBuffer } from "../../../transfers/lib/standaloneBuffer";
+import { downloadBatchLimit, runLimited } from "../../../transfers/lib/transferConcurrency";
+import { raceCancelled } from "../../lib/transfer/downloadCancellation";
 import { rpc, rpcAvailable, RpcUnavailableError } from "../../../../shared/lib/rpc";
 
 /** SFTP 下载落盘链：单文件/目录/批量下载（saveToLocal 直落 vs 分块拉取）、
@@ -40,8 +42,12 @@ export function useSftpDownload(options: {
   /** sudo 模式 + 可写连接（UploadSudo/DownloadSudo 同源判定）：批量下载对
    * 普通文件走 sudo 车道，与右键单项下载的分流一致；目录仍走普通树下载。 */
   sudoDownload: () => boolean;
+  /** 批量下载文件级并发：与上传队列同口径，取批次并发与会话深度较小者。 */
+  loadTransferConcurrency: () => number;
+  loadTransferMaxActive: () => number;
+  loadSftpCompatMode: () => boolean;
 }) {
-  const { t, showNotice, showError, session, entries, selectedEntries, fileMenu, localDownloadDir, localCanSave, transferTasks, cancelledTransferTasks, downloadChunkWaiters, waitWhilePaused, loadDownloadDir, loadDownloadUseDefaultDir, askDownloadTarget, applyChosenDirAsDefault, resolveDownloadConflictFor, openTransferPanel, pathFromUri, sudoDownload } = options;
+  const { t, showNotice, showError, session, entries, selectedEntries, fileMenu, localDownloadDir, localCanSave, transferTasks, cancelledTransferTasks, downloadChunkWaiters, waitWhilePaused, loadDownloadDir, loadDownloadUseDefaultDir, askDownloadTarget, applyChosenDirAsDefault, resolveDownloadConflictFor, openTransferPanel, pathFromUri, sudoDownload, loadTransferConcurrency, loadTransferMaxActive, loadSftpCompatMode } = options;
 
 // 列表条目/下载起始信息的最小结构（App.vue 的 SftpEntry/DownloadInfo 为局部接口）。
 type DownloadListEntry = { uri: string; name: string; kind: SftpEntryKind; size?: number };
@@ -106,6 +112,21 @@ function probeLocalCapabilities() {
 
 type DownloadRemoteFileInput = { remotePath: string; name: string; size?: number; forceSudo?: boolean };
 
+/** 会话级传输深度门（sidecar 权威）在上传/下载/树任务间共享。批量下载
+ * 并发启动时可能撞上探测与插入之间的瞬时满槽；按 500ms 退避重试，最多
+ * 30s，仍满则把真实错误交回调用方。 */
+const DEPTH_LIMIT_ERROR = /already has \d+ active transfers/;
+async function startWithDepthRetry<T>(start: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await start();
+    } catch (cause) {
+      if (!DEPTH_LIMIT_ERROR.test(String(cause)) || attempt >= 59) throw cause;
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+  }
+}
+
 /** 通用单文件下载：树条目与容器暂存件共用同一条落盘管线。
  * forceSudo 走 sudo/download/start（M14-C DownloadSudo，root 大文件二进制
  * 下载）——start 换方法换参数名（path），分块循环、finish、取消与进度面板
@@ -148,11 +169,13 @@ async function downloadRemoteFile(input: DownloadRemoteFileInput, retry?: () => 
       saveToLocal,
       downloadDir: dirOverride || loadDownloadDir() || undefined,
       conflict: conflict === "overwrite" ? "overwrite" : undefined,
+      // sidecar 已直接落盘时不需要每片二进制帧：前端只按 next 的 length 推进。
+      emitChunks: !saveToLocal,
     };
     // sudo 下载族参数名用 path（与 sudo/stat 等同族一致），sftp 族用 remotePath。
-    info = forceSudo
-      ? await rpc<DownloadStartInfo>("sudo/download/start", { ...startParams, path: remotePath })
-      : await rpc<DownloadStartInfo>("sftp/download/start", { ...startParams, remotePath });
+    info = await startWithDepthRetry(() => forceSudo
+      ? rpc<DownloadStartInfo>("sudo/download/start", { ...startParams, path: remotePath })
+      : rpc<DownloadStartInfo>("sftp/download/start", { ...startParams, remotePath }));
     transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "download", fileName: info.fileName, size: info.size, transferred: 0, status: "queued", joinedAt: Date.now(), compression: info.compression === "gzip" ? "gzip" : undefined };
     // 压缩任务等 prep 就绪（M33）：普通任务（含 sudo/回退）立即返回。
     await waitForDownloadReady(info.taskId, info.compression);
@@ -167,18 +190,20 @@ async function downloadRemoteFile(input: DownloadRemoteFileInput, retry?: () => 
     let offset = 0;
     while (offset < info.size) {
       await waitWhilePaused(info.taskId);
-      const chunkPromise = waitForDownloadChunk(info.taskId, offset);
+      // saveToLocal 由 sidecar 写盘且 start 已声明 emitChunks=false：不创建
+      // 永远不会到的二进制帧等待器，只按 next 的 length 推进。
+      const chunkPromise = saveToLocal ? undefined : waitForDownloadChunk(info.taskId, offset);
       const nextPromise = rpc<{ length: number; eof: boolean }>("sftp/download/next", { taskId: info.taskId, offset });
       // Cancellation interrupts via the chunk waiter; swallow the rejection of the
       // in-flight request so it cannot surface as an unhandled promise rejection.
       nextPromise.catch(() => undefined);
-      const result = await nextPromise;
-      const chunk = await chunkPromise;
-      if (chunk.byteLength !== result.length) throw new Error(t("errors.downloadChunkLength"));
+      const result = await raceCancelled(info.taskId, nextPromise, (id) => cancelledTransferTasks.has(id));
+      const chunk = chunkPromise ? await chunkPromise : undefined;
+      if (chunk && chunk.byteLength !== result.length) throw new Error(t("errors.downloadChunkLength"));
       if (!result.eof && result.length === 0) throw new Error(t("errors.downloadEmptyChunk"));
       if (chunks) {
-        chunks.push(chunk);
-        offset += chunk.byteLength;
+        chunks.push(chunk!);
+        offset += chunk!.byteLength;
         const task = transferTasks[info.taskId];
         if (task) {
           task.status = "running";
@@ -186,11 +211,11 @@ async function downloadRemoteFile(input: DownloadRemoteFileInput, retry?: () => 
         }
       } else if (fileTransfer && target) {
         // issue #116：同 trzsz 落盘——transfer 列表只收 ArrayBuffer，交独立 buffer。
-        const write = await fileTransfer.write(target.handleId, offset, standaloneArrayBuffer(chunk));
+        const write = await fileTransfer.write(target.handleId, offset, standaloneArrayBuffer(chunk!));
         offset = write.nextOffset;
       } else {
         // saveToLocal：字节已在 sidecar 侧写入暂存文件，这里只跟进进度。
-        offset += chunk.byteLength;
+        offset += result.length;
         const task = transferTasks[info.taskId];
         if (task) {
           task.status = "running";
@@ -276,6 +301,7 @@ async function downloadDirectoryEntry(entry: DownloadListEntry) {
   fileMenu.value = undefined;
   openTransferPanel();
   if (!session.value || entry.kind !== "directory") return;
+  const sessionId = session.value.sessionId;
   const local = await probeLocalCapabilities();
   if (!local?.canSaveLocal) {
     showError(new Error(t("folderDownload.unsupported")));
@@ -293,14 +319,16 @@ async function downloadDirectoryEntry(entry: DownloadListEntry) {
   let info: DownloadStartInfo | undefined;
   try {
     // start 里做远端递归扫描（有界）：树很大时这一步本身耗时，给足超时。
-    info = await rpc<DownloadStartInfo>("sftp/download/tree/start", {
-      sessionId: session.value.sessionId,
+    info = await startWithDepthRetry(() => rpc<DownloadStartInfo>("sftp/download/tree/start", {
+      sessionId,
       remotePath: pathFromUri(entry.uri),
       downloadDir: dirOverride || loadDownloadDir() || undefined,
-    }, { timeoutMs: 10 * 60 * 1000 });
+      // 目录树始终由 sidecar 直接落盘，不需要每片二进制帧。
+      emitChunks: false,
+    }, { timeoutMs: 10 * 60 * 1000 }));
     transferTasks[info.taskId] = {
       taskId: info.taskId,
-      sessionId: session.value.sessionId,
+      sessionId,
       direction: "download",
       fileName: info.fileName,
       size: info.size,
@@ -314,15 +342,12 @@ async function downloadDirectoryEntry(entry: DownloadListEntry) {
     let offset = 0;
     while (true) {
       await waitWhilePaused(info.taskId);
-      const chunkPromise = waitForDownloadChunk(info.taskId, offset);
       const nextPromise = rpc<{ length: number; eof: boolean }>("sftp/download/next", { taskId: info.taskId, offset });
-      // 取消会通过分块等待器中断；吞掉在途请求的拒绝避免 unhandled rejection。
+      // 取消会通过后端任务摘除/下一片错误中断；吞掉在途请求的拒绝避免 unhandled rejection。
       nextPromise.catch(() => undefined);
-      const result = await nextPromise;
-      const chunk = await chunkPromise;
+      const result = await raceCancelled(info.taskId, nextPromise, (id) => cancelledTransferTasks.has(id));
       if (!result.eof && result.length === 0) throw new Error(t("errors.downloadEmptyChunk"));
       offset += result.length;
-      if (chunk.byteLength && chunk.byteLength !== result.length) throw new Error(t("errors.downloadChunkLength"));
       const task = transferTasks[info.taskId];
       if (task) {
         task.status = "running";
@@ -385,7 +410,8 @@ async function downloadDirectoryEntry(entry: DownloadListEntry) {
 
 // 多选批量下载：文件与目录混选，逐项走各自管线（单项失败不阻断剩余项）。
 // sudo 模式 + 可写连接时普通文件换 sudo 车道（DownloadSudo），目录保持
-// 普通树下载（sudo 下载无目录暂存语义）。
+// 普通树下载（sudo 下载无目录暂存语义）。文件级并发取批次并发与会话深度
+// 较小者——旧实现逐项 await，后端 3 路下载深度完全闲置。
 async function batchDownload() {
   const menu = fileMenu.value;
   fileMenu.value = undefined;
@@ -395,10 +421,27 @@ async function batchDownload() {
   // 树内跨目录选中项优先（selectedEntries），否则保持只从当前目录 entries 命中。
   const source = selectedEntries?.value ?? entries.value;
   const targets = source.filter((entry: DownloadListEntry) => uris.includes(entry.uri));
-  for (const entry of targets) {
-    if (entry.kind !== "file" && entry.kind !== "directory") continue;
-    await downloadEntry(entry, sudoFiles && entry.kind === "file");
-  }
+  const active = Object.values(transferTasks).filter(
+    (task) =>
+      (task.status === "queued" || task.status === "running") &&
+      (!task.sessionId || task.sessionId === session.value?.sessionId),
+  ).length;
+  const limit = downloadBatchLimit({
+    compat: loadSftpCompatMode(),
+    askDirectory: !loadDownloadUseDefaultDir(),
+    concurrency: loadTransferConcurrency(),
+    maxActive: loadTransferMaxActive(),
+    active,
+  });
+  await runLimited(targets, limit, async (entry) => {
+    if (entry.kind !== "file" && entry.kind !== "directory") return;
+    try {
+      await downloadEntry(entry, sudoFiles && entry.kind === "file");
+    } catch (cause) {
+      // 单项失败不阻断其余项；downloadEntry 通常会自行收口，这里兜底。
+      showError(cause, "sftp");
+    }
+  });
 }
 
 // 宿主单次落盘上限（pluginHostBridge MAX_BRIDGE_SAVE_BYTES）：超出时明确报错，
@@ -432,7 +475,7 @@ function waitForDownloadChunk(taskId: string, offset: number) {
     const timer = window.setTimeout(() => {
       downloadChunkWaiters.delete(taskId);
       reject(new Error(t("errors.downloadChunkTimeout")));
-    }, 30_000);
+    }, 60_000);
     downloadChunkWaiters.set(taskId, { offset, resolve, reject, timer });
   });
 }

@@ -12,7 +12,7 @@ mod tests;
 use serde_json::Value;
 
 pub const TERMINAL_REPLAY_LIMIT: usize = 2 * 1024 * 1024;
-pub const TRANSFER_CHUNK_SIZE: usize = 256 * 1024;
+pub const TRANSFER_CHUNK_SIZE: usize = 1024 * 1024;
 pub const MAX_TRANSFER_SIZE: u64 = 16 * 1024 * 1024 * 1024;
 
 pub use connection::*;

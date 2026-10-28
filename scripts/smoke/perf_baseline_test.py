@@ -2,13 +2,14 @@
 """Performance baseline smoke: terminal ring-buffer stress + SFTP throughput
 against the real SSH test container.
 
-Cases (all against the live PTY/SFTP session, 256 KiB negotiated chunk size):
+Cases (all against the live PTY/SFTP session; chunk size is taken from the
+start response, 1 MiB on current builds):
   1. Terminal 2 MiB ring buffer stress: pipe 5 MiB of output through the
      interactive PTY, drain the binary stream, then call ssh/terminal/replay
      and verify the replayed payload stays within the 2 MiB cap with
      `complete == false` (older frames were evicted) and a contiguous tail.
-  2. SFTP upload throughput: stream a 50 MiB file as 256 KiB chunks with
-     per-chunk ack backpressure, verify the remote SHA-256, report MB/s.
+  2. SFTP upload throughput: stream a 50 MiB file using the negotiated chunk
+     size with per-chunk ack backpressure, verify the remote SHA-256, report MB/s.
   3. SFTP download throughput: read the same file back via
      sftp/download/start + sftp/download/next, verify every byte's SHA-256,
      report MB/s.
@@ -41,7 +42,7 @@ from sidecar_client import SidecarClient, SidecarError, lifecycle_params
 from smoke_common import auto_accept_challenge_quiet as auto_accept_challenge
 from smoke_common import missing_method, step
 
-CHUNK = 256 * 1024
+CHUNK = 1024 * 1024
 REPLAY_LIMIT = 2 * 1024 * 1024
 
 
@@ -102,7 +103,7 @@ def case_terminal_buffer(client: SidecarClient, session_id: str, mb: int) -> dic
         # allow that overhead instead of demanding an exact 2 MiB match.
         raise AssertionError(f"replay payload {replayed_bytes} exceeds the {REPLAY_LIMIT} byte cap "
                              f"+ frame overhead ({len(frames)} frames)")
-    if replayed_bytes <= REPLAY_LIMIT - 2 * CHUNK:
+    if replayed_bytes <= REPLAY_LIMIT - 512 * 1024:
         raise AssertionError(f"replay payload {replayed_bytes} unexpectedly far below the cap")
     if replay.get("complete") is not False:
         raise AssertionError("replay reports complete=true although 5 MiB were evicted")
@@ -115,20 +116,19 @@ def case_terminal_buffer(client: SidecarClient, session_id: str, mb: int) -> dic
             "replayed_bytes": replayed_bytes, "frames": len(frames)}
 
 
-def case_upload(client: SidecarClient, session_id: str, path: str, data: bytes, digest: str, expect_compression: str | None = None) -> tuple[float, float]:
+def case_upload(client: SidecarClient, session_id: str, path: str, data: bytes, digest: str, expect_compression: str | None = None) -> tuple[float, float, int]:
     """Returns (spool_seconds, network_seconds). Chunks spool to a local
     temp file; the actual SFTP network transfer happens in upload/finish."""
-    step(f"sftp upload throughput: {len(data) / (1024 * 1024):.0f} MiB in {CHUNK // 1024} KiB chunks")
     upload = client.request("sftp/upload/start",
                             {"sessionId": session_id, "remotePath": path, "size": len(data)})
     if expect_compression is not None and upload.get("compression") != expect_compression:
         raise AssertionError(f"upload compression={upload.get('compression')!r}, want {expect_compression!r}")
     task_id = upload["taskId"]
-    if upload.get("chunkSize") and upload["chunkSize"] != CHUNK:
-        raise AssertionError(f"negotiated chunk size {upload.get('chunkSize')} != {CHUNK}")
+    chunk_size = int(upload.get("chunkSize") or CHUNK)
+    step(f"sftp upload throughput: {len(data) / (1024 * 1024):.0f} MiB in {chunk_size // 1024} KiB chunks")
     started = time.monotonic()
-    for offset in range(0, len(data), CHUNK):
-        chunk = data[offset:offset + CHUNK]
+    for offset in range(0, len(data), chunk_size):
+        chunk = data[offset:offset + chunk_size]
         client.binary_frames.clear()
         client.send_binary(f"sftp/upload/{task_id}", struct.pack(">Q", offset) + chunk)
         while True:
@@ -175,11 +175,11 @@ def case_upload(client: SidecarClient, session_id: str, path: str, data: bytes, 
     if remote_digest != digest:
         raise AssertionError(f"upload digest mismatch: remote {remote_digest[:16]}... local {digest[:16]}...")
     print(f"    sha256 verified: {digest[:16]}...")
-    return spool, network
+    return spool, network, chunk_size
 
 
-def case_download(client: SidecarClient, session_id: str, path: str, size: int, digest: str, expect_compression: str | None = None) -> float:
-    step(f"sftp download throughput: {size / (1024 * 1024):.0f} MiB in {CHUNK // 1024} KiB chunks")
+def case_download(client: SidecarClient, session_id: str, path: str, size: int, digest: str, expect_compression: str | None = None) -> tuple[float, int]:
+    step(f"sftp download throughput: {size / (1024 * 1024):.0f} MiB per sftp/download/next")
     download = client.request("sftp/download/start", {"sessionId": session_id, "remotePath": path}, timeout=60)
     if expect_compression == "gzip":
         # 压缩下载等 prep（远端 gzip → 拉取 → 解压）ready 后再开始分块泵。
@@ -221,7 +221,7 @@ def case_download(client: SidecarClient, session_id: str, path: str, size: int, 
         raise AssertionError("download digest mismatch")
     print(f"    {transferred} bytes in {elapsed:.2f}s -> {mb_s(transferred, elapsed):.1f} MB/s")
     print(f"    sha256 verified: {digest[:16]}...")
-    return elapsed
+    return elapsed, int(download.get("chunkSize") or CHUNK)
 
 
 def main() -> None:
@@ -277,14 +277,14 @@ def main() -> None:
         data = secrets.token_bytes(args.mb * 1024 * 1024)
         digest = hashlib.sha256(data).hexdigest()
         try:
-            spool_s, network_s = case_upload(client, session_id, remote_path, data, digest)
+            spool_s, network_s, chunk_size = case_upload(client, session_id, remote_path, data, digest)
             results["upload"] = {"bytes": len(data), "spool_seconds": round(spool_s, 2),
                                  "spool_mb_s": round(mb_s(len(data), spool_s), 1),
                                  "network_seconds": round(network_s, 2),
-                                 "mb_s": round(mb_s(len(data), network_s), 1), "chunk_kib": CHUNK // 1024}
-            download_s = case_download(client, session_id, remote_path, len(data), digest)
+                                 "mb_s": round(mb_s(len(data), network_s), 1), "chunk_kib": chunk_size // 1024}
+            download_s, download_chunk = case_download(client, session_id, remote_path, len(data), digest)
             results["download"] = {"bytes": len(data), "seconds": round(download_s, 2),
-                                   "mb_s": round(mb_s(len(data), download_s), 1), "chunk_kib": CHUNK // 1024}
+                                   "mb_s": round(mb_s(len(data), download_s), 1), "chunk_kib": download_chunk // 1024}
         except SidecarError as error:
             missing = missing_method(error)
             if missing is None:
@@ -312,14 +312,14 @@ def main() -> None:
             if "OK" not in (probe.get("output") or ""):
                 skips.append("compressed channel (remote lacks gzip)")
             else:
-                cspool_s, cnetwork_s = case_upload(client, session_id, compress_path,
+                cspool_s, cnetwork_s, _cchunk = case_upload(client, session_id, compress_path,
                                                    compress_data, compress_digest,
                                                    expect_compression="gzip")
                 results["uploadCompressed"] = {"bytes": len(compress_data),
                                                "spool_seconds": round(cspool_s, 2),
                                                "network_seconds": round(cnetwork_s, 2),
                                                "mb_s": round(mb_s(len(compress_data), cnetwork_s), 1)}
-                cdownload_s = case_download(client, session_id, compress_path,
+                cdownload_s, _cdownload_chunk = case_download(client, session_id, compress_path,
                                             len(compress_data), compress_digest,
                                             expect_compression="gzip")
                 results["downloadCompressed"] = {"bytes": len(compress_data),

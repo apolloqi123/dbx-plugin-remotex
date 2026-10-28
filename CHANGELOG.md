@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.73] — 2026-10-28
+
+- **SFTP 上传/下载分片与并发优化**。单文件与目录树下载改为读满 1 MiB 分片，顺序分片不再逐片 `seek`，恢复 russh-sftp 的在途读流水线（此前每 32 KiB 就清空一次，约为现在 1/13 的下载吞吐）；`saveToLocal` 与目录树下载由 sidecar 直接落盘、不再把每片字节经 IPC 推给前端（`emitChunks: false`）。上传分片 256 KiB → 1 MiB，SFTP 读写流水线 16 → 32。多选批量下载按「传输并发 / 会话剩余深度」并行，兼容模式与「每次询问保存目录」保持串行；深度满槽按 500ms 退避等待；低速限速下分片自适应为约 0.25 秒预算（下限 32 KiB）。同目录同名下载的最终落位改为原子占名，避免并发完成时互相覆盖；无字节帧路径的取消改为 100ms 轮询中断。七语文案未变。
+  **Faster, safer SFTP upload/download chunking.** Single-file and folder downloads now fill 1 MiB chunks and only seek on the first/non-sequential chunk, restoring russh-sftp's in-flight read pipeline (the old per-32 KiB seek capped downloads at roughly 1/13 of the new throughput). `saveToLocal` and folder downloads are written by the sidecar and no longer push every chunk over IPC (`emitChunks: false`). Upload chunks grow from 256 KiB to 1 MiB and the SFTP read/write pipeline depth from 16 to 32. Multi-select downloads run up to the remaining session depth, while compat mode and “ask every time” stay serial; full slots retry with 500 ms backoff. Low speed limits shrink chunks to a ~0.25 s budget (32 KiB floor). Same-name final paths are reserved atomically so concurrent completions cannot overwrite each other, and frame-less cancels interrupt within ~100 ms. Locale strings are unchanged.
+
 ## [0.7.9-beta.72] — 2026-10-28
 
 - **修复端口映射快捷弹层背景与内容错位**。弹层外壳仍带默认 `w-72` 宽度（约 216px），内容层按 384px 排版后溢出卡片：窄窗口下「运行中」摘要和底部按钮跑到背景外，空状态看起来像一大块空白。现在宽度与内边距统一落在弹层外壳上、内容层撑满，宽窄窗口下背景、摘要与按钮都完整包在卡片内。

@@ -7,20 +7,26 @@ use super::*;
 /// 失败，大文件上传被误杀（#206），统一放宽到 60 秒。
 pub(super) const SFTP_REQUEST_TIMEOUT_SECS: u64 = 60;
 
+/// 非兼容模式的读写流水线深度（crate 默认 16）。下载按 1MiB 分片、上传按
+/// 32KiB 写包排队，32 路在途让单文件吞吐不再被逐包 RTT 限制；SSH 通道窗口
+/// 足以容纳这片在途量。兼容模式仍强制 1（老旧服务器不并发请求）。
+const SFTP_PIPELINE_DEPTH: usize = 32;
+
 /// SFTP 客户端配置（纯函数，供单测）。`compat` 为老旧服务器兼容模式
-/// （M14-B）：请求/响应不做流水线并发（读写各 1 路）；非 compat 沿用
-/// crate 默认并发。两种模式都放宽每请求超时（见 [`SFTP_REQUEST_TIMEOUT_SECS`]）。
+/// （M14-B）：请求/响应不做流水线并发（读写各 1 路）；非 compat 使用
+/// [`SFTP_PIPELINE_DEPTH`]。两种模式都放宽每请求超时（见
+/// [`SFTP_REQUEST_TIMEOUT_SECS`]）。
 pub(crate) fn sftp_client_config(compat: bool) -> SftpConfig {
     SftpConfig {
         max_concurrent_reads: if compat {
             1
         } else {
-            SftpConfig::default().max_concurrent_reads
+            SFTP_PIPELINE_DEPTH
         },
         max_concurrent_writes: if compat {
             1
         } else {
-            SftpConfig::default().max_concurrent_writes
+            SFTP_PIPELINE_DEPTH
         },
         request_timeout_secs: SFTP_REQUEST_TIMEOUT_SECS,
         ..SftpConfig::default()

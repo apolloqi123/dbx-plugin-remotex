@@ -49,7 +49,7 @@ impl SshRuntime {
         file: &sftp_tree::TreeFile,
         current_offset: u64,
         requested: usize,
-    ) -> Result<(Vec<u8>, usize, TreeReadHandle), TreeReadFailure> {
+    ) -> Result<(Vec<u8>, usize, TreeReadHandle, u64), TreeReadFailure> {
         let cached = {
             let mut progress = tree.progress.lock().await;
             if progress.handle_path.as_deref() == Some(file.remote_path.as_str()) {
@@ -62,10 +62,10 @@ impl SshRuntime {
                 None
             }
         };
-        let mut source = match cached {
-            Some(source) => source,
+        let (mut source, mut position) = match cached {
+            Some(cached) => cached,
             None => match self.open_tree_read_handle(tree, session_id, file).await {
-                Ok(source) => source,
+                Ok(source) => (source, 0),
                 Err(message) => {
                     let mut progress = tree.progress.lock().await;
                     progress.read_handle = None;
@@ -77,18 +77,27 @@ impl SshRuntime {
                 }
             },
         };
-        if let Err(error) = source.seek(std::io::SeekFrom::Start(current_offset)).await {
-            let mut progress = tree.progress.lock().await;
-            progress.read_handle = None;
-            progress.handle_path = None;
-            return Err(TreeReadFailure {
-                message: format!("SFTP download seek failed: {error}"),
-                channel_level: false,
-            });
+        // 顺序分片位置已对齐时不再 seek：每次 seek 都会清空 russh-sftp 的
+        // 在途读窗口，退化成“一个 32KiB 包换一次 RTT”。跳文件/重试用绝对
+        // offset 重新对齐。
+        if position != current_offset {
+            if let Err(error) = source.seek(std::io::SeekFrom::Start(current_offset)).await {
+                let mut progress = tree.progress.lock().await;
+                progress.read_handle = None;
+                progress.handle_path = None;
+                return Err(TreeReadFailure {
+                    message: format!("SFTP download seek failed: {error}"),
+                    channel_level: false,
+                });
+            }
+            position = current_offset;
         }
         let mut chunk = vec![0_u8; requested];
-        match source.read(&mut chunk).await {
-            Ok(length) => Ok((chunk, length, source)),
+        match read_filled(&mut source, &mut chunk).await {
+            Ok(length) => {
+                position = position.saturating_add(length as u64);
+                Ok((chunk, length, source, position))
+            }
             Err(error) => {
                 let message = format!("SFTP download failed: {error}");
                 let channel_level = is_channel_level_sftp_error(&message);

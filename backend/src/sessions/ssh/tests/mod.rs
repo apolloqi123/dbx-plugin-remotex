@@ -292,6 +292,7 @@ fn tree_chunk_state(
         size,
         next_offset: 0,
         sink: None,
+        emit_chunks: true,
         tree: Some(Arc::new(tree)),
         sudo_tmp: None,
         latin1: false,

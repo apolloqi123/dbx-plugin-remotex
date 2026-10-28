@@ -96,8 +96,8 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `sftp/upload/start`、`finish` | 上传事务生命周期（`resumeTaskId` 断点续传；`finish` 校验后交后台任务推送并立即返回，见「上传两阶段计数与收尾语义」）。start/finish 响应附 `compression: "gzip"\|"none"`（M33 压缩通道决策结果，见「压缩传输（gzip 混合方案）」节；旧客户端可忽略） |
 | `watch/start`、`watch/stop`、`watch/stop-all`、`watch/upload` | 外部编辑器回写 watcher（仅桌面端，见「外部编辑器 watcher（watch/*）」节）：`start` 对 `remote-edit/` 下载目录内的本机文件登记监听并返回 `{watchId}`，内容确认变化后发 `watch/file-modified` 事件；`upload` 把监听文件当前字节按 `sftp/write` 同款原子提交推回远端（latin-1 按所属连接编码走裸包字节保真，M21） |
 | `local/editors/list`、`local/open-with` | 外部编辑器目录与按名打开（编辑器映射增强，仅桌面端消费，见「外部编辑器目录与打开方式（local/editors/*、local/open-with）」节）：`list` 返回平台知名编辑器目录（文件系统/PATH 探测，不 spawn 进程，unavailable 条目仍返回）；`open-with` 在与 `local/open` 同源的下载历史 allowlist 下用目录编辑器或用户自定义命令行打开已下载文件（argv 直接 spawn，不过 shell） |
-| `sftp/download/start`、`next`、`finish` | 下载事务生命周期（`offset` 断点续传，见下文；桌面端可选 `downloadDir` 指定本机绝对保存目录）。**路径形态契约（M27-A）**：latin-1 生效时 `remotePath` 必须是 `sftp/list` 回传的 wire 形式（`pathFromUri(entry.uri)`）——wire 域内字面 `%` 已被 `escape_wire` 自转义为 `%25`，因此 wire 字符串中的 `%XX`（X∈hex）唯一解读就是转义还原（`has_wire_escapes` 判分支）；该入口不接受用户字面输入的显示文本，含字面 `%XX` 的真实文件名经列表回传时其 wire 形式为 `%25XX`，往返无损。**车道判定按生效编码区分（M28-B 修 D-7）**：latin-1 维持上述 raw 车道；auto 生效时一律走高层客户端——auto 列表 uri 由高层产出、字面 `%` 未经 `%25` 自转义，wire 串里的 `%XX` 是文件名字面量而非转义，不还原（auto 以字面量语义与列表一致）。响应附 `compression: "gzip"\|"none"`（M33 压缩通道决策结果，见「压缩传输（gzip 混合方案）」节；`offset > 0` 续传恒为 `none`） |
-| `sftp/download/tree/start` | 递归目录下载启动：远端 `read_dir` 走树扫描（有界），本地镜像目录布局后复用 `sftp/download/next`/`finish`/`sftp/transfer/cancel` 分块管线（见「递归目录下载」节）。`remotePath` 路径形态契约同 `sftp/download/start`（M27-A：列表回传的 wire 形式）。响应附 `compression`（M33：满足压缩条件时改走「远端 tar.gz 单流 → 本地解包 staging 树」通道，见「压缩传输（gzip 混合方案）」节） |
+| `sftp/download/start`、`next`、`finish`、`cancel`、`sudo/download/start` | 下载事务生命周期（分块 1 MiB；`offset` 断点续传，见下文；桌面端可选 `downloadDir` 指定本机绝对保存目录；`saveToLocal` 可传 `emitChunks: false` 让 sidecar 只落盘、不推字节帧，缺省 true 兼容旧客户端）。**路径形态契约（M27-A）**：latin-1 生效时 `remotePath` 必须是 `sftp/list` 回传的 wire 形式（`pathFromUri(entry.uri)`）——wire 域内字面 `%` 已被 `escape_wire` 自转义为 `%25`，因此 wire 字符串中的 `%XX`（X∈hex）唯一解读就是转义还原（`has_wire_escapes` 判分支）；该入口不接受用户字面输入的显示文本，含字面 `%XX` 的真实文件名经列表回传时其 wire 形式为 `%25XX`，往返无损。**车道判定按生效编码区分（M28-B 修 D-7）**：latin-1 维持上述 raw 车道；auto 生效时一律走高层客户端——auto 列表 uri 由高层产出、字面 `%` 未经 `%25` 自转义，wire 串里的 `%XX` 是文件名字面量而非转义，不还原（auto 以字面量语义与列表一致）。响应附 `compression: "gzip"\|"none"`（M33 压缩通道决策结果，见「压缩传输（gzip 混合方案）」节；`offset > 0` 续传恒为 `none`） |
+| `sftp/download/tree/start` | 递归目录下载启动：远端 `read_dir` 走树扫描（有界），本地镜像目录布局后复用 `sftp/download/next`/`finish`/`sftp/transfer/cancel` 分块管线（见「递归目录下载」节）。`remotePath` 路径形态契约同 `sftp/download/start`（M27-A：列表回传的 wire 形式）。响应附 `compression`（M33：满足压缩条件时改走「远端 tar.gz 单流 → 本地解包 staging 树」通道，见「压缩传输（gzip 混合方案）」节）；`emitChunks` 缺省 true，工作台目录下载固定传 false |
 | `sftp/stat`、`sftp/exists`、`sftp/touch`、`sftp/write` | 扩展文件操作：元信息单查、存在性检查、空文件创建、小文件直写；latin-1 下 `sftp/stat` 整条 wire 还原走裸包 LSTAT，`sftp/exists` 按 `form` 参数分工还原（缺省「wire 前缀 + 显示末段」、`form: "wire"` 整条），均走裸包 LSTAT（M17，见 `sftp/exists` 节） |
 | `sftp/symlink-create`、`sftp/symlink-read`、`sftp/symlink-update` | 符号链接三命令（路径来源分工详见 `sftp/list` 节 M16 段）：`create {target, linkPath}` 与 `update {linkPath, target}` 过 `ensure_writable` 只读门禁，`target` 允许相对路径（symlink 语义，仅清洗不归一）；SFTPv3 无 re-link 原语，update 为「读现指向比对——一致即 no-op，否则先删旧链再重建」；`read {linkPath}` → `{linkPath, target}`。latin-1 车道：linkPath 整条 wire 还原、target/指向文本按显示编码回字节，读↔写闭环（裸包建立失败回退高层，读侧任何失败即回退） |
 | `sftp/archive`、`sftp/extract` | 远端 tar.gz 打包与解压；extract 可选 `sudo: true`（文件夹整包上传车道：列档/解包经 sudo 编排、跳过撞名预检恒覆盖），见「文件夹整包上传（folderArchive）」节 |
@@ -722,12 +722,21 @@ MCP 面同名工具已随 #203 瘦身移出——容器巡检/生命周期走 `s
 - `docker/terminal/in/{terminalId}`：容器 PTY 输入，帧与 `ssh/terminal/in` 同形（8 字节大端序号 + 数据）；无重传/ACK 语义，注册表已回收时镜像 `docker/terminal/state` error。
 - `docker/terminal/out/{terminalId}`：容器 PTY 原始输出字节（无序号头，桥保证有序；不做重放）。
 - `serial/terminal/in/{sessionId}`：串口终端输入（B1 二进制写通道），帧与输出同构（`TerminalFrame`：1 字节流标签 + 大端 `u64` 序号 + 原始键序字节），标签**恒为 `Stdin = 3`**（避开 local 终端带内状态帧占用的 `State = 2`）；非 Stdin 标签/截断帧由 sidecar 按参数错误拒绝；文件上传活动期间一律拒绝（互斥后盾，第一道闸门在前端）；拒绝与死会话镜像 `serial/terminal/error`，成功确认 `serial/terminal/inputAck {sessionId, sequence}`（sequence 仅审计用，无重传语义）。解码端遇到未知流标签（> 3）一律静默丢帧并计数，不得断连或 panic。设计依据 `docs/architecture/SERIAL_ENHANCE_DESIGN.zh-CN.md` §2。
-- `sftp/upload/{taskId}`：大端 `u64` 文件偏移加最多 256 KiB 数据；偏移必须等于服务端期待值。
-- `sftp/download/{taskId}`：大端 `u64` 文件偏移加最多 256 KiB 数据（树任务该偏移为整树聚合字节位置；队列耗尽后的 eof 应答携带 0 字节数据）。
+- `sftp/upload/{taskId}`：大端 `u64` 文件偏移加最多 1 MiB 数据；偏移必须等于服务端期待值。
+- `sftp/download/{taskId}`：大端 `u64` 文件偏移加最多 1 MiB 数据（树任务该偏移为整树聚合字节位置；队列耗尽后的 eof 应答携带 0 字节数据）。`sftp/download/start` / `sudo/download/start` / `sftp/download/tree/start` 接受可选 `emitChunks`（缺省 true）：`false` 时 sidecar 只落盘、`next` 仅返回 `length/eof`，不再发该通道的字节帧；工作台 `saveToLocal` 与目录树固定传 `false`。
 - `vnc/frame/{sessionId}`：VNC 帧补丁，44 字节头 + RGBA 像素负载，全部**小端**（字段表见下文「VNC 帧补丁」小节）。
 - `rdp/frame/{sessionId}`：RDP 帧补丁，与 `vnc/frame` **同一** 44 字节 patch 头 + RGBA 像素负载（全小端；字段表、校验不变式与跨端 golden 向量同「VNC 帧补丁」小节，前端解码器直接复用）。
 
 终端输出保留 2 MiB 环形缓存。前端检测到序号缺口后停止乱序输出并调用 `ssh/terminal/replay`。文件传输采用逐块 RPC 确认，不依赖广播队列可靠送达。
+
+**分片与流水线（2026-10-28）**：单文件与目录树下载每片上限 1 MiB；sidecar 用
+`read_filled` 读满整片（russh-sftp 单次 `read` 只返回一个 DATA 包），顺序分片
+只在首块/跳块时 `seek`，避免每片清空客户端 32 路在途读窗口（兼容模式仍为 1）。
+上传分片同为 1 MiB，推送侧 `write_all` 使用 32 路在途写。`saveToLocal` 下载与
+目录树下载传 `emitChunks: false`，字节只落 sidecar 本地盘、不经 IPC。
+latin-1 raw 车道仍按 32 KiB 顺序 READ 循环（裸包客户端无高层流水线）。
+下载限速开启时片大小自适应为约 0.25 秒预算（下限 32 KiB），避免低速设置
+把单片拖过 RPC 超时。
 
 ### VNC 帧补丁（`vnc/frame/{sessionId}`）
 

@@ -38,6 +38,7 @@ mod terminal_support;
 #[cfg(test)]
 mod tests;
 mod transfer;
+mod transfer_read;
 mod transfer_util;
 mod tree_download;
 mod tree_support;
@@ -81,6 +82,7 @@ use terminal_support::*;
 pub(crate) use terminal_support::{connection_id_param, filesystem_path};
 pub(crate) use transfer_util::apply_preserved_permissions;
 use transfer_util::*;
+use transfer_read::read_filled;
 use tree_support::*;
 
 use self::exec::{

@@ -283,19 +283,26 @@ impl SshRuntime {
                 .await
                 .map_err(|error| format!("Failed to flush local download file: {error}"))?;
         }
-        let final_path =
-            local_downloads::final_download_path(&sink.final_dir, file_name, sink.overwrite);
+        let final_path = if sink.overwrite {
+            local_downloads::final_download_path(&sink.final_dir, file_name, true)
+        } else {
+            local_downloads::reserve_download_path(&sink.final_dir, file_name)
+                .map_err(|error| format!("Failed to reserve a download path: {error}"))?
+        };
         if std::fs::rename(&sink.part_path, &final_path).is_ok() {
             return Ok(final_path);
         }
-        std::fs::copy(&sink.part_path, &final_path)
-            .and_then(|_| std::fs::remove_file(&sink.part_path))
-            .map_err(|error| {
-                format!(
-                    "Failed to move the download into '{}': {error}",
-                    final_path.display()
-                )
-            })?;
+        let result = std::fs::copy(&sink.part_path, &final_path)
+            .and_then(|_| std::fs::remove_file(&sink.part_path));
+        if let Err(error) = result {
+            if !sink.overwrite {
+                let _ = std::fs::remove_file(&final_path);
+            }
+            return Err(format!(
+                "Failed to move the download into '{}': {error}",
+                final_path.display()
+            ));
+        }
         Ok(final_path)
     }
 
@@ -307,18 +314,26 @@ impl SshRuntime {
         overwrite: bool,
         file_name: &str,
     ) -> Result<PathBuf, String> {
-        let final_path = local_downloads::final_download_path(final_dir, file_name, overwrite);
+        let final_path = if overwrite {
+            local_downloads::final_download_path(final_dir, file_name, true)
+        } else {
+            local_downloads::reserve_download_path(final_dir, file_name)
+                .map_err(|error| format!("Failed to reserve a download path: {error}"))?
+        };
         if std::fs::rename(staged, &final_path).is_ok() {
             return Ok(final_path);
         }
-        std::fs::copy(staged, &final_path)
-            .and_then(|_| std::fs::remove_file(staged))
-            .map_err(|error| {
-                format!(
-                    "Failed to move the download into '{}': {error}",
-                    final_path.display()
-                )
-            })?;
+        let result = std::fs::copy(staged, &final_path)
+            .and_then(|_| std::fs::remove_file(staged));
+        if let Err(error) = result {
+            if !overwrite {
+                let _ = std::fs::remove_file(&final_path);
+            }
+            return Err(format!(
+                "Failed to move the download into '{}': {error}",
+                final_path.display()
+            ));
+        }
         Ok(final_path)
     }
 
@@ -329,6 +344,13 @@ impl SshRuntime {
         final_dir: &Path,
         root_name: &str,
     ) -> Result<PathBuf, String> {
+        // Directory names cannot be reserved with create_new; serialize the
+        // pick→rename window so two folder downloads with the same root name
+        // cannot both choose the same target. Rename is the common path;
+        // cross-volume copy under this lock is rare.
+        let _guard = finalize_dir_lock()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         let final_path = local_downloads::final_download_path(final_dir, root_name, false);
         if std::fs::rename(staging, &final_path).is_ok() {
             return Ok(final_path);
@@ -342,4 +364,9 @@ impl SshRuntime {
         let _ = std::fs::remove_dir_all(staging);
         Ok(final_path)
     }
+}
+
+fn finalize_dir_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
 }

@@ -116,23 +116,35 @@ impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> RawSftp<S> {
             .open_handle(path, PFLAGS_READ, &RawAttrs::default())
             .await?;
         let result = async {
-            let id = self.next_id();
-            let reply = self
-                .request(build_read(id, &handle, offset, len), id)
-                .await?;
-            let (kind, _, body) = parse_response_header(&reply)?;
-            match kind {
-                FXP_DATA => parse_data(body),
-                FXP_STATUS => {
-                    let code = parse_status_code(body)?;
-                    if code == SSH_FX_EOF {
-                        Ok(Vec::new())
-                    } else {
-                        Err(format!("SFTP raw read failed with status {code}"))
+            let mut data = Vec::with_capacity(len as usize);
+            let mut position = offset;
+            // 单个 READ 只请求 READ_CHUNK（32 KiB）：一把梭 1 MiB 在部分
+            // 服务端会被截断或拒绝；循环到满片/EOF 与高层 read_filled 同义。
+            while (data.len() as u32) < len {
+                let requested = (len - data.len() as u32).min(READ_CHUNK as u32);
+                let id = self.next_id();
+                let reply = self
+                    .request(build_read(id, &handle, position, requested), id)
+                    .await?;
+                let (kind, _, body) = parse_response_header(&reply)?;
+                let chunk = match kind {
+                    FXP_DATA => parse_data(body)?,
+                    FXP_STATUS => {
+                        let code = parse_status_code(body)?;
+                        if code == SSH_FX_EOF {
+                            break;
+                        }
+                        return Err(format!("SFTP raw read failed with status {code}"));
                     }
+                    _ => return Err("SFTP raw read got an unexpected reply".to_string()),
+                };
+                if chunk.is_empty() {
+                    break;
                 }
-                _ => Err("SFTP raw read got an unexpected reply".to_string()),
+                position = position.saturating_add(chunk.len() as u64);
+                data.extend_from_slice(&chunk);
             }
+            Ok(data)
         }
         .await;
         self.close(&handle).await?;

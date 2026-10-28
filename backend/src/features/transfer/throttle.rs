@@ -40,6 +40,19 @@ impl Throttle {
         self.limit_kib.saturating_mul(1024)
     }
 
+    /// Caps one chunk so a throttled download still makes progress in bounded
+    /// time. Unlimited tasks keep the full `cap` (1 MiB); throttled tasks use
+    /// roughly a quarter-second of budget, floored at 32 KiB so a 1 KiB/s
+    /// setting still completes one chunk inside the 60 s RPC timeout.
+    pub fn chunk_size(&self, cap: usize) -> usize {
+        if !self.enabled() {
+            return cap;
+        }
+        let quarter = self.bytes_per_second() / 4;
+        let floor = (32 * 1024_u64).min(cap as u64);
+        quarter.clamp(floor, cap as u64) as usize
+    }
+
     /// How long a chunk of `bytes` should take at the configured rate.
     /// Exposed for tests; `pace` compares real elapsed time against it.
     fn ideal_duration(&self, bytes: usize) -> Duration {
@@ -139,6 +152,19 @@ mod tests {
         // finite duration instead of wrapping.
         let slow = Throttle::new(1);
         assert!(slow.ideal_duration(usize::MAX) > Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn throttled_chunks_are_capped_to_a_bounded_duration() {
+        // Unlimited keeps the 1 MiB cap.
+        assert_eq!(Throttle::new(0).chunk_size(TRANSFER_1MIB), TRANSFER_1MIB);
+        // A 1 MiB/s cap uses ~256 KiB (quarter second) per chunk.
+        assert_eq!(Throttle::new(1024).chunk_size(TRANSFER_1MIB), 256 * 1024);
+        // Very low caps fall back to the 32 KiB floor (>= 1 KiB/s keeps one
+        // chunk under the 60 s RPC timeout).
+        assert_eq!(Throttle::new(1).chunk_size(TRANSFER_1MIB), 32 * 1024);
+        // A cap smaller than the floor still never exceeds the hard cap.
+        assert_eq!(Throttle::new(1).chunk_size(8 * 1024), 8 * 1024);
     }
 
     const TRANSFER_1MIB: usize = 1024 * 1024;

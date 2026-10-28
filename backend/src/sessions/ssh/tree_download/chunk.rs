@@ -69,8 +69,7 @@ impl SshRuntime {
                         }
                         // 队列耗尽：空树或全部走完。最后一批文件的改名/失败登记
                         // 已就地写入共享树状态，finish 能看到完整汇总；随后补发
-                        // 一个空 eof 块，让前端的分块等待器（只认二进制帧）与
-                        // 单文件语义保持一致。
+                        // 一个空 eof 块（emitChunks=true 时），与单文件语义一致。
                         None => TreeChunkStep::Drain,
                     }
                 } else if progress.sink.is_none() {
@@ -88,11 +87,13 @@ impl SshRuntime {
             }
             match step {
                 TreeChunkStep::Drain => {
-                    let mut payload = Vec::with_capacity(8);
-                    payload.extend_from_slice(&offset.to_be_bytes());
-                    emitter
-                        .binary(&format!("sftp/download/{task_id}"), &payload)
-                        .map_err(plugin_error)?;
+                    if download.emit_chunks {
+                        let mut payload = Vec::with_capacity(8);
+                        payload.extend_from_slice(&offset.to_be_bytes());
+                        emitter
+                            .binary(&format!("sftp/download/{task_id}"), &payload)
+                            .map_err(plugin_error)?;
+                    }
                     return Ok(
                         json!({ "taskId": task_id, "offset": offset, "length": 0, "eof": true, "fileName": download.file_name }),
                     );
@@ -155,7 +156,7 @@ impl SshRuntime {
                         finalize_tree_current(self, &tree).await;
                         continue;
                     }
-                    let requested = remaining.min(TRANSFER_CHUNK_SIZE as u64) as usize;
+                    let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
                     // 限速节奏（issue #66）：树下载逐文件分块循环与单文件同口径——
                     // 块耗时从读开始计量，读毕由 limiter 补足差额；缺省 0 零开销。
                     // 压缩树不限速（网络腿已在 prep 拉取段按压缩流限速，这里是
@@ -164,7 +165,7 @@ impl SshRuntime {
                         && (download.compression != CompressionMode::Gzip
                             || download.serving_plain))
                         .then(std::time::Instant::now);
-                    let mut handle_out: Option<TreeReadHandle> = None;
+                    let mut handle_out: Option<(TreeReadHandle, u64)> = None;
                     let read_result: Result<(Vec<u8>, usize), TreeReadFailure> =
                         if download.compression == CompressionMode::Gzip && !download.serving_plain
                         {
@@ -181,8 +182,7 @@ impl SshRuntime {
                                     .await
                                     .map_err(|error| format!("staged seek failed: {error}"))?;
                                 let mut chunk = vec![0_u8; requested];
-                                let length = source
-                                    .read(&mut chunk)
+                                let length = read_filled(&mut source, &mut chunk)
                                     .await
                                     .map_err(|error| format!("staged read failed: {error}"))?;
                                 Ok::<(Vec<u8>, usize), String>((chunk, length))
@@ -232,8 +232,8 @@ impl SshRuntime {
                                 )
                                 .await
                             {
-                                Ok((chunk, length, source)) => {
-                                    handle_out = Some(source);
+                                Ok((chunk, length, source, position)) => {
+                                    handle_out = Some((source, position));
                                     Ok((chunk, length))
                                 }
                                 Err(failure) => Err(failure),
@@ -277,10 +277,10 @@ impl SshRuntime {
                     chunk.truncate(length);
                     // Cache the reused handle only once the read succeeded; a
                     // cancel drops it instead of resurrecting the slot.
-                    if let Some(source) = handle_out {
+                    if let Some(cached) = handle_out {
                         if self.tree_download_active(task_id)? {
                             let mut progress = tree.progress.lock().await;
-                            progress.read_handle = Some(source);
+                            progress.read_handle = Some(cached);
                             progress.handle_path = Some(file.remote_path.clone());
                         }
                     }
@@ -324,22 +324,24 @@ impl SshRuntime {
                         return Err("Download task was cancelled".to_string());
                     }
                     let next_offset = offset + length as u64;
-                    let mut payload = Vec::with_capacity(8 + length);
-                    payload.extend_from_slice(&offset.to_be_bytes());
-                    payload.extend_from_slice(&chunk);
-                    if let Err(error) =
-                        emitter.binary(&format!("sftp/download/{task_id}"), &payload)
-                    {
-                        // The caller never saw the frame: do not advance either
-                        // offset, and undo the staged bytes so the retry of the
-                        // same offset does not duplicate them.
-                        let local = sink.file.lock().await;
-                        let _ = local.set_len(current_offset).await;
-                        return Err(plugin_error(error));
+                    if download.emit_chunks {
+                        let mut payload = Vec::with_capacity(8 + length);
+                        payload.extend_from_slice(&offset.to_be_bytes());
+                        payload.extend_from_slice(&chunk);
+                        if let Err(error) =
+                            emitter.binary(&format!("sftp/download/{task_id}"), &payload)
+                        {
+                            // The caller never saw the frame: do not advance either
+                            // offset, and undo the staged bytes so the retry of the
+                            // same offset does not duplicate them.
+                            let local = sink.file.lock().await;
+                            let _ = local.set_len(current_offset).await;
+                            return Err(plugin_error(error));
+                        }
                     }
-                    // 进度事件时间窗节流（progress_throttle），eof 帧必发兜底树
-                    // 收尾/文件切换的最终进度可见。Both offsets commit only
-                    // after the frame and the staging write succeeded.
+                    // 进度事件时间窗节流（progress_throttle），eof 进度必发兜底
+                    // 收尾/文件切换的最终进度可见。Offsets commit after the
+                    // staging write (and, when emitChunks=true, the frame).
                     {
                         // Validate against the registry without holding the
                         // std guard across the async progress lock (that would

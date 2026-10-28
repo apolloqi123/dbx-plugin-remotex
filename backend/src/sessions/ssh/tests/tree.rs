@@ -57,6 +57,7 @@ async fn tree_download_streams_multiple_files_across_chunks() {
             size: total,
             next_offset: 0,
             sink: None,
+            emit_chunks: true,
             tree: Some(Arc::new(TreeDownloadState::new(
                 root.clone(),
                 3,
@@ -195,7 +196,7 @@ async fn cancel_tree_download_removes_partial_root_and_reports_cancel() {
             sink: None,
             files_done: 0,
             failures: Vec::new(),
-            read_handle: Some(Box::new(open_handle)),
+            read_handle: Some((Box::new(open_handle), 0)),
             handle_path: Some("/remote/sub/file.bin".to_string()),
         },
     ));
@@ -208,6 +209,7 @@ async fn cancel_tree_download_removes_partial_root_and_reports_cancel() {
             size: 7,
             next_offset: 3,
             sink: None,
+            emit_chunks: true,
             tree: Some(tree_state.clone()),
             sudo_tmp: None,
             latin1: false,
@@ -424,13 +426,16 @@ async fn finish_tree_download_waits_for_the_in_flight_final_chunk() {
             })),
             files_done: 0,
             failures: Vec::new(),
-            read_handle: Some(Box::new(GatedTreeRead {
-                started: started.clone(),
-                release: Some(release_rx),
-                announced: false,
-                data: data.clone(),
-                pos: 0,
-            })),
+            read_handle: Some((
+                Box::new(GatedTreeRead {
+                    started: started.clone(),
+                    release: Some(release_rx),
+                    announced: false,
+                    data: data.clone(),
+                    pos: 0,
+                }),
+                0,
+            )),
             handle_path: Some("/remote/last.bin".to_string()),
         },
     ));
@@ -702,7 +707,7 @@ async fn cancel_tree_download_does_not_wait_for_an_in_flight_read() {
             })),
             files_done: 0,
             failures: Vec::new(),
-            read_handle: Some(Box::new(slow)),
+            read_handle: Some((Box::new(slow), 0)),
             handle_path: Some("/remote/slow.bin".to_string()),
         },
     ));
@@ -752,16 +757,57 @@ fn sftp_client_config_compat_serializes_pipelines_and_widens_timeout() {
 }
 
 #[test]
-fn sftp_client_config_non_compat_keeps_default_pipeline_concurrency() {
-    // 非 compat 保持 crate 默认流水线并发，只放宽每请求超时（#206）。
+fn sftp_client_config_non_compat_widens_read_write_pipelines() {
+    // 非 compat 把读写流水线从 crate 默认 16 提到 32（1MiB 分片/32KiB 写包），
+    // 只放宽每请求超时（#206）。
     let config = sftp_client_config(false);
-    assert_eq!(
-        config.max_concurrent_reads,
-        SftpConfig::default().max_concurrent_reads
-    );
-    assert_eq!(
-        config.max_concurrent_writes,
-        SftpConfig::default().max_concurrent_writes
-    );
+    assert_eq!(config.max_concurrent_reads, 32);
+    assert_eq!(config.max_concurrent_writes, 32);
     assert_eq!(config.request_timeout_secs, 60);
+}
+
+#[tokio::test]
+async fn tree_download_without_frames_still_writes_local_files() {
+    let dest = tempfile::tempdir().expect("dest");
+    let source = tempfile::tempdir().expect("source");
+    let data = b"local-tree-bytes".to_vec();
+    std::fs::write(source.path().join("a.bin"), &data).expect("source file");
+    let mut state = tree_chunk_state(
+        dest.path().join("tree-root"),
+        vec![sftp_tree::TreeFile {
+            relative: "a.bin".to_string(),
+            remote_path: "/remote/a.bin".to_string(),
+            size: data.len() as u64,
+        }],
+        CompressionMode::None,
+        Some(source.path().to_path_buf()),
+    );
+    state.emit_chunks = false;
+    let runtime = SshRuntime::new(dest.path().to_path_buf());
+    let task_id = "t-tree-no-frames";
+    runtime
+        .downloads
+        .lock()
+        .unwrap()
+        .insert(task_id.to_string(), state);
+    let (emitter, sink) = framed_transfer_emitter();
+    let mut offset = 0_u64;
+    loop {
+        let response = runtime
+            .download_chunk(task_id, offset, &emitter)
+            .await
+            .expect("tree chunk");
+        offset += response["length"].as_u64().expect("length");
+        if response["eof"].as_bool().expect("eof") {
+            break;
+        }
+    }
+    assert!(
+        framed_messages(&sink)
+            .iter()
+            .all(|message| !matches!(message, FramedMessage::Binary { .. })),
+        "emitChunks=false must not push tree bytes over IPC"
+    );
+    let written = std::fs::read(dest.path().join("tree-root/a.bin")).expect("local file");
+    assert_eq!(written, data);
 }

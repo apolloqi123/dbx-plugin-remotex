@@ -117,6 +117,10 @@ pub(crate) struct DownloadState {
     /// transferred bytes across finished files.
     pub(crate) next_offset: u64,
     pub(crate) sink: Option<Arc<DownloadSink>>,
+    /// 是否把每片字节通过二进制帧推给工作台。`saveToLocal`/目录树由
+    /// sidecar 直接落盘，工作台只需要 `next` 的 length/eof——关掉后省掉
+    /// 每片的 IPC 编码、传输与前端内存占用。旧调用方缺省 true。
+    pub(crate) emit_chunks: bool,
     /// Present only for recursive folder downloads (`sftp/download/tree/start`);
     /// the chunk/finish/cancel paths branch on it while sharing the registry,
     /// progress events and cancel plumbing with plain file downloads.
@@ -166,12 +170,14 @@ pub(crate) struct DownloadState {
     /// DownloadSink，压缩任务无 sink（解压直写 staged_plain），单独记录。
     pub(crate) final_dir: Option<PathBuf>,
     pub(crate) overwrite: bool,
-    /// 高层车道复用的远端读句柄（单文件下载）：逐片 OPEN+SEEK+READ+CLOSE
-    /// 每片多付 2 个 RTT，高延迟链路吞吐被 RTT 界死。File 的 Drop 发
-    /// close_nowait——槽位置 None 即完成关闭，无需显式清理链。文件夹下载
-    /// 不复用本槽位：树的在途句柄随 `TreeDownloadProgress.read_handle`
-    /// 逐文件复用（换文件时丢弃重开），收益见 tree_download。
-    pub(crate) read_handle: Arc<AsyncMutex<Option<russh_sftp::client::fs::File>>>,
+    /// 高层车道复用的远端读句柄（单文件下载）与流内位置：逐片 OPEN 或
+    /// 每片 seek 都会清空 russh-sftp 的在途读窗口（16 路），高延迟链路吞吐
+    /// 被 RTT 界死。顺序分片只在首次打开/非连续 offset 时 seek，读满一片后
+    /// 句柄位置与下一片 offset 对齐。File 的 Drop 发 close_nowait——槽位置
+    /// None 即完成关闭，无需显式清理链。文件夹下载不复用本槽位：树的在途
+    /// 句柄随 `TreeDownloadProgress.read_handle` 逐文件复用（换文件时丢弃
+    /// 重开），收益见 tree_download。
+    pub(crate) read_handle: Arc<AsyncMutex<Option<(russh_sftp::client::fs::File, u64)>>>,
     /// 裸包车道（latin-1 转义名）复用的裸包客户端：此前逐片新开一条 SFTP
     /// 子系统通道（open session + request_subsystem + INIT 握手，多付数个
     /// RTT），同一理由缓存在任务槽——单文件与树下载共用（客户端与路径
@@ -267,9 +273,10 @@ pub(crate) struct TreeDownloadProgress {
     pub(crate) sink: Option<Arc<DownloadSink>>,
     pub(crate) files_done: u64,
     pub(crate) failures: Vec<Value>,
-    /// 高层车道复用的远端读句柄（当前 `current` 文件）。分块泵在 I/O 期间
-    /// 把它临时移出锁外，写回时据此保证同一文件只 open 一次。
-    pub(crate) read_handle: Option<TreeReadHandle>,
+    /// 高层车道复用的远端读句柄（当前 `current` 文件）与流内位置。分块
+    /// 泵在 I/O 期间把它临时移出锁外，写回时据此保证同一文件只 open 一次；
+    /// 顺序分片不再逐片 seek（seek 会清空 crate 的在途读窗口）。
+    pub(crate) read_handle: Option<(TreeReadHandle, u64)>,
     /// `read_handle` 对应的 remote_path；切换文件时据此重新 open。
     pub(crate) handle_path: Option<String>,
 }

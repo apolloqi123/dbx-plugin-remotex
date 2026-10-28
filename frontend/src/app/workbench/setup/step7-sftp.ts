@@ -37,7 +37,7 @@ export function installWorkbenchSftp(deps: Deps) {
   cancelledTransferTasks, commandHistory, commandHistoryBackup, commandHistoryIndex, commandHistoryTimes, commandRunning,
   connected, connectionId, copyTextToClipboard, currentPath, deleteSubmitting, deleteTarget,
   dockerPaneOpen, dockerSplitRatio, downloadChunkWaiters, entries, fileMenu, isRdpConnection,
-  lastClickedUri, listSftpDirectory, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir, loadTransferConcurrency,
+  lastClickedUri, listSftpDirectory, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir, loadSftpCompatMode, loadTransferConcurrency,
   loadTransferDuplicatePolicy, loadTransferMaxActive, localCanSave, localDownloadDir, localUiMode, mkdirTargetDir,
   openNewFileDialog, paneContainer, workbenchSplitRef, paneLayout, paneOrder, pasteBusy, persistCommandHistory,
   persistCommandHistoryTimes, persistState, persistTerminalFeaturePrefs, pushTerminalCommandHistory, refreshExpandedSftpTree, refreshSftpAfterMutation,
@@ -313,7 +313,6 @@ export function installWorkbenchSftp(deps: Deps) {
     t, showNotice, showError, loadDirectory,
     session,
     openTransferPanel: () => late.openTransferPanel(), transferTasks, pathFromUri, waitWhilePaused, cancelledTransferTasks, downloadChunkWaiters,
-    waitForDownloadChunk: (taskId, offset) => waitForDownloadChunk(taskId, offset),
     waitForDownloadReady: (taskId, compression) => waitForDownloadReady(taskId, compression),
     probeLocalCapabilities: () => probeLocalCapabilities(),
     loadDownloadDir, copyTextToClipboard,
@@ -379,6 +378,10 @@ export function installWorkbenchSftp(deps: Deps) {
     pathFromUri,
     // sudo 模式 + 可写连接时批量下载对普通文件走 sudo 车道（与右键单项一致）。
     sudoDownload: () => sudoMode.value && canWrite.value,
+    // 下载文件级并发：与上传队列同口径（批次并发与会话深度取小）。
+    loadTransferConcurrency,
+    loadTransferMaxActive,
+    loadSftpCompatMode,
   });
 
   // 容器文件页的传输桥：容器页 props 固定（t/container/sessionId/connectionId/

@@ -26,12 +26,17 @@ impl Plugin {
                     .and_then(Value::as_str)
                     .map(str::to_string);
                 let conflict = params.get("conflict").and_then(Value::as_str);
+                let emit_chunks = params
+                    .get("emitChunks")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
                 self.runtime.block_on(self.ssh.start_sudo_download(
                     session_id,
                     path,
                     save_to_local,
                     download_dir.as_deref(),
                     conflict,
+                    emit_chunks,
                     emitter,
                 ))
             }
@@ -137,6 +142,10 @@ impl Plugin {
                     .and_then(Value::as_str)
                     .map(str::to_string);
                 let conflict = params.get("conflict").and_then(Value::as_str);
+                let emit_chunks = params
+                    .get("emitChunks")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
                 // 判定走连接级优先级（M16）：连接覆盖 > 全局偏好 > 缺省
                 // auto。M28-B 修 D-7：单文件下载判分支按生效编码区分——
                 // auto 一律走高层客户端（auto 列表 uri 字面 `%` 未自转义，
@@ -151,6 +160,7 @@ impl Plugin {
                     download_dir.as_deref(),
                     conflict,
                     encoding,
+                    emit_chunks,
                     emitter,
                 ))
             }
@@ -168,11 +178,16 @@ impl Plugin {
                     .map(str::to_string);
                 // 判定走连接级优先级（M16）：连接覆盖 > 全局偏好（整树 latin-1 遍历）。
                 let encoding = self.resolve_sftp_encoding(session_id);
+                let emit_chunks = params
+                    .get("emitChunks")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
                 self.runtime.block_on(self.ssh.start_tree_download(
                     session_id,
                     remote_path,
                     download_dir.as_deref(),
                     encoding,
+                    emit_chunks,
                     emitter,
                 ))
             }

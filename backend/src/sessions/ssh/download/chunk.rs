@@ -26,7 +26,7 @@ impl SshRuntime {
             ));
         }
         let remaining = download.size.saturating_sub(offset);
-        let requested = remaining.min(TRANSFER_CHUNK_SIZE as u64) as usize;
+        let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
         let mut source = tokio::fs::File::open(staged)
             .await
             .map_err(|error| format!("Failed to open decompressed staging file: {error}"))?;
@@ -35,18 +35,19 @@ impl SshRuntime {
             .await
             .map_err(|error| format!("Staged file seek failed: {error}"))?;
         let mut chunk = vec![0_u8; requested];
-        let length = source
-            .read(&mut chunk)
+        let length = read_filled(&mut source, &mut chunk)
             .await
             .map_err(|error| format!("Failed to read decompressed staging file: {error}"))?;
         chunk.truncate(length);
         let next_offset = offset.saturating_add(length as u64);
-        let mut payload = Vec::with_capacity(8 + length);
-        payload.extend_from_slice(&offset.to_be_bytes());
-        payload.extend_from_slice(&chunk);
-        emitter
-            .binary(&format!("sftp/download/{task_id}"), &payload)
-            .map_err(plugin_error)?;
+        if download.emit_chunks {
+            let mut payload = Vec::with_capacity(8 + length);
+            payload.extend_from_slice(&offset.to_be_bytes());
+            payload.extend_from_slice(&chunk);
+            emitter
+                .binary(&format!("sftp/download/{task_id}"), &payload)
+                .map_err(plugin_error)?;
+        }
         let emit_progress = {
             let mut downloads = self
                 .downloads
@@ -115,7 +116,7 @@ impl SshRuntime {
             ));
         }
         let remaining = download.size.saturating_sub(offset);
-        let requested = remaining.min(TRANSFER_CHUNK_SIZE as u64) as usize;
+        let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
         // 限速节奏（issue #66）：块耗时从读开始计量（含网络/磁盘），读毕
         // 由 limiter 补足差额等待。限速关闭时 Throttle::pace 是纯即时调用，
         // 热路径零开销。
@@ -136,11 +137,12 @@ impl SshRuntime {
             )
             .await?
         } else {
-            // 句柄复用：首片 open 后缓存在任务槽（File 的 Drop 发
-            // close_nowait，槽位置 None 即完成关闭），后续片直接
-            // seek+read——逐片 OPEN/READ/CLOSE 每片多付 2 个 RTT，高延迟
-            // 链路吞吐被 RTT 界死。seek 用绝对 offset，断点续传/重试跳片
-            // 同样成立。
+            // 句柄复用 + 读满一片：首片 open 后缓存在任务槽（File 的 Drop
+            // 发 close_nowait，槽位置 None 即完成关闭）。顺序分片只有首次
+            // 打开/非连续 offset 才 seek——每片 seek 会清空 crate 的在途读
+            // 窗口，read_filled 则把整个窗口的数据读满同一片，避免
+            // “一个 32KiB 包换一次 RTT”。断点续传/重试跳片仍按绝对 offset
+            // 重新对齐。
             let read_result: Result<Vec<u8>, String> = async {
                 let sftp = self.sftp(&download.session_id).await?;
                 let mut handle_slot = download.read_handle.lock().await;
@@ -151,18 +153,21 @@ impl SshRuntime {
                         .open(download.remote_path.clone())
                         .await
                         .map_err(sftp_error)?;
-                    *handle_slot = Some(opened);
+                    *handle_slot = Some((opened, 0));
                 }
-                let source = handle_slot.as_mut().expect("handle just ensured");
-                source
-                    .seek(std::io::SeekFrom::Start(offset))
-                    .await
-                    .map_err(|error| format!("SFTP download seek failed: {error}"))?;
+                let (source, cursor) = handle_slot.as_mut().expect("handle just ensured");
+                if *cursor != offset {
+                    source
+                        .seek(std::io::SeekFrom::Start(offset))
+                        .await
+                        .map_err(|error| format!("SFTP download seek failed: {error}"))?;
+                    *cursor = offset;
+                }
                 let mut chunk = vec![0_u8; requested];
-                let length = source
-                    .read(&mut chunk)
+                let length = read_filled(source, &mut chunk)
                     .await
                     .map_err(|error| format!("SFTP download failed: {error}"))?;
+                *cursor = offset.saturating_add(length as u64);
                 chunk.truncate(length);
                 Ok(chunk)
             }
@@ -196,12 +201,14 @@ impl SshRuntime {
                 .map_err(|error| format!("Failed to write local download file: {error}"))?;
         }
         let next_offset = offset.saturating_add(length as u64);
-        let mut payload = Vec::with_capacity(8 + length);
-        payload.extend_from_slice(&offset.to_be_bytes());
-        payload.extend_from_slice(&chunk);
-        emitter
-            .binary(&format!("sftp/download/{task_id}"), &payload)
-            .map_err(plugin_error)?;
+        if download.emit_chunks {
+            let mut payload = Vec::with_capacity(8 + length);
+            payload.extend_from_slice(&offset.to_be_bytes());
+            payload.extend_from_slice(&chunk);
+            emitter
+                .binary(&format!("sftp/download/{task_id}"), &payload)
+                .map_err(plugin_error)?;
+        }
         // 进度事件时间窗节流（progress_throttle）：每块一条 IPC 事件在
         // 大文件下约 200 条/秒，直驱前端重渲染；终块必发保证进度条终值。
         let emit_progress = {

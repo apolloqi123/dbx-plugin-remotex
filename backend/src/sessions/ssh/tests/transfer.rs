@@ -521,6 +521,7 @@ fn transfer_history_merges_live_rows_over_persisted_ones() {
             size: 9,
             next_offset: 5,
             sink: None,
+            emit_chunks: true,
             tree: None,
             sudo_tmp: None,
             latin1: false,
@@ -630,6 +631,7 @@ fn transfer_history_live_rows_without_start_context_sort_by_task_id() {
                 size: 8,
                 next_offset: 0,
                 sink: None,
+                emit_chunks: true,
                 tree: None,
                 sudo_tmp: None,
                 latin1: false,
@@ -683,6 +685,7 @@ async fn cancel_transfer_with_only_prep_does_not_panic_and_reports_cancel() {
             size: 42,
             next_offset: 0,
             sink: None,
+            emit_chunks: true,
             tree: None,
             sudo_tmp: None,
             latin1: false,
@@ -833,4 +836,101 @@ async fn poisoned_prep_registry_rolls_back_the_registered_download() {
         !tree_root.exists(),
         "the tree staging root must be rolled back"
     );
+}
+
+#[tokio::test]
+async fn staged_download_skips_binary_frames_when_emit_chunks_is_off() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let staged = dir.path().join("staged.bin");
+    std::fs::write(&staged, b"hello world").expect("staged");
+    let runtime = SshRuntime::new(dir.path().to_path_buf());
+    let task_id = "t-staged-no-frames";
+    let download = DownloadState {
+        session_id: "s-staged".to_string(),
+        remote_path: "/remote/staged".to_string(),
+        file_name: "staged.bin".to_string(),
+        size: 11,
+        next_offset: 0,
+        sink: None,
+        emit_chunks: false,
+        tree: None,
+        sudo_tmp: None,
+        latin1: false,
+        throttle: Throttle::new(0),
+        progress_throttle: crate::features::transfer::progress::ProgressThrottle::default(),
+        compression: CompressionMode::Gzip,
+        ready: true,
+        serving_plain: false,
+        staged_plain: Some(staged),
+        gz_staging: None,
+        remote_temp: None,
+        final_dir: Some(dir.path().to_path_buf()),
+        overwrite: false,
+        read_handle: Arc::new(AsyncMutex::new(None)),
+        raw_client: Arc::new(AsyncMutex::new(None)),
+    };
+    runtime
+        .downloads
+        .lock()
+        .unwrap()
+        .insert(task_id.to_string(), download.clone());
+    let (emitter, sink) = framed_transfer_emitter();
+    let response = runtime
+        .download_staged_chunk(task_id, 0, download, &emitter)
+        .await
+        .expect("staged chunk");
+    assert_eq!(response["length"].as_u64(), Some(11));
+    assert!(
+        framed_messages(&sink)
+            .iter()
+            .all(|message| !matches!(message, FramedMessage::Binary { .. })),
+        "emitChunks=false must not push download bytes over IPC"
+    );
+}
+
+#[tokio::test]
+async fn concurrent_same_name_downloads_reserve_distinct_final_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let runtime = SshRuntime::new(dir.path().to_path_buf());
+    let part_a = dir.path().join("a.part");
+    let part_b = dir.path().join("b.part");
+    std::fs::write(&part_a, b"first").expect("part a");
+    std::fs::write(&part_b, b"second").expect("part b");
+    let file_a = tokio::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&part_a)
+        .await
+        .expect("open a");
+    let file_b = tokio::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&part_b)
+        .await
+        .expect("open b");
+    let sink_a = DownloadSink {
+        part_path: part_a,
+        final_dir: dir.path().to_path_buf(),
+        overwrite: false,
+        file: AsyncMutex::new(file_a),
+    };
+    let sink_b = DownloadSink {
+        part_path: part_b,
+        final_dir: dir.path().to_path_buf(),
+        overwrite: false,
+        file: AsyncMutex::new(file_b),
+    };
+    let (first, second) = tokio::join!(
+        runtime.finalize_download_sink(&sink_a, "same.txt"),
+        runtime.finalize_download_sink(&sink_b, "same.txt"),
+    );
+    let first = first.expect("first finalize");
+    let second = second.expect("second finalize");
+    assert_ne!(first, second, "same-name downloads must get distinct names");
+    let mut contents = vec![
+        std::fs::read_to_string(&first).expect("first content"),
+        std::fs::read_to_string(&second).expect("second content"),
+    ];
+    contents.sort();
+    assert_eq!(contents, vec!["first".to_string(), "second".to_string()]);
 }

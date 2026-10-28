@@ -232,6 +232,44 @@ pub fn final_download_path(base: &Path, file_name: &str, overwrite: bool) -> Pat
     pick_download_path(base, file_name)
 }
 
+/// Reserves a non-colliding path for a finished download by creating the file
+/// with `create_new`. Unlike [`pick_download_path`] (check-then-use), the
+/// reservation is atomic, so two concurrent downloads with the same name get
+/// distinct paths even when they finalize at the same time. The caller may
+/// rename the staging file onto the placeholder or copy into it.
+pub fn reserve_download_path(base: &Path, file_name: &str) -> std::io::Result<PathBuf> {
+    let name = sanitize_file_name(file_name);
+    let candidates = std::iter::once(base.join(&name)).chain({
+        let stem_end = name.rfind('.').filter(|dot| *dot > 0).unwrap_or(name.len());
+        let (stem, ext) = name.split_at(stem_end);
+        (1..=999).map(move |index| base.join(format!("{stem} ({index}){ext}")))
+    });
+    for candidate in candidates {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                drop(file);
+                return Ok(candidate);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or_default();
+    let fallback = base.join(format!("{name}-{stamp}"));
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&fallback)?;
+    Ok(fallback)
+}
+
 /// Picks a non-colliding path in `base` for `file_name`, appending " (n)"
 /// before the extension like browsers do. The final name is decided when the
 /// download finishes so a failed transfer never reserves a name.

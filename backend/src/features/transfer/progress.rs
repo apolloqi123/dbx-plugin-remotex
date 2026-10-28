@@ -1,7 +1,7 @@
 //! 传输进度事件时间窗节流。
 //!
-//! 传输热路径每 256KiB（TRANSFER_CHUNK_SIZE）发一条 `sftp/transfer/progress`
-//! IPC 事件：1GB @ 50MB/s ≈ 200 条/秒，每条都跨桥序列化并直驱前端全量重渲
+//! 传输热路径每 `TRANSFER_CHUNK_SIZE`（1MiB）发一条 `sftp/transfer/progress`
+//! IPC 事件：1GB @ 50MB/s ≈ 50 条/秒，每条都跨桥序列化并直驱前端全量重渲
 //! 染。时间窗内的中间事件直接丢弃；首帧、窗口边界与终帧必发，进度条终值
 //! 不受影响。终态事件（queued/completed/error）不经本节流，由调用方照常
 //! 无条件发射。

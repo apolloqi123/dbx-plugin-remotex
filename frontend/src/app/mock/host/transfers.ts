@@ -144,7 +144,7 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     mockTransferHistoryCleared = true;
     return { success: true };
   }
-  if (method === "sftp/upload/start" || method === "sudo/upload/start") return { taskId: `visual-upload-${++fixtureUploadCount.value}`, chunkSize: 262144 };
+  if (method === "sftp/upload/start" || method === "sudo/upload/start") return { taskId: `visual-upload-${++fixtureUploadCount.value}`, chunkSize: 1048576 };
   if (method === "sftp/upload/finish" || method === "sudo/upload/finish") {
     // 镜像真实契约（issue #60）：finish 立即返回，推送在后台进行，终态经
     // progress 事件回传。mock 无真实推送，直接补发完成事件。sudo/upload 是
@@ -167,14 +167,14 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     const size = node?.kind === "file" ? node.size : 32;
     fixtureDownloads.set(taskId, { fileName, size, offset: 0 });
     emitHostEvent({ method: "sftp/transfer/progress", params: { taskId, sessionId: "visual-session", direction: "download", fileName, transferred: 0, size, status: "queued" } });
-    return { taskId, fileName, size, chunkSize: 262144 };
+    return { taskId, fileName, size, chunkSize: 1048576 };
   }
   if (method === "sftp/download/next") {
     const input = params as Record<string, unknown>;
     const taskId = String(input.taskId || "");
     const task = fixtureDownloads.get(taskId)!;
     const offset = Number(input.offset || 0);
-    const length = Math.min(262144, task.size - offset);
+    const length = Math.min(1048576, task.size - offset);
     const payload = new Uint8Array(8 + length);
     new DataView(payload.buffer).setBigUint64(0, BigInt(offset), false);
     emitHostBinary({ channel: `sftp/download/${taskId}`, data: payload });
@@ -199,7 +199,7 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     const size = node?.kind === "file" ? node.size : 32;
     fixtureDownloads.set(taskId, { fileName, size, offset: 0 });
     emitHostEvent({ method: "sftp/transfer/progress", params: { taskId, sessionId: "visual-session", direction: "download", fileName, transferred: 0, size, status: "queued" } });
-    return { taskId, fileName, size, chunkSize: 262144, sudo: true };
+    return { taskId, fileName, size, chunkSize: 1048576, sudo: true };
   }
   if (method === "sudo/download/cancel") {
     const taskId = String((params as Record<string, unknown>)?.taskId || "");

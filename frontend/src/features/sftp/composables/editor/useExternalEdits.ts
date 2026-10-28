@@ -2,6 +2,7 @@ import { computed, ref, watch, type Ref } from "vue";
 import { enqueueWatchModified, popWatchModified, registerWatch, watchName, type ModifiedPrompt, type WatchRegistry } from "../../lib/editor/watchEdits";
 import { loadEditorConfig, resolveEditorForFile, sanitizeEditorConfig, saveEditorConfig, type EditorConfig, type KnownEditor, type ResolvedEditor } from "../../lib/editor/editorRules";
 import type { SftpEntryKind } from "../../lib/entries/sftpEntries";
+import { raceCancelled } from "../../lib/transfer/downloadCancellation";
 import type { TransferTask } from "../../../transfers/lib/transferQueue";
 
 /** 外部编辑条目（App.vue 局部接口 SftpEntry 按消费字段收敛）。 */
@@ -21,9 +22,9 @@ interface ExternalEditDownloadInfo {
 
 /** 外部编辑器回传（P2-5，桌面端；M15 起逐文件化）：watch/file-modified 确认
  * 状态机 + watch/upload 串行链 +「在外部编辑器中打开」的下载/打开入口。
- * 下载走 saveToLocal 直落 remote-edit 目录，复用传输队列的暂停/chunk-waiter
- * 原语（经 options 注入；waitForDownloadChunk/probeLocalCapabilities 所在
- * composable 装配在本域之后，以惰性 getter 解 TDZ）。 */
+ * 下载走 saveToLocal 直落 remote-edit 目录，复用传输队列的暂停原语
+ * （经 options 注入；probeLocalCapabilities 所在 composable 装配在本域
+ * 之后，以惰性 getter 解 TDZ）。 */
 export function useExternalEdits(options: {
   t: (key: string, values?: Record<string, string | number>) => string;
   showNotice: (message: string) => void;
@@ -34,7 +35,6 @@ export function useExternalEdits(options: {
   transferTasks: Record<string, TransferTask>;
   pathFromUri: (uri: string) => string;
   waitWhilePaused: (taskId: string) => Promise<void> | undefined;
-  waitForDownloadChunk: (taskId: string, offset: number) => Promise<unknown>;
   waitForDownloadReady: (taskId: string, compression: string | undefined) => Promise<void>;
   cancelledTransferTasks: Set<string>;
   downloadChunkWaiters: Map<string, { timer: number }>;
@@ -52,9 +52,8 @@ export function useExternalEdits(options: {
     openTransferPanel,
     transferTasks,
     pathFromUri,
-  waitWhilePaused,
-  waitForDownloadChunk,
-  waitForDownloadReady,
+    waitWhilePaused,
+    waitForDownloadReady,
     cancelledTransferTasks,
     downloadChunkWaiters,
     probeLocalCapabilities,
@@ -189,6 +188,7 @@ async function downloadForExternalEdit(entry: ExternalEditEntry, downloadDir: st
     saveToLocal: true,
     downloadDir,
     conflict: "overwrite",
+    emitChunks: false,
   });
   transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "download", fileName: info.fileName, size: info.size, transferred: 0, status: "queued", joinedAt: Date.now(), compression: info.compression === "gzip" ? "gzip" : undefined };
   try {
@@ -201,12 +201,10 @@ async function downloadForExternalEdit(entry: ExternalEditEntry, downloadDir: st
     let offset = 0;
     while (offset < info.size) {
       await waitWhilePaused(info.taskId);
-      const chunkPromise = waitForDownloadChunk(info.taskId, offset);
       const nextPromise = window.dbxPlugin.invoke<{ length: number; eof: boolean }>("sftp/download/next", { taskId: info.taskId, offset });
-      // 取消经 chunk waiter 中断；吞掉在途请求的 rejection 以免变成 unhandled。
+      // 取消经下一片错误中断；吞掉在途请求的 rejection 以免变成 unhandled。
       nextPromise.catch(() => undefined);
-      const result = await nextPromise;
-      await chunkPromise;
+      const result = await raceCancelled(info.taskId, nextPromise, (id) => cancelledTransferTasks.has(id));
       offset += result.length;
       const task = transferTasks[info.taskId];
       if (task) {

@@ -36,7 +36,7 @@ const INCOMPRESSIBLE_EXTENSIONS: &[&str] = &[
     "svgz", "tbz", "tgz", "webm", "webp", "xz", "zip", "zst",
 ];
 
-/// 压缩流的分块读写缓冲（与 TRANSFER_CHUNK_SIZE 同口径，回调节流由调用方做）。
+/// 压缩流的分块读写缓冲（独立于传输分片大小，回调节流由调用方做）。
 pub(super) const STREAM_BUFFER_SIZE: usize = 256 * 1024;
 
 /// 判定一次传输是否走压缩通道。`name` 传文件末段名（树模式传 `None`，跳过

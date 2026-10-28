@@ -103,6 +103,7 @@ impl SshRuntime {
         save_to_local: bool,
         download_dir: Option<&str>,
         conflict: Option<&str>,
+        emit_chunks: bool,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         // 与其余 start 路径同走 transfer_depth_limit（M14-B 偏好与 compat
@@ -121,6 +122,7 @@ impl SshRuntime {
                 save_to_local,
                 download_dir,
                 conflict,
+                emit_chunks,
                 emitter,
             )
             .await;
@@ -144,6 +146,7 @@ impl SshRuntime {
         save_to_local: bool,
         download_dir: Option<&str>,
         conflict: Option<&str>,
+        emit_chunks: bool,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         if staged.size > MAX_TRANSFER_SIZE {
@@ -184,6 +187,7 @@ impl SshRuntime {
                 size: staged.size,
                 next_offset: 0,
                 sink,
+                emit_chunks,
                 tree: None,
                 sudo_tmp: Some(staged.tmp_path.clone()),
                 // sudo 下载走独立车道（sudo_download.rs），读侧不经
@@ -244,6 +248,7 @@ impl SshRuntime {
         download_dir: Option<&str>,
         conflict: Option<&str>,
         encoding: NameEncoding,
+        emit_chunks: bool,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
         let remote_path = normalize_remote_path(remote_path)?;
@@ -431,6 +436,7 @@ impl SshRuntime {
                 size,
                 next_offset: offset,
                 sink,
+                emit_chunks,
                 tree: None,
                 sudo_tmp: None,
                 latin1,
