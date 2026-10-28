@@ -455,13 +455,13 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   min-width: 0;
   border: none;
   background: none;
   color: inherit;
   text-align: left;
-  padding: 3px 6px;
+  padding: 2px 4px;
   cursor: pointer;
   font: inherit;
 }
@@ -482,7 +482,7 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .container-row-meta,
@@ -491,22 +491,22 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 9px;
   opacity: 0.65;
 }
 
 .container-row-status {
-  font-size: 10px;
+  font-size: 9px;
   opacity: 0.55;
 }
 
 .docker-badge {
   display: inline-block;
   flex: 0 0 auto;
-  padding: 0 5px;
-  border-radius: 8px;
-  font-size: 10px;
-  line-height: 14px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 12px;
   background: rgba(128, 128, 128, 0.18);
 }
 
