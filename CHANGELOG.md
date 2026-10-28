@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.72] — 2026-10-28
+
+- **修复端口映射快捷弹层背景与内容错位**。弹层外壳仍带默认 `w-72` 宽度（约 216px），内容层按 384px 排版后溢出卡片：窄窗口下「运行中」摘要和底部按钮跑到背景外，空状态看起来像一大块空白。现在宽度与内边距统一落在弹层外壳上、内容层撑满，宽窄窗口下背景、摘要与按钮都完整包在卡片内。
+  **Fixed the port-forward popover card not wrapping its content.** The popover shell kept its default `w-72` width (~216px) while the content laid out at 384px and overflowed the card, so in narrow windows the running summary and footer buttons escaped the background and the empty state looked misplaced. Width and padding now live on the popover shell with the content filling it, so the background, summary and actions stay inside the card at both wide and narrow sizes.
+
 ## [0.7.9-beta.71] — 2026-10-28
 
 - **端口映射入口重做为快捷弹层 + 统一管理器**。工具栏端口映射图标改为打开 384px 快捷弹层：摘要（运行中/连接数/流量）、运行中隧道一键停止、保存预设一键启动、点击路由复制监听地址，底部进入完整管理器；有隧道运行时图标高亮并显示数量徽标。完整管理器从三段式列表重排为统一隧道卡片（方向色图标、路由、状态、连接与流量、复制/启停/删除）、摘要动作条（启动全部预设/全部停止/新增映射）与可折叠新增表单（三种方向选择卡、监听→目标紧凑两行、实时预览、保存为预设）。数据层抽为 `usePortForwards`，工具栏弹层、管理器与连接右键独立页共享同一实例；非 SSH 会话（本地/串口/Telnet/VNC/RDP）不再显示端口映射入口。七语文案同步。

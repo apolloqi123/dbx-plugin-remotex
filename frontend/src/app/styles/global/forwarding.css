@@ -169,7 +169,15 @@
   color: var(--background); background: var(--tone-emerald);
   box-shadow: 0 0 0 2px var(--card-surface-raised);
 }
-.forward-menu { width: 384px; max-width: calc(100vw - 24px); max-height: min(520px, calc(100vh - 60px)); overflow: auto; display: flex; flex-direction: column; gap: 9px; padding: 12px; }
+/* 工具栏快捷弹层：宽度必须落在 reka 外壳（PopoverContent）上，内容层撑满；
+   只给内容层设宽会让 216px 的默认外壳背景包不住 384px 内容。 */
+.forward-menu-popover,
+[data-slot="popover-content"].forward-menu-popover {
+  width: min(384px, calc(100vw - 24px));
+  padding: 0;
+  gap: 0;
+}
+.forward-menu { width: 100%; max-height: min(520px, calc(100vh - 60px)); overflow: auto; display: flex; flex-direction: column; gap: 9px; padding: 12px; }
 .forward-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .forward-menu-title { font-size: 13px; font-weight: 600; }
 .forward-menu-summary {
