@@ -43,6 +43,13 @@ impl LocalTerminalRuntime {
         data_dir: &Path,
     ) -> Result<Value, String> {
         let session = self.session(session_id).await?;
+        // 本地 shell 与 SSH 同语义：先把当前屏幕（最近输出）作为 t=0
+        // 事件写入，静默录制/已有提示符的回放不再是一片空白。
+        let screen = session
+            .replay
+            .lock()
+            .await
+            .output_tail(session_recording::RECORDING_SEED_BYTES);
         let mut slot = session
             .recorder
             .lock()
@@ -51,7 +58,7 @@ impl LocalTerminalRuntime {
             return Err("This session is already being recorded".to_string());
         }
         let recording_id = uuid::Uuid::new_v4().to_string();
-        let recorder = session_recording::SessionRecorder::start(
+        let mut recorder = session_recording::SessionRecorder::start(
             data_dir,
             &recording_id,
             "local",
@@ -60,6 +67,7 @@ impl LocalTerminalRuntime {
             u32::from(session.cols),
             u32::from(session.rows),
         )?;
+        recorder.seed(&screen);
         *slot = Some(recorder);
         Ok(json!({ "recordingId": recording_id, "recording": true }))
     }

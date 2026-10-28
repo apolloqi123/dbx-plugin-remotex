@@ -42,6 +42,12 @@ export function replayDuration(events: readonly ReplayEvent[]): number {
   return events.length ? events[events.length - 1]!.time : 0;
 }
 
+// 回放跨度：输出事件时间与录制墙钟时长（停止标记）取较大值。静默录制或
+// 末尾长时间无输出时，进度条仍覆盖整段录制，而不是停在最后一条输出。
+export function replaySpan(events: readonly ReplayEvent[], durationSecs = 0): number {
+  return Math.max(replayDuration(events), Math.max(0, Number(durationSecs) || 0));
+}
+
 // 回放时间轴：事件 → 播放进度（ms，已按 speed 放大）。speed 必须为正。
 export function buildTimeline(events: readonly ReplayEvent[], speed: number): number[] {
   const rate = speed > 0 ? speed : 1;

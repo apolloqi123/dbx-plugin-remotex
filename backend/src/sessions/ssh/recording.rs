@@ -14,6 +14,14 @@ impl SshRuntime {
             .get(&session.connection_id)
             .map(|connection| connection.host.clone())
             .unwrap_or_default();
+        // Snapshot the visible screen before taking the recorder slot: the
+        // read loop may be writing frames, so lock ordering stays
+        // replay-then-recorder and no lock is held across the other.
+        let screen = session
+            .replay
+            .lock()
+            .await
+            .output_tail(session_recording::RECORDING_SEED_BYTES);
         let mut slot = session
             .session_recorder
             .lock()
@@ -22,7 +30,7 @@ impl SshRuntime {
             return Err("This session is already being recorded".to_string());
         }
         let recording_id = Uuid::new_v4().to_string();
-        let recorder = session_recording::SessionRecorder::start(
+        let mut recorder = session_recording::SessionRecorder::start(
             &self.data_dir,
             &recording_id,
             &session.connection_id,
@@ -31,6 +39,7 @@ impl SshRuntime {
             80,
             24,
         )?;
+        recorder.seed(&screen);
         *slot = Some(recorder);
         Ok(json!({ "recordingId": recording_id, "recording": true }))
     }

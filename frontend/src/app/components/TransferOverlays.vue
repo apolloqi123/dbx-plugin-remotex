@@ -98,7 +98,7 @@ function bindReplayHost(el: Element | ComponentPublicInstance | null) {
       </header>
       <div class="replay-terminal-wrap">
         <div :ref="bindReplayHost" class="replay-terminal"></div>
-        <div v-if="replayDurationMs <= 0" class="replay-empty">{{ t("replayEmpty") }}</div>
+        <div v-if="!replayState.events.length" class="replay-empty">{{ t("replayEmpty") }}</div>
       </div>
       <div class="replay-controls">
         <button class="icon-button" :title="t(replayPlaying ? 'replayPause' : 'replayPlay')" :aria-label="t(replayPlaying ? 'replayPause' : 'replayPlay')" @click="emit('replay-toggle-play')"><Pause v-if="replayPlaying" /><Play v-else /></button>

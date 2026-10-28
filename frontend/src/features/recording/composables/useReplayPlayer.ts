@@ -1,6 +1,6 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { createRequestEpoch } from "../../../shared/lib/requestEpoch";
-import { buildTimeline, eventIndexAtTime, replayDuration, type RecordingSummary, type ReplayEvent } from "../lib/replayScheduler";
+import { buildTimeline, eventIndexAtTime, replaySpan, type RecordingSummary, type ReplayEvent } from "../lib/replayScheduler";
 import { terminalOptionPatch, type TerminalAppearanceState } from "../../terminal/lib/appearance/terminalAppearance";
 import { resolveTerminalFont, type TerminalFontOverride } from "../../terminal/lib/appearance/terminalFont";
 import { type TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
@@ -34,7 +34,11 @@ let replayWriteIndex = 0;
 let replayRaf = 0;
 let replayStartWall = 0;
 let replayStartPlayhead = 0;
-const replayDurationMs = computed(() => (replayState.value ? replayDuration(replayState.value.events) * 1000 : 0));
+const replayDurationMs = computed(() =>
+  replayState.value
+    ? replaySpan(replayState.value.events, replayState.value.summary.durationSecs) * 1000
+    : 0,
+);
 
 // 回放打开也走请求序号守卫：大录制（2 万事件封顶）分页拉取可达数秒，快速
 // 连点两条录制时，晚到的旧加载不得关闭/顶替用户新打开的回放。
@@ -80,6 +84,11 @@ async function openReplay(item: RecordingSummary) {
       // 与主终端同用 Unicode 11 宽度表：emoji/宽字符行在回放里保持相同折行。
       replayTerminal.loadAddon(new Unicode11Addon());
       replayTerminal.unicode.activeVersion = "11";
+      // t=0 的种子事件就是录制开始时的屏幕：打开即渲染，不必等播放键。
+      replayWriteIndex = eventIndexAtTime(replayTimeline, 0);
+      for (let index = 0; index < replayWriteIndex; index += 1) {
+        replayTerminal.write(events[index]!.data);
+      }
     }
   } catch (cause) {
     if (replayEpoch.isCurrent(epoch)) showError(cause);

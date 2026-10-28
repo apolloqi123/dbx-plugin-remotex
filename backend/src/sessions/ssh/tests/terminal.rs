@@ -32,6 +32,20 @@ fn replay_buffer_honours_a_custom_byte_budget() {
 }
 
 #[test]
+fn replay_buffer_output_tail_keeps_the_newest_screen_bytes() {
+    let mut replay = ReplayBuffer::default();
+    replay.push(TerminalStream::Stdout, b"alpha ".to_vec());
+    replay.push(TerminalStream::Stderr, b"beta ".to_vec());
+    replay.push(TerminalStream::State, b"state-frame".to_vec());
+    replay.push(TerminalStream::Stdout, b"gamma".to_vec());
+    // State frames must never be replayed as terminal output.
+    assert_eq!(replay.output_tail(100), b"alpha beta gamma".to_vec());
+    // Over budget: keep the newest bytes (the visible screen), not the head.
+    assert_eq!(replay.output_tail(8), b"ta gamma".to_vec());
+    assert!(replay.output_tail(0).is_empty());
+}
+
+#[test]
 fn terminal_input_enqueue_retries_then_drops_instead_of_blocking_the_worker() {
     let (sender, mut receiver) = mpsc::channel(1);
     sender

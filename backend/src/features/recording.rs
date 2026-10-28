@@ -23,6 +23,10 @@ pub const RECORDINGS_DIR: &str = "recordings";
 /// Cap on one event's stored size — a single PTY burst above this is
 /// truncated on write (the terminal itself renders lossily anyway).
 const MAX_EVENT_BYTES: usize = 256 * 1024;
+/// How much of the session's recent output is written at t=0 when a
+/// recording starts on a live terminal, so replay opens on the screen that
+/// was already visible instead of a blank canvas.
+pub const RECORDING_SEED_BYTES: usize = 256 * 1024;
 /// Max events served by one `ssh/recording/get` page.
 pub const PAGE_LIMIT: usize = 500;
 /// Max recordings a single `ssh/recording/search` scan walks — the RPC is an

@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.68] — 2026-10-28
+
+- **修复录制回放空白、00:00 无法播放**。录制开始时先把会话当前屏幕（回放缓冲里的最近输出，最多 256 KiB、不含状态帧）作为 t=0 输出事件写入录像，打开回放即可看到录制开始时的终端画面；回放总时长同时采用录像的真实墙钟时长，静默录制或末尾长时间空闲也能看到完整进度条并正常播放/拖动。SSH 与本地终端共用同一逻辑。升级前生成且没有捕获到输出的旧录像无法补录内容，仍会显示为空。
+  **Fixed blank replays that could not play.** Starting a recording now writes the session's current screen (recent replay-buffer output, up to 256 KiB, state frames excluded) as a t=0 output event, so replay opens on the terminal as it looked when recording began. The replay span also uses the recording's wall-clock duration, so silent recordings or long idle tails still show a full, playable progress bar. SSH and local terminals share the behavior. Recordings made before this change that captured no output cannot be backfilled and still show as empty.
+
 ## [0.7.9-beta.67] — 2026-10-28
 
 - **修复录制记录时长恒为 0 秒**。录制时长原先只取最后一条输出事件的时间：录制期间终端没有输出时（例如只开启录制等待若干秒后停止）文件只有头部，列表永远显示 0 秒，且正常录制也会低估末尾的静默时间。现在停止录制时会在文件末尾写入一条 asciicast 标记事件（`m`），记录真实墙钟时长，列表按它显示；回放/搜索只消费输出事件，不受影响。升级前遗留的无标记录制会用文件修改时间估算时长。本地 shell 与 SSH 会话共用同一修复。

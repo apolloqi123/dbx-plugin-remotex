@@ -6,6 +6,7 @@ import {
   gifFramePlan,
   mergeEventPages,
   replayDuration,
+  replaySpan,
   type ReplayEventPage,
 } from "./replayScheduler";
 
@@ -38,6 +39,16 @@ describe("replay event pages", () => {
   it("measures duration from the last event", () => {
     expect(replayDuration([])).toBe(0);
     expect(replayDuration([{ time: 1, data: "a" }, { time: 2.5, data: "b" }])).toBe(2.5);
+  });
+
+  it("extends the replay span to the recorded wall-clock duration", () => {
+    // 静默录制/末尾空闲：输出事件停在 0，进度条仍覆盖整段墙钟时长。
+    expect(replaySpan([], 8.8)).toBe(8.8);
+    expect(replaySpan([{ time: 0, data: "screen" }], 8.8)).toBe(8.8);
+    // 输出晚于摘要时长（旧数据/时钟误差）时以事件为准，不缩短回放。
+    expect(replaySpan([{ time: 12, data: "late" }], 8.8)).toBe(12);
+    expect(replaySpan([], 0)).toBe(0);
+    expect(replaySpan([], Number.NaN)).toBe(0);
   });
 });
 

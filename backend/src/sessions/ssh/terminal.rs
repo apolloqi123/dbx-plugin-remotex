@@ -209,4 +209,28 @@ impl ReplayBuffer {
     pub(crate) fn tail_sequence(&self) -> u64 {
         self.sequence
     }
+
+    /// Tail of recent terminal output (State frames excluded) up to
+    /// `max_bytes`, newest bytes kept. Used to seed a recording with the
+    /// screen already on display when recording starts on a live session.
+    pub(crate) fn output_tail(&self, max_bytes: usize) -> Vec<u8> {
+        let mut out: Vec<u8> = Vec::new();
+        for frame in self.frames.iter().rev() {
+            if frame.stream == TerminalStream::State || frame.data.is_empty() {
+                continue;
+            }
+            let remaining = max_bytes.saturating_sub(out.len());
+            if remaining == 0 {
+                break;
+            }
+            let take = remaining.min(frame.data.len());
+            let mut chunk = frame.data[frame.data.len() - take..].to_vec();
+            chunk.extend_from_slice(&out);
+            out = chunk;
+            if out.len() >= max_bytes {
+                break;
+            }
+        }
+        out
+    }
 }

@@ -73,6 +73,32 @@ fn start_observe_finish_writes_asciicast_v2() {
 }
 
 #[test]
+fn seed_writes_the_current_screen_at_time_zero() {
+    let dir = temp_dir();
+    let mut recorder = SessionRecorder::start(&dir, "rec-seed", "c", "h", "s", 80, 24).unwrap();
+    recorder.seed(b"$ echo hi\r\nhi\r\n$ ");
+    let summary = recorder.finish().unwrap();
+    assert!(summary["durationSecs"].as_f64().unwrap() >= 0.0);
+
+    let text = std::fs::read_to_string(recordings_dir(&dir).join("rec-seed.cast")).unwrap();
+    let events: Vec<Value> = text
+        .lines()
+        .skip(1)
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(events.len(), 2, "seed event + stop marker");
+    assert_eq!(events[0]["eventtype"], "o");
+    assert_eq!(events[0]["time"], 0.0);
+    assert_eq!(events[0]["eventdata"], "$ echo hi\r\nhi\r\n$ ");
+    // 列表里的时长来自停止标记，而回放能拿到种子内容，不再是一片空白。
+    let list = list_recordings(&dir);
+    assert_eq!(list[0]["recordingId"], "rec-seed");
+    let page = read_events(&dir, "rec-seed", 0, 10).unwrap();
+    assert_eq!(page["events"][0]["data"], "$ echo hi\r\nhi\r\n$ ");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn empty_bursts_and_huge_bursts_are_handled() {
     let dir = temp_dir();
     let mut recorder = SessionRecorder::start(&dir, "rec-2", "c", "h", "s", 80, 24).unwrap();

@@ -104,6 +104,25 @@ impl SessionRecorder {
         self.bytes += data.len() as u64;
     }
 
+    /// Writes the session's current screen (recent output) as one t=0 event.
+    /// Recording attaches to an already-running shell, so without this a
+    /// silent recording replays as an empty canvas even though the terminal
+    /// visibly showed a prompt.
+    pub fn seed(&mut self, screen: &[u8]) {
+        if screen.is_empty() {
+            return;
+        }
+        let screen = &screen[screen.len().saturating_sub(MAX_EVENT_BYTES)..];
+        let event = json!({
+            "time": 0.0,
+            "eventtype": "o",
+            "eventdata": String::from_utf8_lossy(screen),
+        });
+        let _ = writeln!(self.file, "{event}");
+        self.events += 1;
+        self.bytes += screen.len() as u64;
+    }
+
     /// Flushes and closes the recording, returning its summary.
     pub fn finish(mut self) -> Result<Value, String> {
         let duration = self.started_at.elapsed().as_secs_f64();
