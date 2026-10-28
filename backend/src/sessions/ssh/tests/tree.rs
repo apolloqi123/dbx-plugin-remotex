@@ -758,11 +758,13 @@ fn sftp_client_config_compat_serializes_pipelines_and_widens_timeout() {
 
 #[test]
 fn sftp_client_config_non_compat_widens_read_write_pipelines() {
-    // 非 compat 把读写流水线从 crate 默认 16 提到 32（1MiB 分片/32KiB 写包），
-    // 只放宽每请求超时（#206）。
+    // 非 compat：读 32 路（≈8MiB 预读）、写 64 路（32KiB 写包 ≈2MiB 在途，
+    // 消除逐包等确认且不把 60s 请求超时压到低速链路上），写包保持 32KiB
+    // 默认值，每请求超时放宽到 60s（#206）。
     let config = sftp_client_config(false);
     assert_eq!(config.max_concurrent_reads, 32);
-    assert_eq!(config.max_concurrent_writes, 32);
+    assert_eq!(config.max_concurrent_writes, 64);
+    assert_eq!(config.max_write_packet_len, 32 * 1024);
     assert_eq!(config.request_timeout_secs, 60);
 }
 

@@ -15,6 +15,11 @@ import type { RdpCertPromptView } from "../../../features/remote-desktop/composa
 import type { ConnectLog } from "../../../features/connections/lib/connectLog";
 import { dispatchDockerLogEvent } from "../../../features/docker/lib/dockerLogEvents";
 import {
+  rejectUploadAcks,
+  resolveUploadAck,
+  type UploadAckWaiters,
+} from "../../../features/transfers/lib/uploadAck";
+import {
   decodeAgentFinishPayload,
   decodeAgentNoticePayload,
   decodeAgentPromptPayload,
@@ -70,7 +75,7 @@ export function usePluginEvents(options: {
   startRecordingClock: () => void;
   // SFTP/传输域
   handleWatchModified: (watchId: string) => void;
-  uploadAckWaiters: Map<string, { nextOffset: number; resolve: () => void; reject: (error: Error) => void; timer: number }>;
+  uploadAckWaiters: UploadAckWaiters;
   updateTransfer: (params: Record<string, unknown>) => void;
 }) {
   const {
@@ -400,25 +405,17 @@ export function usePluginEvents(options: {
       return;
     }
     if (event.method === "sftp/upload/ack") {
-      const taskId = String(event.params.taskId || "");
-      const waiter = uploadAckWaiters.get(taskId);
-      if (waiter && Number(event.params.nextOffset) === waiter.nextOffset) {
-        window.clearTimeout(waiter.timer);
-        uploadAckWaiters.delete(taskId);
-        waiter.resolve();
-      }
+      resolveUploadAck(uploadAckWaiters, String(event.params.taskId || ""), Number(event.params.nextOffset));
       return;
     }
     // sidecar 拒收上传分片（offset 失配/任务丢失/spool 写失败）时立即失败在途
     // ack 等待器，不再等满 30s 超时后才用一个含糊的 ack-timeout 收场（issue #60）。
     if (event.method === "sftp/upload/error") {
-      const taskId = String(event.params.taskId || "");
-      const waiter = uploadAckWaiters.get(taskId);
-      if (waiter) {
-        window.clearTimeout(waiter.timer);
-        uploadAckWaiters.delete(taskId);
-        waiter.reject(Object.assign(new Error(String(event.params.error || "upload rejected")), { code: "upload-append-failed" }));
-      }
+      rejectUploadAcks(
+        uploadAckWaiters,
+        String(event.params.taskId || ""),
+        Object.assign(new Error(String(event.params.error || "upload rejected")), { code: "upload-append-failed" }),
+      );
       return;
     }
     if (event.method === "sftp/transfer/progress") updateTransfer(event.params);

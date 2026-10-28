@@ -44,6 +44,13 @@ pub(crate) fn otp_bound_as_totp_secret(bound: otp_store::BoundTotp) -> exec::Tot
     }
 }
 
+/// SSH 通道接收窗口（russh 默认 2MiB）。它是本端向服务端公布的可接收在途
+/// 字节数，下载吞吐上限 ≈ 窗口 / RTT：40ms RTT 下 2MiB 只有约 17MB/s，
+/// 16MiB 可到 400MB/s（实测单文件下载 17 → 43–83MB/s，10ms 下 83 →
+/// 125MB/s；多任务并发时各通道独立计窗）。窗口只是信用额度，russh 仍按
+/// `channel_buffer_size` 有界缓冲，不会预分配 16MiB。
+const SSH_CHANNEL_WINDOW: u32 = 16 * 1024 * 1024;
+
 /// Builds the client negotiation config for one connection. The connection
 /// form carries no algorithm selector: every connection offers the full
 /// supported set (see `ssh_algorithms::preferred`). DH GEX group bounds
@@ -53,6 +60,7 @@ pub(crate) fn otp_bound_as_totp_secret(bound: otp_store::BoundTotp) -> exec::Tot
 pub(crate) fn ssh_client_config(connection: &StoredConnection) -> client::Config {
     client::Config {
         nodelay: true,
+        window_size: SSH_CHANNEL_WINDOW,
         keepalive_interval: (connection.keepalive_interval_secs > 0)
             .then(|| Duration::from_secs(connection.keepalive_interval_secs)),
         keepalive_max: 3,

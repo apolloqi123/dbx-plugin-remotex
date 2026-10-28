@@ -32,7 +32,7 @@
 | smoke_batch3_test.py | PASS **17/17**（12→17：目录递归 copy、单字符串 from、目录 move、目录目标冲突、overwrite 替换；metrics 网络/Top 进程/inode/快照缓存、sftp/read offset 分页、knownHosts marker、copy/move 语义、sessions/list 含 authMethod 断言） |
 | smoke_sudo_otp_test.py | PASS **10/10**（sudo 保活/OTP 编排端到端真机） |
 | dbx-plugin package | 0.2.2 darwin-arm64 出包完整（5 文件 + checksums；**4,290,327 B，sha256 `a67bb683a2db1ee67e37ae8b6d96447a44fe160fb07e55b459289a450edf347e`**；出包后对重编二进制复跑 smoke_test PASS 1.2s） |
-| 性能基线（PROGRESS-P-SSH §3，真机） | 终端 PTY 流灌入 **71.9 MiB/s**（5 MiB 环形缓存）；SFTP 上传（网络）**220–237 MB/s**、上传（本地 spool）633.9–1078 MB/s；SFTP 下载 **113–118 MB/s**；replay 载荷 2.00 MiB / 601 帧 ≤ 2 MiB 上限（SHA-256 校验一致） |
+| 性能基线（2026-10-28，真机容器 + 延迟代理） | SFTP loopback 上传 **177–297 MB/s**、下载 **383–508 MB/s**（容器磁盘抖动）；**40 ms RTT** 上传 **22.8 MB/s**、下载 **80–90 MB/s**；**10 ms RTT** 上传 **60–68 MB/s**、下载 **125–191 MB/s**；上传 spool 1.4–2.3 GB/s；全链路 SHA-256 一致；replay 载荷 2.00 MiB / 601 帧 ≤ 2 MiB 上限 |
 
 2026-09-02 增量（PROGRESS-P-SSH §8.7，纯前端轮）：frontend typecheck / build 过；
 vitest **86/86**（基线 79 → 86：terminalWriteThrottle 6 + terminalDrop 准入 1）；

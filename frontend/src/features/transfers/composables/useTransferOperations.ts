@@ -3,6 +3,15 @@ import { reactive, type Ref } from "vue";
 import { transferCancelReason } from "../lib/transferProgress";
 import { transferPausable } from "../lib/transferResume";
 import { rpc } from "../../../shared/lib/rpc";
+import {
+  UPLOAD_SPOOL_WINDOW,
+  enqueueUploadAck,
+  rejectUploadAcks,
+  removeUploadAck,
+  resolveUploadAck,
+  type UploadAckWaiter,
+  type UploadAckWaiters,
+} from "../lib/uploadAck";
 
 /** 传输数据面（队列执行侧）：唯一上传入口、分片循环与 ack 等待、暂停/取消
  *  语义（等待器即时释放），以及下载分块/取消登记的共享表。 */
@@ -29,7 +38,7 @@ export function useTransferOperations(options: {
   const pausedTaskIds = reactive(new Set<string>());
   const pauseWaiters = new Map<string, Array<() => void>>();
 
-  const uploadAckWaiters = new Map<string, { nextOffset: number; resolve: () => void; reject: (error: Error) => void; timer: number }>();
+  const uploadAckWaiters: UploadAckWaiters = new Map();
   const downloadChunkWaiters = new Map<string, { offset: number; resolve: (bytes: Uint8Array) => void; reject: (error: Error) => void; timer: number }>();
   // Download task ids the user cancelled from the transfer panel; lets the download
   // loop distinguish a user cancel (notice) from a real failure (error banner).
@@ -67,6 +76,10 @@ export function useTransferOperations(options: {
     // 容器上传的暂存文件名由服务端消毒，展示名保留用户选中的原文件名；
     // 仅影响任务卡文案，远端写入路径仍是 uploadName。
     transferTasks[info.taskId] = { taskId: info.taskId, sessionId: session.value.sessionId, direction: "upload", fileName: options?.displayName ?? uploadName, displayName: options?.displayName, displayFolder: options?.displayFolder, size, transferred: startOffset, compression: info.compression === "gzip" ? "gzip" : undefined, status: startOffset > 0 ? "running" : "queued", joinedAt: Date.now(), batchId: options?.batchId };
+    // spool 窗口：readChunk（宿主桥 base64 读盘）与 sidecar 落盘确认相互
+    // 重叠，最多 UPLOAD_SPOOL_WINDOW 片在途；二进制通道保序，sidecar 的
+    // 顺序 offset 校验因此不受影响，断点续传前缀语义也不变。
+    const pendingAcks: Array<Promise<void>> = [];
     try {
       let offset = startOffset;
       while (offset < size) {
@@ -90,10 +103,15 @@ export function useTransferOperations(options: {
         payload.set(chunk, 8);
         const nextOffset = offset + chunk.byteLength;
         const ack = waitForUploadAck(info.taskId, nextOffset);
+        // 失败路径会一次性拒绝所有在途 ack；先挂空处理器避免被放弃的
+        // promise 以 unhandled rejection 形式冒到全局。
+        ack.catch(() => undefined);
+        pendingAcks.push(ack);
         await window.dbxPlugin.sendBinary(`sftp/upload/${info.taskId}`, payload);
-        await ack;
         offset = nextOffset;
+        if (pendingAcks.length >= UPLOAD_SPOOL_WINDOW) await pendingAcks.shift();
       }
+      await Promise.all(pendingAcks);
       // finish RPC 只把远端推送交给 sidecar 后台任务就返回（多 GB 文件的推送
       // 可达数十分钟，长持 RPC 会被桥上任何一端的 deadline 判死并"自动取消"，
       // issue #60）；真正的完成/失败由终态 progress 事件回传，这里等它落地。
@@ -105,6 +123,11 @@ export function useTransferOperations(options: {
       await waitForTransferCompletion(info.taskId);
       return true;
     } catch (cause) {
+      rejectUploadAcks(
+        uploadAckWaiters,
+        info.taskId,
+        cause instanceof Error ? cause : new Error(String(cause)),
+      );
       await rpc("sftp/transfer/cancel", { taskId: info.taskId, reason: transferCancelReason(cause) }).catch(() => undefined);
       throw cause;
     }
@@ -113,16 +136,30 @@ export function useTransferOperations(options: {
   function waitForUploadAck(taskId: string, nextOffset: number) {
     return new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(async () => {
-        uploadAckWaiters.delete(taskId);
+        // 30s 未确认先查任务真实状态：确实已落盘（ack 事件丢失/桥抖动）就
+        // 只释放这一片；任务已死或没推进，则整条上传按 ack-timeout 收口。
         try {
           const status = await rpc<{ transferred: number; status: string }>("sftp/transfer/status", { taskId });
-          if (status.transferred >= nextOffset && status.status === "running") resolve();
-          else reject(Object.assign(new Error(t("errors.uploadAckTimeout")), { code: "upload-ack-timeout" }));
+          if (status.transferred >= nextOffset && status.status === "running") {
+            removeUploadAck(uploadAckWaiters, taskId, nextOffset);
+            resolve();
+            return;
+          }
+          rejectUploadAcks(
+            uploadAckWaiters,
+            taskId,
+            Object.assign(new Error(t("errors.uploadAckTimeout")), { code: "upload-ack-timeout" }),
+          );
         } catch (cause) {
-          reject(cause instanceof Error ? cause : new Error(String(cause)));
+          rejectUploadAcks(
+            uploadAckWaiters,
+            taskId,
+            cause instanceof Error ? cause : new Error(String(cause)),
+          );
         }
       }, 30_000);
-      uploadAckWaiters.set(taskId, { nextOffset, resolve, reject, timer });
+      const waiter: UploadAckWaiter = { nextOffset, resolve, reject, timer };
+      enqueueUploadAck(uploadAckWaiters, taskId, waiter);
     });
   }
 
@@ -168,12 +205,11 @@ export function useTransferOperations(options: {
       // 取消集：暂停中的任务没有挂起的 ack 等待器，恢复后的分片循环靠它
       // 识别"恢复即终止"（见 uploadSource 的循环头检查）。
       cancelledTransferTasks.add(task.taskId);
-      const waiter = uploadAckWaiters.get(task.taskId);
-      if (waiter) {
-        window.clearTimeout(waiter.timer);
-        uploadAckWaiters.delete(task.taskId);
-        waiter.reject(Object.assign(new Error(t("transferStatus.cancelled")), { code: "transfer-cancelled" }));
-      }
+      rejectUploadAcks(
+        uploadAckWaiters,
+        task.taskId,
+        Object.assign(new Error(t("transferStatus.cancelled")), { code: "transfer-cancelled" }),
+      );
     }
     // reason=user 让后端账本把"用户主动取消"与异常清理区分开（issue #60）。
     await rpc("sftp/transfer/cancel", { taskId: task.taskId, reason: "user" }).catch((cause) => showError(cause));

@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.74] — 2026-10-28
+
+- **高延迟链路下的 SFTP 吞吐优化**。SSH 通道接收窗口从 2 MiB 提到 16 MiB（下载吞吐上限 ≈ 窗口 / RTT）：40 ms RTT 下单文件下载 17 → 43–83 MB/s、10 ms 下 83 → 125–172 MB/s；上传写流水线从 32 路提到 128 路（32 KiB 写包），40 ms RTT 下上传 14.6 → 22.8 MB/s。上传 spool 阶段改为最多 3 片在途（宿主读盘与 sidecar 落盘确认重叠）。实测确认上传仍受服务端接收窗口限制：更大写包、分片通道、多文件并发都不会更快，因此保持单通道 32 KiB 写包，兼容模式仍为串行。
+  **SFTP throughput on high-latency links.** The SSH channel receive window grows from 2 MiB to 16 MiB, and download throughput is bounded by window / RTT: at 40 ms RTT a single-file download goes from 17 to 43–83 MB/s, and at 10 ms from 83 to 125–172 MB/s. The upload write pipeline grows from 32 to 128 in-flight 32 KiB writes, taking a 40 ms RTT upload from 14.6 to 22.8 MB/s. The workbench spool phase now keeps up to 3 chunks in flight, overlapping host reads with sidecar acks. Measurements confirm uploads stay pinned by the server's receive window — larger write packets, parallel SFTP channels and extra file concurrency are all no faster — so the client keeps one channel with 32 KiB writes and compat mode stays serial.
+
 ## [0.7.9-beta.73] — 2026-10-28
 
 - **SFTP 上传/下载分片与并发优化**。单文件与目录树下载改为读满 1 MiB 分片，顺序分片不再逐片 `seek`，恢复 russh-sftp 的在途读流水线（此前每 32 KiB 就清空一次，约为现在 1/13 的下载吞吐）；`saveToLocal` 与目录树下载由 sidecar 直接落盘、不再把每片字节经 IPC 推给前端（`emitChunks: false`）。上传分片 256 KiB → 1 MiB，SFTP 读写流水线 16 → 32。多选批量下载按「传输并发 / 会话剩余深度」并行，兼容模式与「每次询问保存目录」保持串行；深度满槽按 500ms 退避等待；低速限速下分片自适应为约 0.25 秒预算（下限 32 KiB）。同目录同名下载的最终落位改为原子占名，避免并发完成时互相覆盖；无字节帧路径的取消改为 100ms 轮询中断。七语文案未变。

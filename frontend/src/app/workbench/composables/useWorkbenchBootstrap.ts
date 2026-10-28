@@ -7,6 +7,7 @@ import { isDbxPluginTheme, onHostThemeChange, themeToAppearance } from "../../..
 import type { PersistThrottle } from "../../lib/persistThrottle";
 import type { RdpSessionStateView } from "../../../features/remote-desktop/lib/rdpFrame";
 import type { SessionSummary } from "../../../features/connections/lib/sessionRestore";
+import type { UploadAckWaiters } from "../../../features/transfers/lib/uploadAck";
 import { pickLiveSessionForReattach, pickProtocolSessionForReattach } from "../../../features/connections/lib/sessionRestore";
 import type { ReplayResult } from "../../../features/connections/lib/sshConnectionTypes";
 import {
@@ -116,7 +117,7 @@ export function useWorkbenchBootstrap(options: {
   disposePromptHints: () => void;
   // SFTP 宿主拖放 / 在途传输等待者。
   handleHostFileDrop: (files: HostFileDropFile[], targetDir?: string) => Promise<void>;
-  uploadAckWaiters: Map<string, { nextOffset: number; resolve: () => void; reject: (error: Error) => void; timer: number }>;
+  uploadAckWaiters: UploadAckWaiters;
   downloadChunkWaiters: Map<string, { offset: number; resolve: (bytes: Uint8Array) => void; reject: (error: Error) => void; timer: number }>;
   // 后端事件分派入口（usePluginEvents）。
   handlePluginEvent: (event: DbxPluginEvent) => void;
@@ -554,10 +555,13 @@ export function useWorkbenchBootstrap(options: {
     detachGutterListeners();
     // 实例持有的 timer/observer/parser/输入与铃铛 handler 连同终端本体一起释放。
     disposeTerminalInstance();
-    for (const waiter of uploadAckWaiters.values()) {
-      window.clearTimeout(waiter.timer);
-      waiter.reject(new Error(t("errors.workbenchDetached")));
+    for (const queue of uploadAckWaiters.values()) {
+      for (const waiter of queue) {
+        window.clearTimeout(waiter.timer);
+        waiter.reject(new Error(t("errors.workbenchDetached")));
+      }
     }
+    uploadAckWaiters.clear();
     for (const waiter of downloadChunkWaiters.values()) {
       window.clearTimeout(waiter.timer);
       waiter.reject(new Error(t("errors.workbenchDetached")));
