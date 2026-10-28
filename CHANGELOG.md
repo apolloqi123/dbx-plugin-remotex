@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.63] — 2026-10-28
+
+- **命令管理列表改为名称优先**。命令行只显示完整的命令名称，不再被行内原始命令预览挤占宽度；原始命令改到鼠标悬浮提示中显示。设置页与工具栏弹层同步，长名称在 360px 弹层内也能完整读出。
+  **Command names now take priority in the manager list.** Rows show the full command name without an inline raw-command preview, and the raw command appears in the hover tooltip instead. Settings and the toolbar popover share the change, and long names fit fully in the 360px popover.
+
 ## [0.7.9-beta.62] — 2026-10-28
 
 - **工具栏「命令管理」弹层收紧到紧凑面板**。弹层从 560×约 484 收到 360×400，标题区从两行 34px 收成单行 24px（24px 图标，标题/汇总/限额同一行），树区随高度自适应；设置页标题同步收紧。搜索、新建命令/分组、更多菜单、右键菜单、编辑器/导入与导出均保留。

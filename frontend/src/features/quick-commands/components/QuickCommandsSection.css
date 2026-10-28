@@ -55,9 +55,8 @@
 .qc-command-row::after { content: ""; position: absolute; left: 0; top: 50%; width: 12px; height: 1px; background: color-mix(in srgb, var(--border) 75%, transparent); }
 .qc-command-row:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
 .qc-command-row.active { border-color: color-mix(in srgb, var(--primary) 26%, transparent); background: color-mix(in srgb, var(--primary) 10%, transparent); }
-.qc-command-text { display: flex; min-width: 0; flex: 1; align-items: baseline; gap: 6px; }
-.qc-command-text strong { min-width: 0; flex: 0 1 auto; max-width: 68%; overflow: hidden; font-size: 12px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.qc-command-text .mono { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--muted-foreground); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.qc-command-text { display: flex; min-width: 0; flex: 1; align-items: center; }
+.qc-command-text strong { min-width: 0; flex: 1; overflow: hidden; font-size: 12px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .qc-command-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 1px; }
 
 /* —— 空态 —— */

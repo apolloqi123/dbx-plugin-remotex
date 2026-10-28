@@ -509,14 +509,13 @@ watch([() => props.commands, () => props.groups], () => {
                 :key="item.id"
                 class="qc-command-row"
                 :class="{ active: selected?.kind === 'command' && selected.id === item.id }"
-                :title="`${item.name}\n${item.command}`"
+                :title="item.command"
                 @click="selectCommand(item)"
                 @dblclick="runCommand(item)"
                 @contextmenu.prevent="openCommandMenu(item, $event)"
               >
                 <span class="qc-command-text">
                   <strong>{{ item.name }}</strong>
-                  <span class="mono">{{ item.command }}</span>
                 </span>
                 <span class="qc-command-actions">
                   <button class="qc-row-more" :title="t('quickCommandRun')" :aria-label="t('quickCommandRun')" :disabled="!connected" @click.stop="runCommand(item)"><Play /></button>
