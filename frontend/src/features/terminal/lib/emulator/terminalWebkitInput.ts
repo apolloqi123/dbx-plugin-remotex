@@ -36,6 +36,13 @@ export interface WebkitInputController {
 
 const NORMAL_KEYDOWN_WINDOW_MS = 150;
 const COMPOSITION_SETTLE_MS = 5;
+/**
+ * After compositionEnd, xterm.js emits the committed text through onData.
+ * On macOS WKWebView the IME can also fire insertText input events for the
+ * same characters within ~80 ms of the commit.  Suppressing those prevents
+ * double-typing when switching from a CJK IME back to English mid-word.
+ */
+const POST_COMPOSITION_SUPPRESS_MS = 80;
 
 function directText(value: string | null): string | undefined {
   if (!value) return undefined;
@@ -54,6 +61,14 @@ export function createWebkitInputController(): WebkitInputController {
   let imeKeydownBeforeInput = false;
   let imeKeydownAfterInputExpected = false;
   let normalKeydown: { key: string; at: number } | undefined;
+  /**
+   * Track keyCode=229 keydowns that arrive DURING composition.  When
+   * compositionEnd fires, xterm emits the committed text through onData,
+   * but the IME may also fire insertText input events for the same ASCII
+   * characters.  This flag lets us suppress those duplicates without
+   * blocking legitimate fast typing after the switch.
+   */
+  let imeKeydownDuringComposition = false;
 
   function clearPendingKeys() {
     imeKeydownBeforeInput = false;
@@ -64,7 +79,12 @@ export function createWebkitInputController(): WebkitInputController {
   return {
     keydown(sample) {
       const key = directKey(sample);
-      if (!key || composing) return "pass";
+      if (!key || composing) {
+        // Even while composing, remember keyCode=229 so we can tell apart
+        // post-commit IME inserts from genuine keystrokes after the switch.
+        if (composing && sample.keyCode === 229) imeKeydownDuringComposition = true;
+        return "pass";
+      }
 
       if (sample.keyCode === 229) {
         // Do not let xterm arm _keyDownSeen or start its deferred textarea
@@ -85,7 +105,25 @@ export function createWebkitInputController(): WebkitInputController {
 
     input(sample) {
       const data = sample.inputType === "insertText" && !sample.isComposing ? directText(sample.data) : undefined;
-      if (!data || composing || sample.at - compositionEndedAt <= COMPOSITION_SETTLE_MS) return undefined;
+      if (!data || composing) return undefined;
+
+      // Short settle window right after compositionEnd: xterm may still be
+      // flushing the textarea diff from the commit.
+      if (sample.at - compositionEndedAt <= COMPOSITION_SETTLE_MS) return undefined;
+
+      // Extended post-composition suppression, but ONLY when the input is
+      // preceded by a keyCode=229 keydown that arrived during composition.
+      // That pattern signals an IME commit whose text xterm already emitted
+      // through onData — suppressing avoids double-typing when switching
+      // from a CJK IME back to English mid-word.
+      if (
+        sample.at - compositionEndedAt <= POST_COMPOSITION_SUPPRESS_MS &&
+        imeKeydownDuringComposition
+      ) {
+        imeKeydownBeforeInput = false;
+        normalKeydown = undefined;
+        return undefined;
+      }
 
       if (imeKeydownBeforeInput) {
         imeKeydownBeforeInput = false;
@@ -108,12 +146,15 @@ export function createWebkitInputController(): WebkitInputController {
     compositionStart() {
       composing = true;
       clearPendingKeys();
+      imeKeydownDuringComposition = false;
     },
 
     compositionEnd(at) {
       composing = false;
       compositionEndedAt = at;
       clearPendingKeys();
+      // Keep imeKeydownDuringComposition alive so the input() handler can
+      // see it during the POST_COMPOSITION_SUPPRESS_MS window.
     },
   };
 }
