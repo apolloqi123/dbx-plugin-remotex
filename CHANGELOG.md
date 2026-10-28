@@ -8,6 +8,11 @@ This file records user-facing changes for Terminal. Unless noted otherwise, vers
 
 ## [Unreleased]
 
+## [0.7.9-beta.65] — 2026-10-28
+
+- **设置页头部/底部收紧并统一视觉密度**。设置弹窗标题栏压缩为 22px 内容行 + 全宽分隔线；云同步说明并入单行 footer（42px），操作按钮右对齐。分类栏收窄到 158px 并加浅色底，内容区 padding/gap 收紧为 10/14 与 12，设置卡片改为 10px 圆角、12px padding；表单与列表更紧凑，输入框统一 focus ring。外观、终端、快速命令、安全等所有分页同步生效。
+  **Compacted the settings header/footer and unified density.** The title bar is reduced to a 22px content row with a full-width divider; the cloud-sync note moves into a single 42px footer with right-aligned actions. The category rail narrows to 158px with a subtle surface, content padding/gap tighten to 10/14 and 12, pane cards use 10px radii and 12px padding, forms and lists get denser, and inputs share a consistent focus ring. Every settings tab picks up the change.
+
 ## [0.7.9-beta.64] — 2026-10-28
 
 - **移除工具栏「告警排查」入口及告警分诊功能**。删除工具栏 Siren 按钮、告警排查弹窗、前端分诊 lib/composable/样式、AI 修复 prompt 中的本地分诊提示，以及后端 `ssh/alert/triage` RPC / 分类 playbook、mock、测试与七语文案。执行审计、Quick Sudo 等其余安全能力不受影响。

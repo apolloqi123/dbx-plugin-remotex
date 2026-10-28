@@ -462,12 +462,14 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
         </div>
         <!-- 存储迁移（IMPL_PLAN_STORAGE_SYNC）：可同步配置经宿主 host.storage 进
-             DBX secrets 加密同步；生效前提在 DBX 侧，这里向用户交代边界。 -->
-        <p class="muted settings-note">{{ t("settingsSyncNote") }}</p>
-        <footer>
-          <button :disabled="connection.state.loading || connection.state.loadFailed || settingsSaving || (!connection.state.meta?.sudoPasswordSet && !connection.state.meta?.totpConfigured)" @click="clearStoredSecrets"><Trash2 />{{ t("settingsClearSecrets") }}</button>
-          <button @click="emit('update:open', false)">{{ t("close") }}</button>
-          <button class="primary-button" :disabled="connection.state.loading || connection.state.loadFailed || settingsSaving || (!isLocalSession && !connection.state.meta)" @click="saveSettings"><Loader2 v-if="settingsSaving" class="spinning" />{{ t("settingsSave") }}</button>
+             DBX secrets 加密同步；说明与操作放在同一行 footer，压缩底部留白。 -->
+        <footer class="settings-footer">
+          <p class="settings-footer-note">{{ t("settingsSyncNote") }}</p>
+          <div class="settings-footer-actions">
+            <button :disabled="connection.state.loading || connection.state.loadFailed || settingsSaving || (!connection.state.meta?.sudoPasswordSet && !connection.state.meta?.totpConfigured)" @click="clearStoredSecrets"><Trash2 />{{ t("settingsClearSecrets") }}</button>
+            <button @click="emit('update:open', false)">{{ t("close") }}</button>
+            <button class="primary-button" :disabled="connection.state.loading || connection.state.loadFailed || settingsSaving || (!isLocalSession && !connection.state.meta)" @click="saveSettings"><Loader2 v-if="settingsSaving" class="spinning" />{{ t("settingsSave") }}</button>
+          </div>
         </footer>
       </DialogContent>
     </Dialog>
