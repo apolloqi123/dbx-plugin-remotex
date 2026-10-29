@@ -16,6 +16,7 @@ import {
   type ContainerTerminalStateEvent,
 } from "../composables/useContainerTerminal";
 import { isDockerContainerRunning, type DockerContainer } from "../lib/dockerPanelModel";
+import { createTerminalOutputColorizer } from "../../terminal/lib/emulator/terminalOutputColor";
 
 const DEFAULT_FONT_FAMILY = "Menlo, Monaco, 'Courier New', monospace";
 const DEFAULT_FONT_SIZE = 13;
@@ -56,6 +57,11 @@ function canConnect(): boolean {
   return running.value && props.canWrite !== false;
 }
 
+// 输出着色：与主终端同一转换器（备用屏/ESC/大输出透传），只改显示。
+const outputColorizer = createTerminalOutputColorizer({
+  isAlternateScreen: () => terminal?.buffer?.active?.type === "alternate",
+});
+
 const { status, errorMessage, open, close, retry, sendInput, resize, handleStateEvent } =
   useContainerTerminal({
     containerId: () => props.container.id,
@@ -64,7 +70,7 @@ const { status, errorMessage, open, close, retry, sendInput, resize, handleState
     canWrite: () => props.canWrite !== false,
     running: () => running.value,
     t: (key, values) => props.t(key, values),
-    onData: (bytes) => terminal?.write(bytes),
+    onData: (bytes) => terminal?.write(outputColorizer.transform(bytes)),
     onState: (state, detail) => {
       if (state === "exited") exitCode.value = detail?.exitCode;
       if (state === "connecting" || state === "connected") exitCode.value = undefined;
@@ -181,6 +187,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  outputColorizer.reset();
   unsubscribeState?.();
   unsubscribeState = undefined;
   if (fitFrame && typeof window.cancelAnimationFrame === "function") {

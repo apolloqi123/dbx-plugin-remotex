@@ -8,6 +8,7 @@ import {
   clampHistoryPanelIndex,
   decorateHistoryEntries,
   filterHistoryEntries,
+  historyPanelConfirmConsumesKey,
   moveHistoryPanelIndex,
   resolveHistoryPanelKey,
   type HistoryMetaRow,
@@ -198,10 +199,10 @@ export function useHistoryPanel(options: {
 
   /** 面板开启时的按键消费（键位→动作映射在 lib/historyPanel.resolveHistory
    *  PanelKey）：↑↓ 移动并实时同步行、Esc/底部再 ↓ 取消恢复原行，其余按键
-   *  放行。Enter/Tab 确认收起按焦点来源分流（#138 交互跟进）：命令行路径
-   *  return false 放行——行内容已与高亮实时同步，回车执行当前行（shell ↑
-   *  语义）、Tab 交远端补全；搜索框路径消费按键并归还终端焦点，不代执行。
-   *  两侧都不做整行替换——那会覆盖用户对行的编辑。 */
+   *  放行。Enter 恒由面板消费——行内容已与高亮实时同步，按键只收起面板、
+   *  仅回填不执行（再按一次回车才交给 shell，避免浏览历史时误跑命令）；
+   *  Tab 在命令行路径放行给 shell 补全，搜索框路径消费并归还终端焦点
+   *  （#138 交互跟进）。两侧都不做整行替换——那会覆盖用户对行的编辑。 */
   function handleHistoryPanelKey(event: KeyboardEvent, fromSearchBox = false): boolean {
     if (event.type !== "keydown" || event.isComposing || event.keyCode === 229) return false;
     const action = resolveHistoryPanelKey(event.key, historyPanelActiveIndex.value, historyPanelEntries.value.length);
@@ -214,7 +215,7 @@ export function useHistoryPanel(options: {
     }
     else if (action.kind === "fill" || action.kind === "close") {
       closeHistoryPanel();
-      return fromSearchBox ? true : false;
+      return historyPanelConfirmConsumesKey(event.key, fromSearchBox);
     } else if (action.kind === "cancel") cancelHistoryPanelSelection();
     else closeHistoryPanel();
     return true;

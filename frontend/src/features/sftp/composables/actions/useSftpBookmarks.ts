@@ -27,7 +27,6 @@ export function useSftpBookmarks(options: {
   const { t, showNotice, showError, connected, currentPath, closeToolbarPopovers } = options;
 
   const sftpBookmarks = ref<SftpBookmark[]>([]);
-  const bookmarkSaveOpen = ref(false);
   const bookmarksOpen = ref(false);
   const bookmarkSaving = ref(false);
   const bookmarkLabelDraft = ref("");
@@ -46,21 +45,14 @@ export function useSftpBookmarks(options: {
     }
   }
 
+  /** 单按钮管理弹层（2026-10-29 重做）：打开即进入「收藏当前路径」准备态
+   *  ——名称预填路径末段，列表刷新兜底；收藏/删除都在同一弹层内完成，
+   *  不再有独立的「收藏此路径」按钮与二次弹层（两个图标语义重复）。 */
   function toggleBookmarksMenu() {
     const next = !bookmarksOpen.value;
     closeToolbarPopovers();
+    if (next) bookmarkLabelDraft.value = defaultBookmarkLabel(currentPath.value);
     bookmarksOpen.value = next;
-  }
-
-  function toggleBookmarkSave() {
-    if (!connected.value) return;
-    if (bookmarkSaveOpen.value) {
-      bookmarkSaveOpen.value = false;
-      return;
-    }
-    closeToolbarPopovers();
-    bookmarkLabelDraft.value = defaultBookmarkLabel(currentPath.value);
-    bookmarkSaveOpen.value = true;
   }
 
   async function confirmBookmarkSave() {
@@ -76,7 +68,8 @@ export function useSftpBookmarks(options: {
     try {
       const { bookmarks, bookmark } = upsertBookmark(sftpBookmarks.value, input);
       sftpBookmarks.value = persistSftpBookmarks(bookmarks);
-      bookmarkSaveOpen.value = false;
+      // 保持弹层打开：新条目立刻可见，输入框回到当前路径的默认名称。
+      bookmarkLabelDraft.value = defaultBookmarkLabel(currentPath.value);
       showNotice(t("sftpBookmark.saved", { label: bookmark.label }));
     } catch (cause) {
       showError(cause);
@@ -97,16 +90,20 @@ export function useSftpBookmarks(options: {
   watch(bookmarksOpen, (open) => {
     if (open) void refreshBookmarks();
   });
+  // 弹层打开期间路径变了（面包屑回跳/跟随终端）：名称仍是上一个路径的默认值时
+  // 跟着刷新，用户已改过的名称不覆盖。
+  watch(currentPath, (next, previous) => {
+    if (!bookmarksOpen.value || bookmarkSaving.value) return;
+    if (bookmarkLabelDraft.value === defaultBookmarkLabel(previous)) bookmarkLabelDraft.value = defaultBookmarkLabel(next);
+  });
 
   return {
     sftpBookmarks,
     bookmarksOpen,
     toggleBookmarksMenu,
-    bookmarkSaveOpen,
     bookmarkSaving,
     bookmarkLabelDraft,
     refreshBookmarks,
-    toggleBookmarkSave,
     confirmBookmarkSave,
     removeBookmark,
   };

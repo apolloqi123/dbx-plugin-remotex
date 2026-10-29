@@ -330,7 +330,6 @@ const messages = {
       plain: "连接已恢复",
     },
     home: "主目录",
-    parentFolder: "返回上一级",
     refresh: "刷新",
     customizeColumns: "自定义表头",
     transfers: "SFTP 传输任务",

@@ -136,13 +136,14 @@ impl SshRuntime {
             // absent values, never the listing itself.
             enrich_owner_names(self, session_id, &path, &mut result).await;
         }
-        // One lowercase key per entry: the comparator allocated two strings per
-        // comparison (O(n log n)); stable sort keeps the previous tie order.
+        // One lowercase sort key per entry; rank = visible folder → hidden
+        // folder → visible file → hidden file (same rule as sftpEntryRank).
+        let hidden = |name: &str| name.starts_with('.') || matches!(name, "__pycache__" | "Thumbs.db") || name.ends_with(".pyc") || name.ends_with(".pyo");
         let mut keyed = result
             .into_iter()
-            .map(|entry| (entry.kind == "directory", entry.name.to_lowercase(), entry))
+            .map(|entry| ((if entry.kind == "directory" { 0 } else { 2 }) + u8::from(hidden(&entry.name)), entry.name.to_lowercase(), entry))
             .collect::<Vec<_>>();
-        keyed.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        keyed.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
         Ok(keyed.into_iter().map(|(_, _, entry)| entry).collect())
     }
 

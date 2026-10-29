@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, watch, type Ref } from "vue";
 import type { ServerMetrics } from "./useMetricsPanel";
+import { filterNetworkInterfaces } from "../lib/metricsView";
 
 /**
  * dock 面板左上角系统信息（CPU/内存/网速）：复用 ssh/metrics 既有链路。
@@ -77,15 +78,16 @@ export function useDockMetrics(options: {
     return Math.round(((memory.usedBytes ?? 0) / memory.totalBytes) * 100);
   });
   const panelNetRates = computed<{ rx: number; tx: number } | null>(() => {
+    // 与指标面板同源去噪：容器/回环网卡不重复计入网速带。
+    const interfaces = filterNetworkInterfaces(metrics.value?.network);
+    if (!interfaces.length) return null;
     let rx = 0;
     let tx = 0;
-    let seen = false;
-    for (const net of metrics.value?.network ?? []) {
+    for (const net of interfaces) {
       rx += Math.max(0, net.rxRate || 0);
       tx += Math.max(0, net.txRate || 0);
-      seen = true;
     }
-    return seen ? { rx, tx } : null;
+    return { rx, tx };
   });
 
   return {

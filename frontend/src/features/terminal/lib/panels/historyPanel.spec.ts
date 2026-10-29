@@ -3,12 +3,16 @@
 import { describe, expect, it } from "vitest";
 import {
   HISTORY_PANEL_LIMIT,
+  HISTORY_PANEL_PREFERRED_HEIGHT,
   HISTORY_TIMES_LIMIT,
   canOpenHistoryPanel,
   chooseHistoryPanelPlacement,
   clampHistoryPanelIndex,
   commandHistoryHotkeyPassthrough,
   decorateHistoryEntries,
+  historyPanelConfirmConsumesKey,
+  historyPanelMaxHeight,
+  historyPanelPreferredHeight,
   persistableHistoryMetaBuckets,
   pruneHistoryTimesBuckets,
   recordHistoryMeta,
@@ -108,6 +112,20 @@ describe("resolveHistoryPanelKey (shell ↑ 语义键位映射)", () => {
   it("lets unrelated keys pass through to the shell", () => {
     expect(resolveHistoryPanelKey("a", 1, 3)).toBeNull();
     expect(resolveHistoryPanelKey("Home", 1, 3)).toBeNull();
+  });
+});
+
+describe("historyPanelConfirmConsumesKey (Enter 仅回填，不执行)", () => {
+  it("always swallows Enter so the highlighted command is only filled, never executed", () => {
+    // 命令行路径与搜索框路径都消费 Enter：行内容已在导航时回填，再按一次
+    // 回车才交给 shell 执行（用户反馈：导航历史时回车不应直接跑命令）。
+    expect(historyPanelConfirmConsumesKey("Enter", false)).toBe(true);
+    expect(historyPanelConfirmConsumesKey("Enter", true)).toBe(true);
+  });
+
+  it("lets Tab through to shell completion from the terminal path", () => {
+    expect(historyPanelConfirmConsumesKey("Tab", false)).toBe(false);
+    expect(historyPanelConfirmConsumesKey("Tab", true)).toBe(true);
   });
 });
 
@@ -242,44 +260,64 @@ describe("relativeHistoryAge", () => {
   });
 });
 
-describe("chooseHistoryPanelPlacement (Warp 版式：优先输入行上方)", () => {
-  it("prefers above whenever the space there clears the chrome floor", () => {
-    expect(chooseHistoryPanelPlacement(500, 17, 900)).toBe("above");
-    expect(chooseHistoryPanelPlacement(200, 17, 900)).toBe("above");
+describe("historyPanelPreferredHeight / historyPanelMaxHeight (面板尺寸与光标位置解耦)", () => {
+  it("caps the preferred height on tall viewports and shrinks on short ones", () => {
+    expect(historyPanelPreferredHeight(900)).toBe(HISTORY_PANEL_PREFERRED_HEIGHT);
+    expect(historyPanelPreferredHeight(400)).toBeCloseTo(220);
+    expect(historyPanelPreferredHeight(0)).toBe(0);
   });
 
-  it("flips below only when above cannot host the chrome (floor-based, not height-squeeze)", () => {
-    // 光标贴视口顶部（如刚 clear）：上方 14px 不可用，下方充足。
+  it("gives the panel the same height whether the input line sits at the top or the bottom", () => {
+    // 体验反馈：光标在上方时面板很小、在底部又很大——两侧现在都被理想高度
+    // 钳住，顶部翻到下方、底部留在上方，尺寸一致。
+    const top = chooseHistoryPanelPlacement(20, 17, 900);
+    const bottom = chooseHistoryPanelPlacement(880, 17, 900);
+    expect(top).toBe("below");
+    expect(bottom).toBe("above");
+    expect(historyPanelMaxHeight(top, 20, 17, 900)).toBe(HISTORY_PANEL_PREFERRED_HEIGHT);
+    expect(historyPanelMaxHeight(bottom, 880, 17, 900)).toBe(HISTORY_PANEL_PREFERRED_HEIGHT);
+  });
+
+  it("never exceeds the space available on the chosen side", () => {
+    // 矮视口两侧都不足理想高度：取更大一侧，并按该侧可用空间收窄。
+    expect(chooseHistoryPanelPlacement(100, 17, 240)).toBe("below");
+    expect(historyPanelMaxHeight("below", 100, 17, 240)).toBe(117);
+  });
+});
+
+describe("chooseHistoryPanelPlacement (优先上方，按理想高度选侧)", () => {
+  it("keeps the panel above the input line when both sides can host the preferred height", () => {
+    expect(chooseHistoryPanelPlacement(500, 17, 900)).toBe("above");
+    expect(chooseHistoryPanelPlacement(450, 17, 900)).toBe("above");
+  });
+
+  it("flips below when above is too cramped for a comfortable panel", () => {
+    // 光标在上方四分之一处：上方 194px 放不下 360px 面板，下方充足。
+    expect(chooseHistoryPanelPlacement(200, 17, 900)).toBe("below");
+    // 光标贴视口顶部（如刚 clear）。
     expect(chooseHistoryPanelPlacement(20, 17, 900)).toBe("below");
-    // 两侧都跌破下限（矮视口）：取空间更大的一侧（面板收窄 + 内部滚动）。
-    expect(chooseHistoryPanelPlacement(100, 17, 120)).toBe("above");
-    // 上方 124px ≥ 下限 96：即便按旧挤压规则会翻，现在保持上方（朝向与
-    // 高度挤压解耦——2026-10-04 体验反馈）。
-    expect(chooseHistoryPanelPlacement(130, 17, 300)).toBe("above");
+    // 矮视口两侧都不足：取更大一侧（面板收窄 + 内部滚动）。
+    expect(chooseHistoryPanelPlacement(130, 17, 300)).toBe("below");
+    expect(chooseHistoryPanelPlacement(150, 17, 300)).toBe("above");
   });
 
   // 体验回归（#152 反馈）：光标在视口中部的刀锋线附近时，回填换行使锚点
   // 单行抖动，无迟滞的决策会随每次 ↑↓ 导航反复翻面（忽上忽下）。打开期间
-  // 传入 previous 后，跌破铬层下限之前一律维持原侧。
+  // 传入 previous 后，两侧容量相近时维持原侧。
   it("hysteresis: keeps the current side through single-row anchor jitter", () => {
-    // 长命令回填使光标行 ±1（y 在 133↔150 间抖动）：两侧都远高于下限，恒保持原侧。
-    expect(chooseHistoryPanelPlacement(150, 17, 300, undefined, "above")).toBe("above");
-    expect(chooseHistoryPanelPlacement(133, 17, 300, undefined, "above")).toBe("above");
-    expect(chooseHistoryPanelPlacement(150, 17, 300, undefined, "below")).toBe("below");
-    expect(chooseHistoryPanelPlacement(133, 17, 300, undefined, "below")).toBe("below");
-    // 往返扫描刀锋带：带内恒为初始侧；跌破下限仍会翻。
-    for (let y = 115; y <= 200; y += 7) {
-      expect(chooseHistoryPanelPlacement(y, 17, 300, undefined, "above"), `y=${y}`).toBe("above");
-    }
-    expect(chooseHistoryPanelPlacement(100, 17, 300, undefined, "above")).toBe("below");
+    // 两侧都能放下完整面板（容量都被钳到理想高度）：y 在 433↔450 抖动不翻面。
+    expect(chooseHistoryPanelPlacement(450, 17, 900, undefined, "above")).toBe("above");
+    expect(chooseHistoryPanelPlacement(433, 17, 900, undefined, "above")).toBe("above");
+    expect(chooseHistoryPanelPlacement(450, 17, 900, undefined, "below")).toBe("below");
+    expect(chooseHistoryPanelPlacement(433, 17, 900, undefined, "below")).toBe("below");
   });
 
-  it("hysteresis still flips when the current side truly cannot host the panel", () => {
-    // 上侧只剩铬层以下的空间（y 贴近视口顶）且下侧严格更大 → 翻。
-    expect(chooseHistoryPanelPlacement(60, 17, 300, undefined, "above")).toBe("below");
+  it("hysteresis still flips when the current side is clearly worse", () => {
+    // 上侧 144px vs 下侧 360px：另一侧明显更大才翻。
+    expect(chooseHistoryPanelPlacement(150, 17, 900, undefined, "above")).toBe("below");
     expect(chooseHistoryPanelPlacement(20, 17, 900, undefined, "above")).toBe("below");
-    // 翻到新侧后新侧成为当前侧，立即获得同样的迟滞保护（不回翻）。
-    expect(chooseHistoryPanelPlacement(60, 17, 300, undefined, "below")).toBe("below");
+    // 翻到新侧后成为当前侧，立即获得同样的迟滞保护（不回翻）。
+    expect(chooseHistoryPanelPlacement(20, 17, 900, undefined, "below")).toBe("below");
   });
 
   it("viewportless input keeps the previous side (defaults to above)", () => {

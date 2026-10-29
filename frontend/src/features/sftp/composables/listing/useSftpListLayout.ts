@@ -4,7 +4,7 @@ import type { SftpTypeFilter } from "../../lib/entries/sftpFileFilters";
 
 type SftpSortColumn = "name" | "size" | "modified";
 import { computed, onBeforeUnmount, ref, watch, type Ref } from "vue";
-import { filterSftpEntries } from "../../lib/entries/sftpFileFilters";
+import { filterSftpEntries, sftpEntryRank } from "../../lib/entries/sftpFileFilters";
 import { computeWindow } from "../../lib/tree/virtualWindow";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "@lucide/vue";
 
@@ -34,8 +34,10 @@ export function useSftpListLayout(options: {
 const sortedEntries = computed(() => {
   const direction = sort.value.direction === "asc" ? 1 : -1;
   return [...entries.value].sort((left, right) => {
-    if (left.kind === "directory" && right.kind !== "directory") return -1;
-    if (left.kind !== "directory" && right.kind === "directory") return 1;
+    // 分组恒为「可见文件夹 → 隐藏文件夹 → 可见文件 → 隐藏文件」，不随排序
+    // 方向翻转；组内才按所选列（名称/大小/时间）升降序。
+    const rankDiff = sftpEntryRank(left) - sftpEntryRank(right);
+    if (rankDiff !== 0) return rankDiff;
     let result = 0;
     if (sort.value.column === "size") result = (left.size ?? -1) - (right.size ?? -1);
     else if (sort.value.column === "modified") result = (left.modifiedAt ?? 0) - (right.modifiedAt ?? 0);

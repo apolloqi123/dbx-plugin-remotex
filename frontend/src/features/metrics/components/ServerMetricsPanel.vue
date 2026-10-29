@@ -31,6 +31,10 @@ export interface ServerMetricsView {
   txSparkline: string;
   disks: Array<{ filesystem: string; mount: string; totalBytes: number; usedBytes: number; availableBytes: number; percentUsed: number; inodeUsePercent?: number | null }>;
   networks: Array<{ name: string; rxRate: number; txRate: number; rxTotal: number; txTotal: number }>;
+  /** 磁盘卡片「显示全部」开关（false = 只看主要信息）。 */
+  showAllDisks: boolean;
+  /** 网卡卡片「显示全部」开关（false = 只看主要信息）。 */
+  showAllNics: boolean;
   processesOpen: boolean;
   processRows: MetricsProcessRow[];
   processLoading: boolean;
@@ -46,6 +50,8 @@ import {
   ArrowDown,
   ArrowUp,
   Cpu,
+  Eye,
+  EyeOff,
   HardDrive,
   ListTree,
   Loader2,
@@ -72,6 +78,8 @@ const emit = defineEmits<{
   "refresh-processes": [];
   "kill-process": [row: MetricsProcessRow, signal: 15 | 9];
   "update:sort": [key: MetricsProcessSortKey];
+  "toggle-disks-density": [];
+  "toggle-nics-density": [];
 }>();
 
 const procGridStyle = { gridTemplateColumns: "64px 80px 56px 56px 96px 56px 96px minmax(0, 1fr) 132px" };
@@ -204,6 +212,22 @@ const uptimeText = computed(() =>
       </MetricCard>
 
       <MetricCard v-if="view.networks.length" :icon="Network" tone="cyan" :title="t('metricsNetwork')">
+        <template #actions>
+          <span class="metrics-card-action">
+            <button
+              type="button"
+              class="icon-button compact metrics-density-toggle"
+              :class="{ 'is-active': view.showAllNics }"
+              :title="t(view.showAllNics ? 'metricsOnlyMainNics' : 'metricsShowAllNics')"
+              :aria-label="t(view.showAllNics ? 'metricsOnlyMainNics' : 'metricsShowAllNics')"
+              :aria-pressed="view.showAllNics"
+              @click="emit('toggle-nics-density')"
+            >
+              <Eye v-if="view.showAllNics" />
+              <EyeOff v-else />
+            </button>
+          </span>
+        </template>
         <div class="metrics-legend-row">
           <span class="metrics-legend-item is-down"><ArrowDown />{{ t("metricsDownload") }} <b>{{ formatRate(netRates.rx) }}</b></span>
           <span class="metrics-legend-item is-up"><ArrowUp />{{ t("metricsUpload") }} <b>{{ formatRate(netRates.tx) }}</b></span>
@@ -229,6 +253,20 @@ const uptimeText = computed(() =>
       </MetricCard>
 
       <MetricCard v-if="view.disks.length" :icon="HardDrive" tone="amber" :title="t('metricsDisk')" :meta="diskMeta">
+        <template #actions>
+          <button
+            type="button"
+            class="icon-button compact metrics-density-toggle"
+            :class="{ 'is-active': view.showAllDisks }"
+            :title="t(view.showAllDisks ? 'metricsOnlyMainDisks' : 'metricsShowAllDisks')"
+            :aria-label="t(view.showAllDisks ? 'metricsOnlyMainDisks' : 'metricsShowAllDisks')"
+            :aria-pressed="view.showAllDisks"
+            @click="emit('toggle-disks-density')"
+          >
+            <Eye v-if="view.showAllDisks" />
+            <EyeOff v-else />
+          </button>
+        </template>
         <div v-for="disk in view.disks" :key="disk.mount" class="metrics-disk">
           <div class="metrics-disk-head">
             <span class="metrics-disk-mount mono" :title="disk.mount">{{ disk.mount }}</span>
@@ -324,6 +362,9 @@ const uptimeText = computed(() =>
 
 <style scoped>
 .metrics-dash { display: flex; flex-direction: column; gap: 10px; }
+/* 卡片标题右侧的去噪开关：18px 圆钮、与卡片标题同高，激活态走全局 is-active。 */
+.metric-dash-head .metrics-density-toggle { flex: 0 0 auto; color: var(--muted-foreground); }
+.metric-dash-head .metrics-density-toggle:hover:not(:disabled) { color: var(--foreground); }
 
 /* —— 系统卡 —— */
 .metrics-host-row { display: flex; min-width: 0; align-items: center; gap: 8px; }

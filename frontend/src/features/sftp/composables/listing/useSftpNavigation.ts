@@ -45,7 +45,6 @@ export function useSftpNavigation(options: {
   selectedPath: Ref<string>;
   directoryTrackingSupported: Ref<boolean | undefined>;
   clearRowSelection: () => void;
-  parentPath: (path: string) => string;
   normalizeRemotePath: (path: string) => string;
   getPendingTerminalInput: () => string;
   persistState: () => void;
@@ -57,7 +56,7 @@ export function useSftpNavigation(options: {
   /** 首次列目录成功的回调：App 侧据此置"本会话已加载"标记（#179 惰性连接判定）。 */
   onListingLoaded?: () => void;
 }) {
-  const { t, showNotice, showError, session, sudoMode, connected, canWrite, currentPath, entries, loadingFiles, sftpError, sftpErrorOpen, sftpErrorKey, sftpHomePath, visibleColumns, followDirectory, directoryParser, selectedPath, directoryTrackingSupported, clearRowSelection, parentPath, normalizeRemotePath, getPendingTerminalInput, persistState, refreshDiskUsage, persistDirectoryFollowPref, resetLinkTargets, hydrateLinkTargets, closeBookmarksMenu, onListingLoaded } = options;
+  const { t, showNotice, showError, session, sudoMode, connected, canWrite, currentPath, entries, loadingFiles, sftpError, sftpErrorOpen, sftpErrorKey, sftpHomePath, visibleColumns, followDirectory, directoryParser, selectedPath, directoryTrackingSupported, clearRowSelection, normalizeRemotePath, getPendingTerminalInput, persistState, refreshDiskUsage, persistDirectoryFollowPref, resetLinkTargets, hydrateLinkTargets, closeBookmarksMenu, onListingLoaded } = options;
 
 async function loadHome() {
   if (!session.value) return;
@@ -162,10 +161,6 @@ async function enableSudoModeAndReload(path: string) {
   await loadDirectory(path);
 }
 
-function goParent() {
-  void loadDirectory(parentPath(currentPath.value));
-}
-
 async function setDirectoryTracking(enabled: boolean) {
   if (!session.value) return;
   if (enabled && directoryTrackingSupported.value === false) {
@@ -232,7 +227,6 @@ function submitPathInput() {
     sftpSoftError,
     toggleSudoMode,
     enableSudoModeAndReload,
-    goParent,
     setDirectoryTracking,
     goToPath,
     pathBarEditing,

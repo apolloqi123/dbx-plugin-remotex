@@ -5,7 +5,7 @@
 // 过滤并保持历史顺序，保证「输入越打越具体」永远有可预期的结果集。
 
 import { SEARCH_COMMANDS_DEFAULTS, commandSuggestionQueryAcceptable, searchCommands } from "../../../completion/lib/commandSuggestions";
-import { OVERLAY_GAP } from "../../../../shared/lib/overlayPlacement";
+import { OVERLAY_GAP, overlayMaxHeight } from "../../../../shared/lib/overlayPlacement";
 
 /** 面板单次展示的条目上限：全量历史的可视窗口足够大，超出靠继续输入收窄。 */
 export const HISTORY_PANEL_LIMIT = 50;
@@ -150,22 +150,43 @@ export function relativeHistoryAge(ts: number | null | undefined, now: number): 
   return { kind: "days", count: Math.floor(elapsedHours / 24) };
 }
 
-/** 打开期间翻面/初判的绝对下限：低于它面板铬层（标题+搜索+键位提示，≈90px）
- *  已挤掉列表区，该侧视为不可用。朝向决策只用这道下限——高度挤压不再参与
- *  （体验反馈：挤压阈值在矮视格里落在视口中部，锚点单行抖动就让朝向来回翻；
- *  面板高度改为随可用空间收窄、列表内部滚动，顶部与搜索框恒完整）。 */
-export const HISTORY_PANEL_FLIP_FLOOR = 96;
+/** 面板理想高度：约 10 行条目 + 标题/搜索/键位提示铬层，视口矮时按比例
+ *  退让。高度以它为上界，与光标位置解耦——顶部唤起翻到下方、底部唤起留在
+ *  上方，两处面板大小一致（体验反馈：先前高度直接跟随光标同侧剩余空间，
+ *  顶部很小、底部很大）。 */
+export const HISTORY_PANEL_PREFERRED_HEIGHT = 360;
+export const HISTORY_PANEL_PREFERRED_RATIO = 0.55;
+
+/** 理想高度（px）；视口不可测时返回 0（调用方退回 CSS 兜底）。 */
+export function historyPanelPreferredHeight(viewportHeight: number): number {
+  if (!(viewportHeight > 0)) return 0;
+  return Math.min(HISTORY_PANEL_PREFERRED_HEIGHT, viewportHeight * HISTORY_PANEL_PREFERRED_RATIO);
+}
+
+/** 放置侧的内联 max-height：该侧可用空间与理想高度取小，列表超出的部分
+ *  内部滚动（铬层恒完整）。 */
+export function historyPanelMaxHeight(
+  placement: "above" | "below",
+  anchorTopY: number,
+  cellHeight: number,
+  viewportHeight: number,
+  preferredHeight = historyPanelPreferredHeight(viewportHeight),
+  gap = OVERLAY_GAP,
+): number {
+  const available = overlayMaxHeight(placement, anchorTopY, cellHeight, viewportHeight, gap);
+  return preferredHeight > 0 ? Math.min(available, preferredHeight) : available;
+}
 
 /**
- * Warp 版式放置侧：优先在输入行上方展开（底边贴光标行顶）；上方可用高度
- * 跌破下限才考虑下方，下限之下取空间更大的一侧。纯几何，不依赖内容测量——
- * DOM scrollHeight 在测试/渲染器就绪前不可得，放置决策不能挂在它上面。
- * 面板自身按放置侧可用空间 max-height 收窄、列表内部滚动（铬层恒完整），
- * 朝向因此与内容高度解耦。
+ * Warp 版式放置侧：优先在输入行上方展开（底边贴光标行顶）——上方能容纳
+ * 理想高度、或不比下方更差时留上方；上方明显更挤时翻到下方（光标贴顶/在
+ * 上半屏时下方就是大片空屏，面板不会被压扁）。两侧都放不下理想高度时取
+ * 容量更大的一侧。纯几何，不依赖内容测量——DOM scrollHeight 在测试/渲染器
+ * 就绪前不可得，放置决策不能挂在它上面。
  *
  * previous 为面板当前的放置侧（打开期间传入即启用迟滞）：锚点像素级抖动
  * （回显 settle 前后、长命令回填换行使光标行 ±1）不应让面板反复翻面——
- * 仅当当前侧可用高度跌破下限且另一侧严格更大时才翻，否则维持原侧。
+ * 仅当另一侧容量超过当前侧一行以上时才翻，否则维持原侧。
  */
 export function chooseHistoryPanelPlacement(
   anchorTopY: number,
@@ -173,20 +194,21 @@ export function chooseHistoryPanelPlacement(
   viewportHeight: number,
   gap = OVERLAY_GAP,
   previous?: "above" | "below",
-  flipFloor = HISTORY_PANEL_FLIP_FLOOR,
+  preferredHeight = historyPanelPreferredHeight(viewportHeight),
 ): "above" | "below" {
   if (!(viewportHeight > 0)) return previous ?? "above";
   const spaceAbove = anchorTopY - gap;
   const spaceBelow = viewportHeight - anchorTopY - cellHeight - gap;
+  const fit = (space: number) => (preferredHeight > 0 ? Math.min(Math.max(0, space), preferredHeight) : Math.max(0, space));
+  const aboveFit = fit(spaceAbove);
+  const belowFit = fit(spaceBelow);
   if (previous === "above" || previous === "below") {
-    const spaceCurrent = previous === "above" ? spaceAbove : spaceBelow;
-    const spaceOther = previous === "above" ? spaceBelow : spaceAbove;
-    if (spaceCurrent >= flipFloor || spaceCurrent >= spaceOther) return previous;
+    const currentFit = previous === "above" ? aboveFit : belowFit;
+    const otherFit = previous === "above" ? belowFit : aboveFit;
+    if (otherFit <= currentFit + Math.max(cellHeight, 1)) return previous;
     return previous === "above" ? "below" : "above";
   }
-  if (spaceAbove >= flipFloor) return "above";
-  if (spaceBelow >= flipFloor) return "below";
-  return spaceAbove >= spaceBelow ? "above" : "below";
+  return aboveFit >= belowFit ? "above" : "below";
 }
 
 /**
@@ -217,8 +239,9 @@ export function moveHistoryPanelIndex(index: number, delta: number, length: numb
 /** 面板开启期间的键位→动作映射（shell ↑ 语义，纯函数供单测；App 消费动作
  *  并把选中项实时回填输入行）。move=移动高亮；stay=消费但不动（顶部最旧
  *  一条再 ↑ 停住，不回绕到最新——readline 到最旧即止）；fill=确认收起——
- *  行内容已与高亮实时同步，App 按焦点来源决定放行回车/Tab 归 shell 还是仅
- *  收起（不做整行替换，避免覆盖行内编辑）；cancel=取消导航：恢复打开前的
+ *  行内容已与高亮实时同步，Enter 恒由面板消费、仅回填不执行（见
+ *  historyPanelConfirmConsumesKey），Tab 在命令行路径放行给 shell 补全（不做
+ *  整行替换，避免覆盖行内编辑）；cancel=取消导航：恢复打开前的
  *  原输入行并收起面板（Esc，以及底部最新一条再 ↓——越过最新回到原行，等价
  *  shell 历史栈回退）；close=确认收起（空列表的 Enter/Tab 无高亮项）。返回
  *  null 的按键不消费、放行远端。 */
@@ -244,6 +267,13 @@ export function resolveHistoryPanelKey(key: string, activeIndex: number, length:
     default:
       return null;
   }
+}
+
+/** 确认键的归属：Enter 恒由面板消费——行内容已实时回填，按键只收起面板，
+ *  不代用户执行（再按一次回车才交给 shell）；Tab 在命令行路径放行给 shell
+ *  补全，搜索框路径消费并归还终端焦点。 */
+export function historyPanelConfirmConsumesKey(key: string, fromSearchBox: boolean): boolean {
+  return fromSearchBox || key === "Enter";
 }
 
 /** 重过滤后收拢高亮项：越界裁到列表尾，空列表归零。 */

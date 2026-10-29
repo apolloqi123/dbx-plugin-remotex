@@ -651,7 +651,7 @@ Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 }
 ```
 
-`network` 速率为两次快照间的字节/秒；`rxTotal` / `txTotal` 为第二次快照的累计字节数。`processes` 为按 CPU 排序的前 8 进程，`topMemory` 为按内存占用排序的前 8 进程（两者字段同构，均为扩展字段，旧 sidecar 可能缺失——调用方按可选处理）。`disks[].inodeUsePercent` 为该挂载点的 inode 使用率（百分比数值），仅当 `df -iP` 采集到对应挂载时出现（GNU/busybox 列布局差异由解析端吸收）。`command` 截断到 120 字符。快照缓存仅存内存（每会话一份），会话关闭即清除。只读命令，只读连接同样可用。
+`network` 速率为两次快照间的字节/秒；`rxTotal` / `txTotal` 为第二次快照的累计字节数。`processes` 为按 CPU 排序的前 8 进程，`topMemory` 为按内存占用排序的前 8 进程（两者字段同构，均为扩展字段，旧 sidecar 可能缺失——调用方按可选处理）。采集端固定 `LC_ALL=C`，`ps` 统一用可重复的 `-o 字段=`（CentOS 7 的 procps-ng 3.3.10 对 `-o pid=,user=,…` 这种逗号+空表头写法有 bug：退出码 0 但只输出第一列），并在首行形状不达标（busybox 无 `pcpu/pmem`：Alpine/OpenWrt/精简镜像）时退回 `ps -eo pid= -o user= -o rss= -o args=`，按 `/proc/meminfo` 合成「`cpuPercent=0` + 真实 `memPercent`」的同一行形并按内存排序——否则进程段为空，前端会隐藏整张进程卡片。`disks[].inodeUsePercent` 为该挂载点的 inode 使用率（百分比数值），仅当 `df -iP` 采集到对应挂载时出现（GNU/busybox 列布局差异由解析端吸收）。`command` 截断到 120 字符。快照缓存仅存内存（每会话一份），会话关闭即清除。只读命令，只读连接同样可用。
 
 ## Docker 管理面板
 
@@ -1333,7 +1333,10 @@ sudo 模式下向登录用户不可写目录（如 `/root`）上传（对标 sud
 ### ssh/processes/list、ssh/processes/kill
 
 `ssh/processes/list`：参数 `{ sessionId }`。单条只读命令：`ps` 段
-`ps -eo pid=,ppid=,user=,pcpu=,pmem=,etime=,state=,args= | sort -k3,3nr | head -n 500` 采集，
+`ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args= | head -n 500` 采集
+（`LC_ALL=C`；首行形状不达标时——CentOS 7 老 procps 的逗号+空表头 bug、busybox 缺
+`pcpu/pmem/state`——退回 `ps -eo pid= -o ppid= -o user= -o etime= -o stat= -o args=`
+并合成 `cpuPercent=memPercent=0` 的同一行形，fd/监听端口补列不受影响），
 其后追加三段 best-effort 段（同一命令内完成）：`--fds--`（纯 shell 内建遍历
 `/proc/<pid>/fd` 计数，无可读权限的目录跳过）、`--sock--`（`find -lname/-printf` 枚举
 `/proc/<pid>/fd/*` 中指向 socket 的符号链接，单次 spawn，映射全在解析端完成）、

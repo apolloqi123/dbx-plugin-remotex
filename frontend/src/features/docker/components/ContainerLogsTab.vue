@@ -11,6 +11,7 @@ import { FOLLOW_PAUSE_PX, MAX_LOG_CHARS, MAX_LOG_LINES, shouldFollow } from "../
 import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
+import { escapeLogHtml, tokenizeOutputLine } from "../../../shared/lib/logTokens";
 
 // Vue 对未传的 Boolean prop 会转成 false；这里显式默认 true，避免「未声明
 // visible」的调用方被误判为隐藏页签而不开流。
@@ -51,6 +52,39 @@ const scroller = ref<HTMLElement>();
 const clearedNotice = ref(false);
 /** 流是否因页签隐藏而停止：只有这种停止才在重新可见时自动重开。 */
 let pausedByHidden = false;
+
+// —— 日志着色 ——————————————————————————————————————————————
+// 逐行按 logTokens 语义着色（级别/时间戳/键值/数字/IP/URL + 应用自带的 ANSI
+// 颜色）。行 HTML 按内容缓存：流式追加时只有新行付出解析成本，重复行直接复用。
+// 高亮上限之外的头部按纯文本整段渲染，避免万行缓冲把 DOM 撑爆。
+const LOG_HIGHLIGHT_MAX_LINES = 2000;
+const LOG_ROW_CACHE_LIMIT = 8192;
+const rowHtmlCache = new Map<string, string>();
+
+function logRowHtml(line: string): string {
+  const cached = rowHtmlCache.get(line);
+  if (cached !== undefined) return cached;
+  let html = "";
+  for (const token of tokenizeOutputLine(line)) {
+    html += token.kind === "plain"
+      ? escapeLogHtml(token.text)
+      : `<span class="log-${token.kind}">${escapeLogHtml(token.text)}</span>`;
+  }
+  if (rowHtmlCache.size >= LOG_ROW_CACHE_LIMIT) rowHtmlCache.clear();
+  rowHtmlCache.set(line, html);
+  return html;
+}
+
+const renderedLog = computed(() => {
+  const value = text.value;
+  if (!value) return { prefix: "", rows: [] as string[] };
+  const lines = value.split("\n");
+  const highlightFrom = Math.max(0, lines.length - LOG_HIGHLIGHT_MAX_LINES);
+  return {
+    prefix: highlightFrom > 0 ? `${lines.slice(0, highlightFrom).join("\n")}\n` : "",
+    rows: lines.slice(highlightFrom).map(logRowHtml),
+  };
+});
 
 /** 截断提示文案；数值直接取自缓冲上限，避免两处漂移。 */
 const truncatedHint = computed(() =>
@@ -211,7 +245,7 @@ watch(
       </button>
     </div>
     <div class="docker-log-body">
-      <pre ref="scroller" class="docker-log-scroll" @scroll="onScroll">{{ text }}</pre>
+      <pre ref="scroller" class="docker-log-scroll" @scroll="onScroll"><template v-if="renderedLog.prefix">{{ renderedLog.prefix }}</template><template v-for="(row, index) in renderedLog.rows" :key="index"><span class="docker-log-line" v-html="row"></span>{{ index + 1 < renderedLog.rows.length ? "\n" : "" }}</template></pre>
       <p v-if="showEmptyState" class="docker-log-empty">
         {{ clearedNotice ? t("docker.logsCleared") : t("docker.logsEmpty") }}
       </p>

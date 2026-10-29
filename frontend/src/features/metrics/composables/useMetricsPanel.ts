@@ -3,6 +3,7 @@ import { confirmDialog } from "../../../shared/lib/confirmDialog";
 import { distroBadge, type DistroBadge } from "../../connections/lib/distroBadge";
 import { pushSample, sparklinePath, METRICS_SAMPLE_CAPACITY } from "../lib/metricsSparkline";
 import { filterDiskMounts, filterNetworkInterfaces } from "../lib/metricsView";
+import { pluginStore } from "../../../shared/lib/pluginStore";
 import { canKillProcess, sortProcessRows, type ProcessSortKey } from "../../docker/lib/processActions";
 import { type GpuOverviewView, type NpuOverviewView } from "../lib/metricsGpuNpu";
 
@@ -80,6 +81,39 @@ const metrics = ref<ServerMetrics>();
 const metricsLoading = ref(false);
 const metricsError = ref("");
 
+// 磁盘/网卡各自的去噪开关（默认只显示主要信息；「显示全部」时伪文件系统或
+// 虚拟网卡一并列出）。偏好全局持久化，随宿主 storage 同步；beta.82 的合并
+// 开关键 ssh-metrics-only-main 作为旧值回退，升级后保持用户上次的选择。
+const METRICS_SHOW_ALL_DISKS_KEY = "ssh-metrics-show-all-disks";
+const METRICS_SHOW_ALL_NICS_KEY = "ssh-metrics-show-all-nics";
+const METRICS_LEGACY_ONLY_MAIN_KEY = "ssh-metrics-only-main";
+function readShowAllPref(key: string): boolean {
+  try {
+    const stored = pluginStore.getItem(key);
+    if (stored !== null) return stored === "true";
+    return pluginStore.getItem(METRICS_LEGACY_ONLY_MAIN_KEY) === "false";
+  } catch {
+    return false;
+  }
+}
+function persistShowAllPref(key: string, value: boolean) {
+  try {
+    pluginStore.setItem(key, String(value));
+  } catch {
+    // 持久化失败不阻断本次会话内的开关。
+  }
+}
+const showAllDisks = ref(readShowAllPref(METRICS_SHOW_ALL_DISKS_KEY));
+const showAllNics = ref(readShowAllPref(METRICS_SHOW_ALL_NICS_KEY));
+function toggleDisksDensity() {
+  showAllDisks.value = !showAllDisks.value;
+  persistShowAllPref(METRICS_SHOW_ALL_DISKS_KEY, showAllDisks.value);
+}
+function toggleNicsDensity() {
+  showAllNics.value = !showAllNics.value;
+  persistShowAllPref(METRICS_SHOW_ALL_NICS_KEY, showAllNics.value);
+}
+
 // ---------------------------------------------------------------------------
 // metrics sparkline + 发行版徽标（IMPL_PLAN_NETCATTY_PARITY §3-B2）
 // ---------------------------------------------------------------------------
@@ -91,7 +125,8 @@ const metricSamples = reactive({ rx: [] as number[], tx: [] as number[], cpu: []
 function recordMetricSamples() {
   let rx = 0;
   let tx = 0;
-  for (const net of metrics.value?.network ?? []) {
+  // 趋势与卡片同源：只统计可见网卡，容器/回环流量不再重复计入总速率。
+  for (const net of visibleNetworkInterfaces.value) {
     rx += Math.max(0, net.rxRate || 0);
     tx += Math.max(0, net.txRate || 0);
   }
@@ -113,9 +148,10 @@ const metricsTxSparkline = computed(() => sparklinePath(metricSamples.tx, 60, 18
 // CPU/内存是百分比：固定 0–100 刻度，低占用不会被拉伸到顶边。
 const metricsCpuSparkline = computed(() => sparklinePath(metricSamples.cpu, 120, 18, 100));
 const metricsMemSparkline = computed(() => sparklinePath(metricSamples.mem, 120, 18, 100));
-// 视图层去噪：伪文件系统/overlay 重复挂载/零流量虚拟网卡不进渲染（纯函数在 lib/metricsView）。
-const visibleDiskMounts = computed(() => filterDiskMounts(metrics.value?.disks));
-const visibleNetworkInterfaces = computed(() => filterNetworkInterfaces(metrics.value?.network));
+// 视图层去噪：伪文件系统/overlay 重复挂载/虚拟网卡默认不进渲染（纯函数在
+// lib/metricsView）；「显示全部」开关把它们放回来。
+const visibleDiskMounts = computed(() => filterDiskMounts(metrics.value?.disks, { includeNoise: showAllDisks.value }));
+const visibleNetworkInterfaces = computed(() => filterNetworkInterfaces(metrics.value?.network, { includeNoise: showAllNics.value }));
 // 旧 sidecar 无 osId/osPretty 时整体缺徽标（optional 降级，§6.6）。
 const metricsDistroBadge = computed<DistroBadge | null>(() => (metrics.value ? distroBadge(metrics.value.osId, metrics.value.osPretty) : null));
 
@@ -249,6 +285,10 @@ watch(() => session.value?.sessionId, (next, previous) => {
     metricsMemSparkline,
     visibleDiskMounts,
     visibleNetworkInterfaces,
+    showAllDisks,
+    showAllNics,
+    toggleDisksDensity,
+    toggleNicsDensity,
     metricsDistroBadge,
     refreshMetrics,
     openMetrics,

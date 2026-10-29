@@ -99,8 +99,26 @@ describe("TerminalHistoryPanel", () => {
     const style = wrapper.find(".terminal-history-panel").attributes("style") ?? "";
     // 底边贴光标行顶：bottom = viewportHeight - anchorY + gap = 600 - 300 + 6。
     expect(style).toContain("bottom: 306px");
+    // 高度按放置侧可用空间（294px）与理想高度（600×55% = 330px）取小。
+    expect(style).toContain("max-height: 294px");
     // 全宽版式：水平定位归 CSS（left/right 8px），内联样式不再携带 left。
     expect(style).not.toContain("left");
+  });
+
+  it("keeps a consistent panel height whether the input line is at the top or the bottom", () => {
+    // 体验反馈：光标在上方时面板很小、在底部又很大。现在顶部翻到输入行
+    // 下方、底部留在上方，两侧高度都钳到理想高度（600×55% = 330px）。
+    const top = mountPanel({ anchor: { x: 40, y: 40, cellHeight: 17, cellWidth: 8 }, viewport: { height: 600 } });
+    const topStyle = top.find(".terminal-history-panel").attributes("style") ?? "";
+    expect(topStyle).toContain("top: 63px");
+    expect(topStyle).not.toContain("bottom");
+    expect(topStyle).toContain("max-height: 330px");
+
+    const bottom = mountPanel({ anchor: { x: 40, y: 560, cellHeight: 17, cellWidth: 8 }, viewport: { height: 600 } });
+    const bottomStyle = bottom.find(".terminal-history-panel").attributes("style") ?? "";
+    expect(bottomStyle).toContain("bottom: 46px");
+    expect(bottomStyle).not.toContain("top");
+    expect(bottomStyle).toContain("max-height: 330px");
   });
 
   it("leaves focus untouched on mount and echoes the controlled query", () => {

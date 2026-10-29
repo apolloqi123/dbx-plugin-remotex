@@ -96,8 +96,17 @@ pub const PROCESS_PORTS_MAX: usize = 16;
 /// attribute ports to pids without the same root rights, so it would add an
 /// execution surface without recovering data (see parse functions).
 pub(crate) const PROCESS_LIST_SCRIPT: &str = concat!(
-    "(ps -eo pid=,ppid=,user=,pcpu=,pmem=,etime=,state=,args= 2>/dev/null || true) ",
-    "| sort -k3,3nr | head -n 500; ",
+    // CentOS 7 的 procps（逗号+空表头 bug）与 busybox（无 pcpu/pmem/state）
+    // 都不能用 `-o pid=,user=,…` 正常出表：统一用可重复的 `-o 字段=`，按首行
+    // 形状探测（字段数 + CPU% 数字），不达标时退回
+    // pid,ppid,user,etime,stat,args 并合成 CPU/MEM 为 0 的同一行形
+    // （fd/监听端口补列仍照常来自 /proc）。
+    "pslist() { if LC_ALL=C ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args= 2>/dev/null | ",
+    "awk 'NR==1{ if (NF>=8 && $4 ~ /^[0-9]+(\\.[0-9]+)?$/) ok=1; exit } END{exit ok?0:1}'; then ",
+    "LC_ALL=C ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args= 2>/dev/null; ",
+    "else LC_ALL=C ps -eo pid= -o ppid= -o user= -o etime= -o stat= -o args= 2>/dev/null | ",
+    "awk '{ pid=$1; ppid=$2; user=$3; etime=$4; state=$5; $1=$2=$3=$4=$5=\"\"; sub(/^ +/, \"\"); printf \"%s %s %s 0.0 0.0 %s %s %s\\n\", pid, ppid, user, etime, state, $0 }'; fi; }; ",
+    "pslist | head -n 500; ",
     "echo '--fds--'; ",
     "if [ -d /proc/1 ]; then for d in /proc/[0-9]*; do set -- \"$d\"/fd/*; ",
     "{ [ -L \"$1\" ] || [ -e \"$1\" ]; } || continue; c=0; ",

@@ -27,7 +27,6 @@ import type { CustomEditor, KnownEditor } from "../../features/sftp/lib/editor/e
 type SftpModelKey =
   | "currentPath"
   | "pathBarEditing"
-  | "bookmarkSaveOpen"
   | "bookmarkLabelDraft"
   | "bookmarksOpen"
   | "sftpSearchDraft"
@@ -87,8 +86,9 @@ const emit = defineEmits<{
   (e: "refresh-processes"): void;
   (e: "kill-process", row: MetricsProcessRow, signal: 15 | 9): void;
   (e: "update:sort", key: MetricsProcessSortKey): void;
+  (e: "toggle-disks-density"): void;
+  (e: "toggle-nics-density"): void;
   (e: "close-panel"): void;
-  (e: "go-parent"): void;
   (e: "load-home"): void;
   (e: "load-directory"): void;
   (e: "set-directory-tracking", enabled: boolean): void;
@@ -96,7 +96,6 @@ const emit = defineEmits<{
   (e: "cancel-path-bar-edit"): void;
   (e: "begin-path-bar-edit"): void;
   (e: "go-to-path", path: string): void;
-  (e: "toggle-bookmark-save"): void;
   (e: "confirm-bookmark-save"): void;
   (e: "toggle-bookmarks-menu"): void;
   (e: "remove-bookmark", bookmark: SftpBookmark): void;
@@ -137,7 +136,6 @@ const emit = defineEmits<{
 
 const currentPath = defineModel<string>("currentPath", { required: true });
 const pathBarEditing = defineModel<boolean>("pathBarEditing", { required: true });
-const bookmarkSaveOpen = defineModel<boolean>("bookmarkSaveOpen", { required: true });
 const bookmarkLabelDraft = defineModel<string>("bookmarkLabelDraft", { required: true });
 const bookmarksOpen = defineModel<boolean>("bookmarksOpen", { required: true });
 const sftpSearchDraft = defineModel<string>("sftpSearchDraft", { required: true });
@@ -174,7 +172,6 @@ defineExpose({ sftpPane });
       v-bind="sftp"
       v-model:currentPath="currentPath"
       v-model:pathBarEditing="pathBarEditing"
-      v-model:bookmarkSaveOpen="bookmarkSaveOpen"
       v-model:bookmarkLabelDraft="bookmarkLabelDraft"
       v-model:bookmarksOpen="bookmarksOpen"
       v-model:sftpSearchDraft="sftpSearchDraft"
@@ -188,7 +185,6 @@ defineExpose({ sftpPane });
       @update:batchDeleteOpen="batchDeleteOpen = true"
       @update:deleteTarget="deleteTarget = $event"
       @update:otpPanelOpen="otpPanelOpen = true"
-      @go-parent="emit('go-parent')"
       @load-home="emit('load-home')"
       @load-directory="emit('load-directory')"
       @set-directory-tracking="emit('set-directory-tracking', $event)"
@@ -196,7 +192,6 @@ defineExpose({ sftpPane });
       @cancel-path-bar-edit="emit('cancel-path-bar-edit')"
       @begin-path-bar-edit="emit('begin-path-bar-edit')"
       @go-to-path="emit('go-to-path', $event)"
-      @toggle-bookmark-save="emit('toggle-bookmark-save')"
       @confirm-bookmark-save="emit('confirm-bookmark-save')"
       @toggle-bookmarks-menu="emit('toggle-bookmarks-menu')"
       @remove-bookmark="emit('remove-bookmark', $event)"
@@ -251,6 +246,8 @@ defineExpose({ sftpPane });
         @refresh-processes="emit('refresh-processes')"
         @kill-process="(row, signal) => emit('kill-process', row, signal)"
         @update:sort="(key) => emit('update:sort', key)"
+        @toggle-disks-density="emit('toggle-disks-density')"
+        @toggle-nics-density="emit('toggle-nics-density')"
       />
     </template>
   </section>

@@ -9,16 +9,17 @@
 // （preventDefault 挡输入框默认行为），字符键进 query 实时过滤；Esc 关闭后
 // 焦点由 App 的 close 归还终端。
 // 版式对标 Warp command history：占满终端宽度、底边贴输入行上一行向上展开
-// （光标贴顶等极端场景按既有 overlay 规则翻到下方），条目为 `>_` 提示符
-// 图标 + 命令文本 + 右侧相对时间。样式沿用 --popover/--border/--accent
-// 令牌体系随宿主主题，不引 reka 弹层——避免与 xterm 键盘捕获争焦点。
+// （上方放不下完整面板时翻到下方），高度钳到理想高度（约 10 行），顶部与
+// 底部唤起时大小一致；条目为 `>_` 提示符图标 + 命令文本 + 右侧相对时间。
+// 样式沿用 --popover/--border/--accent 令牌体系随宿主主题，不引 reka 弹层
+// ——避免与 xterm 键盘捕获争焦点。
 import { computed, onMounted, ref, watchEffect } from "vue";
 import { Search, Terminal as TerminalIcon, X } from "@lucide/vue";
 import { formatCommandDuration } from "../lib/panels/terminalCommandMarkers";
 import { workbenchMessage } from "../../../shared/lib/i18n";
 import type { HistoryPanelEntry } from "../lib/panels/historyPanel";
-import { chooseHistoryPanelPlacement, relativeHistoryAge } from "../lib/panels/historyPanel";
-import { flippedOverlayBottom, overlayBelowTop, overlayMaxHeight, type SuggestionAnchor } from "../../../shared/lib/overlayPlacement";
+import { chooseHistoryPanelPlacement, historyPanelMaxHeight, historyPanelPreferredHeight, relativeHistoryAge } from "../lib/panels/historyPanel";
+import { flippedOverlayBottom, overlayBelowTop, type SuggestionAnchor } from "../../../shared/lib/overlayPlacement";
 
 interface Props {
   locale: string;
@@ -68,17 +69,18 @@ function onPanelKeydown(event: KeyboardEvent) {
   emit("panel-key", event);
 }
 
-// Warp 语义：面板底边贴输入行上一行（光标行顶留 gap）向上展开；光标贴视口
-// 顶部等上方放不下的场景按 chooseHistoryPanelPlacement 翻到下方。空间判定用
-// 终端可视底界（viewport = terminal-host 净高）；bottom 偏移必须用定位包含块
-// （terminal-pane）实测高度（batch 条/标记条让位时 host 比 pane 矮）。
-// maxHeight 按放置侧可用高度收窄（内部滚动）；naturalHeight 不可测（0）时
-// 不设限，交给 CSS max-height 兜底。
+// Warp 语义：面板底边贴输入行上一行（光标行顶留 gap）向上展开；上方明显
+// 更挤（放不下理想高度且不如下方）时按 chooseHistoryPanelPlacement 翻到
+// 下方。空间判定用终端可视底界（viewport = terminal-host 净高）；bottom 偏移
+// 必须用定位包含块（terminal-pane）实测高度（batch 条/标记条让位时 host 比
+// pane 矮）。maxHeight = min(放置侧可用高度, 理想高度≈10 行)——顶部与底部
+// 唤起时面板大小一致，超出部分列表内部滚动；理想高度不可测（0）时不设限，
+// 交给 CSS max-height 兜底。
 // 放置侧迟滞（体验回归：光标在视口中部的「刀锋线」附近时，锚点像素级抖动
 // ——回显 settle 前后、长命令回填换行使光标行 ±1——会让面板反复翻面）。
-// 打开期间记住当前侧并传给 chooseHistoryPanelPlacement，仅当当前侧真放不下
-// 时才翻；变量非响应式（只随 computed 的既有依赖重算被读写），面板随
-// v-if 卸载即复位，下次打开按纯几何重新决策。
+// 打开期间记住当前侧并传给 chooseHistoryPanelPlacement，仅当另一侧容量
+// 超过当前侧一行以上时才翻；变量非响应式（只随 computed 的既有依赖重算被
+// 读写），面板随 v-if 卸载即复位，下次打开按纯几何重新决策。
 let lastPlacement: "above" | "below" | null = null;
 const style = computed(() => {
   const anchor = props.anchor;
@@ -91,14 +93,15 @@ const style = computed(() => {
   const containerHeight = el?.parentElement?.clientHeight || hostHeight;
   const spaceViewport = hostHeight || containerHeight;
   const cellHeight = anchor.cellHeight ?? 0;
-  const placement = chooseHistoryPanelPlacement(anchor.y, cellHeight, spaceViewport, undefined, lastPlacement ?? undefined);
+  const preferred = historyPanelPreferredHeight(spaceViewport);
+  const placement = chooseHistoryPanelPlacement(anchor.y, cellHeight, spaceViewport, undefined, lastPlacement ?? undefined, preferred);
   lastPlacement = placement;
-  const available = overlayMaxHeight(placement, anchor.y, cellHeight, spaceViewport);
-  // max-height 恒按放置侧可用空间设置：内容矮则盒子自然矮，内容高则列表内部
-  // 滚动。不做 available < naturalHeight 的条件化（flex 内滚后 scrollHeight ≈
-  // 盒高，比较失真会漏钳，落到 CSS 70% 兜底上——那不看光标位置，顶部铬层被
-  // 裁掉，#152 反馈截图实录）。也删除旧版按 naturalHeight 二次钳 bottom 的
-  // 逻辑：内容偏高时它把面板整块下推钉到窗格底，反过来盖住光标行。
+  const available = historyPanelMaxHeight(placement, anchor.y, cellHeight, spaceViewport, preferred);
+  // max-height 恒为「放置侧可用空间」与「理想高度」的较小值：内容矮则盒子
+  // 自然矮，内容高则到此为止、列表内部滚动；同一光标侧的面板大小不再随光标
+  // 上下漂移。不做 naturalHeight 条件化（flex 内滚后 scrollHeight ≈ 盒高，
+  // 比较失真会漏钳，落到 CSS 兜底上——那不看光标位置，顶部铬层被裁掉，
+  // #152 反馈截图实录）。
   const maxHeight = available > 0 ? { maxHeight: `${available}px` } : undefined;
   if (placement === "above") {
     const bottom = flippedOverlayBottom(anchor.y, containerHeight);
@@ -202,7 +205,8 @@ function onRowMousedown(event: MouseEvent) {
   left: 8px;
   z-index: 7;
   display: flex;
-  max-height: 70%;
+  /* 锚点不可测时的兜底：与内联规则同口径（理想高度 ≈ 360px / 视口 55%）。 */
+  max-height: min(360px, 55%);
   flex-direction: column;
   border: 1px solid var(--border, rgb(128 128 132 / 28%));
   border-radius: var(--radius);

@@ -332,7 +332,6 @@ const messages = {
       plain: "Conexión restaurada",
     },
     home: "Inicio",
-    parentFolder: "Carpeta superior",
     refresh: "Actualizar",
     customizeColumns: "Personalizar columnas",
     transfers: "Transferencias SFTP",

@@ -81,14 +81,14 @@ describe("sftp file tree model", () => {
     ]);
   });
 
-  it("includes hidden entries when showHidden is true", () => {
+  it("includes hidden entries when showHidden is true and groups them after visible peers", () => {
     const nodes = buildFileTreeChildren(
-      [entry("beta", "directory"), entry(".secret"), entry("__pycache__", "directory"), entry(".env")],
+      [entry("beta", "directory"), entry(".secret"), entry("__pycache__", "directory"), entry(".env"), entry("notes.txt")],
       true,
     );
-    expect(nodes).toHaveLength(4);
-    expect(nodes.map((node) => node.name)).toEqual(expect.arrayContaining([".secret", "__pycache__", "beta", ".env"]));
-    expect(nodes.slice(0, 2).every((node) => node.kind === "directory")).toBe(true);
+    expect(nodes).toHaveLength(5);
+    // 自上而下：可见文件夹 → 隐藏文件夹 → 可见文件 → 隐藏文件。
+    expect(nodes.map((node) => node.name)).toEqual(["beta", "__pycache__", "notes.txt", ".env", ".secret"]);
   });
 
   it("applies children, finds nodes, expands the parent and drops stale apply results", () => {

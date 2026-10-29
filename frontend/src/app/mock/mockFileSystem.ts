@@ -108,6 +108,39 @@ function mockWriteEntry(path: string, node: MockNode): { success: true } {
 // 可视化夹具里「保存 → 再打开」闭环。
 const fileContents = new Map<string, Uint8Array>();
 
+// 日志着色夹具：server.log / syslog 放真实形态的日志（时间戳、级别、键值、
+// JSON 行、堆栈帧），供编辑器日志高亮与预览走查使用。
+const DEMO_APP_LOG = [
+  "2026-10-29T09:41:02.118Z INFO  server booting pid=4821 env=production",
+  "2026-10-29T09:41:02.204Z INFO  listening on 0.0.0.0:8080",
+  '2026-10-29T09:41:03.551Z WARN  upstream=10.0.0.8 latency=612ms "slow response"',
+  "2026-10-29T09:41:04.002Z INFO  GET /health 200 in 2ms",
+  "2026-10-29T09:41:05.771Z ERROR upstream connect timeout after 3 tries url=https://api.example.com/health",
+  "2026-10-29T09:41:05.772Z DEBUG retry 1/3 in 250ms",
+  '{"level":"info","msg":"request done","status":200,"ok":true}',
+  "Traceback (most recent call last):",
+  '  File "/srv/app/main.py", line 42, in handler',
+  "    return upstream.fetch()",
+  "TimeoutError: upstream did not respond in 5s",
+  "2026-10-29T09:41:09.001Z INFO  graceful shutdown signal received",
+].join("\n");
+const DEMO_SYSLOG = [
+  "Oct 29 09:41:02 web-1 sshd[4821]: Accepted publickey for deploy from 10.0.0.8 port 51234 ssh2",
+  "Oct 29 09:41:06 web-1 systemd[1]: Started nginx.service - A high performance web server.",
+  "Oct 29 09:41:11 web-1 kernel: [ 1234.567890] eth0: link up, 1000 Mbps, full duplex",
+  "Oct 29 09:41:14 web-1 cron[9012]: (root) CMD (/usr/local/bin/backup.sh)",
+].join("\n");
+
+fileContents.set("/home/demo/server.log", new TextEncoder().encode(`${DEMO_APP_LOG}\n`));
+fileContents.set("/var/log/syslog", new TextEncoder().encode(`${DEMO_SYSLOG}\n`));
+
+// 树节点 size 与种子内容对齐（列表里显示的大小 = 双击预览拿到的字节数）。
+for (const path of ["/home/demo/server.log", "/var/log/syslog"]) {
+  const node = findMockNode(path);
+  const bytes = fileContents.get(path);
+  if (node && bytes) node.size = bytes.byteLength;
+}
+
 export const mockFileSystem = {
   dir: mockDir,
   file: mockFile,

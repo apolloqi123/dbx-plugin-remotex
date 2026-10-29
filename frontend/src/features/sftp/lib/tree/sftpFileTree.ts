@@ -2,7 +2,7 @@
 // 不依赖 Vue，便于 App.vue 用 reactive 根节点驱动渲染。目录/文件排序、
 // 隐藏项过滤、刷新时保留展开状态与过滤/扁平化都在这里完成。
 import type { SftpEntryKind, SftpSanitizedEntry } from "../entries/sftpEntries";
-import { isHiddenEntry } from "../entries/sftpFileFilters";
+import { isHiddenEntry, sftpEntryRank } from "../entries/sftpFileFilters";
 
 export interface SftpFileTreeNode {
   path: string;
@@ -78,15 +78,16 @@ function createNode(entry: SftpSanitizedEntry): SftpFileTreeNode {
 }
 
 function compareNodes(left: SftpFileTreeNode, right: SftpFileTreeNode): number {
-  const leftDirectory = left.kind === "directory";
-  const rightDirectory = right.kind === "directory";
-  if (leftDirectory !== rightDirectory) return leftDirectory ? -1 : 1;
+  // 分组：可见文件夹 → 隐藏文件夹 → 可见文件 → 隐藏文件；组内按名称排序。
+  const rankDiff = sftpEntryRank(left) - sftpEntryRank(right);
+  if (rankDiff !== 0) return rankDiff;
   return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
 }
 
 /**
- * sftp/list 结果 → 子节点：文件夹和文件都进树；默认过滤隐藏项；目录优先，
- * 同类按名称做 numeric-aware locale 排序（file2 在 file10 前）。
+ * sftp/list 结果 → 子节点：文件夹和文件都进树；默认过滤隐藏项；显示顺序为
+ * 可见文件夹 → 隐藏文件夹 → 可见文件 → 隐藏文件（sftpEntryRank），组内按
+ * 名称做 numeric-aware locale 排序（file2 在 file10 前）。
  */
 export function buildFileTreeChildren(
   entries: readonly SftpSanitizedEntry[],

@@ -3,11 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { basicSetup } from "codemirror";
 import { EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
-import { HighlightStyle, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { tags } from "@lezer/highlight";
 // 语法高亮调色板来自 shared 公共层（唯一实现点），暗色为提亮后的 GitHub Dark 系。
 import { dbxSyntaxHighlight } from "../../../../../shared/frontend/editorTheme";
+import { detectEditorLanguage } from "../lib/editor/languageDetect";
+import { logHighlightExtension } from "../lib/editor/logHighlight";
 import EditorFindBar from "./EditorFindBar.vue";
 
 const props = defineProps<{
@@ -353,8 +355,9 @@ function previewTheme() {
 }
 
 async function extensions() {
-  const language = LanguageDescription.matchFilename(languages, props.fileName);
-  const support = language ? await language.load().catch(() => undefined) : undefined;
+  // 语言识别：扩展名/约定文件名/shebang/内容嗅探；日志文件改走语义着色。
+  const detected = detectEditorLanguage(props.fileName, props.text, languages);
+  const support = detected.language ? await detected.language.load().catch(() => undefined) : undefined;
   return [
     basicSetup,
     findMatchField,
@@ -373,6 +376,7 @@ async function extensions() {
       }
     }),
     ...(support ? [support] : []),
+    ...(detected.log ? [logHighlightExtension()] : []),
   ];
 }
 

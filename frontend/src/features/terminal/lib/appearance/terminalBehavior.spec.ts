@@ -40,6 +40,7 @@ describe("TERMINAL_BEHAVIOR_DEFAULTS", () => {
     expect(TERMINAL_BEHAVIOR_DEFAULTS.replaceNewlinesWithSpaces).toBe(false);
     expect(TERMINAL_BEHAVIOR_DEFAULTS.trimWhitespaceOnPaste).toBe(false);
     expect(TERMINAL_BEHAVIOR_DEFAULTS.bell).toBe("off");
+    expect(TERMINAL_BEHAVIOR_DEFAULTS.outputColorization).toBe(true);
   });
 
   it("默认词分隔串与 Tabby/xterm 一致", () => {
@@ -78,11 +79,13 @@ describe("sanitizeTerminalBehavior", () => {
   });
 
   it("布尔值只认显式布尔：显式 false 保留，非布尔回落默认", () => {
-    const result = sanitizeTerminalBehavior({ copyOnSelect: false, bracketedPaste: false, warnOnMultilinePaste: "no", scrollOnInput: 0 });
+    const result = sanitizeTerminalBehavior({ copyOnSelect: false, bracketedPaste: false, warnOnMultilinePaste: "no", scrollOnInput: 0, outputColorization: false });
     expect(result.copyOnSelect).toBe(false);
     expect(result.bracketedPaste).toBe(false);
     expect(result.warnOnMultilinePaste).toBe(true);
     expect(result.scrollOnInput).toBe(true);
+    expect(result.outputColorization).toBe(false);
+    expect(sanitizeTerminalBehavior({ outputColorization: "yes" }).outputColorization).toBe(true);
   });
 
   it("词分隔串超长截断，非字符串回落默认", () => {

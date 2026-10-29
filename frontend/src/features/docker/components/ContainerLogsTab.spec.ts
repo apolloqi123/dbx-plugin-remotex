@@ -86,6 +86,36 @@ afterEach(() => {
 });
 
 describe("ContainerLogsTab streaming", () => {
+  it("colors levels, timestamps and ANSI output without changing the copied text", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/chunk", {
+      streamId: "stream-1",
+      text: "2026-10-29T12:00:00Z INFO booting\nERROR <script>boom</script>\n\u001b[31mred\u001b[0m plain\n",
+    });
+    await nextTick();
+
+    const scroller = wrapper.get(".docker-log-scroll");
+    expect(scroller.text()).toBe(
+      "2026-10-29T12:00:00Z INFO booting\nERROR <script>boom</script>\nred plain",
+    );
+    expect(wrapper.find(".log-time").text()).toBe("2026-10-29T12:00:00Z");
+    expect(wrapper.find(".log-level-info").text()).toBe("INFO");
+    expect(wrapper.find(".log-level-error").text()).toBe("ERROR");
+    expect(wrapper.find(".log-ansi-red").text()).toBe("red");
+    // 日志里的尖括号按文本渲染，不允许注入标记。
+    expect(scroller.html()).not.toContain("<script>");
+  });
+
+  it("keeps plain text for lines without any color tokens", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "just words\n" });
+    await nextTick();
+    expect(wrapper.get(".docker-log-scroll").text()).toBe("just words");
+    expect(wrapper.find(".docker-log-scroll span").exists()).toBe(true);
+  });
+
   it("starts the stream on mount and renders chunks", async () => {
     const calls = stubHost();
     const wrapper = await mountTab();

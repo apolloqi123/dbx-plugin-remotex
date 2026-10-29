@@ -14,6 +14,7 @@
 import type { Ref } from "vue";
 import type { Terminal } from "@xterm/xterm";
 import { createOutputGate } from "../../lib/emulator/terminalBackpressure";
+import { createTerminalOutputColorizer } from "../../lib/emulator/terminalOutputColor";
 import { createTerminalWriteThrottle, type TerminalWriteThrottle } from "../../lib/emulator/terminalWriteThrottle";
 import type { TerminalSyncOutput } from "../../lib/emulator/terminalModeQueries";
 import type { Osc7DirectoryParser } from "../../lib/emulator/terminalDirectoryTracking";
@@ -212,6 +213,11 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
   // 触发（还没解析完）的字节数。≥128KiB 进入 strained：合并批次按 32KiB 分帧写、
   // 挂起 gutter/关键词高亮/动作链接扫描；回落到 64KiB 以下自动恢复并补扫一次。
   const outputGate = createOutputGate();
+  // 输出着色（tailspin 风格）：按行给结构化明文加 ANSI，备用屏/ESC/大输出透传。
+  // 位置在提示符换行修复之后、写节流之前——只改显示，OSC 解析/AI 采集仍吃原始字节。
+  const outputColorizer = createTerminalOutputColorizer({
+    isAlternateScreen: () => terminalGet()?.buffer?.active?.type === "alternate",
+  });
   let outputInFlightBytes = 0;
   function settleOutputChunk(chunk: Uint8Array) {
     outputInFlightBytes = Math.max(0, outputInFlightBytes - chunk.byteLength);
@@ -283,7 +289,9 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
     // 字节：变换器只做插入，帧本身原样保留。
     const terminal = terminalGet();
     const suppressPromptNewline = isTransferBusy() || terminal?.buffer.active.type === "alternate";
-    terminalWriteThrottle.write(promptNewline.push(data, { suppressInsert: suppressPromptNewline }));
+    const framed = promptNewline.push(data, { suppressInsert: suppressPromptNewline });
+    // 传输期（zmodem/trzsz）二进制显示流不参与着色，避免改写协议数据。
+    terminalWriteThrottle.write(isTransferBusy() ? framed : outputColorizer.transform(framed));
   }
 
   /**
@@ -497,6 +505,7 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
   /** 卸载兜底：在途写入回调整体作废，保护态复位（原 onBeforeUnmount 顺序不变）。 */
   function disposeOutputPipeline() {
     terminalWriteThrottle.dispose();
+    outputColorizer.reset();
     // 终端重建/会话关闭：在途写入回调整体作废，保护态复位，避免旧积压误判。
     outputInFlightBytes = 0;
     outputGate.reset();

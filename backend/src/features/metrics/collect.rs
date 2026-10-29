@@ -28,13 +28,21 @@ pub(crate) const METRICS_SCRIPT: &str = concat!(
     "if [ -r /proc/net/dev ]; then cat /proc/net/dev 2>/dev/null; ",
     "elif command -v netstat >/dev/null 2>&1; then netstat -ibn 2>/dev/null; fi; ",
     "echo '--ps--'; ",
-    "(ps -eo pid=,user=,pcpu=,pmem=,args= 2>/dev/null || true) | sort -k3,3nr | head -n 8; ",
+    // 兼容性：CentOS 7（procps-ng 3.3.10）的 `-o pid=,user=,…` 空表头+逗号写法
+    // 有 bug——退出码 0 但只输出第一列，进程段于是被解析器整段丢弃；busybox
+    // （Alpine/OpenWrt）则根本没有 pcpu/pmem。统一改用可重复的 `-o 字段=`，
+    // 并在首行校验「字段数 + CPU% 数字」形状：形状不对（老 procps/busybox）
+    // 退回 pid,user,rss,args，并按 /proc/meminfo 合成同一行形的
+    // 「0.0 CPU% + 真实 MEM%」行（按内存排序）。LC_ALL=C 固定小数点。
+    "psrows() { if LC_ALL=C ps -eo pid= -o user= -o pcpu= -o pmem= -o args= 2>/dev/null | ",
+    "awk 'NR==1{ if (NF>=5 && $3 ~ /^[0-9]+(\\.[0-9]+)?$/) ok=1; exit } END{exit ok?0:1}'; then ",
+    "LC_ALL=C ps -eo pid= -o user= -o pcpu= -o pmem= -o args= 2>/dev/null; ",
+    "else LC_ALL=C ps -eo pid= -o user= -o rss= -o args= 2>/dev/null | LC_ALL=C sort -k3,3nr | head -n 8 | ",
+    "awk -v total=\"$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo 2>/dev/null)\" ",
+    "'{ pid=$1; user=$2; rss=$3; $1=$2=$3=\"\"; sub(/^ +/, \"\"); printf \"%s %s 0.0 %.1f %s\\n\", pid, user, total ? (rss+0)*100/total : 0, $0 }'; fi; }; ",
+    "psrows | LC_ALL=C sort -k3,3nr | head -n 8; ",
     "echo '--psm--'; ",
-    "(ps -eo pid=,user=,pcpu=,pmem=,args= 2>/dev/null || true) | sort -k4,4nr | head -n 8; ",
-    // Inode usage: `df -iP` keeps the portable layout on Linux; on macOS
-    // `-P` silently forces block mode (inode columns vanish), so Darwin must
-    // use bare `df -i` to get real iused/ifree/%iused. Column differences
-    // are handled by the parser, not the command.
+    "psrows | LC_ALL=C sort -k4,4nr | head -n 8; ",
     "echo '--dfi--'; ",
     "if [ \"$(uname -s 2>/dev/null)\" = Darwin ]; then df -i 2>/dev/null | tail -n +2 | head -n 24; ",
     "else df -iP 2>/dev/null | tail -n +2 | head -n 24; fi; ",

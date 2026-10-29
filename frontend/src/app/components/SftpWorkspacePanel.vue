@@ -21,7 +21,6 @@ import {
   PackageOpen,
   Pencil,
   RefreshCw,
-  Save,
   Scissors,
   Search,
   Trash2,
@@ -46,7 +45,7 @@ import type { SftpSanitizedEntry } from "../../features/sftp/lib/entries/sftpEnt
 import type { SftpDetailInfo } from "../../features/sftp/lib/actions/sftpDetails";
 import type { SftpFileTreeNode, SftpTreeRow } from "../../features/sftp/lib/tree/sftpFileTree";
 import type { SftpTypeFilter } from "../../features/sftp/lib/entries/sftpFileFilters";
-import { SFTP_BOOKMARK_LABEL_MAX_LENGTH, type SftpBookmark } from "../../features/sftp/lib/paths/sftpBookmarks";
+import { SFTP_BOOKMARKS_LIMIT, SFTP_BOOKMARK_LABEL_MAX_LENGTH, type SftpBookmark } from "../../features/sftp/lib/paths/sftpBookmarks";
 import type { CustomEditor, EditorConfig, KnownEditor } from "../../features/sftp/lib/editor/editorRules";
 import type { SftpSoftError } from "../../features/sftp/composables/listing/useSftpNavigation";
 import { batchProgressPercent, type BatchProgressState } from "../../features/transfers/lib/sftpBatchProgress";
@@ -54,8 +53,8 @@ import type { RemotePathSegment } from "../../features/sftp/lib/paths/remotePath
 import { formatBytes } from "../../shared/lib/format";
 import { pathFromUri } from "../../features/sftp/lib/paths/sftpRemotePaths";
 
-/** 右侧 SFTP 工作区面板：路径工具栏（返回/主目录/刷新/跟随/sudo/OTP/
- *  书签与快捷路径弹层）、面包屑导航、过滤/批量条、单栏文件树与右键菜单、底栏
+/** 右侧 SFTP 工作区面板：路径工具栏（主目录/刷新/跟随/sudo/OTP/
+ *  书签管理弹层）、面包屑导航、过滤/批量条、单栏文件树与右键菜单、底栏
  *  状态和磁盘用量。状态与 RPC 仍由 App 的 SFTP composables 持有，本组件只
  *  渲染并上抛动作；面板根 <section> 的焦点/拖放/粘贴监听仍留在 App（同节
  *  点还承载指标/容器两个非 SFTP 视图），因此根 ref 语义不变。 */
@@ -81,7 +80,6 @@ const props = defineProps<{
   currentPath: string;
   pathBarEditing: boolean;
   pathCrumbs: RemotePathSegment[];
-  bookmarkSaveOpen: boolean;
   bookmarkSaving: boolean;
   bookmarkLabelDraft: string;
   bookmarksOpen: boolean;
@@ -130,7 +128,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:currentPath", value: string): void;
   (e: "update:pathBarEditing", value: boolean): void;
-  (e: "update:bookmarkSaveOpen", value: boolean): void;
   (e: "update:bookmarkLabelDraft", value: string): void;
   (e: "update:bookmarksOpen", value: boolean): void;
   (e: "update:sftpSearchDraft", value: string): void;
@@ -141,7 +138,6 @@ const emit = defineEmits<{
   (e: "update:renamingPath", value: string): void;
   (e: "update:sftpDragDropTarget", value: string): void;
   (e: "update:otpPanelOpen", value: boolean): void;
-  (e: "go-parent"): void;
   (e: "load-home"): void;
   (e: "load-directory"): void;
   (e: "set-directory-tracking", enabled: boolean): void;
@@ -149,7 +145,6 @@ const emit = defineEmits<{
   (e: "cancel-path-bar-edit"): void;
   (e: "begin-path-bar-edit"): void;
   (e: "go-to-path", path: string): void;
-  (e: "toggle-bookmark-save"): void;
   (e: "confirm-bookmark-save"): void;
   (e: "toggle-bookmarks-menu"): void;
   (e: "remove-bookmark", bookmark: SftpBookmark): void;
@@ -212,8 +207,8 @@ function setTreePane(el: Element | ComponentPublicInstance | null) {
 
 <template>
   <div class="path-toolbar">
-    <!-- 导航：上级目录 → 主目录 → 刷新 → 跟随终端目录（由左至右的浏览顺序）。 -->
-    <button class="icon-button" :title="t('parentFolder')" :aria-label="t('parentFolder')" :disabled="currentPath === '/'" @click="emit('go-parent')"><WorkbenchGlyph name="parent" /></button>
+    <!-- 导航：主目录 → 刷新 → 跟随终端目录（上级目录走面包屑回跳，2026-10-29
+         体验反馈：独立「返回上一级」按钮与面包屑重复，移除）。 -->
     <button class="icon-button icon-amber" :title="t('home')" :aria-label="t('home')" :disabled="!connected" @click="emit('load-home')"><WorkbenchGlyph name="home" /></button>
     <button class="icon-button icon-cyan" :title="t('refresh')" :aria-label="t('refresh')" :disabled="!connected || loadingFiles" @click="emit('load-directory')"><WorkbenchGlyph name="refresh" :class="{ spinning: loadingFiles }" /></button>
     <!-- 跟随终端目录：开启时高亮图标，关闭时弱化；偏好与主终端 cwd 同步逻辑不变。 -->
@@ -250,40 +245,38 @@ function setTreePane(el: Element | ComponentPublicInstance | null) {
         </template>
       </nav>
     </div>
-    <!-- 书签：列表（含快捷路径）在左，收藏当前目录在右，符合「先看再存」的顺序。 -->
+    <!-- 书签管理弹层（2026-10-29 重做）：单一入口承载「收藏当前路径 + 书签列表 +
+         快捷路径」——独立「收藏此路径」按钮与二次弹层已移除；打开即预填当前路径
+         末段作为名称，回车/点星标即收藏，列表行点击跳转、行尾删除。 -->
     <div>
       <Popover :open="bookmarksOpen" @update:open="(open) => { if (!open) emit('update:bookmarksOpen', false); }">
         <PopoverAnchor as-child>
           <button class="icon-button icon-amber" :title="t('sftpBookmark.title')" :aria-label="t('sftpBookmark.title')" :disabled="!connected" @pointerdown.stop @click.stop="emit('toggle-bookmarks-menu')"><WorkbenchGlyph name="bookmark-list" /></button>
         </PopoverAnchor>
         <PopoverContent class="popover bookmark-list-popover" align="end" :side-offset="5">
-        <strong class="popover-section-title">{{ t("sftpBookmark.title") }}</strong>
-        <template v-if="sftpBookmarks.length">
-          <div v-for="bookmark in sftpBookmarks" :key="bookmark.id" class="bookmark-row">
-            <button class="path-item mono" :title="`${bookmark.label} · ${bookmark.path}`" :aria-label="`${bookmark.label} · ${bookmark.path}`" @click="emit('go-to-path', bookmark.path)">{{ bookmark.label }}</button>
-            <button class="bookmark-delete" :title="t('delete')" :aria-label="t('delete')" @click.stop="emit('remove-bookmark', bookmark)"><Trash2 /></button>
+          <div class="bookmark-head">
+            <strong>{{ t("sftpBookmark.title") }}</strong>
+            <span class="bookmark-count mono">{{ sftpBookmarks.length }}/{{ SFTP_BOOKMARKS_LIMIT }}</span>
           </div>
-        </template>
-        <div v-else class="empty compact">{{ t("sftpBookmark.empty") }}</div>
-        <strong class="popover-section-title">{{ t("sftpQuickPath.title") }}</strong>
-        <button v-for="item in quickPaths" :key="item" class="path-item mono" :title="item" :aria-label="item" @click="emit('go-to-path', item)">{{ item }}</button>
-        </PopoverContent>
-      </Popover>
-    </div>
-    <div>
-      <Popover :open="bookmarkSaveOpen" @update:open="(open) => { if (!open) emit('update:bookmarkSaveOpen', false); }">
-        <PopoverAnchor as-child>
-          <button class="icon-button icon-amber" :title="t('sftpBookmark.add')" :aria-label="t('sftpBookmark.add')" :disabled="!connected" @pointerdown.stop @click.stop="emit('toggle-bookmark-save')"><WorkbenchGlyph name="bookmark-add" /></button>
-        </PopoverAnchor>
-        <!-- 星标收藏弹层：label 默认取路径末段，可编辑后保存（前端先行校验 + 后端错误回显） -->
-        <PopoverContent class="popover bookmark-save-popover" align="end" :side-offset="5">
-        <strong class="popover-section-title">{{ t("sftpBookmark.add") }}</strong>
-        <span class="bookmark-save-path mono" :title="currentPath">{{ currentPath }}</span>
-        <input v-model="bookmarkLabelDraftModel" class="bookmark-label-input mono" :maxlength="SFTP_BOOKMARK_LABEL_MAX_LENGTH" spellcheck="false" :placeholder="t('sftpBookmark.namePlaceholder')" :disabled="bookmarkSaving" autofocus @keydown.enter="emit('confirm-bookmark-save')" />
-        <div class="bookmark-save-actions">
-          <button class="icon-button icon-emerald" :title="t('save')" :aria-label="t('save')" :disabled="bookmarkSaving" @click="emit('confirm-bookmark-save')"><Save /></button>
-          <button class="icon-button" :title="t('cancel')" :aria-label="t('cancel')" :disabled="bookmarkSaving" @click="emit('update:bookmarkSaveOpen', false)"><X /></button>
-        </div>
+          <div class="bookmark-save">
+            <span class="bookmark-save-path mono" :title="currentPath">{{ currentPath }}</span>
+            <div class="bookmark-save-row">
+              <input v-model="bookmarkLabelDraftModel" class="bookmark-label-input mono" :maxlength="SFTP_BOOKMARK_LABEL_MAX_LENGTH" spellcheck="false" :placeholder="t('sftpBookmark.namePlaceholder')" :disabled="bookmarkSaving" @keydown.enter="emit('confirm-bookmark-save')" />
+              <button class="bookmark-save-btn" :title="t('sftpBookmark.add')" :aria-label="t('sftpBookmark.add')" :disabled="bookmarkSaving" @click="emit('confirm-bookmark-save')"><WorkbenchGlyph name="bookmark-add" /></button>
+            </div>
+          </div>
+          <template v-if="sftpBookmarks.length">
+            <div v-for="bookmark in sftpBookmarks" :key="bookmark.id" class="bookmark-row">
+              <button class="bookmark-open mono" :title="bookmark.path" :aria-label="`${bookmark.label} · ${bookmark.path}`" @click="emit('go-to-path', bookmark.path)">
+                <span class="bookmark-label">{{ bookmark.label }}</span>
+                <span class="bookmark-path">{{ bookmark.path }}</span>
+              </button>
+              <button class="bookmark-delete" :title="t('delete')" :aria-label="t('delete')" @click.stop="emit('remove-bookmark', bookmark)"><Trash2 /></button>
+            </div>
+          </template>
+          <div v-else class="empty compact">{{ t("sftpBookmark.empty") }}</div>
+          <strong class="popover-section-title">{{ t("sftpQuickPath.title") }}</strong>
+          <button v-for="item in quickPaths" :key="item" class="path-item mono" :title="item" :aria-label="item" @click="emit('go-to-path', item)">{{ item }}</button>
         </PopoverContent>
       </Popover>
     </div>
@@ -483,10 +476,11 @@ function setTreePane(el: Element | ComponentPublicInstance | null) {
 .sftp-search-clear svg { width: 9px; height: 9px; }
 .sftp-type-filter { flex: 0 0 auto; height: 18px; min-height: 18px; padding: 0 5px; font-size: 9.5px; }
 .sftp-type-filter :deep(svg) { width: 10px; height: 10px; }
-.sftp-hidden-toggle { flex: 0 0 auto; width: 18px; height: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
+/* 顶部圆钮：与路径栏图标同档（18px 圆钮 + 14px 字形铺满）。 */
+.sftp-hidden-toggle { flex: 0 0 auto; width: 18px; height: 18px; border: 1px solid var(--border); border-radius: var(--radius-control); background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 0; display: inline-grid; place-items: center; }
 .sftp-hidden-toggle:hover { background: var(--accent); color: var(--foreground); }
 .sftp-hidden-toggle.is-active { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); }
-.sftp-hidden-toggle svg { width: 10px; height: 10px; }
+.sftp-hidden-toggle svg { width: 14px; height: 14px; }
 .sftp-batch-bar { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding: 5px 8px; background: color-mix(in srgb, var(--primary) 8%, var(--background)); color: var(--muted-foreground); font-size: 11px; }
 .sftp-batch-bar span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sftp-batch-bar button { display: inline-flex; height: 24px; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 11px; cursor: pointer; }
@@ -504,17 +498,30 @@ function setTreePane(el: Element | ComponentPublicInstance | null) {
 .batch-progress-bar { flex: 0 1 140px; height: 6px; min-width: 80px; accent-color: var(--primary); }
 /* 弹层根规则移到 style.css 全局：portal 后内容根不带本组件 scopeId。 */
 .popover-section-title { margin: 4px; color: var(--muted-foreground); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.bookmark-list-popover .path-item { display: block; width: 100%; height: 26px; overflow: hidden; border: 0; border-radius: 4px; padding: 0 7px; background: transparent; color: var(--foreground); font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+/* —— 书签管理弹层（2026-10-29 重做）：头部计数 → 收藏当前路径 → 列表 → 快捷路径 —— */
+.bookmark-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 6px; }
+.bookmark-head strong { color: var(--popover-foreground); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.bookmark-count { color: var(--muted-foreground); font-size: 10px; font-variant-numeric: tabular-nums; }
+.bookmark-save { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border); padding: 2px 4px 8px; }
+.bookmark-save-path { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.bookmark-save-row { display: flex; align-items: center; gap: 4px; }
+.bookmark-label-input { min-width: 0; flex: 1 1 auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 7px; background: var(--background); color: var(--foreground); font-size: 11px; }
+.bookmark-label-input:focus-visible { border-color: color-mix(in srgb, var(--primary) 70%, var(--border)); outline: none; }
+.bookmark-save-btn { display: inline-grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-radius: var(--radius-control); padding: 0; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); cursor: pointer; }
+.bookmark-save-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 24%, transparent); }
+.bookmark-save-btn:disabled { opacity: .5; cursor: default; }
+.bookmark-save-btn svg { width: 15px; height: 15px; }
+.bookmark-list-popover .path-item { display: block; width: 100%; height: 26px; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0 7px; background: transparent; color: var(--foreground); font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .bookmark-list-popover .path-item:hover { background: var(--accent); }
-/* 书签行：label 跳转 + 行尾悬浮删除（对齐 path-item 观感） */
+/* 书签行：label 主行 + 路径副行（两行截断），行尾悬浮删除。 */
 .bookmark-row { display: flex; align-items: center; gap: 2px; }
-.bookmark-row .path-item { flex: 1 1 auto; min-width: 0; }
-.bookmark-row .bookmark-delete { display: flex; width: 22px; height: 22px; flex: 0 0 22px; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted-foreground); cursor: pointer; opacity: 0; }
+.bookmark-open { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; border: 0; border-radius: var(--radius-sm); padding: 4px 7px; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; }
+.bookmark-open:hover { background: var(--accent); }
+.bookmark-label, .bookmark-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bookmark-label { font-size: 11.5px; }
+.bookmark-path { color: var(--muted-foreground); font-size: 10px; }
+.bookmark-row .bookmark-delete { display: flex; width: 22px; height: 22px; flex: 0 0 22px; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted-foreground); cursor: pointer; opacity: 0; }
 .bookmark-row:hover .bookmark-delete, .bookmark-row .bookmark-delete:focus-visible { opacity: 1; }
 .bookmark-row .bookmark-delete:hover { color: var(--destructive); background: var(--accent); }
-.bookmark-row .bookmark-delete svg { width: 12px; height: 12px; }
-/* 星标收藏弹层：路径预览 + 可编辑 label + 保存/取消（根规则见 style.css 全局） */
-.bookmark-save-path { overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.bookmark-label-input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 4px 7px; background: var(--background); color: var(--foreground); font-size: 11px; }
-.bookmark-save-actions { display: flex; justify-content: flex-end; gap: 4px; }
+.bookmark-row .bookmark-delete svg { width: 13px; height: 13px; }
 </style>

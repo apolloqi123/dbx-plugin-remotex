@@ -2,15 +2,18 @@ import { ref, watch, type Ref, onBeforeUnmount } from "vue";
 import { describeReconnectCountdown, terminalReconnectDelay, TERMINAL_RECONNECT_DELAYS, type ReconnectCountdown } from "../../terminal/lib/behavior/terminalReconnect";
 
 /** 传输断开重连梯子（有界退避）：pending/倒计时（250ms tick 供状态胶囊与
- * 横幅）/尝试计数；梯子第一级先请宿主按最新配置重开连接。耗尽落到
- * disconnected 终态等待手动重连。openSession/attachSession/cancelConnect/
- * reconnectNow 经解构 ref 直接读写梯子状态（reconnectTimer.value/Attempt）。 */
+ * 横幅）/尝试计数。第一级先在现有连接上直接重开会话——单条 PTY 掉线不必让
+ * 宿主断开并重建整条连接（那会连带杀掉同连接下其它标签的会话与 SFTP 通道）；
+ * 只有直连落到 error 态（典型是宿主侧已更新凭据、sidecar 仍持旧配置）才请
+ * 宿主按最新配置重放连接并再试一次。耗尽落到 disconnected 终态等待手动重连。
+ * openSession/attachSession/cancelConnect/reconnectNow 经解构 ref 直接读写
+ * 梯子状态（reconnectTimer.value/Attempt）。 */
 export function useSessionReconnect(options: {
   t: (key: string, values?: Record<string, string | number>) => string;
   terminalState: Ref<string>;
   terminalError: Ref<string>;
   isDisposed: () => boolean;
-  openSession: (forceNew?: boolean) => Promise<void>;
+  openSession: (forceNew?: boolean, bootRestore?: boolean, isRetry?: boolean, hostReopenAttempted?: boolean) => Promise<void>;
   requestHostReopenConnection: () => Promise<unknown>;
 }) {
   const { t, terminalState, terminalError, isDisposed, openSession, requestHostReopenConnection } = options;
@@ -53,6 +56,26 @@ watch(reconnectPending, (pending) => {
   reconnectCountdownTimer.value = window.setInterval(update, 250);
 });
 
+/**
+ * 梯子第一级：先在现有连接上直接重开会话。
+ *
+ * 只有这一级失败（落到 error 态）才请宿主按最新配置重放连接并再试一次——
+ * 那条路径会先断开整条连接，连带杀掉同连接下其它标签的会话与 SFTP 通道，
+ * 不应为单条 PTY 掉线付出这个代价。侧边栏改密码后凭据过期的场景仍被覆盖：
+ * 旧凭据的 openSession 失败 → 宿主重放新配置 → 第二次成功。
+ */
+async function reconnectFirstAttempt() {
+  try {
+    await openSession();
+  } catch {
+    // openSession 自身把失败落成 error 态；这里只兜底异常不影响下面的判定。
+  }
+  if (isDisposed() || terminalState.value !== "error") return;
+  await requestHostReopenConnection().catch(() => undefined);
+  // hostReopenAttempted=true：本轮已经重放过连接，openSession 内部不再重复请求宿主。
+  if (!isDisposed()) void openSession(false, false, false, true);
+}
+
 function scheduleSessionReconnect() {
   // 断开事件可能成对到达（sidecar 重启常伴双事件）：重复调度必须先撤旧
   // timer 再设新的——直接覆盖会让被顶掉的 setTimeout 仍到点触发 openSession，
@@ -64,10 +87,7 @@ function scheduleSessionReconnect() {
     reconnectPending.value = true;
     reconnectTimer.value = window.setTimeout(() => {
       if (isDisposed()) return;
-      // 梯子第一级重试前先请宿主按最新配置重开连接（与手动 reconnect 同路径）：
-      // 侧边栏编辑连接（改密码等）会让 sidecar 凭据过期，缺这步自动重连必撞
-      // 旧凭据、落到红色错误态等手动自救——凭据已是新的时这是一次假错误。
-      if (reconnectAttempt.value === 1) void requestHostReopenConnection().finally(() => { if (!isDisposed()) void openSession(); });
+      if (reconnectAttempt.value === 1) void reconnectFirstAttempt();
       else void openSession();
     }, delay);
     return;

@@ -9,7 +9,7 @@ const SFTP_KEYS = [
   "batchDeleteSubmitting", "batchDownload", "batchError", "batchHistoryIndex", "batchProgress",
   "batchQuickOpen", "batchQuickPickName", "batchSaveName", "batchSelected", "batchSending",
   "batchTargetsOpen", "beginPathBarEdit", "beginRename", "beginResumeUpload", "beginSymlinkCreate",
-  "bookmarkLabelDraft", "bookmarkSaveOpen", "bookmarkSaving", "cancelPreviewEdit", "chmodDraft",
+  "bookmarkLabelDraft", "bookmarkSaving", "cancelPreviewEdit", "chmodDraft",
   "chmodSubmitting", "chmodTarget", "chooseFolderUpload", "closeEditorTab", "closePreview",
   "commitCustomEditor", "commitSymlink", "confirmBookmarkSave", "confirmChmod", "confirmDelete",
   "confirmDropUpload", "createDirectory", "createNewFile", "ctxSearchEngines", "currentPath",

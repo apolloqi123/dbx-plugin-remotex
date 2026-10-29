@@ -66,6 +66,12 @@ export interface TerminalBehaviorSettings {
   trimWhitespaceOnPaste: boolean;
   /** Bell feedback. Tabby: "off". */
   bell: TerminalBellMode;
+  /**
+   * Colorize structured plain output in the terminal (JSON, logfmt,
+   * systemd-style lines, timestamps/levels). Display-only: the bytes handed to
+   * the program, selection, search and AI capture stay raw. Default on.
+   */
+  outputColorization: boolean;
 }
 
 export const TERMINAL_BEHAVIOR_DEFAULTS: TerminalBehaviorSettings = {
@@ -82,6 +88,7 @@ export const TERMINAL_BEHAVIOR_DEFAULTS: TerminalBehaviorSettings = {
   replaceNewlinesWithSpaces: false,
   trimWhitespaceOnPaste: false,
   bell: "off",
+  outputColorization: true,
 };
 
 export const RIGHT_CLICK_MODES: readonly TerminalRightClickMode[] = ["off", "menu", "paste", "clipboard"];
@@ -130,6 +137,7 @@ export function sanitizeTerminalBehavior(raw: unknown, legacySelectCopy?: boolea
     replaceNewlinesWithSpaces: pickBoolean(source.replaceNewlinesWithSpaces, TERMINAL_BEHAVIOR_DEFAULTS.replaceNewlinesWithSpaces),
     trimWhitespaceOnPaste: pickBoolean(source.trimWhitespaceOnPaste, TERMINAL_BEHAVIOR_DEFAULTS.trimWhitespaceOnPaste),
     bell: pickEnum(source.bell, BELL_MODES, TERMINAL_BEHAVIOR_DEFAULTS.bell),
+    outputColorization: pickBoolean(source.outputColorization, TERMINAL_BEHAVIOR_DEFAULTS.outputColorization),
   };
 }
 
@@ -263,6 +271,7 @@ export function behaviorEquals(a: TerminalBehaviorSettings, b: TerminalBehaviorS
     a.warnOnMultilinePaste === b.warnOnMultilinePaste &&
     a.replaceNewlinesWithSpaces === b.replaceNewlinesWithSpaces &&
     a.trimWhitespaceOnPaste === b.trimWhitespaceOnPaste &&
-    a.bell === b.bell
+    a.bell === b.bell &&
+    a.outputColorization === b.outputColorization
   );
 }

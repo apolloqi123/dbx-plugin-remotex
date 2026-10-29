@@ -431,6 +431,33 @@ fn parses_top_processes_with_truncated_commands() {
 }
 
 #[test]
+fn busybox_fallback_rows_parse_as_zero_cpu_processes() {
+    // Alpine/OpenWrt 的 busybox ps 不支持 pcpu/pmem：采集端探测失败后按同一
+    // 行形合成「0.0 CPU% + 真实 MEM%」行，解析器不需要 busybox 专属分支。
+    let top = "1 root 0.0 4.6 /sbin/init\n42 root 0.0 12.3 dockerd --host=unix:///var/run/docker.sock\n";
+    let processes = parse_process_lines(top);
+    assert_eq!(processes.len(), 2);
+    assert_eq!(processes[0].cpu_percent, 0.0);
+    assert_eq!(processes[1].mem_percent, 12.3);
+
+    let listing = "1 0 root 0.0 0.0 0:01 S /sbin/init\n42 1 root 0.0 0.0 2:11 S dockerd\n";
+    let rows = parse_process_list(listing);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].state, "S");
+    assert_eq!(rows[1].command, "dockerd");
+}
+
+#[test]
+fn collector_scripts_keep_the_busybox_ps_fallback() {
+    // 回归守卫：采集端的形状探测与退路一旦被删，CentOS 7（procps 逗号+空表头
+    // bug 只输出第一列）与 busybox（无 pcpu/pmem）服务器的进程卡片会再次消失。
+    assert!(METRICS_SCRIPT.contains("LC_ALL=C ps -eo pid= -o user= -o pcpu= -o pmem= -o args="));
+    assert!(METRICS_SCRIPT.contains("LC_ALL=C ps -eo pid= -o user= -o rss= -o args="));
+    assert!(PROCESS_LIST_SCRIPT.contains("LC_ALL=C ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args="));
+    assert!(PROCESS_LIST_SCRIPT.contains("LC_ALL=C ps -eo pid= -o ppid= -o user= -o etime= -o stat= -o args="));
+}
+
+#[test]
 fn extended_json_keeps_base_fields_and_adds_defaults() {
     let metrics = parse_metrics_output(LINUX_FIXTURE);
     // Base fields from exec::parse_metrics_output stay intact.

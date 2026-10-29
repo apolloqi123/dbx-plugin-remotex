@@ -25,7 +25,7 @@ export function installWorkbenchShell(deps: Deps) {
   const {
   agentModeOpen, agentPromptHead, agentPromptQueue, agentRunning, appearance,
   applyChosenDirAsDefault, askDownloadTarget, attrsMode, attrsTarget, auditClearOpen, auditClearSubmitting,
-  auditOpen, batchDeleteOpen, batchDeleteSubmitting, bookmarkSaveOpen, canWrite, clearSftpDetailCache,
+  auditOpen, batchDeleteOpen, batchDeleteSubmitting, canWrite, clearSftpDetailCache,
   closeAttributes, closeDockerPane, closePreview, closeRightPanel, commandHistory,
   confirmRiskyPaste, connectLog, connected, connectionReadOnly, currentPath, customEditorOpen,
   deleteTarget, diskUsage, dockerPaneOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
@@ -256,6 +256,10 @@ export function installWorkbenchShell(deps: Deps) {
       metricsMemSparkline,
       visibleDiskMounts,
       visibleNetworkInterfaces,
+      showAllDisks,
+      showAllNics,
+      toggleDisksDensity,
+      toggleNicsDensity,
       metricsDistroBadge,
       refreshMetrics,
       openMetrics,
@@ -281,6 +285,8 @@ export function installWorkbenchShell(deps: Deps) {
     txSparkline: metricsTxSparkline.value,
     disks: visibleDiskMounts.value,
     networks: visibleNetworkInterfaces.value,
+    showAllDisks: showAllDisks.value,
+    showAllNics: showAllNics.value,
     processesOpen: processesOpen.value,
     processRows: processRows.value,
     processLoading: processLoading.value,
@@ -375,7 +381,6 @@ export function installWorkbenchShell(deps: Deps) {
     quickMenuOpen.value = false;
     connectionInfoOpen.value = false;
     agentModeOpen.value = false;
-    bookmarkSaveOpen.value = false;
     batchTargetsOpen.value = false;
     sessionMenuOpen.value = false;
     sessionMenuShellOpen.value = false;
@@ -504,6 +509,7 @@ export function installWorkbenchShell(deps: Deps) {
     metrics, metricsLoading, metricsError, metricSamples, recordMetricSamples, metricsRxSparkline, metricsTxSparkline, metricsCpuSparkline,
     metricsMemSparkline, visibleDiskMounts, visibleNetworkInterfaces, metricsDistroBadge, refreshMetrics, openMetrics, closeMetrics, backfillMetricsHistory,
     toggleProcessPanel, refreshProcessList, sortedProcessRows, PROCESS_VISIBLE_LIMIT, visibleProcessRows, killProcessRow, metricsView, setMetricsProcessSort,
+    showAllDisks, showAllNics, toggleDisksDensity, toggleNicsDensity,
     localTerminalActive, refreshPanelMetrics, panelMetricsVisible, panelMetricsFailed, panelMetricsErrorTitle, panelCpuPercent, panelMemPercent, panelNetRates,
     refreshDiskUsage, chmodTarget, chmodDraft, chmodSubmitting, toggleChmodPerm, toggleAttrsPerm, beginChmod, confirmChmod,
     openSettings, closeToolbarPopovers, toggleForwardsMenu, onDocumentMouseDownCapture, onDocumentClickCapture, trackStableFocus, onDocumentKeydown, openTransferPanel, formatModified,

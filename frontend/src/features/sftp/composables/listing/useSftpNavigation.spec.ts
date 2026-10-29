@@ -54,7 +54,6 @@ function setupHarness() {
     selectedPath,
     directoryTrackingSupported,
     clearRowSelection: () => undefined,
-    parentPath: (path) => (path === "/" ? "/" : path.slice(0, path.lastIndexOf("/")) || "/"),
     normalizeRemotePath: (path) => path,
     getPendingTerminalInput: () => "",
     persistState: () => undefined,

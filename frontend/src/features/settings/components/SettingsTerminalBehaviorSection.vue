@@ -60,6 +60,13 @@ function updateLinkModifier(value: unknown) {
 </script>
 
 <template>
+  <h3 class="settings-section-title">{{ t("terminalBehavior.outputSection") }}</h3>
+  <label class="settings-field settings-switch-row">
+    <Switch size="sm" :model-value="terminalBehavior.outputColorization" @update:model-value="(v) => updateBehavior({ outputColorization: v === true })" />
+    <span>{{ t("terminalBehavior.outputColorization") }}</span>
+  </label>
+  <p class="muted settings-note">{{ t("terminalBehavior.outputColorizationHint") }}</p>
+
   <h3 class="settings-section-title">{{ t("terminalBehavior.keyboardSection") }}</h3>
   <label class="settings-field settings-switch-row">
     <Switch size="sm" :model-value="terminalBehavior.altIsMeta" @update:model-value="(v) => updateBehavior({ altIsMeta: v === true })" />

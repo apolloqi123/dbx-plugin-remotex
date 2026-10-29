@@ -1,0 +1,36 @@
+/* 日志着色语义类：文件编辑器（CodeMirror 装饰）与容器日志页（v-html）共用。
+   容器日志走 innerHTML，scoped 样式命中不到，因此必须放在全局表。
+   颜色一律由宿主令牌混色而来：亮色主题下自动压深保证对比度，暗色下自动提亮。 */
+
+.log-time { color: var(--muted-foreground); }
+.log-stack { color: color-mix(in srgb, var(--muted-foreground) 88%, transparent); }
+.log-key { color: color-mix(in srgb, var(--info) 62%, var(--foreground)); }
+.log-string { color: color-mix(in srgb, var(--warning) 52%, var(--foreground)); }
+.log-number { color: color-mix(in srgb, var(--success) 58%, var(--foreground)); }
+.log-bool { color: color-mix(in srgb, var(--tone-violet) 60%, var(--foreground)); }
+.log-ip { color: color-mix(in srgb, var(--tone-cyan) 64%, var(--foreground)); }
+.log-url { color: color-mix(in srgb, var(--info) 70%, var(--foreground)); text-decoration: underline; text-decoration-style: dotted; }
+.log-level-error { color: var(--destructive); font-weight: 600; }
+.log-level-warn { color: color-mix(in srgb, var(--warning) 68%, var(--foreground)); font-weight: 600; }
+.log-level-info { color: color-mix(in srgb, var(--info) 78%, var(--foreground)); }
+.log-level-debug { color: color-mix(in srgb, var(--tone-violet) 78%, var(--foreground)); }
+.log-level-trace { color: var(--muted-foreground); }
+
+/* ANSI 16 色（容器应用自带颜色的输出）：与前景混色，白底方案下不发飘。 */
+.log-ansi-bold { font-weight: 600; }
+.log-ansi-black { color: color-mix(in srgb, var(--foreground) 55%, transparent); }
+.log-ansi-red { color: color-mix(in srgb, #ef4444 72%, var(--foreground)); }
+.log-ansi-green { color: color-mix(in srgb, #3fb950 72%, var(--foreground)); }
+.log-ansi-yellow { color: color-mix(in srgb, #d29922 72%, var(--foreground)); }
+.log-ansi-blue { color: color-mix(in srgb, #58a6ff 72%, var(--foreground)); }
+.log-ansi-magenta { color: color-mix(in srgb, #bc8cff 72%, var(--foreground)); }
+.log-ansi-cyan { color: color-mix(in srgb, #39c5cf 72%, var(--foreground)); }
+.log-ansi-white { color: color-mix(in srgb, #c9d1d9 72%, var(--foreground)); }
+.log-ansi-bright-black { color: color-mix(in srgb, #8b949e 72%, var(--foreground)); }
+.log-ansi-bright-red { color: color-mix(in srgb, #ff7b72 80%, var(--foreground)); }
+.log-ansi-bright-green { color: color-mix(in srgb, #56d364 80%, var(--foreground)); }
+.log-ansi-bright-yellow { color: color-mix(in srgb, #e3b341 80%, var(--foreground)); }
+.log-ansi-bright-blue { color: color-mix(in srgb, #79c0ff 80%, var(--foreground)); }
+.log-ansi-bright-magenta { color: color-mix(in srgb, #d2a8ff 80%, var(--foreground)); }
+.log-ansi-bright-cyan { color: color-mix(in srgb, #56d4dd 80%, var(--foreground)); }
+.log-ansi-bright-white { color: color-mix(in srgb, #f0f6fc 80%, var(--foreground)); }

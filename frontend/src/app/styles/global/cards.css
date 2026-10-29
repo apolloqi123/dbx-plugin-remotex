@@ -497,7 +497,7 @@
   background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
 }
 .workbench .docker-pane-surface .container-list-head .icon-button { width: 16px; height: 16px; flex: 0 0 16px; }
-.workbench .docker-pane-surface .container-list-head .icon-button svg { width: 11px; height: 11px; }
+.workbench .docker-pane-surface .container-list-head .icon-button svg { width: 13px; height: 13px; }
 .workbench .docker-pane-surface .container-list-title { font-size: 11.5px; }
 /* 列表头 34 → 22px：logo 与筛选器一起缩到 16px，计数/徽标行高同步。 */
 .workbench .docker-pane-surface .container-list-logo {

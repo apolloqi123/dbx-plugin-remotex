@@ -5,7 +5,7 @@ import {
   type SftpFileTreeNode,
 } from "../../lib/tree/sftpFileTree";
 import { filterSelectableSftpEntries } from "../../lib/actions/sftpContextMenu";
-import { normalizeRemotePath, parentPath, pathFromUri } from "../../lib/paths/sftpRemotePaths";
+import { normalizeRemotePath, pathFromUri } from "../../lib/paths/sftpRemotePaths";
 import { type SftpColumn, type SftpSanitizedEntry } from "../../lib/entries/sftpEntries";
 import { type SftpTypeFilter } from "../../lib/entries/sftpFileFilters";
 import { useSftpRowSelection } from "../actions/useSftpRowSelection";
@@ -139,7 +139,6 @@ export function useSftpWorkspace(options: {
     sftpSoftError,
     toggleSudoMode,
     enableSudoModeAndReload,
-    goParent,
     setDirectoryTracking,
     goToPath,
     pathBarEditing, pathBarInputEl, pathBarDraft, pathCrumbs,
@@ -152,7 +151,7 @@ export function useSftpWorkspace(options: {
     sftpHomePath, visibleColumns: options.visibleColumns, followDirectory,
     directoryParser: options.directoryParser, selectedPath,
     directoryTrackingSupported: options.directoryTrackingSupported,
-    clearRowSelection: () => options.clearRowSelection(), parentPath, normalizeRemotePath,
+    clearRowSelection: () => options.clearRowSelection(), normalizeRemotePath,
     getPendingTerminalInput: () => options.getPendingTerminalInput(),
     persistState: () => options.persistState(), refreshDiskUsage: () => options.refreshDiskUsage(),
     persistDirectoryFollowPref: (value) => options.persistDirectoryFollowPref(value),
@@ -268,7 +267,6 @@ export function useSftpWorkspace(options: {
     sftpSoftError,
     toggleSudoMode,
     enableSudoModeAndReload,
-    goParent,
     setDirectoryTracking,
     goToPath,
     pathBarEditing,

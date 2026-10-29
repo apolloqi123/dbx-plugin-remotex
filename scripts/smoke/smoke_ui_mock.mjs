@@ -275,7 +275,8 @@ try {
   await webglPage.close();
 
   // --- Warp-style history panel: ↑ opens with focus kept on the terminal; --
-  // search box filters after click-focus; terminal Enter runs the line (#138).
+  // search box filters after click-focus; Enter only fills the line (no
+  // auto-run, 2026-10-29) — a second Enter executes the filled command.
   // 独立页面 + addInitScript 种子：commandHistory 水合在 App setup（晚于
   // addInitScript），mock 宿主 storage 的兜底档正是 window.localStorage。
   // 值为分桶档（scope = connectionId）：历史按连接隔离，mock 页面的作用域
@@ -364,6 +365,40 @@ try {
     failures.push('selected command not echoed ("tail -f /var/log/ui-mock.log")');
     console.log('  FAIL selected command echo');
   }
+  // 终端焦点路径 Enter（2026-10-29 体验反馈：浏览历史时回车误执行命令）：
+  // 重开面板 → 回车只收起面板、命令留在输入行，`\r` 不送 PTY；再按一次
+  // 回车才执行。拦截 sendBinary 观测真实发往 sidecar 的输入帧。
+  await historyPage.evaluate(() => {
+    const api = window.dbxPlugin;
+    if (!api.__historySendPatched) {
+      const original = api.sendBinary.bind(api);
+      api.sendBinary = (channel, data) => {
+        if (typeof channel === "string" && channel.startsWith("ssh/terminal/in/")) {
+          try {
+            const text = typeof data === "string" ? data : new TextDecoder().decode(data instanceof Uint8Array ? data : new Uint8Array(data));
+            window.__historyInputFrames.push(text);
+          } catch { /* ignore malformed frames */ }
+        }
+        return original(channel, data);
+      };
+      api.__historySendPatched = true;
+    }
+    window.__historyInputFrames = [];
+  });
+  await historyPage.keyboard.press("ArrowUp");
+  await expect(historyPage, ".terminal-history-panel", "history panel reopens for terminal Enter check");
+  await historyPage.keyboard.press("Enter");
+  await sleep(400);
+  const framesAfterLineEnter = await historyPage.evaluate(() => window.__historyInputFrames ?? []);
+  const panelsAfterLineEnter = await historyPage.locator(".terminal-history-panel").count();
+  check("Enter (terminal path) closes the panel", panelsAfterLineEnter === 0, `panels=${panelsAfterLineEnter}`);
+  check("Enter (terminal path) sends no \\r to the PTY (fill only)", framesAfterLineEnter.every((text) => !text.includes("\r")), `frames=${JSON.stringify(framesAfterLineEnter)}`);
+  const focusAfterLineEnter = await historyPage.evaluate(() => document.activeElement?.classList?.contains("xterm-helper-textarea") === true);
+  check("focus stays on the input line after terminal Enter", focusAfterLineEnter, `active=${await historyPage.evaluate(() => document.activeElement?.className ?? "null")}`);
+  await historyPage.keyboard.press("Enter");
+  await sleep(400);
+  const framesAfterSecondEnter = await historyPage.evaluate(() => window.__historyInputFrames ?? []);
+  check("a second Enter executes the filled command", framesAfterSecondEnter.some((text) => text.includes("\r")), `frames=${JSON.stringify(framesAfterSecondEnter)}`);
   // Esc 关闭语义：重开 → ↑ 按到超过条目数（stay 停住不关面板，P0-D）→ Esc → 面板消失。
   await historyPage.keyboard.press("ArrowUp");
   await expect(historyPage, ".terminal-history-panel", "history panel reopens");

@@ -8,8 +8,9 @@
 .quick-commands-popover.quick-commands-manager-popover { width: min(360px, calc(100vw - 24px)); max-height: min(440px, calc(100vh - 52px)); gap: 0; padding: 8px 10px 10px; overflow: auto; }
 .connection-info-popover { gap: 0; width: min(300px, calc(100vw - 24px)); padding: 8px 12px 12px; }
 .agent-mode-popover { gap: 0; width: min(280px, calc(100vw - 24px)); padding: 8px 12px 12px; }
-.bookmark-save-popover { display: flex; width: 250px; flex-direction: column; gap: 6px; padding: 8px; }
-.bookmark-list-popover { display: flex; gap: 0; width: 250px; max-height: min(320px, 50vh); flex-direction: column; padding: 8px; overflow: auto; }
+/* 书签管理弹层（2026-10-29 合并）：单入口承载收藏表单/列表/快捷路径，
+   宽度容得下两行路径文本；头部与快捷路径固定、中间列表随内容滚动。 */
+.bookmark-list-popover { display: flex; gap: 0; width: min(300px, calc(100vw - 24px)); max-height: min(420px, 55vh); flex-direction: column; padding: 8px; overflow: auto; }
 /* 旧 z60 是为了在工具栏层叠上下文里压过 xterm 装饰层；portal 后由 wrapper
    z-50 统一参与根级排序，与右键菜单同档（菜单后挂载 DOM 序靠后自然盖住）。 */
 /* 传输弹层：头部/筛选固定，任务行内部滚动（宽度对齐参考面板的窄栏比例）。 */

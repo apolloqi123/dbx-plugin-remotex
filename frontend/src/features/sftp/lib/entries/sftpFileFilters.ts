@@ -32,6 +32,18 @@ export function isHiddenEntry(name: string): boolean {
 }
 
 /**
+ * 显示顺序分组（自上而下）：可见文件夹 → 隐藏文件夹 → 可见文件 → 隐藏文件。
+ *
+ * 隐藏项只有在「显示隐藏文件」开启后才会出现在列表里；本函数只决定分组，
+ * 过滤仍归 filterSftpEntries。未开启隐藏时可见项分组退化为原来的「文件夹
+ * 优先」，排序行为不变。
+ */
+export function sftpEntryRank(entry: SftpFilterableEntry): number {
+  const directory = entry.kind === "directory";
+  return (directory ? 0 : 2) + (isHiddenEntry(entry.name) ? 1 : 0);
+}
+
+/**
  * Front-end filtering of the currently listed directory: search text
  * (case-insensitive substring on the entry name) plus an entry type filter,
  * plus an optional hidden-file filter (hides dot-files and common system/

@@ -24,6 +24,7 @@ import { Osc7DirectoryParser } from "../lib/emulator/terminalDirectoryTracking";
 import { Osc633CommandParser } from "../lib/panels/terminalCommandMarkers";
 import { applyLineEditControlChar } from "../lib/emulator/terminalLineModel";
 import { PromptNewlineTransformer } from "../lib/emulator/terminalPromptNewline";
+import { createTerminalOutputColorizer } from "../lib/emulator/terminalOutputColor";
 import { aiBridgeAvailable } from "../../agent/lib/aiBridge";
 import { loadAiSettings } from "../../agent/lib/aiSettings";
 
@@ -116,6 +117,11 @@ const {
   onOpenSearch: () => openSplitSearch(),
   onSearchResults: (change) => handleSplitSearchResults(change),
   onResize: (cols, rows) => resizeSplitSession(cols, rows),
+});
+
+// 输出着色：与主终端同一转换器（备用屏/ESC/大输出透传），只改显示。
+const outputColorizer = createTerminalOutputColorizer({
+  isAlternateScreen: () => getTerminal()?.buffer?.active?.type === "alternate",
 });
 
 // 分屏自己的搜索面板：状态与 SearchAddon 接线由 useSplitSearch 持有，
@@ -231,7 +237,8 @@ const {
     // 全屏应用（vim/top 绝对定位重绘）不能插入换行；解析链仍吃原始字节。
     const term = getTerminal();
     const suppressInsert = term?.buffer?.active?.type === "alternate";
-    term?.write(promptNewline.push(data, { suppressInsert }));
+    const framed = promptNewline.push(data, { suppressInsert });
+    term?.write(props.transferBusy ? framed : outputColorizer.transform(framed));
     for (const path of directoryParser.push(data)) {
       currentCwd = path;
       emit("cwd", path);

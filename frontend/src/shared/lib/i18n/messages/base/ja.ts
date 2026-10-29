@@ -332,7 +332,6 @@ const messages = {
       plain: "接続を復元しました",
     },
     home: "ホーム",
-    parentFolder: "親フォルダー",
     refresh: "更新",
     customizeColumns: "列をカスタマイズ",
     transfers: "SFTP 転送",

@@ -151,22 +151,43 @@ vi.mock("@codemirror/language", () => ({
     define: (specs: readonly { tag: unknown; color?: string }[]) => ({ kind: "highlightStyle", specs }),
   },
   syntaxHighlighting: (style: unknown) => ({ kind: "syntaxHighlighting", style }),
-  LanguageDescription: {
-    matchFilename: (_languages: unknown, filename: string) => {
-      if (filename.endsWith(".js")) return { load: async () => ({ kind: "languageSupport" }) };
-      if (filename.endsWith(".md")) {
-        return {
-          load: async () => {
-            throw new Error("language payload unavailable in tests");
-          },
-        };
-      }
-      return undefined;
-    },
-  },
 }));
 
-vi.mock("@codemirror/language-data", () => ({ languages: [{ name: "JavaScript" }] }));
+// 语言目录只保留本 spec 用到的条目：detectEditorLanguage 会读 name/alias/
+// extensions/filename，load 行为按文件名区分成功/失败/不命中。
+const languageCatalog = vi.hoisted(() => [
+  {
+    name: "JavaScript",
+    alias: ["js"],
+    extensions: ["js", "mjs"],
+    filename: undefined,
+    load: async () => ({ kind: "languageSupport" }),
+  },
+  {
+    name: "Markdown",
+    alias: ["md"],
+    extensions: ["md"],
+    filename: undefined,
+    load: async () => {
+      throw new Error("language payload unavailable in tests");
+    },
+  },
+  {
+    name: "Shell",
+    alias: ["bash", "sh"],
+    extensions: ["sh"],
+    filename: undefined,
+    load: async () => ({ kind: "languageSupport" }),
+  },
+]);
+
+vi.mock("@codemirror/language-data", () => ({ languages: languageCatalog }));
+
+// 日志着色扩展是真实 ViewPlugin（依赖 @codemirror/view），在假 CM 环境下换成
+// 标记对象，只断言「是否注入」。
+vi.mock("../lib/editor/logHighlight", () => ({
+  logHighlightExtension: () => ({ kind: "logHighlight" }),
+}));
 
 // tags 仅作成员占位（shared editorTheme 按成员名解析，名称即可命中断言）。
 vi.mock("@lezer/highlight", () => ({
@@ -308,6 +329,27 @@ describe("TextPreview", () => {
     await flushPromises();
     expect(cm.views).toHaveLength(5);
     expect(cm.views[4].extensions.some((ext) => ext.kind === "languageSupport")).toBe(true);
+  });
+
+  it("adds log coloring for log files and skips it for regular text", async () => {
+    await mountPreview({ fileName: "app.log", text: "INFO start\nERROR boom" });
+    expect(cm.views[0].extensions.some((ext) => ext.kind === "logHighlight")).toBe(true);
+
+    await mountPreview({ fileName: "notes.txt", text: "hello" });
+    expect(cm.views[1].extensions.some((ext) => ext.kind === "logHighlight")).toBe(false);
+
+    await mountPreview({ fileName: "syslog", text: "Oct 29 12:00:00 host sshd[1]: ok" });
+    expect(cm.views[2].extensions.some((ext) => ext.kind === "logHighlight")).toBe(true);
+  });
+
+  it("detects extension-less scripts by shebang", async () => {
+    await mountPreview({ fileName: "deploy", text: "#!/usr/bin/env bash\nset -e" });
+    expect(cm.views[0].extensions.some((ext) => ext.kind === "languageSupport")).toBe(true);
+
+    await mountPreview({ fileName: "deploy", text: "#!/usr/bin/env python3\nprint(1)" });
+    // Python 不在本 spec 的假语言目录里 → 不注入 support，但也不应误判成日志。
+    expect(cm.views[1].extensions.some((ext) => ext.kind === "languageSupport")).toBe(false);
+    expect(cm.views[1].extensions.some((ext) => ext.kind === "logHighlight")).toBe(false);
   });
 
   it("destroys the editor on unmount", async () => {

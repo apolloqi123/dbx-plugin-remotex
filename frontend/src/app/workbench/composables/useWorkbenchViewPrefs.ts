@@ -18,6 +18,7 @@ import {
   sanitizeTerminalHotkeys,
   type TerminalHotkeyBindings,
 } from "../../../features/terminal/lib/behavior/terminalHotkeys";
+import { setOutputColorizationEnabled } from "../../../features/terminal/lib/emulator/terminalOutputColor";
 import type { PaneDirectionPref } from "../../../shared/lib/paneLayout";
 import type { Terminal } from "@xterm/xterm";
 
@@ -53,6 +54,8 @@ export function useWorkbenchViewPrefs(options: {
   // 终端行为偏好（对标 Tabby「Terminal」页）：右键语义、剪贴板、响铃、渲染细项，
   // 单键 pluginStore 持久化；选中复制是其一个字段。
   const terminalBehavior = ref<TerminalBehaviorSettings>(loadTerminalBehavior());
+  // 输出着色开关与三处终端渲染器共享同一份运行时镜像（设置页是唯一写入点）。
+  setOutputColorizationEnabled(terminalBehavior.value.outputColorization);
   /** 选中复制（既有消费点：选区变更钩子与设置页开关）。 */
   const termSelectCopy = computed(() => terminalBehavior.value.copyOnSelect);
   // 终端快捷键绑定（对标 Tabby「Hotkeys」页）：平台默认 + 用户改写，单键持久化。
@@ -126,6 +129,7 @@ export function useWorkbenchViewPrefs(options: {
     terminalBehavior.value = next;
     persistTerminalBehavior(next);
     applyTerminalBehavior();
+    setOutputColorizationEnabled(next.outputColorization);
     // 选中复制沿用既有即时反馈文案。
     if (copyChanged) {
       showNotice(t(next.copyOnSelect ? "terminalSelectCopy.enabledNotice" : "terminalSelectCopy.disabledNotice"));

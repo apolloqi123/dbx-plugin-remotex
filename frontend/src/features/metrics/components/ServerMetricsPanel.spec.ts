@@ -37,6 +37,8 @@ function view(overrides: Partial<ServerMetricsView> = {}): ServerMetricsView {
     txSparkline: "",
     disks: [{ filesystem: "/dev/sda1", mount: "/", totalBytes: 2048, usedBytes: 1024, availableBytes: 1024, percentUsed: 50, inodeUsePercent: 12 }],
     networks: [{ name: "eth0", rxRate: 10, txRate: 5, rxTotal: 100, txTotal: 50 }],
+    showAllDisks: false,
+    showAllNics: false,
     processesOpen: true,
     processRows: [{ pid: 1, ppid: 0, user: "root", cpuPercent: 2, memPercent: 3, etime: "1d", state: "S", command: "systemd" }],
     processLoading: false,
@@ -74,6 +76,27 @@ describe("ServerMetricsPanel", () => {
     expect(legend[0]).toContain("384 B");
     expect(legend[1]).toContain("128 B");
     expect(legend[2]).toContain("512 B");
+  });
+
+  it("puts one density toggle in each of the network and disk cards", async () => {
+    const wrapper = mount(ServerMetricsPanel, { props: { view: view(), t, locale: "en-US" } });
+    const toggles = wrapper.findAll(".metrics-density-toggle");
+    expect(toggles).toHaveLength(2);
+    expect(toggles[0].attributes("aria-label")).toBe("metricsShowAllNics");
+    expect(toggles[1].attributes("aria-label")).toBe("metricsShowAllDisks");
+    await toggles[0].trigger("click");
+    await toggles[1].trigger("click");
+    expect(wrapper.emitted("toggle-nics-density")).toHaveLength(1);
+    expect(wrapper.emitted("toggle-disks-density")).toHaveLength(1);
+
+    const all = mount(ServerMetricsPanel, {
+      props: { view: view({ showAllDisks: true, showAllNics: true }), t, locale: "en-US" },
+    });
+    const active = all.findAll(".metrics-density-toggle");
+    expect(active[0].attributes("aria-label")).toBe("metricsOnlyMainNics");
+    expect(active[0].attributes("aria-pressed")).toBe("true");
+    expect(active[0].classes()).toContain("is-active");
+    expect(active[1].attributes("aria-label")).toBe("metricsOnlyMainDisks");
   });
 
   it("forwards refresh, sort and kill actions", async () => {

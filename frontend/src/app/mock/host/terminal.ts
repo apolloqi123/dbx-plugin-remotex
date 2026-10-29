@@ -46,6 +46,11 @@ const shellIntegrationCycle = [
   "user@server:~$ cat /etc/nope; bash xyz\r\n",
   "cat: /etc/nope: No such file or directory\r\n",
   "bash: xyz: command not found\r\n",
+  // 输出着色（tailspin 风格）演示：JSON / logfmt 行的时间戳、级别、键、数字、
+  // IP 由终端输出着色器补上 ANSI 颜色（与日志页/编辑器同一套语义）。
+  "user@server:~$ docker logs --tail 2 web\r\n",
+  '{"level":"info","msg":"request done","status":200,"ok":true,"upstream":"10.0.0.8"}\r\n',
+  "2026-10-29T16:40:10+08:00 INFO  upstream=10.0.0.8 latency=612ms path=/api/items\r\n",
   `${OSC_633}E;curl -m 3 http://10.0.0.12:8080/health${BEL}`,
   "user@server:~$ curl -m 3 http://10.0.0.12:8080/health\r\n",
   "curl: (28) Connection timed out\r\n",
