@@ -2,11 +2,12 @@
 // 工作台外壳（T32）：/main 壳模板与模板专用绑定收口于此；状态与接线仍在
 // workbench/useWorkbench，App.vue 只保留根组件与生命周期挂载。
 import WorkbenchWorkspace from "./WorkbenchWorkspace.vue";
-import { watch } from "vue";
+import { computed, watch } from "vue";
 import FolderPickerDialog from "../../features/sftp/components/FolderPickerDialog.vue";
 import PortForwardDialog from "../../features/forwarding/components/PortForwardDialog.vue";
 import { usePortForwards } from "../../features/forwarding/composables/usePortForwards";
 import RdpConnectDialog from "../../features/remote-desktop/components/RdpConnectDialog.vue";
+import RemoteFileTransferWindow from "../../features/remote-desktop/components/RemoteFileTransferWindow.vue";
 import SerialConnectDialog from "../../features/serial/components/SerialConnectDialog.vue";
 import SerialUploadDialog from "../../features/serial/components/SerialUploadDialog.vue";
 import SettingsDialog from "../../features/settings/components/SettingsDialog.vue";
@@ -33,7 +34,7 @@ const bindings = workbenchBindings(props.wb);
 
 const {
   tooltipBubble, settingsDialog, uploadInput, folderUploadInput, zmodemInput, trzszInput,
-  RDP_RESOLUTION_PRESETS, actionLinksSettings, activeAppearanceThemeId, activeTransfers, addImportedSchemes,
+  RDP_RESOLUTION_PRESETS, VNC_RESOLUTION_PRESETS, actionLinksSettings, activeAppearanceThemeId, activeTransfers, addImportedSchemes,
   agentMode, agentModeBusy, agentModeHint, agentModeOpen, agentPromptCommand,
   agentPromptHead, agentPromptRemaining, agentPromptRemember, aiBridgeReady, aiSettingsState,
   appearance, applePlatform, applyCommandHistoryLimit, applyTerminalAppearanceTheme, applyTerminalFontSettings,
@@ -59,7 +60,7 @@ const {
   forwardsMenuOpen, forwardsOpen, forwardsFocusForm, ghostTabAccept, gutterSettings,
   highlightDisplayMode, highlightRules, highlightSaving, hostKeyPrompt, hostTerminalFontFamily,
   hostTerminalTheme, importPanelOpen, importQuickCommands, isLocalMode, isRdpConnection,
-  isRdpMode, isSerialMode, isTelnetMode, isVncMode, jsonPreviewState,
+  isRdpMode, isSerialMode, isTelnetMode, isVncConnection, isVncMode, jsonPreviewState,
   loadAuditEntries, localCanSave, localDownloadDir, localOpenConfirmOpen, localShellCwdPref,
   localShellEnvPref, localShellIntegrationPref, localShellPref, localShellRestored, localShellSurfaceOpen,
   localShells, localShellsLoading, localState, localUiMode, locale,
@@ -75,9 +76,10 @@ const {
   previewSize, previewText, previewTitle, previewTruncated, profilesOpen,
   promptHintsEnabled, quickCommands, quickGroups, createQuickCommandGroup, quickImportBusy, quickMenuOpen, quickSaving,
   rdpCertPrompt, rdpCertRemaining, rdpCertRemember, rdpCustomHeight, rdpCustomWidth,
-  rdpDesktopSize, rdpDialogOpen, rdpPasteOpen, rdpPasteText, rdpResizing,
+  rdpDesktopSize, rdpAutoFit, rdpClipboardEnabled, rdpDialogOpen, rdpDialogSeed, rdpFileHintOpen, rdpNativeFileClipboard, rdpServerFileClipboard, rdpServerFileClipboardKnown, rdpPasteOpen, rdpPasteText, rdpResizing,
   rdpResolutionOpen, rdpScaleMode, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
   reconnectCountdown, reconnectPending, recordCountdown, recordingActive, recordingClearAllOpen, recordingClearAllSubmitting,
+  remoteFileTransfer, remoteFileTransferOpen,
   recordingDeleteSubmitting, recordingDeleteTarget, recordingElapsedSec, recordingTarget, recordings, recordingsOpen,
   rememberHostKey, removeImportedScheme, renameQuickCommandGroupById, resetAiFixConsent,
   resolveAgentPrompt, resolveDownloadConflict, resolveDownloadPrompt, resolveDropUpload, resolveHostKey,
@@ -101,9 +103,15 @@ const {
   transferSpeeds, updateActionLinksSettings, updateAiSettings, updateCtxSearchEngines, updateGutterSettings,
   updateTerminalAppearance, updateTerminalBehavior, updateTerminalHotkeys, updateWallpaperEnabled, updateWallpaperOpacity,
   uploadDuplicateApplyAll, uploadDuplicatePrompt, uploadWatchedFileAlways, uploadWatchedFileOnce, visibleAuditEntries,
-  vncDialogOpen, wallpaperEnabled, wallpaperOpacity, wallpaperSessionOnly, watchModifiedPrompt,
+  vncAutoFit, vncCanResize, vncCustomHeight, vncCustomWidth, vncDesktopSize, vncDialogOpen, vncResizing,
+  vncResolutionOpen, vncScaleMode, wallpaperEnabled, wallpaperOpacity, wallpaperSessionOnly, watchModifiedPrompt,
   watchModifiedQueue, webglEnabled,
 } = bindings;
+
+// 宿主基底主题只由 appearance 派生，但生成器每次返回新对象：直接在模板里
+// 调用会让 SettingsDialog 的 props 每次外壳重渲染都“变化”，连带作废其内部
+// computed。缓存到外观真正变化为止。
+const shellHostTheme = computed(() => hostTerminalTheme());
 
 // 端口映射控制器：工具栏快捷弹层与完整管理器共享同一份列表与事件订阅。
 const forwards = usePortForwards({
@@ -155,6 +163,16 @@ watch(
       v-model:rdp-custom-height="rdpCustomHeight"
       v-model:rdp-paste-open="rdpPasteOpen"
       v-model:rdp-paste-text="rdpPasteText"
+      v-model:rdp-file-hint-open="rdpFileHintOpen"
+      v-model:vnc-scale-mode="vncScaleMode"
+      v-model:vnc-resolution-open="vncResolutionOpen"
+      v-model:vnc-custom-width="vncCustomWidth"
+      v-model:vnc-custom-height="vncCustomHeight"
+      :vnc-resolution-presets="VNC_RESOLUTION_PRESETS"
+      :vnc-resizing="vncResizing"
+      :vnc-can-resize="vncCanResize"
+      :vnc-auto-fit="vncAutoFit"
+      :vnc-desktop-size="vncDesktopSize"
       :t="t"
       :panel-surface="panelSurface"
       :panel-toolbar-hidden="panelToolbarHidden"
@@ -174,6 +192,7 @@ watch(
       :is-rdp-connection="isRdpConnection"
       :is-rdp-mode="isRdpMode"
       :is-serial-mode="isSerialMode"
+      :is-vnc-connection="isVncConnection"
       :is-vnc-mode="isVncMode"
       :is-telnet-mode="isTelnetMode"
       :local-ui-mode="localUiMode"
@@ -222,8 +241,14 @@ watch(
       :quick-groups="quickGroups"
       :quick-saving="quickSaving"
       :quick-importing="quickImportBusy"
+      :apple-platform="applePlatform"
+      :rdp-native-file-clipboard="rdpNativeFileClipboard"
+      :rdp-server-file-clipboard="rdpServerFileClipboard"
+      :rdp-server-file-clipboard-known="rdpServerFileClipboardKnown"
+      :rdp-clipboard-enabled="rdpClipboardEnabled"
       :resolution-presets="RDP_RESOLUTION_PRESETS"
       :rdp-resizing="rdpResizing"
+      :rdp-auto-fit="rdpAutoFit"
       :rdp-desktop-size="rdpDesktopSize"
       :rdp-typing-busy="rdpTypingBusy"
       :rdp-typing-sent="rdpTypingSent"
@@ -441,7 +466,7 @@ watch(
       :appearance="terminalAppearanceState"
       :custom-themes="terminalAppearance.customThemes"
       :active-theme-id="activeAppearanceThemeId"
-      :host-theme="hostTerminalTheme()"
+      :host-theme="shellHostTheme"
       :host-color-scheme="appearance.colorScheme"
       :download-prefs="downloadPrefsAdapter"
       :transfer-prefs="transferPrefsAdapter"
@@ -546,7 +571,15 @@ watch(
     <VncConnectDialog :locale="locale" :open="vncDialogOpen" @update:open="(open) => (vncDialogOpen = open)" @connect="startVncSession" />
 
     <!-- RDP 连接表单（P3-4）：host/port/NLA 凭据/分辨率/证书策略。 -->
-    <RdpConnectDialog :locale="locale" :open="rdpDialogOpen" @update:open="(open) => (rdpDialogOpen = open)" @connect="connectViaRdpDialog" />
+    <RdpConnectDialog :locale="locale" :open="rdpDialogOpen" :seed="rdpDialogSeed" @update:open="(open) => (rdpDialogOpen = open)" @connect="connectViaRdpDialog" />
+
+    <!-- RDP/VNC 文件传输浮窗：宿主机 ↔ 远端 SFTP 双栏。VF 协议本身没有文件
+         剪贴板，VNC 的文件粘贴/拖放由此窗口承接。 -->
+    <RemoteFileTransferWindow
+      v-model:open="remoteFileTransferOpen"
+      :t="t"
+      :controller="remoteFileTransfer"
+    />
 
     <!-- RDP 确认/VNC 确认/Telnet 确认/串口确认（M32-A 移除）：工具条协议直开
          入口下线后，表单兜底从连接路由失败路径直接弹 ConnectDialog，不再有

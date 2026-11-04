@@ -3,6 +3,31 @@
 use super::*;
 
 impl SshRuntime {
+    /// Registers a session-end callback (run for every removal path).
+    pub fn on_session_end(&self, hook: Arc<dyn Fn(&str) + Send + Sync>) {
+        if let Ok(mut hooks) = self.session_end_hooks.write() {
+            hooks.push(hook);
+        }
+    }
+
+    /// Runs the session-end hooks. Called after the session is removed but
+    /// before its transport lease is released, so runners holding a cloned
+    /// handle can still signal the remote process group. A poisoned hook list
+    /// is treated as empty, and a panicking hook is logged instead of
+    /// unwinding `close_session` before the session/lease cleanup finishes.
+    pub(crate) fn notify_session_end(&self, session_id: &str) {
+        let hooks = match self.session_end_hooks.read() {
+            Ok(hooks) => hooks.clone(),
+            Err(poison) => poison.into_inner().clone(),
+        };
+        for hook in hooks {
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hook(session_id))).is_err()
+            {
+                eprintln!("[session-end] hook panicked for session {session_id}");
+            }
+        }
+    }
+
     pub async fn close_session(&self, session_id: &str) -> Result<(), String> {
         // Teardown runs while the session is still registered so remote
         // listener cancellation can ride the (still open) SSH handle.
@@ -35,6 +60,12 @@ impl SshRuntime {
             .await
             .remove(session_id)
             .ok_or("SSH session was not found")?;
+        // Every removal path (RPC close, workbench close, connection
+        // disconnect) funnels through here. The session is gone now; cancel
+        // dependent feature runners before releasing the lease, otherwise
+        // their cloned Handle keeps the exec channel (and the remote process)
+        // alive. Unknown ids return above without running any hook.
+        self.notify_session_end(session_id);
         // 限时投递：读循环可能正阻塞在死 transport 的 channel.data() 上且
         // 输入队列（容量 256）已被灌满——无超时的 send 会无限期挂起，而
         // disconnect_connection 是逐会话串行 await，一个僵尸会话就能拖死
@@ -53,6 +84,9 @@ impl SshRuntime {
         }
         if let Ok(mut cache) = self.metrics_cache.lock() {
             cache.remove(session_id);
+        }
+        if let Ok(mut probed) = self.accelerator_probed_at.lock() {
+            probed.remove(session_id);
         }
         // X11 gate lifecycle: the armed gate is the sidecar-wide slot (see
         // x11::ACTIVE_GATE) serving the most recently armed session. With
@@ -94,6 +128,7 @@ impl SshRuntime {
         let connections = self.connections.read().ok();
         let mut list: Vec<Value> = sessions
             .iter()
+            .filter(|(_, entry)| !entry.files_only)
             .map(|(session_id, entry)| {
                 let connection = connections
                     .as_deref()

@@ -7,6 +7,7 @@ pub(crate) mod import;
 pub(crate) mod mcp;
 pub(crate) mod metrics;
 pub(crate) mod recording;
+pub(crate) mod remote_files;
 pub(crate) mod security;
 pub(crate) mod terminal;
 pub(crate) mod transfer;

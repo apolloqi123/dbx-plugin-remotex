@@ -420,7 +420,9 @@ async function batchDownload() {
   const uris = menu.selection.length ? menu.selection : [menu.entry.uri];
   // 树内跨目录选中项优先（selectedEntries），否则保持只从当前目录 entries 命中。
   const source = selectedEntries?.value ?? entries.value;
-  const targets = source.filter((entry: DownloadListEntry) => uris.includes(entry.uri));
+  // 选中项是大目录多选时 uris 可达上千：Set 查找避免 O(目录 × 选中)。
+  const selectedUris = new Set(uris);
+  const targets = source.filter((entry: DownloadListEntry) => selectedUris.has(entry.uri));
   const active = Object.values(transferTasks).filter(
     (task) =>
       (task.status === "queued" || task.status === "running") &&

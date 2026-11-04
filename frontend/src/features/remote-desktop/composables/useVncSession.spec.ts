@@ -16,6 +16,7 @@ function installBridge(invoke: ReturnType<typeof vi.fn>) {
 type SurfaceMock = VncSurfaceHandle & {
   acceptFrame: Mock<(frame: Uint8Array) => boolean>;
   reset: Mock<() => void>;
+  applyPointer: Mock<() => void>;
   canvasFocus: Mock<() => void>;
 };
 
@@ -24,9 +25,22 @@ function buildSurface(): SurfaceMock {
   return {
     acceptFrame: vi.fn(() => true),
     reset: vi.fn(),
+    applyPointer: vi.fn(),
     canvasFocus,
-    $el: { querySelector: vi.fn(() => ({ focus: canvasFocus })) },
+    $el: {
+      querySelector: vi.fn(() => ({ focus: canvasFocus })),
+      getBoundingClientRect: () => ({ width: 1200, height: 800 }),
+    },
   };
+}
+
+/** Minimal 44-byte patch header: only the desktop dims are read by the session. */
+function frameHeader(width: number, height: number): Uint8Array {
+  const frame = new Uint8Array(44);
+  const view = new DataView(frame.buffer);
+  view.setUint32(8, width, true);
+  view.setUint32(12, height, true);
+  return frame;
 }
 
 function createHarness() {
@@ -84,6 +98,37 @@ describe("useVncSession state machine", () => {
     expect(api.isVncMode.value).toBe(false);
     expect(api.vncTarget.value).toBe("");
     expect(api.vncScaleMode.value).toBe("fit");
+    scope.stop();
+  });
+
+  it("paste reads the host clipboard and surfaces read failures", async () => {
+    const { api, invoke, showError, showNotice, scope } = createHarness();
+    invoke.mockResolvedValueOnce(startResult());
+    await api.startVncSession(connectOptions());
+    const bridge = (window as unknown as { dbxPlugin: { clipboard?: unknown } }).dbxPlugin;
+    bridge.clipboard = { readText: vi.fn(async () => "hello"), writeText: vi.fn(async () => undefined) };
+    api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+    await nextTick();
+    invoke.mockClear();
+    await api.pasteVncClipboard();
+    expect(invoke).toHaveBeenCalledWith("vnc/set-clipboard", { sessionId: "vnc-1", text: "hello" });
+
+    bridge.clipboard = { readText: vi.fn(async () => { throw new Error("denied"); }), writeText: vi.fn(async () => undefined) };
+    // Age out the cached host read so the denied read is actually attempted.
+    await new Promise((resolve) => setTimeout(resolve, 950));
+    // Remove the native fallback so the failing bridge is the only read path.
+    const nativeClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    let pasted = false;
+    try {
+      pasted = await api.pasteVncClipboard();
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: nativeClipboard, configurable: true });
+    }
+    // A denied host read must not swallow the user's paste key.
+    expect(pasted).toBe(true);
+    expect(showNotice).toHaveBeenCalledWith("vnc.clipboardAccessDenied");
+    expect(showError).not.toHaveBeenCalled();
     scope.stop();
   });
 
@@ -196,6 +241,35 @@ describe("useVncSession state machine", () => {
 });
 
 describe("useVncSession close and cleanup", () => {
+  it("reconnect restarts with the last options and falls back to the dialog without them", async () => {
+    const { api, invoke, scope } = createHarness();
+    invoke.mockResolvedValueOnce(startResult());
+    await api.startVncSession(connectOptions({ password: "secret" }));
+    api.markVncClosed("server hung up");
+    invoke.mockClear();
+    invoke.mockResolvedValueOnce({ sessionId: "vnc-2", host: "10.0.0.7", port: 5900 });
+
+    await api.reconnectVncSession();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("vnc/start", expect.objectContaining({
+      host: "10.0.0.7",
+      port: 5900,
+      scaleMode: "fit",
+      password: "secret",
+    }));
+    expect(api.vncSession.value?.sessionId).toBe("vnc-2");
+    expect(api.vncDialogOpen.value).toBe(false);
+
+    // 显式关闭清空参数后，重连回落到连接弹窗（不再发 RPC）。
+    invoke.mockClear();
+    invoke.mockResolvedValue({ success: true });
+    await api.closeVncSession();
+    await api.reconnectVncSession();
+    expect(invoke).not.toHaveBeenCalledWith("vnc/start", expect.anything());
+    expect(api.vncDialogOpen.value).toBe(true);
+    scope.stop();
+  });
+
   it("close: clears session/state/error, sends vnc/close and returns focus to the terminal", async () => {
     const { api, invoke, terminalFocus, scope } = createHarness();
     invoke.mockResolvedValueOnce(startResult()).mockResolvedValueOnce(undefined);
@@ -271,19 +345,25 @@ describe("useVncSession without the host bridge", () => {
     scope.stop();
   });
 
-  it("input/clipboard: non-fatal (rejection swallowed) and clipboard still reports the notice", async () => {
+  it("input/clipboard: input rejection is swallowed and clipboard failure is surfaced", async () => {
     const { api, invoke, showNotice, scope } = createHarness();
     invoke.mockResolvedValueOnce(startResult());
     await api.startVncSession(connectOptions());
     delete bridgeWindow.dbxPlugin;
 
-    expect(() => api.sendVncInput({ kind: "key", keysym: 65, pressed: true })).not.toThrow();
-    expect(() => api.sendVncClipboard("hello")).not.toThrow();
-    // 让 rpc 的 RpcUnavailableError 拒绝落到 .catch（未处理拒绝会让 vitest 失败）。
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(showNotice).toHaveBeenCalledWith("vnc.clipboardSent");
+    api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+    await nextTick();
+    const nativeClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    try {
+      expect(() => api.sendVncInput({ kind: "key", keysym: 65, pressed: true })).not.toThrow();
+      // No read path: the paste key is still forwarded to the remote.
+      await expect(api.pasteVncClipboard()).resolves.toBe(true);
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: nativeClipboard, configurable: true });
+    }
+    // An unavailable read path is reported as the actionable access notice.
+    expect(showNotice).toHaveBeenCalledWith("vnc.clipboardAccessDenied");
     scope.stop();
   });
 });
@@ -305,6 +385,190 @@ describe("useVncSession frames, reattach and input", () => {
     api.handleVncFrame("vnc-1", payload);
     expect(api.vncState.value).toBe("running");
     expect(surface.acceptFrame).toHaveBeenCalledWith(payload);
+    scope.stop();
+  });
+
+  it("auto-fit: negotiates the pane CSS size after the first frame reaches running", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, invoke, scope } = createHarness();
+      api.vncSurface.value = buildSurface();
+      invoke.mockResolvedValueOnce(startResult());
+      await api.startVncSession(connectOptions());
+      invoke.mockClear();
+
+      api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(invoke).toHaveBeenCalledWith("vnc/resize", {
+        sessionId: "vnc-1",
+        width: 1200,
+        height: 800,
+      });
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto-fit: stretch/actual never renegotiate the remote desktop", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, invoke, scope } = createHarness();
+      api.vncSurface.value = buildSurface();
+      invoke.mockResolvedValueOnce(startResult());
+      await api.startVncSession(connectOptions({ scaleMode: "stretch" }));
+      invoke.mockClear();
+
+      api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(invoke).not.toHaveBeenCalledWith("vnc/resize", expect.anything());
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("auto-fit: surface resizes are debounced and renegotiated", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, invoke, scope } = createHarness();
+      api.vncSurface.value = buildSurface();
+      invoke.mockResolvedValueOnce(startResult());
+      await api.startVncSession(connectOptions());
+      api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+      await nextTick();
+      invoke.mockClear();
+
+      api.onVncSurfaceResize({ width: 1400, height: 900 });
+      await vi.advanceTimersByTimeAsync(399);
+      expect(invoke).not.toHaveBeenCalledWith("vnc/resize", expect.anything());
+      await vi.advanceTimersByTimeAsync(1);
+      expect(invoke).toHaveBeenCalledWith("vnc/resize", {
+        sessionId: "vnc-1",
+        width: 1400,
+        height: 900,
+      });
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("manual resolution disables auto-fit and match-window re-enables it", async () => {
+    const { api, invoke, showError, scope } = createHarness();
+    api.vncSurface.value = buildSurface();
+    invoke.mockResolvedValueOnce(startResult());
+    await api.startVncSession(connectOptions({ scaleMode: "stretch" }));
+    expect(api.vncCanResize.value).toBe(false);
+    await api.applyVncResolution(1280, 800);
+    expect(invoke).not.toHaveBeenCalledWith("vnc/resize", expect.anything());
+
+    api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+    await nextTick();
+    expect(api.vncCanResize.value).toBe(true);
+    invoke.mockClear();
+
+    await api.applyVncResolution(1280, 800);
+    expect(invoke).toHaveBeenCalledWith("vnc/resize", {
+      sessionId: "vnc-1",
+      width: 1280,
+      height: 800,
+    });
+    expect(api.vncAutoFit.value).toBe(false);
+    expect(showError).not.toHaveBeenCalled();
+
+    api.enableVncAutoFit();
+    expect(api.vncAutoFit.value).toBe(true);
+    expect(api.vncScaleMode.value).toBe("fit");
+
+    await api.applyVncResolution(100, 100);
+    expect(showError).toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it("seeds the initial host clipboard, then syncs later changes to the remote", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, invoke, scope } = createHarness();
+      api.vncSurface.value = buildSurface();
+      invoke.mockResolvedValueOnce(startResult());
+      await api.startVncSession(connectOptions());
+      const bridge = (window as unknown as { dbxPlugin: { clipboard?: unknown } }).dbxPlugin;
+      const readText = vi.fn(async () => "initial clipboard");
+      bridge.clipboard = { readText, writeText: vi.fn(async () => undefined) };
+      invoke.mockClear();
+
+      api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readText).toHaveBeenCalled();
+      // Clipboard sharing pushes the current host clipboard to the remote once.
+      expect(invoke).toHaveBeenCalledWith("vnc/set-clipboard", {
+        sessionId: "vnc-1",
+        text: "initial clipboard",
+      });
+
+      readText.mockImplementation(async () => "changed clipboard");
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(invoke).toHaveBeenCalledWith("vnc/set-clipboard", {
+        sessionId: "vnc-1",
+        text: "changed clipboard",
+      });
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops automatic clipboard reads after three consecutive failures", async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, invoke, scope } = createHarness();
+      api.vncSurface.value = buildSurface();
+      invoke.mockResolvedValueOnce(startResult());
+      await api.startVncSession(connectOptions());
+      const bridge = (window as unknown as { dbxPlugin: { clipboard?: unknown } }).dbxPlugin;
+      const readText = vi.fn(async () => { throw new Error("read failed"); });
+      bridge.clipboard = { readText, writeText: vi.fn(async () => undefined) };
+
+      api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(readText).toHaveBeenCalledTimes(3);
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(readText).toHaveBeenCalledTimes(3);
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("writes remote clipboard text to the host and suppresses the poller echo", async () => {
+    const { api, invoke, scope } = createHarness();
+    api.vncSurface.value = buildSurface();
+    invoke.mockResolvedValueOnce(startResult());
+    await api.startVncSession(connectOptions());
+    const bridge = (window as unknown as { dbxPlugin: { clipboard?: unknown } }).dbxPlugin;
+    const readText = vi.fn(async () => "remote text");
+    const writeText = vi.fn(async () => undefined);
+    bridge.clipboard = { readText, writeText };
+
+    await api.receiveVncClipboard("remote text");
+    expect(writeText).toHaveBeenCalledWith("remote text");
+
+    invoke.mockClear();
+    api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+    await nextTick();
+    await vi.waitFor(() => expect(readText).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(invoke).not.toHaveBeenCalledWith("vnc/set-clipboard", expect.anything());
     scope.stop();
   });
 
@@ -332,16 +596,17 @@ describe("useVncSession frames, reattach and input", () => {
     const { api, invoke, showNotice, scope } = createHarness();
     invoke.mockResolvedValueOnce(startResult()).mockResolvedValue(undefined);
     await api.startVncSession(connectOptions());
+    api.handleVncFrame("vnc-1", frameHeader(1920, 1080));
+    await nextTick();
 
     const event = { kind: "pointer" as const, x: 12, y: 34, buttonMask: 1 };
     api.sendVncInput(event);
     expect(invoke).toHaveBeenNthCalledWith(2, "vnc/input", { sessionId: "vnc-1", ...event });
 
-    api.sendVncClipboard("hello");
+    await expect(api.sendVncClipboard("hello")).resolves.toBe(true);
     expect(invoke).toHaveBeenNthCalledWith(3, "vnc/set-clipboard", { sessionId: "vnc-1", text: "hello" });
-    expect(showNotice).toHaveBeenCalledWith("vnc.clipboardSent");
 
-    api.sendVncClipboard("");
+    await expect(api.sendVncClipboard("")).resolves.toBe(false);
     expect(invoke).toHaveBeenCalledTimes(3);
     scope.stop();
   });

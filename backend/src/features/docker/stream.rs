@@ -5,15 +5,14 @@
 
 use super::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::future::Future;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use dbx_plugin_sdk::PluginEmitter;
 use tokio::sync::{mpsc, watch, Notify};
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 use crate::sessions::ssh::SshRuntime;
 
@@ -36,8 +35,16 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 /// Upper bound an explicit stop waits for the forwarder to release its slot
 /// (the runner's own grace plus the channel close round-trip).
 const STOP_WAIT: Duration = Duration::from_secs(4);
+/// How long a closed owner scope (one log pane instance) rejects new starts.
+/// A start RPC that was already on the wire when the pane closed would
+/// otherwise register a follower nobody can stop; the tombstone is long
+/// enough to cover that round-trip and short enough to never affect a pane
+/// that reuses the same scope id (which the frontend does not do).
+const CLOSED_OWNER_TTL: Duration = Duration::from_secs(120);
 /// End-event error for a stream that hit [`STREAM_TTL`].
 const TIMEOUT_ERROR: &str = "stream timed out";
+/// Start error for a scope whose pane already closed (see [`CLOSED_OWNER_TTL`]).
+const CLOSED_OWNER_ERROR: &str = "Log stream scope is closed";
 /// End-event error for both transports' cancellation (SSH errors, the local
 /// runner exits 130 — the payload is normalized so the host sees one shape).
 const CANCELLED_ERROR: &str = "cancelled";
@@ -101,57 +108,10 @@ pub fn logs_follow_command(engine: &EngineConfig, container_id: &str, tail: u64)
     )
 }
 
-/// POSIX supervisor around [`logs_follow_command`].
-///
-/// Some sshd builds keep a channel counted against `MaxSessions` until its
-/// child exits, and the SSH `signal` request does not always reach the real
-/// `docker` process (forking login shells, wrapper scripts, servers that
-/// ignore signals for non-PTY sessions). The supervisor makes the child die
-/// without the server's help:
-///
-/// * the docker CLI is a background child of `sh`;
-/// * `HUP`/`TERM` (our abort path) kill that child explicitly;
-/// * a `cat` watcher also kills it on **stdin EOF** — the client's
-///   `CHANNEL_EOF`/`CHANNEL_CLOSE` closes the session's stdin pipe, which is
-///   guaranteed by the protocol even when signal requests are dropped.
-///
-/// `exec sh -c` makes the supervisor the session's direct child regardless of
-/// the login shell's exec/ fork behaviour, while docker's stdout still streams
-/// straight into the channel. The supervisor itself runs without a TTY and
-/// never reads the log output.
-pub fn supervised_logs_follow_command(
-    engine: &EngineConfig,
-    container_id: &str,
-    tail: u64,
-) -> String {
-    // `env VAR=…` instead of the plain command's `export …;` prefix keeps the
-    // launch a single external command, so `setsid` can make it a process
-    // group leader and `kill -PID` reaps forked wrapper children too.
-    let assignments = match engine.endpoint.as_deref() {
-        None => String::new(),
-        Some(endpoint) => format!("DOCKER_HOST={endpoint} CONTAINER_HOST={endpoint} "),
-    };
-    let body = format!(
-        "{}{} logs -f --tail {} {}",
-        assignments,
-        engine.cli,
-        clamp_tail(tail),
-        container_id
-    );
-    let launch = if assignments.is_empty() {
-        body
-    } else {
-        format!("env {body}")
-    };
-    // `$c` is assigned before the trap is defined, so the double-quoted trap
-    // expands the pid at definition time (the value we want to kill later).
-    // fd 3 preserves the channel's stdin for the watcher: POSIX gives
-    // background commands /dev/null on stdin when job control is off, which
-    // would otherwise make `cat` see instant EOF and kill the stream at once.
-    format!(
-        "exec sh -c 'exec 3<&0; if command -v setsid >/dev/null 2>&1; then setsid {launch} & else {launch} & fi; c=$!; trap \"kill -KILL $c 2>/dev/null; kill -KILL -$c 2>/dev/null; exit 0\" HUP TERM; ( cat <&3 >/dev/null; kill -KILL $c 2>/dev/null; kill -KILL -$c 2>/dev/null ) & w=$!; wait $c; kill $w 2>/dev/null'"
-    )
-}
+
+#[path = "stream_command.rs"]
+mod stream_command;
+pub use stream_command::supervised_logs_follow_command;
 
 /// Session ids whose Docker CLI runs under Windows `cmd.exe`, detected by the
 /// docker/list fallback. The log-follow supervisor is POSIX-only; Windows
@@ -193,81 +153,18 @@ fn follow_env_prefix(engine: &EngineConfig) -> String {
     }
 }
 
-/// One registered stream: the cancellation switch the runner watches, the
-/// start instant the TTL is measured from, and the signal the forwarder
-/// raises once the slot is released.
-pub(crate) struct StreamEntry {
-    cancel: watch::Sender<bool>,
-    started: Instant,
-    done: Arc<Notify>,
-}
-
-/// Registry of live log streams keyed by the `streamId` handed to the host.
-/// Entries are inserted before their tasks start (so a stop that races the
-/// spawn still cancels) and removed by the forwarder when the stream ends.
-pub struct DockerStreams {
-    inner: Mutex<HashMap<String, StreamEntry>>,
-}
+#[path = "stream_registry.rs"]
+mod stream_registry;
+pub use stream_registry::DockerStreams;
 
 impl DockerStreams {
-    pub fn new() -> Self {
-        Self {
-            inner: Mutex::new(HashMap::new()),
-        }
-    }
-
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, StreamEntry>> {
-        self.inner
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-    }
-
-    /// Admission check shared by both starts: an empty slot, returned locked
-    /// so the caller can register atomically (two racing starts cannot both
-    /// observe the last slot).
-    pub(crate) fn start_guard(
-        &self,
-    ) -> Result<MutexGuard<'_, HashMap<String, StreamEntry>>, String> {
-        let inner = self.lock();
-        if inner.len() >= MAX_ACTIVE_STREAMS {
-            return Err(format!(
-                "Too many active log streams ({MAX_ACTIVE_STREAMS}). Stop one before starting another."
-            ));
-        }
-        Ok(inner)
-    }
-
-    /// Reserves one slot and inserts the entry. The caller owns the returned
-    /// id for both the response and the chunk/end events.
-    fn register(&self, cancel: watch::Sender<bool>) -> Result<(String, Arc<Notify>), String> {
-        let mut inner = self.start_guard()?;
-        let stream_id = Uuid::new_v4().to_string();
-        let done = Arc::new(Notify::new());
-        inner.insert(
-            stream_id.clone(),
-            StreamEntry {
-                cancel,
-                started: Instant::now(),
-                done: Arc::clone(&done),
-            },
-        );
-        Ok((stream_id, done))
-    }
-
-    fn started_at(&self, stream_id: &str) -> Instant {
-        self.lock()
-            .get(stream_id)
-            .map(|entry| entry.started)
-            .unwrap_or_else(Instant::now)
-    }
-
     /// Starts following a container's logs over an SSH session. `command` is
     /// [`logs_follow_command`]'s rendering for the same engine/container;
     /// `tail` only documents (and debug-asserts) the baked-in clamp. Stop and
-    /// timeout go through [`crate::sessions::ssh::exec::abort_exec_channel`],
-    /// which signals the remote process group before closing the channel —
-    /// closing alone leaves `docker logs -f` running and its sshd session
-    /// allocated against `MaxSessions`.
+    /// timeout go through [`crate::sessions::ssh::exec::abort_stream_channel`],
+    /// which signals the remote supervisor (with a settle window for its trap)
+    /// before closing the channel — closing alone leaves `docker logs -f`
+    /// running and its sshd session allocated against `MaxSessions`.
     ///
     /// Must be called from inside the plugin's Tokio runtime (the RPC layer
     /// wraps it in `Runtime::block_on`): the runner and forwarder are spawned
@@ -277,6 +174,7 @@ impl DockerStreams {
         runtime: Arc<SshRuntime>,
         emitter: PluginEmitter,
         session_id: String,
+        owner: String,
         command: String,
         sudo: bool,
         tail: u64,
@@ -285,68 +183,69 @@ impl DockerStreams {
             command.contains(&format!("--tail {}", clamp_tail(tail))),
             "logs follow command must carry the clamped tail: {command}"
         );
+        // One log follower per SSH session: a new start (container switch)
+        // cancels every prior stream on the session, including legacy streams
+        // keyed on the session id. `register` repeats the same-owner
+        // supersede atomically, so even a racing start cannot leave two.
+        let owner = if owner.is_empty() {
+            session_id.clone()
+        } else {
+            owner
+        };
+        if self.is_owner_closed(&owner) {
+            return Err(CLOSED_OWNER_ERROR.to_string());
+        }
+        self.cancel_owner(&owner);
+        if owner != session_id {
+            self.cancel_session(&session_id);
+        }
+        let exec_session = session_id.clone();
         self.start_tracked(
             emitter,
             false,
             StreamLimits::default(),
+            owner,
+            session_id,
             move |sink, cancel| async move {
                 runtime
-                    .exec_stream(&session_id, &command, sudo, cancel, sink)
+                    .exec_stream(&exec_session, &command, sudo, cancel, sink)
                     .await
             },
         )
     }
 
     /// Starts following a container's logs on the sidecar's own daemon.
+    /// `owner` is the frontend log-pane scope; a new start on the same scope
+    /// cancels the previous stream (container switch) and a closed scope
+    /// rejects late starts (pane already gone).
     pub fn start_local(
         self: &Arc<Self>,
         emitter: PluginEmitter,
         engine: EngineConfig,
         container_id: String,
         tail: u64,
+        owner: String,
     ) -> Result<String, String> {
         validate_container_id(&container_id)?;
+        let owner = if owner.is_empty() {
+            "local".to_string()
+        } else {
+            owner
+        };
+        if self.is_owner_closed(&owner) {
+            return Err(CLOSED_OWNER_ERROR.to_string());
+        }
+        self.cancel_owner(&owner);
         self.start_tracked(
             emitter,
             true,
             StreamLimits::default(),
+            owner,
+            String::new(),
             move |sink, cancel| async move {
                 spawn_logs_stream(&engine, &container_id, tail, sink, cancel).await
             },
         )
-    }
-
-    /// Cancels one stream and waits (briefly) for its forwarder to release
-    /// the slot. Serialising stop→start keeps the next `logs -f` channel from
-    /// opening while the cancelled runner is still closing its own: a switch
-    /// otherwise piles two sessions onto the server's `MaxSessions` budget.
-    /// Returns false for unknown ids (already finished or never started), so
-    /// the RPC can answer `stopped: false` without treating it as an error.
-    pub async fn stop_and_wait(&self, stream_id: &str) -> bool {
-        let (cancel, done) = {
-            let inner = self.lock();
-            match inner.get(stream_id) {
-                Some(entry) => (entry.cancel.clone(), Arc::clone(&entry.done)),
-                None => return false,
-            }
-        };
-        let notified = done.notified();
-        let _ = cancel.send(true);
-        let _ = tokio::time::timeout(STOP_WAIT, notified).await;
-        true
-    }
-
-    /// Cancels and drops every registered stream. This is the teardown path
-    /// (registry `Drop`): the runners wind down through their own cancel
-    /// paths, so remote processes are reaped instead of abandoned.
-    pub fn stop_all(&self) {
-        let entries: Vec<StreamEntry> = {
-            let mut inner = self.lock();
-            inner.drain().map(|(_, entry)| entry).collect()
-        };
-        for entry in entries {
-            let _ = entry.cancel.send(true);
-        }
     }
 
     /// Shared start path: reserve a slot, spawn the runner, then the
@@ -356,6 +255,8 @@ impl DockerStreams {
         emitter: PluginEmitter,
         is_local: bool,
         limits: StreamLimits,
+        owner: String,
+        session: String,
         runner: F,
     ) -> Result<String, String>
     where
@@ -364,7 +265,7 @@ impl DockerStreams {
     {
         let (cancel, cancel_rx) = watch::channel(false);
         let (sink, chunks) = mpsc::channel(STREAM_CHANNEL_CAPACITY);
-        let (stream_id, done) = self.register(cancel.clone())?;
+        let (stream_id, done) = self.register(cancel.clone(), owner, session)?;
         let registry = Arc::clone(self);
         let forward_id = stream_id.clone();
         tokio::spawn(async move {
@@ -454,23 +355,8 @@ impl DockerStreams {
         };
         let payload = end_payload(&stream_id, result, &recent, is_local, reason);
         let _ = emitter.event("docker/logs/end", payload);
-        self.lock().remove(&stream_id);
+        self.remove(&stream_id);
         done.notify_one();
-    }
-}
-
-impl Default for DockerStreams {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Drop for DockerStreams {
-    /// Cancels leftovers when the registry itself is dropped, so a torn-down
-    /// plugin never leaves `docker logs -f` children or remote channels
-    /// running behind a dead host bridge.
-    fn drop(&mut self) {
-        self.stop_all();
     }
 }
 

@@ -81,6 +81,7 @@ async fn local_spawn_failure_releases_the_reserved_slot() {
             emitter,
             "d4a7c9f1e2b3",
             engine,
+            String::new(),
             Some("term-00000000"),
             80,
             24,
@@ -89,6 +90,51 @@ async fn local_spawn_failure_releases_the_reserved_slot() {
     assert!(error.contains("CLI not found on this machine"), "{error}");
     assert_eq!(registry.active_for_test(), 0);
     assert!(!registry.close_and_wait("term-00000000").await);
+}
+
+#[tokio::test]
+async fn closing_an_unknown_id_rejects_the_racing_open() {
+    let registry = DockerTerminals::new();
+    // A close that raced the open (pane torn down mid-open) tombstones the id.
+    assert!(!registry.close_and_wait("term-race-00").await);
+    let error = registry
+        .try_reserve_test("term-race-00", "pane-1", "sess-1")
+        .expect_err("a closed id must reject a late open");
+    assert!(error.contains("was closed"), "{error}");
+    assert_eq!(registry.active_for_test(), 0);
+}
+
+#[test]
+fn a_new_open_supersedes_the_same_pane_or_session() {
+    let registry = DockerTerminals::new();
+    let first = registry
+        .reserve_for_test("term-a-0000", "pane-1", "sess-1")
+        .expect("first");
+    let keep = registry
+        .reserve_for_test("term-b-0000", "pane-2", "sess-2")
+        .expect("other pane");
+    // Same owner, different id: the old PTY is cancelled, not doubled.
+    let _second = registry
+        .reserve_for_test("term-c-0000", "pane-1", "sess-1")
+        .expect("replacement");
+    assert!(*first.borrow(), "same-pane PTY is cancelled");
+    assert!(!*keep.borrow(), "another pane keeps its PTY");
+    assert_eq!(registry.active_for_test(), 2);
+}
+
+#[test]
+fn closing_a_session_cancels_only_its_terminals() {
+    let registry = DockerTerminals::new();
+    let first = registry
+        .reserve_for_test("term-a-0000", "pane-1", "sess-1")
+        .expect("first");
+    let other = registry
+        .reserve_for_test("term-b-0000", "pane-2", "sess-2")
+        .expect("other");
+    registry.cancel_session("sess-1");
+    assert!(*first.borrow());
+    assert!(!*other.borrow());
+    assert_eq!(registry.active_for_test(), 1);
 }
 
 #[tokio::test]

@@ -272,11 +272,11 @@ fn input_events_decode_from_the_documented_shapes() {
 }
 
 #[test]
-fn clipboard_guard_rejects_oversized_and_non_latin1() {
+fn clipboard_guard_is_utf8_and_byte_bounded() {
     assert!(validate_clipboard_text("hello").is_ok());
     assert!(validate_clipboard_text("").is_ok());
-    let error = validate_clipboard_text("中文").unwrap_err();
-    assert!(error.contains("Latin-1"), "{error}");
+    // vnc-rs exchanges UTF-8 cut text; Chinese host/remote text must pass.
+    assert!(validate_clipboard_text("中文剪贴板").is_ok());
     let error = validate_clipboard_text(&"x".repeat(1024 * 1024 + 1)).unwrap_err();
     assert!(error.contains("1 MiB"), "{error}");
 }
@@ -313,4 +313,182 @@ fn classify_routes_transport_as_retryable_only() {
     ] {
         assert!(!classify_vnc_error(protocol).1);
     }
+}
+
+// —— 2026-10-31 protocol depth: CopyRect / Tight JPEG / CursorPseudo ——
+
+fn rgba_rect(width: u16, height: u16, seed: u8) -> Vec<u8> {
+    (0..usize::from(width) * usize::from(height) * 4)
+        .map(|index| seed.wrapping_add(index as u8))
+        .collect()
+}
+
+#[test]
+fn copy_rect_composites_overlapping_regions() {
+    let mut framebuffer = VncFramebuffer::new(4, 2).expect("framebuffer");
+    let source = rgba_rect(2, 1, 10);
+    framebuffer
+        .apply_rgba(Rect { x: 0, y: 0, width: 2, height: 1 }, &source)
+        .expect("apply source");
+    let copied = framebuffer
+        .copy_rect(
+            Rect { x: 2, y: 1, width: 2, height: 1 },
+            Rect { x: 0, y: 0, width: 2, height: 1 },
+        )
+        .expect("copy");
+    assert_eq!(copied, source);
+    // The destination pixels, not just the temporary copy result, must land in
+    // the retained desktop used by reconnect repaints.
+    let frame = framebuffer.full_frame_bytes(0).expect("full frame");
+    let destination = FRAME_HEADER_BYTES + ((1 * 4) + 2) * 4;
+    assert_eq!(&frame[destination..destination + source.len()], source.as_slice());
+    // Out-of-bounds and mismatched sizes are rejected.
+    assert!(framebuffer
+        .copy_rect(
+            Rect { x: 3, y: 0, width: 2, height: 1 },
+            Rect { x: 0, y: 0, width: 2, height: 1 },
+        )
+        .is_err());
+    assert!(framebuffer
+        .copy_rect(
+            Rect { x: 0, y: 0, width: 1, height: 1 },
+            Rect { x: 0, y: 0, width: 2, height: 1 },
+        )
+        .is_err());
+}
+
+#[test]
+fn tight_jpeg_rect_decodes_to_rgba_and_checks_dimensions() {
+    let image = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+        2,
+        2,
+        image::Rgba([255, 0, 0, 255]),
+    ));
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
+        .encode_image(&image)
+        .expect("encode jpeg");
+    let pixels = decode_jpeg_rect(Rect { x: 0, y: 0, width: 2, height: 2 }, &jpeg)
+        .expect("decode jpeg");
+    assert_eq!(pixels.len(), 2 * 2 * 4);
+    assert!(pixels[0] > 200, "red channel should survive JPEG");
+    assert_eq!(pixels[3], 255, "alpha is opaque");
+    assert!(decode_jpeg_rect(Rect { x: 0, y: 0, width: 3, height: 2 }, &jpeg).is_err());
+}
+
+#[test]
+fn cursor_pseudo_payload_matches_the_rdp_pointer_shape() {
+    let bitmap = cursor_event_payload(
+        "s1",
+        Rect { x: 2, y: 3, width: 1, height: 1 },
+        &[10, 20, 30, 255],
+    );
+    assert_eq!(bitmap["type"], "bitmap");
+    assert_eq!(bitmap["width"], 1);
+    assert_eq!(bitmap["hotspotX"], 2);
+    assert_eq!(bitmap["hotspotY"], 3);
+    assert!(bitmap["rgbaBase64"].as_str().is_some_and(|value| !value.is_empty()));
+    let empty = cursor_event_payload("s1", Rect { x: 0, y: 0, width: 0, height: 0 }, &[]);
+    assert_eq!(empty["type"], "hidden");
+    let oversized = cursor_event_payload(
+        "s1",
+        Rect { x: 0, y: 0, width: 300, height: 1 },
+        &vec![0; 300 * 4],
+    );
+    assert_eq!(oversized["type"], "default");
+    let malformed = cursor_event_payload(
+        "s1",
+        Rect { x: 0, y: 0, width: 2, height: 2 },
+        &[1, 2, 3],
+    );
+    assert_eq!(malformed["type"], "default");
+}
+
+// —— 会话内动态分辨率（ExtendedDesktopSize）——————————————
+
+fn test_session_entry() -> VncSessionEntry {
+    VncSessionEntry {
+        connection_id: None,
+        workbench_id: "w-resize".to_string(),
+        host: "10.255.255.1".to_string(),
+        port: 5900,
+        runtime_host: "10.255.255.1".to_string(),
+        runtime_port: 5900,
+        password: None,
+        scale_mode: ScaleMode::Fit,
+        reconnect_attempts: DEFAULT_RECONNECT_ATTEMPTS,
+        created_at_secs: 0,
+        generation: AtomicU64::new(7),
+        frame_sequence: AtomicU64::new(0),
+        close_requested: AtomicBool::new(false),
+        command_sender: tokio::sync::Mutex::new(None),
+        framebuffer: tokio::sync::Mutex::new(None),
+    }
+}
+
+#[test]
+fn resize_size_gate_matches_the_framebuffer_contract() {
+    assert!(validate_resize_size(200, 200).is_ok());
+    assert!(validate_resize_size(2560, 1600).is_ok());
+    assert!(validate_resize_size(MAX_FRAMEBUFFER_WIDTH, MAX_FRAMEBUFFER_HEIGHT).is_ok());
+    assert!(validate_resize_size(199, 480).is_err());
+    assert!(validate_resize_size(640, 199).is_err());
+    assert!(validate_resize_size(MAX_FRAMEBUFFER_WIDTH + 1, 480).is_err());
+    assert!(validate_resize_size(640, MAX_FRAMEBUFFER_HEIGHT + 1).is_err());
+}
+
+#[test]
+fn desktop_layout_replaces_only_on_a_size_change() {
+    let mut framebuffer = Some(VncFramebuffer::new(4, 3).expect("framebuffer"));
+    assert!(apply_desktop_layout(&mut framebuffer, 8, 6).expect("layout"));
+    assert!(framebuffer.as_ref().expect("desktop").matches_size(8, 6));
+    // Same geometry keeps the retained pixels (no rebuild).
+    assert!(!apply_desktop_layout(&mut framebuffer, 8, 6).expect("layout"));
+    // Out-of-contract layouts fail the session rather than keeping bad state.
+    assert!(apply_desktop_layout(&mut framebuffer, 4000, 100).is_err());
+}
+
+#[tokio::test]
+async fn resize_queues_set_desktop_size_without_restarting_the_generation() {
+    let runtime = VncSessionRuntime::new();
+    let session_id = "vnc-live-resize".to_string();
+    let entry = Arc::new(test_session_entry());
+    entry.generation.store(4, Ordering::Release);
+    let (sender, mut receiver) = mpsc::channel(4);
+    *entry.command_sender.lock().await = Some(sender);
+    runtime
+        .sessions
+        .write()
+        .await
+        .insert(session_id.clone(), entry.clone());
+
+    let response = runtime
+        .resize(&session_id, 1600, 900)
+        .await
+        .expect("resize");
+    assert_eq!(response["live"], true);
+    match receiver.recv().await.expect("resize command") {
+        VncCommand::Resize { width, height } => assert_eq!((width, height), (1600, 900)),
+        _ => panic!("expected a live resize command"),
+    }
+    // No generation restart: the same engine applies SetDesktopSize.
+    assert_eq!(entry.generation.load(Ordering::Acquire), 4);
+}
+
+#[tokio::test]
+async fn resize_without_an_engine_reports_not_live() {
+    let runtime = VncSessionRuntime::new();
+    let session_id = "vnc-idle-resize".to_string();
+    let entry = Arc::new(test_session_entry());
+    runtime
+        .sessions
+        .write()
+        .await
+        .insert(session_id.clone(), entry);
+
+    let response = runtime
+        .resize(&session_id, 1440, 900)
+        .await
+        .expect("deferred resize");
+    assert_eq!(response["live"], false);
 }

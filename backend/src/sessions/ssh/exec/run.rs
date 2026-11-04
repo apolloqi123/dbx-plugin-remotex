@@ -221,6 +221,7 @@ pub async fn exec_with_sudo_cancellable(
         Some(timeout),
         cancel,
         None,
+        false,
     )
     .await
 }
@@ -251,12 +252,43 @@ pub(super) async fn abort_exec_channel(
     channel: &mut russh::Channel<russh::client::Msg>,
     error: String,
 ) -> String {
+    signal_and_close(channel, error, Duration::ZERO).await
+}
+
+/// Stream variant of [`abort_exec_channel`]. The remote `docker logs -f`
+/// supervisor cleans up its watcher children from a HUP/TERM trap, and a KILL
+/// cannot be caught: sending HUP and KILL back-to-back lets the KILL land
+/// before the trap runs, orphaning the watchdog for its full TTL (observed as
+/// a stray supervisor/`sleep` process in `ps` after a container switch). A
+/// short settle window between the signals gives the trap a chance to kill
+/// the whole process group before the uncatchable backstop.
+pub(super) async fn abort_stream_channel(
+    channel: &mut russh::Channel<russh::client::Msg>,
+    error: String,
+) -> String {
+    signal_and_close(channel, error, STREAM_SIGNAL_SETTLE).await
+}
+
+/// Settle window between HUP and TERM/KILL on stream channels.
+pub(super) const STREAM_SIGNAL_SETTLE: Duration = Duration::from_millis(100);
+
+async fn signal_and_close(
+    channel: &mut russh::Channel<russh::client::Msg>,
+    error: String,
+    settle: Duration,
+) -> String {
     // HUP first: interactive shells (notably bash inside a container behind
     // `docker exec`) ignore SIGTERM, so TERM alone can leave the remote client
     // alive and its sshd session/channel allocated. KILL is the backstop for
     // wrappers that install their own TERM/HUP handlers.
     let _ = channel.signal(russh::Sig::HUP).await;
+    if !settle.is_zero() {
+        tokio::time::sleep(settle).await;
+    }
     let _ = channel.signal(russh::Sig::TERM).await;
+    if !settle.is_zero() {
+        tokio::time::sleep(settle).await;
+    }
     let _ = channel.signal(russh::Sig::KILL).await;
     let _ = channel.eof().await;
     let _ = channel.close().await;

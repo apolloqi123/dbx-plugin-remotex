@@ -361,6 +361,42 @@ describe("useEditorTabs", () => {
     expect(tab.saving).toBe(false);
   });
 
+  it("重载：确认后丢弃本地修改并拉到远端最新内容", async () => {
+    const h = setupHarness();
+    h.files.set("/home/reload.txt", "old");
+    await h.editor.openEntry(entry("reload.txt", 3));
+    const tab = h.editor.tabs.value[0];
+    h.editor.updateText(tab.id, "local edit");
+    h.files.set("/home/reload.txt", "remote new");
+
+    confirmMock.mockResolvedValueOnce(false);
+    await h.editor.reloadTab(tab.id);
+    expect(tab.text).toBe("local edit");
+    expect(tab.dirty).toBe(true);
+
+    confirmMock.mockResolvedValueOnce(true);
+    await h.editor.reloadTab(tab.id);
+    expect(tab.text).toBe("remote new");
+    expect(tab.baseline).toBe("remote new");
+    expect(tab.dirty).toBe(false);
+    expect(h.notices).toContain('editSave.reloaded|{"name":"reload.txt"}');
+  });
+
+  it("重载失败：保留当前正文并在页签上显示错误", async () => {
+    const h = setupHarness();
+    h.files.set("/home/reload-fail.txt", "old");
+    await h.editor.openEntry(entry("reload-fail.txt", 3));
+    const tab = h.editor.tabs.value[0];
+    h.invoke.mockImplementationOnce(async () => {
+      throw new Error("remote gone");
+    });
+
+    await h.editor.reloadTab(tab.id);
+    expect(tab.text).toBe("old");
+    expect(tab.error).toBe("remote gone");
+    expect(tab.loading).toBe(false);
+  });
+
   it("关闭脏页签：确认取消则保留，确认后移除并落到相邻页签", async () => {
     const h = setupHarness();
     h.files.set("/home/a.txt", "a");

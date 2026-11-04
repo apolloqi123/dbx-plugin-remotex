@@ -226,6 +226,9 @@
    的 strong 先缩到 0，再不够宁可右缘裁切也不重叠。 */
 .toolbar-actions { flex: 0 0 auto; justify-content: flex-end; gap: 2px; }
 .toolbar-actions > * { flex: 0 0 auto; }
+/* 菜单/弹层包装 div 默认块级行盒会把按钮整体压低 0.5px（21px 行盒 vs 20px
+   圆钮），与直接子按钮形成上下错位；统一按 flex 居中，消除工具栏参差。 */
+.toolbar-actions > div { display: flex; align-items: center; }
 
 .icon-button, .link-button, .file-header button,
 /* 弹窗/路径栏按钮统一去默认样式；开关（data-slot="switch"）、下拉触发钮

@@ -7,8 +7,10 @@ use std::time::{Duration, Instant};
 
 /// Flush trigger: the batch is emitted once `pending` reaches this size, but a
 /// single larger incoming fragment can push a batch past it (the fragment is
-/// never split).
-pub const MAX_BATCH_BYTES: usize = 8 * 1024;
+/// never split). A verbose container otherwise hands the host bridge one JSON
+/// event per pipe read (hundreds per second); 64 KiB keeps the 100 ms latency
+/// ceiling while cutting that event rate by ~8×.
+pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 pub const BATCH_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct ChunkBatcher {

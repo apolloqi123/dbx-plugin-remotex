@@ -6,7 +6,7 @@
 // patch 头解码复用 vncFrame，状态覆盖层（connecting/reconnecting/closed）
 // 由 App.vue 的 terminal-overlay 分支承担，本组件只负责活的桌面画面与
 // 输入采集。
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   buildRdpKeyDownEvent,
   buildRdpKeyUpEvent,
@@ -18,25 +18,68 @@ import {
   type RdpInputEvent,
   type RdpPointerEvent,
 } from "../lib/rdpFrame";
+import { isLocalOnlyShortcut, isMacPlatform, isMetaCode, isPasteShortcut, metaMapsToControl } from "../lib/remoteKeyboard";
+import { cursorFromPointer } from "../lib/remoteCursor";
 
 interface Props {
   scaleMode: "fit" | "stretch" | "actual";
+  /** Connection-form clipboard toggle: when off, Cmd/Ctrl+V is forwarded as a
+   *  normal remote key instead of being intercepted for host sync. */
+  clipboardEnabled?: boolean;
 }
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), { clipboardEnabled: true });
 const emit = defineEmits<{
   input: [RdpInputEvent];
   "clipboard-out": [string];
+  /** Ctrl/Cmd+V：父组件读取宿主剪贴板并同步到远端。 */
+  "paste-request": [];
   /** 桌面尺寸随帧头变化时上报（P0-2 分辨率入口据此标记当前档位）。 */
   "desktop-size": [size: { width: number; height: number }];
+  /** 画布 CSS 尺寸变化（侧栏开合/窗口缩放）：自动匹配窗口模式据此重协商分辨率。 */
+  "container-resize": [size: { width: number; height: number }];
 }>();
+
+const isMac = typeof navigator !== "undefined" && isMacPlatform(navigator.userAgent, navigator.platform ?? "");
+const CONTROL_KEY = { key: "Control", code: "ControlLeft" } as const;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const holderRef = ref<HTMLDivElement | null>(null);
 const desktopSize = ref<{ width: number; height: number } | null>(null);
+const holderSize = ref<{ width: number; height: number }>({ width: 0, height: 0 });
 const focused = ref(false);
 const cursorStyle = ref("");
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  const holder = holderRef.value;
+  if (!holder || typeof ResizeObserver === "undefined") return;
+  let lastWidth = 0;
+  let lastHeight = 0;
+  resizeObserver = new ResizeObserver((entries) => {
+    const rect = entries[0]?.contentRect;
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    if (Math.abs(rect.width - lastWidth) < 1 && Math.abs(rect.height - lastHeight) < 1) return;
+    lastWidth = rect.width;
+    lastHeight = rect.height;
+    holderSize.value = { width: rect.width, height: rect.height };
+    emit("container-resize", { width: rect.width, height: rect.height });
+  });
+  resizeObserver.observe(holder);
+});
 
 const scaleClass = computed(() => `vnc-scale-${props.scaleMode}`);
+/** Fit mode fills the pane in both directions (up- and downscaling); explicit
+ * sizing keeps pointer mapping aligned with the visible bitmap. */
+const fitCanvasStyle = computed(() => {
+  if (props.scaleMode !== "fit" || !desktopSize.value) return undefined;
+  const { width, height } = holderSize.value;
+  if (width <= 0 || height <= 0) return undefined;
+  const scale = Math.min(width / desktopSize.value.width, height / desktopSize.value.height);
+  return {
+    width: `${Math.max(1, Math.round(desktopSize.value.width * scale))}px`,
+    height: `${Math.max(1, Math.round(desktopSize.value.height * scale))}px`,
+  };
+});
 
 // rAF 合帧队列：同一帧内的多个补丁一次绘制，避免高频 update 撕裂。
 // P0-1 卡顿优化（真机 22MB/8s 采样定位：burst 时多个 MB 级条带在同一 tick
@@ -164,48 +207,19 @@ function reset() {
 
 // —— rdp/pointer：服务端光标形状 → CSS cursor ————————————————
 
-/** bitmap 光标：原始 RGBA → canvas → PNG data URL（CSS cursor 只吃图片 URL）。 */
-function bitmapCursorUrl(pointer: Extract<RdpPointerEvent, { type: "bitmap" }>): string | null {
-  if (pointer.width <= 0 || pointer.height <= 0 || pointer.width > 256 || pointer.height > 256) return null;
-  let bytes: Uint8Array;
-  try {
-    bytes = window.dbxPlugin.decodeBase64(pointer.rgbaBase64);
-  } catch {
-    return null;
-  }
-  const expected = pointer.width * pointer.height * 4;
-  if (bytes.byteLength < expected) return null;
-  const canvas = document.createElement("canvas");
-  canvas.width = pointer.width;
-  canvas.height = pointer.height;
-  const context = canvas.getContext("2d");
-  if (!context) return null;
-  context.putImageData(new ImageData(new Uint8ClampedArray(bytes.subarray(0, expected)), pointer.width, pointer.height), 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
 function applyPointer(pointer: RdpPointerEvent) {
-  if (pointer.type === "default") {
-    cursorStyle.value = "";
-    return;
-  }
-  if (pointer.type === "hidden") {
-    cursorStyle.value = "none";
-    return;
-  }
-  // position 只回报服务端坐标，不改变本地光标形状（NyaTerm 同语义）。
-  if (pointer.type === "position") return;
-  const url = bitmapCursorUrl(pointer);
-  cursorStyle.value = url
-    ? `url(${url}) ${Math.max(0, pointer.hotspotX)} ${Math.max(0, pointer.hotspotY)}, default`
-    : "";
+  const next = cursorFromPointer(pointer);
+  if (next.changed) cursorStyle.value = next.cursor;
 }
 
-defineExpose({ acceptFrame, reset, applyPointer, perfStats });
+defineExpose({ acceptFrame, reset, applyPointer, perfStats, sendPasteShortcut });
 
 // —— 指针事件 → rdp/input ——
 
-function desktopPoint(event: MouseEvent): { x: number; y: number } | null {
+const pressedButtons = new Set<number>();
+let lastPointerPoint: { x: number; y: number } | null = null;
+
+function desktopPoint(event: PointerEvent | MouseEvent): { x: number; y: number } | null {
   const canvas = canvasRef.value;
   const size = desktopSize.value;
   if (!canvas || !size || size.width === 0 || size.height === 0) return null;
@@ -216,34 +230,71 @@ function desktopPoint(event: MouseEvent): { x: number; y: number } | null {
   return { x, y };
 }
 
-function onMouseMove(event: MouseEvent) {
+function capturePointer(event: PointerEvent) {
+  try {
+    canvasRef.value?.setPointerCapture(event.pointerId);
+  } catch {
+    // 鼠标捕获在部分 WebView 会抛 InvalidPointerId：不影响普通事件路径。
+  }
+}
+
+function releasePointer(event: PointerEvent) {
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  try {
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  } catch {
+    // Ignore host-specific capture failures.
+  }
+}
+
+function onPointerMove(event: PointerEvent) {
   const point = desktopPoint(event);
   if (!point) return;
+  lastPointerPoint = point;
   emit("input", { kind: "mouse-move", x: point.x, y: point.y });
 }
 
-function onMouseDown(event: MouseEvent) {
+function onPointerDown(event: PointerEvent) {
   event.preventDefault();
   canvasRef.value?.focus();
+  capturePointer(event);
   const point = desktopPoint(event);
   const button = mapDomButtonToRdpButton(event.button);
   if (!point || !button) return;
+  lastPointerPoint = point;
+  pressedButtons.add(event.button);
   emit("input", { kind: "mouse-button", button, pressed: true, x: point.x, y: point.y });
 }
 
-function onMouseUp(event: MouseEvent) {
+function onPointerUp(event: PointerEvent) {
   const point = desktopPoint(event);
   const button = mapDomButtonToRdpButton(event.button);
+  releasePointer(event);
+  pressedButtons.delete(event.button);
   if (!point || !button) return;
+  lastPointerPoint = point;
   emit("input", { kind: "mouse-button", button, pressed: false, x: point.x, y: point.y });
 }
 
-function onMouseLeave(event: MouseEvent) {
-  // 拖拽移出画布时补发 release，避免远端粘键。
-  const point = desktopPoint(event);
-  const button = mapDomButtonToRdpButton(event.button);
-  if (!point || !button) return;
-  emit("input", { kind: "mouse-button", button, pressed: false, x: point.x, y: point.y });
+function onPointerCancel(event: PointerEvent) {
+  releasePointer(event);
+  pressedButtons.clear();
+  pressedCodes.clear();
+  emit("input", { kind: "release-all" });
+}
+
+function onPointerLeave(event: PointerEvent) {
+  // Capture normally keeps drags inside the canvas; if the WebView refused it,
+  // release every held button at the last known point instead of leaking it.
+  if (canvasRef.value?.hasPointerCapture?.(event.pointerId)) return;
+  const point = desktopPoint(event) ?? lastPointerPoint;
+  if (!point) return;
+  for (const buttonNumber of pressedButtons) {
+    const button = mapDomButtonToRdpButton(buttonNumber);
+    if (button) emit("input", { kind: "mouse-button", button, pressed: false, x: point.x, y: point.y });
+  }
+  pressedButtons.clear();
 }
 
 function onContextMenu(event: MouseEvent) {
@@ -261,36 +312,73 @@ function onWheel(event: WheelEvent) {
 
 // —— 键盘事件 → rdp/input ——
 
+/** 真正发给远端的键码：只对它们发 keyup，粘贴/宿主快捷键不能漏成孤儿按键。 */
+const pressedCodes = new Set<string>();
+
+function emitKeyDown(key: string, code: string): boolean {
+  const input = buildRdpKeyDownEvent({ key, code });
+  if (input === null) return false;
+  pressedCodes.add(code);
+  emit("input", input);
+  return true;
+}
+
+function emitKeyUp(key: string, code: string): boolean {
+  const input = buildRdpKeyUpEvent({ key, code });
+  if (input === null) return false;
+  pressedCodes.delete(code);
+  emit("input", input);
+  return true;
+}
+
+/** 宿主 → 远端剪贴板写入后补发 Ctrl+V（macOS 同样映射为 Control），
+ *  让宿主的一次粘贴操作直接落到远端应用。若用户已经按住 Ctrl，则只补
+ *  V，避免重复按下并提前释放远端的 Control。 */
+function sendPasteShortcut() {
+  const syntheticControl = !pressedCodes.has(CONTROL_KEY.code);
+  if (syntheticControl) emitKeyDown(CONTROL_KEY.key, CONTROL_KEY.code);
+  emitKeyDown("v", "KeyV");
+  emitKeyUp("v", "KeyV");
+  if (syntheticControl) emitKeyUp(CONTROL_KEY.key, CONTROL_KEY.code);
+}
+
 function onKeyDown(event: KeyboardEvent) {
-  // Ctrl/Cmd+V：把本地剪贴板发给远端（rdp/set-clipboard 同步）。
-  if ((event.ctrlKey || event.metaKey) && event.code === "KeyV") {
+  // Ctrl/Cmd+V：剪贴板共享开启时交给父组件同步（读取/写入失败也会补发 Ctrl+V，
+  // 不会吞键）；关闭时按普通按键转发，让远端粘贴自己的剪贴板。
+  if (isPasteShortcut(event) && props.clipboardEnabled !== false) {
     event.preventDefault();
-    void navigator.clipboard
-      ?.readText()
-      .then((text) => {
-        if (text) emit("clipboard-out", text);
-      })
-      .catch(() => undefined);
+    emit("paste-request");
     return;
   }
-  // 浏览器留用的组合（刷新/查找等）不转发，避免远端与本地双重响应。
-  if (event.ctrlKey || event.metaKey) return;
-  const input = buildRdpKeyDownEvent(event);
-  if (input === null) return;
-  event.preventDefault();
-  emit("input", input);
+  // 只保留能帮用户离开远端的宿主快捷键（Cmd+W/Q、F5、DevTools 等）。
+  if (isLocalOnlyShortcut(event, isMac)) return;
+  // macOS：Cmd 映射成 Control（含 Meta 键本身），Cmd+C/A/Z 才能在远端生效。
+  if (metaMapsToControl(isMac, event.code) && isMetaCode(event.code)) {
+    event.preventDefault();
+    emitKeyDown(CONTROL_KEY.key, CONTROL_KEY.code);
+    // Track the physical Meta code too so keyup releases the synthetic Control.
+    pressedCodes.add(event.code);
+    return;
+  }
+  if (emitKeyDown(event.key, event.code)) event.preventDefault();
 }
 
 function onKeyUp(event: KeyboardEvent) {
-  const input = buildRdpKeyUpEvent(event);
-  if (input === null) return;
-  event.preventDefault();
-  emit("input", input);
+  if (isMac && isMetaCode(event.code) && pressedCodes.has(event.code)) {
+    event.preventDefault();
+    emitKeyUp(CONTROL_KEY.key, CONTROL_KEY.code);
+    pressedCodes.delete(event.code);
+    return;
+  }
+  if (!pressedCodes.has(event.code)) return;
+  pressedCodes.delete(event.code);
+  if (emitKeyUp(event.key, event.code)) event.preventDefault();
 }
 
 function onBlur() {
   focused.value = false;
   // 焦点丢失（切窗/切面板）发 release-all，避免远端粘键。
+  pressedCodes.clear();
   emit("input", { kind: "release-all" });
 }
 
@@ -305,6 +393,9 @@ function onPaste(event: ClipboardEvent) {
 onBeforeUnmount(() => {
   pendingPatches = [];
   reusableImage = null;
+  pressedCodes.clear();
+  resizeObserver?.disconnect();
+  resizeObserver = null;
 });
 </script>
 
@@ -314,11 +405,12 @@ onBeforeUnmount(() => {
       ref="canvasRef"
       class="vnc-canvas"
       tabindex="0"
-      :style="cursorStyle ? { cursor: cursorStyle } : undefined"
-      @mousedown="onMouseDown"
-      @mousemove="onMouseMove"
-      @mouseup="onMouseUp"
-      @mouseleave="onMouseLeave"
+      :style="[fitCanvasStyle, cursorStyle ? { cursor: cursorStyle } : undefined]"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerCancel"
+      @pointerleave="onPointerLeave"
       @contextmenu="onContextMenu"
       @wheel="onWheel"
       @keydown="onKeyDown"
@@ -347,6 +439,8 @@ onBeforeUnmount(() => {
   image-rendering: auto;
   outline: none;
   cursor: default;
+  touch-action: none;
+  user-select: none;
   /* 帧到来前 canvas 尺寸为 0，给画布一个可点击聚焦的最小区域。 */
   min-width: 320px;
   min-height: 200px;
@@ -373,5 +467,7 @@ onBeforeUnmount(() => {
 .vnc-scale-actual .vnc-canvas {
   max-width: none;
   max-height: none;
+  /* 1:1 显示在 Retina/HiDPI 上由设备像素放大，pixelated 保持像素锐利。 */
+  image-rendering: pixelated;
 }
 </style>

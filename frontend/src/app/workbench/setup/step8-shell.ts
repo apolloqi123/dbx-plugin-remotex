@@ -1,13 +1,15 @@
 /**
  * Batch send, connection info, recording, plugin events, metrics, disk usage, chmod, settings and modal wiring.
  */
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { type MetricsProcessSortKey, type ServerMetricsView } from "../../../features/metrics/components/ServerMetricsPanel.vue";
 import { useBatchSend } from "../../../features/terminal/composables/ui/useBatchSend";
 import { useConnectionInfo } from "../../../features/connections/composables/useConnectionInfo";
 import { useDockMetrics } from "../../../features/metrics/composables/useDockMetrics";
 import { useMetricsPanel } from "../../../features/metrics/composables/useMetricsPanel";
 import { usePluginEvents } from "../composables/usePluginEvents";
+import { useRemoteFileTransfer } from "../../../features/remote-desktop/composables/useRemoteFileTransfer";
+import { useVncRemoteClipboard } from "../../../features/remote-desktop/composables/useVncRemoteClipboard";
 import { useRecording } from "../../../features/recording/composables/useRecording";
 import { useSftpChmod } from "../../../features/sftp/composables/actions/useSftpChmod";
 import { useWorkbenchModals } from "../composables/useWorkbenchModals";
@@ -27,7 +29,7 @@ export function installWorkbenchShell(deps: Deps) {
   applyChosenDirAsDefault, askDownloadTarget, attrsMode, attrsTarget, auditClearOpen, auditClearSubmitting,
   auditOpen, batchDeleteOpen, batchDeleteSubmitting, canWrite, clearSftpDetailCache,
   closeAttributes, closeDockerPane, closePreview, closeRightPanel, commandHistory,
-  confirmRiskyPaste, connectLog, connected, connectionReadOnly, currentPath, customEditorOpen,
+  confirmRiskyPaste, connectLog, connected, connection, connectionId, connectionReadOnly, currentPath, customEditorOpen,
   deleteTarget, diskUsage, dockerPaneOpen, downloadConflictPrompt, downloadPrompt, dropUploadPrompt,
   editorPaneContainsFocus, fileMenu, folderPickerTarget, forwardsMenuOpen, handleWatchModified, hasEditorTabs, hostKeyPrompt,
   hostTerminalFontFamily, importPanelOpen, isLocalMode, loadDirectory, loadDownloadDir, loadDownloadUseDefaultDir,
@@ -36,7 +38,7 @@ export function installWorkbenchShell(deps: Deps) {
   operationDialog, otpPanelOpen, panelPaletteOpen, panelSurface, pasteConfirm, bookmarksOpen,
   pendingConfirmDialog, persistCommandHistory, previewOpen, probeLocalCapabilities, profilesOpen, pushTerminalCommandHistory,
   quickCommands, quickMenuOpen, rdpCertPrompt, rdpCertRemember, rdpClipboardChunks, rdpDialogOpen,
-  rdpPasteOpen, rdpResolutionOpen, rdpSession, rdpState, rdpSurface, reconnectPending,
+  rdpPasteOpen, rdpResolutionOpen, rdpFileHintOpen, rdpSession, rdpState, rdpSurface, receiveRdpClipboard, receiveRdpClipboardFiles, receiveRdpClipboardStatus, reconnectPending, vncResolutionOpen,
   refreshAgentMode, resolveDownloadConflict, resolveDownloadConflictFor, resolveDownloadPrompt, resolveDropUpload, resolvePasteConfirm,
   resolvePendingConfirmDialog, resolveUploadDuplicate, revealTransferTarget, rightPanelView, saveActive, saveHostFile,
   scheduleReconnect, serialDialogOpen, serialSession, serialUpload, serialUploadDialogOpen, session,
@@ -45,8 +47,64 @@ export function installWorkbenchShell(deps: Deps) {
   telnetDialogOpen, telnetError, telnetSession, telnetState, terminalAppearance, terminalDiag,
   terminalFontOverride, terminalInputQueue, terminalMenuOpen, terminalState, terminalTheme, transferHistoryClearOpen,
   transferHistoryMenu, transferPanelOpen, updateTransfer, uploadAckWaiters, uploadDuplicatePrompt, vncDialogOpen,
-  vncError, vncSession, vncState, watchModifiedQueue,
+  vncError, receiveVncClipboard, vncSession, vncState, vncSurface, watchModifiedQueue,
+  pasteVncClipboard, workbenchId,
   } = deps;
+
+  // Remote-desktop file transfer (RDP/VNC toolbar): the controller owns the
+  // PTY-free SFTP session and both panes; the floating window is a pure view.
+  const remoteFileTransfer = useRemoteFileTransfer({
+    t,
+    showError,
+    showNotice,
+    workbenchId: () => workbenchId.value,
+    connectionId: () => connectionId.value,
+    initialHost: () => connection.value.host || "",
+    initialUsername: () => connection.value.username || "",
+  });
+  const remoteFileTransferOpen = ref(false);
+  // VNC file copy: RFB only carries text, so the remote X11 file list is read
+  // through the transfer session and downloaded onto the Mac clipboard.
+  const vncRemoteClipboard = useVncRemoteClipboard({
+    t,
+    showError,
+    showNotice,
+    sessionId: () => remoteFileTransfer.session.value?.sessionId ?? null,
+    vncSessionId: () => vncSession.value?.sessionId ?? null,
+    active: () => vncState.value === "running",
+    busy: () => remoteFileTransfer.busy.value,
+  });
+  const probeVncRemoteClipboard = () => vncRemoteClipboard.probe();
+
+  function openRemoteFileTransfer(files?: string[]) {
+    if (files && files.length) remoteFileTransfer.queueLocalPaths(files);
+    remoteFileTransfer.open();
+    remoteFileTransferOpen.value = true;
+  }
+
+  // Saved key/agent settings (and an in-memory password) reconnect the
+  // companion SFTP session as soon as a VNC desktop starts, so the window opens
+  // with both panes populated and VNC file copy is ready. RDP is excluded: it
+  // transfers files over CLIPRDR and must not spawn a second SSH session.
+  watch(
+    () => [vncState.value, connection.value.host] as const,
+    ([vnc, host]) => {
+      if (host && vnc === "running") remoteFileTransfer.autoConnect();
+    },
+    { immediate: true },
+  );
+
+  /** VNC Ctrl/Cmd+V with a Finder file list: open the transfer window with
+   * those paths queued instead of doing nothing on an empty text clipboard. */
+  async function pasteVncWithFileClipboard() {
+    const files = await remoteFileTransfer.detectClipboardFiles();
+    if (files.length) {
+      openRemoteFileTransfer(files);
+      showNotice(t("remoteFiles.clipboardDetected", { count: files.length }));
+      return;
+    }
+    await pasteVncClipboard();
+  }
 
   const {
     batchBarOpen,
@@ -225,9 +283,9 @@ export function installWorkbenchShell(deps: Deps) {
     scheduleSessionReconnect: scheduleReconnect, reconnectPending,
     localSession, markLocalExited,
     telnetSession, telnetState, telnetError, markTelnetClosed,
-    vncSession, vncState, vncError, markVncClosed,
+    vncSession, vncState, vncError, vncSurface, markVncClosed, onVncClipboard: receiveVncClipboard,
     serialSession, markSerialClosed, serialUpload,
-    rdpSession, rdpState, rdpSurface, rdpClipboardChunks,
+    rdpSession, rdpState, rdpSurface, rdpClipboardChunks, onRdpClipboard: receiveRdpClipboard, onRdpClipboardFiles: receiveRdpClipboardFiles, onRdpClipboardStatus: receiveRdpClipboardStatus,
     agentPromptQueue, agentRunning, recordingActive, startRecordingClock,
     handleWatchModified, uploadAckWaiters, updateTransfer,
   });
@@ -389,6 +447,8 @@ export function installWorkbenchShell(deps: Deps) {
     panelPaletteOpen.value = false;
     rdpPasteOpen.value = false;
     rdpResolutionOpen.value = false;
+    rdpFileHintOpen.value = false;
+    vncResolutionOpen.value = false;
     batchQuickOpen.value = false;
     forwardsMenuOpen.value = false;
   }
@@ -506,6 +566,7 @@ export function installWorkbenchShell(deps: Deps) {
     recordingClearAllSubmitting, confirmRecordingClearAll, REPLAY_EVENT_CAP, replayDurationMs, loadReplayEvents, openReplay, closeReplay, stopReplayLoop,
     replayFrame, toggleReplayPlay, onReplaySeek, exportRecordingGif, exportReplayGif, exportRecordingFromList, formatDuration, formatRecordedAt,
     bindReplayHost, handlePluginEvent, handleEvent, metricsOpen, processesOpen, processRows, processLoading, processSortKey,
+    remoteFileTransfer, remoteFileTransferOpen, openRemoteFileTransfer, pasteVncWithFileClipboard, probeVncRemoteClipboard,
     metrics, metricsLoading, metricsError, metricSamples, recordMetricSamples, metricsRxSparkline, metricsTxSparkline, metricsCpuSparkline,
     metricsMemSparkline, visibleDiskMounts, visibleNetworkInterfaces, metricsDistroBadge, refreshMetrics, openMetrics, closeMetrics, backfillMetricsHistory,
     toggleProcessPanel, refreshProcessList, sortedProcessRows, PROCESS_VISIBLE_LIMIT, visibleProcessRows, killProcessRow, metricsView, setMetricsProcessSort,

@@ -172,6 +172,83 @@ describe("container list selection", () => {
   });
 });
 
+describe("container search", () => {
+  const rows = (): Row[] => [
+    { id: "d4a7c9f1", name: "web-nginx", state: "running", image: "nginx:1.27", ports: "0.0.0.0:8080->80/tcp" },
+    { id: "9f8e7d6c", name: "cache-redis", state: "running", image: "redis:7-alpine", ports: "127.0.0.1:6379->6379/tcp" },
+    { id: "1a2b3c4d", name: "db-postgres", state: "running", image: "postgres:16" },
+  ];
+
+  it("filters rows by substring, subsequence and AND terms, then restores on clear", async () => {
+    stubHost(rows());
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      const input = wrapper.get(".docker-search-input");
+      expect(input.attributes("placeholder")).toBe("docker.searchPlaceholder");
+      expect(wrapper.findAll(".container-row")).toHaveLength(3);
+
+      await input.setValue("redis");
+      expect(wrapper.findAll(".container-row")).toHaveLength(1);
+      expect(wrapper.text()).toContain("cache-redis");
+
+      // 子序列模糊：wng → web-nginx。
+      await input.setValue("wng");
+      expect(wrapper.findAll(".container-row")).toHaveLength(1);
+      expect(wrapper.text()).toContain("web-nginx");
+
+      // 多词 AND：名字 + 端口。
+      await input.setValue("web 8080");
+      expect(wrapper.findAll(".container-row")).toHaveLength(1);
+
+      await input.setValue("no-such-container");
+      expect(wrapper.findAll(".container-row")).toHaveLength(0);
+      expect(wrapper.text()).toContain("docker.searchEmpty");
+
+      await input.trigger("keydown", { key: "Escape" });
+      expect((input.element as HTMLInputElement).value).toBe("");
+      expect(wrapper.findAll(".container-row")).toHaveLength(3);
+      expect(wrapper.find(".docker-search-clear").exists()).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("shows a clear button that resets the query", async () => {
+    stubHost(rows());
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      const input = wrapper.get(".docker-search-input");
+      await input.setValue("redis");
+      expect(wrapper.find(".docker-search-clear").exists()).toBe(true);
+      await wrapper.get(".docker-search-clear").trigger("click");
+      expect((input.element as HTMLInputElement).value).toBe("");
+      expect(wrapper.findAll(".container-row")).toHaveLength(3);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("combines with the state filter", async () => {
+    stubHost([
+      { id: "run111", name: "web-nginx", state: "running" },
+      { id: "stop22", name: "web-legacy", state: "exited", status: "Exited (0) 1 minute ago" },
+    ]);
+    const wrapper = mountList();
+    try {
+      await flushPromises();
+      await wrapper.get(".docker-search-input").setValue("web");
+      expect(wrapper.findAll(".container-row")).toHaveLength(2);
+      await wrapper.get(".container-filter-select").setValue("stopped");
+      expect(wrapper.findAll(".container-row")).toHaveLength(1);
+      expect(wrapper.text()).toContain("web-legacy");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+});
+
 async function terminalCommand(cli = ""): Promise<string> {
   saveDockerEngineSettings("test-connection", { cli, socket: "", host: "" });
   stubHost([{ id: "abc123", name: "test", state: "running" }]);

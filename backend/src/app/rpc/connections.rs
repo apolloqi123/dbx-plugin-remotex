@@ -106,6 +106,20 @@ impl Plugin {
                     return Ok(json!({ "success": true }));
                 }
                 let connection = StoredConnection::from_lifecycle_params(&params)?;
+                // A host re-push can arrive right after a deferred disconnect.
+                // Keep the live PTY when the transport identity is unchanged;
+                // changed host/port/credentials still take the fresh path.
+                if let Some(previous) = self.cancel_pending_ssh_disconnect(&connection.id) {
+                    let same = super::super::lifecycle_grace::same_ssh_transport(&previous, &connection);
+                    crate::platform::diagnostics::log_lifecycle_debug(format!(
+                        "connection-repush id={} same_transport={same}",
+                        connection.id
+                    ));
+                    if !same {
+                        self.runtime
+                            .block_on(self.ssh.disconnect_connection(&connection.id))?;
+                    }
+                }
                 self.ssh.store_connection(connection)?;
                 Ok(json!({ "success": true }))
             }
@@ -146,12 +160,23 @@ impl Plugin {
                 // 本地 Shell 目标的登记随断开清除；SSH/telnet/vnc 连接 id 不在
                 // local_targets 里，此调用为空操作。
                 self.ssh.drop_local_target(connection_id);
-                self.runtime
-                    .block_on(self.ssh.disconnect_connection(connection_id))?;
+                // 宿主在编辑连接/重建工作台时会断开并立刻重推同一条 SSH
+                // 连接；有存活 PTY 时先延迟几秒，让紧随其后的 connect 取消
+                // 断开并保留终端（生命周期见 app/lifecycle_grace.rs）。
+                let deferred = self.schedule_ssh_disconnect_if_live(connection_id);
+                let ssh_result = if deferred {
+                    Ok(())
+                } else {
+                    self.runtime
+                        .block_on(self.ssh.disconnect_connection(connection_id))
+                };
                 self.runtime
                     .block_on(self.telnet.close_connection(connection_id));
                 self.runtime
                     .block_on(self.vnc.close_connection(connection_id));
+                self.runtime
+                    .block_on(self.rdp.close_connection(connection_id));
+                ssh_result?;
                 Ok(json!({ "success": true }))
             }
 

@@ -39,6 +39,8 @@ interface Props {
   transferBusy: boolean;
   /** 工作台通知：分屏页签里的 AI 结果/失败提示与主终端共用同一 toast。 */
   notify?: (message: string) => void;
+  /** Remote-desktop surface: hide the terminal tab strip so the canvas fills. */
+  hideTabs?: boolean;
   /** 0 = 布局树根实例（唯一持有分屏终端实例与宿主）。 */
   depth?: number;
 }
@@ -205,6 +207,7 @@ watch(shellPaneEntries, (entries) => {
     @focusin.capture="emit('activatePane', leafPaneId)"
   >
     <TerminalPaneTabs
+      v-if="!hideTabs"
       :tabs="node.tabs"
       :active-id="node.activeTabId"
       :t="t"

@@ -2,6 +2,9 @@
 
 use super::*;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
+
 /// Dial timeout for the initial TCP connect (same contract as Telnet).
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -21,10 +24,6 @@ pub(crate) const REFRESH_ARM_DELAY: Duration = Duration::from_secs(86_400);
 
 /// Bounded backpressure for input/clipboard commands.
 pub(crate) const COMMAND_CHANNEL_CAPACITY: usize = 256;
-
-pub(crate) const TIGHT_UNSUPPORTED: &str =
-    "The VNC server sent a Tight/JPEG update; this client supports \
-     Raw and ZRLE encodings only. Configure the server to allow Raw or ZRLE.";
 
 pub(crate) fn spawn_worker(
     session_id: String,
@@ -159,8 +158,13 @@ pub(crate) async fn run_generation(
             }
         })
         .set_pixel_format(PixelFormat::rgba())
+        .add_encoding(VncEncoding::ExtendedDesktopSizePseudo)
         .add_encoding(VncEncoding::DesktopSizePseudo)
+        .add_encoding(VncEncoding::CursorPseudo)
+        .add_encoding(VncEncoding::CopyRect)
         .add_encoding(VncEncoding::Zrle)
+        .add_encoding(VncEncoding::Trle)
+        .add_encoding(VncEncoding::Tight)
         .add_encoding(VncEncoding::Raw)
         .allow_shared(true)
         .build()
@@ -272,6 +276,9 @@ pub(crate) async fn run_generation(
                         break GenerationEnd::failed(error);
                     }
                 }
+                Some(VncCommand::Resize { width, height }) => {
+                    spawn_resize(client.clone(), session_id.to_string(), width, height);
+                }
                 Some(VncCommand::Clipboard(text)) => {
                     if let Err(error) = client.input(X11Event::CopyText(text)).await {
                         break GenerationEnd::failed(error);
@@ -364,36 +371,16 @@ pub(crate) async fn handle_vnc_event(
             None
         }
         VncEvent::RawImage(rect, pixels) => {
-            let mut framebuffer = entry.framebuffer.lock().await;
-            if framebuffer.is_none() {
-                // Some servers stream rects before the DesktopSize pseudo
-                // encoding; derive the desktop from the rect like NyaTerm.
-                let width = u32::from(rect.x)
-                    .checked_add(u32::from(rect.width))
-                    .and_then(NonZeroU32::new)
-                    .and_then(|size| u16::try_from(size.get()).ok());
-                let height = u32::from(rect.y)
-                    .checked_add(u32::from(rect.height))
-                    .and_then(NonZeroU32::new)
-                    .and_then(|size| u16::try_from(size.get()).ok());
-                let (Some(width), Some(height)) = (width, height) else {
+            let mut framebuffer = match entry.framebuffer_for(rect).await {
+                Ok(framebuffer) => framebuffer,
+                Err(error) => {
                     return Some(GenerationEnd::Failed {
-                        error: "VNC rectangle bounds overflow".to_string(),
+                        error,
                         retryable: false,
                         was_active: true,
                     });
-                };
-                match VncFramebuffer::new(width, height) {
-                    Ok(created) => *framebuffer = Some(created),
-                    Err(error) => {
-                        return Some(GenerationEnd::Failed {
-                            error,
-                            retryable: false,
-                            was_active: true,
-                        });
-                    }
                 }
-            }
+            };
             let desktop = framebuffer.as_mut().expect("framebuffer initialized");
             if let Err(error) = desktop.apply_rgba(rect, &pixels) {
                 return Some(GenerationEnd::Failed {
@@ -415,35 +402,182 @@ pub(crate) async fn handle_vnc_event(
             }
             None
         }
-        VncEvent::Text(text) => {
-            // Inbound clipboard; the same Latin-1/1MiB guard as outbound.
-            if validate_clipboard_text(&text).is_ok() {
-                let _ = emitter.event(
-                    "vnc/clipboard",
-                    json!({ "sessionId": session_id, "text": text }),
-                );
+        VncEvent::JpegImage(rect, jpeg) => {
+            let pixels = match decode_jpeg_rect(rect, &jpeg) {
+                Ok(pixels) => pixels,
+                Err(error) => {
+                    return Some(GenerationEnd::Failed {
+                        error,
+                        retryable: false,
+                        was_active: true,
+                    });
+                }
+            };
+            let mut framebuffer = match entry.framebuffer_for(rect).await {
+                Ok(framebuffer) => framebuffer,
+                Err(error) => {
+                    return Some(GenerationEnd::Failed {
+                        error,
+                        retryable: false,
+                        was_active: true,
+                    });
+                }
+            };
+            let desktop = framebuffer.as_mut().expect("framebuffer initialized");
+            if let Err(error) = desktop.apply_rgba(rect, &pixels) {
+                return Some(GenerationEnd::Failed {
+                    error,
+                    retryable: false,
+                    was_active: true,
+                });
+            }
+            let sequence = entry.frame_sequence.fetch_add(1, Ordering::AcqRel);
+            match desktop.patch_bytes(sequence, rect, &pixels) {
+                Ok(frame) => publish_frame(session_id, &frame, emitter),
+                Err(error) => {
+                    return Some(GenerationEnd::Failed {
+                        error,
+                        retryable: false,
+                        was_active: true,
+                    });
+                }
             }
             None
         }
-        VncEvent::JpegImage(_, _) => Some(GenerationEnd::Failed {
-            error: TIGHT_UNSUPPORTED.to_string(),
-            retryable: false,
-            was_active: true,
-        }),
-        VncEvent::Copy(_, _) | VncEvent::SetCursor(_, _) => Some(GenerationEnd::Failed {
-            error: "The VNC server sent an encoding this client never requested".to_string(),
-            retryable: false,
-            was_active: true,
-        }),
+        VncEvent::Copy(dst, src) => {
+            let mut framebuffer = entry.framebuffer.lock().await;
+            let Some(desktop) = framebuffer.as_mut() else {
+                // Servers without DesktopSizePseudo may copy before the first
+                // raw rect. Visual-only: ignore instead of killing the session.
+                eprintln!(
+                    "[dbx-plugin-sshx] vnc CopyRect before desktop size; ignoring this update"
+                );
+                return None;
+            };
+            let pixels = match desktop.copy_rect(dst, src) {
+                Ok(pixels) => pixels,
+                Err(error) => {
+                    return Some(GenerationEnd::Failed {
+                        error,
+                        retryable: false,
+                        was_active: true,
+                    });
+                }
+            };
+            let sequence = entry.frame_sequence.fetch_add(1, Ordering::AcqRel);
+            match desktop.patch_bytes(sequence, dst, &pixels) {
+                Ok(frame) => publish_frame(session_id, &frame, emitter),
+                Err(error) => {
+                    return Some(GenerationEnd::Failed {
+                        error,
+                        retryable: false,
+                        was_active: true,
+                    });
+                }
+            }
+            None
+        }
+        VncEvent::Text(text) => {
+            // Inbound clipboard; the same UTF-8/1 MiB guard as outbound.
+            if validate_clipboard_text(&text).is_ok() {
+                super::clipboard::forward_text(session_id, text, emitter);
+            }
+            None
+        }
+        VncEvent::SetCursor(rect, pixels) => {
+            let payload = cursor_event_payload(session_id, rect, &pixels);
+            let _ = emitter.event("vnc/pointer", payload);
+            None
+        }
+        VncEvent::DesktopUpdate(update) => {
+            // ExtendedDesktopSize reply (our resize or another client's):
+            // the retained desktop must adopt the new geometry before the
+            // following image updates arrive, otherwise their bounds check
+            // fails against the old framebuffer.
+            let Some(layout) = update.layout else {
+                return None;
+            };
+            let mut framebuffer = entry.framebuffer.lock().await;
+            match apply_desktop_layout(&mut framebuffer, layout.width, layout.height) {
+                Ok(_) => None,
+                Err(error) => Some(GenerationEnd::Failed {
+                    error,
+                    retryable: false,
+                    was_active: true,
+                }),
+            }
+        }
         VncEvent::Error(message) => Some(GenerationEnd::Failed {
             error: message,
             retryable: false,
             was_active: true,
         }),
-        // SetPixelFormat (we pin the format), Bell, DesktopUpdate (layout
-        // bookkeeping) and future variants carry no pixels.
+        // SetPixelFormat (we pin the format), Bell and future variants carry
+        // no pixels or layout.
         _ => None,
     }
+}
+
+/// Decodes a Tight JPEG rect to tightly packed RGBA. The JPEG dimensions are
+/// read from the header and must match the rect before any full decode, so a
+/// tiny malicious JPEG cannot force a huge allocation; decode limits repeat
+/// the bound as a second line of defence.
+pub(crate) fn decode_jpeg_rect(rect: Rect, jpeg: &[u8]) -> Result<Vec<u8>, String> {
+    if rect.width == 0
+        || rect.height == 0
+        || rect.width > MAX_FRAMEBUFFER_WIDTH
+        || rect.height > MAX_FRAMEBUFFER_HEIGHT
+    {
+        return Err("VNC Tight JPEG rect is outside the supported bounds".to_string());
+    }
+    let expected_width = u32::from(rect.width);
+    let expected_height = u32::from(rect.height);
+    let dimensions = image::ImageReader::with_format(
+        std::io::Cursor::new(jpeg),
+        image::ImageFormat::Jpeg,
+    )
+    .into_dimensions()
+    .map_err(|error| format!("VNC Tight JPEG header is invalid: {error}"))?;
+    if dimensions != (expected_width, expected_height) {
+        return Err(format!(
+            "VNC Tight JPEG dimensions {}x{} do not match rect {}x{}",
+            dimensions.0, dimensions.1, rect.width, rect.height
+        ));
+    }
+    let mut reader =
+        image::ImageReader::with_format(std::io::Cursor::new(jpeg), image::ImageFormat::Jpeg);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(expected_width);
+    limits.max_image_height = Some(expected_height);
+    limits.max_alloc = Some(u64::from(expected_width) * u64::from(expected_height) * 8);
+    reader.limits(limits);
+    let image = reader
+        .decode()
+        .map_err(|error| format!("VNC Tight JPEG decode failed: {error}"))?;
+    Ok(image.to_rgba8().into_raw())
+}
+
+/// Cursor pseudo-encoding → same `vnc/pointer` shape as RDP so the frontend
+/// can reuse one CSS-cursor path. 0×0 means the server asked for no cursor
+/// (RFC 6143 7.8.1) → `hidden`; oversized/malformed payloads fall back to the
+/// default cursor instead of tearing the session down (visual-only data).
+pub(crate) fn cursor_event_payload(session_id: &str, rect: Rect, pixels: &[u8]) -> Value {
+    if rect.width == 0 || rect.height == 0 {
+        return json!({ "sessionId": session_id, "type": "hidden" });
+    }
+    let expected = usize::from(rect.width) * usize::from(rect.height) * BYTES_PER_PIXEL;
+    if rect.width > 256 || rect.height > 256 || expected == 0 || pixels.len() != expected {
+        return json!({ "sessionId": session_id, "type": "default" });
+    }
+    json!({
+        "sessionId": session_id,
+        "type": "bitmap",
+        "width": rect.width,
+        "height": rect.height,
+        "hotspotX": rect.x,
+        "hotspotY": rect.y,
+        "rgbaBase64": BASE64_STANDARD.encode(pixels),
+    })
 }
 
 pub(crate) fn publish_frame(session_id: &str, frame: &[u8], emitter: &PluginEmitter) {

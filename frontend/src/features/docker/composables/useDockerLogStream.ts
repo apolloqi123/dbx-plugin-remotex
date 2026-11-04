@@ -11,7 +11,14 @@ import { rpc } from "../../../shared/lib/rpc";
 import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
 import { LogBuffer } from "../lib/dockerLogBuffer";
 import { clearPendingDockerLogEvents, registerDockerLogStream, type DockerLogEvent } from "../lib/dockerLogEvents";
+import {
+  closeDockerLogOwner,
+  isDockerLogStreamRegistryClosed,
+  registerDockerLogOwner,
+  trackDockerLogStream,
+} from "../lib/dockerLogStreamRegistry";
 import { LOGS_TIMEOUT_MS } from "../lib/dockerPanelModel";
+import { createDockerScopeOwner } from "../lib/dockerScopeOwner";
 
 export type DockerLogStreamStatus = "idle" | "starting" | "streaming" | "ended" | "error";
 
@@ -20,6 +27,7 @@ export const DEFAULT_LOG_TAIL = 200;
 /** 收流 RPC 的有界等待：流可能已被 TTL/断线收口，不能无限挂起。 */
 const STOP_TIMEOUT_MS = 10_000;
 
+
 export interface DockerLogStreamOptions {
   /** 工作台绑定的 SSH 会话；缺省时按 target:"local" 查询本机 daemon。 */
   sessionId?: () => string | undefined;
@@ -27,6 +35,10 @@ export interface DockerLogStreamOptions {
   engineParams?: () => Record<string, string>;
   /** follow 由 UI 切换；这里只做变更通知（例如埋点/外部同步）。 */
   onFollowChange?: (follow: boolean) => void;
+  /** 每个分片新完成的整行（增量渲染入口；不再整段 join/切分）。 */
+  onLines?: (lines: readonly string[]) => void;
+  /** 缓冲被清空（clear/切换容器前的复位）：UI 丢弃已渲染行。 */
+  onReset?: () => void;
 }
 
 export interface DockerLogStartOptions {
@@ -37,12 +49,12 @@ export interface DockerLogStartOptions {
 /** restart 只覆盖 tail/sudo，容器沿用当前目标。 */
 export type DockerLogRestartOptions = DockerLogStartOptions;
 
-/** tail 与 sidecar 同口径钳到 10–2000，非法输入回落默认 200。 */
+/** tail 与 sidecar 同口径钳到 10–1000（每次读取最多 1000 行），非法输入回落默认 200。 */
 export function normalizeLogTail(value: string | number | undefined): number {
   if (value === undefined || value === "") return DEFAULT_LOG_TAIL;
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_LOG_TAIL;
-  return Math.min(2000, Math.max(10, Math.round(parsed)));
+  return Math.min(1000, Math.max(10, Math.round(parsed)));
 }
 
 function errorMessage(cause: unknown): string {
@@ -57,9 +69,20 @@ interface StreamTarget {
 
 export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   const readSessionId = options.sessionId ?? (() => undefined);
+  const owner = createDockerScopeOwner("log");
+  const releaseOwner = registerDockerLogOwner(owner);
 
   const buffer = new LogBuffer();
-  const text = ref("");
+  /** 每次追加/清空递增；text 改成惰性 computed，UI 不再每次分片整段 join。 */
+  const textVersion = ref(0);
+  const text = computed(() => {
+    void textVersion.value;
+    return buffer.text();
+  });
+  const hasOutput = computed(() => {
+    void textVersion.value;
+    return buffer.lineCount > 0;
+  });
   const truncated = ref(false);
   const lines = computed(() => (text.value ? text.value.split("\n") : []));
   const follow = ref(true);
@@ -72,6 +95,7 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   let target: StreamTarget | undefined;
   let currentStreamId = "";
   let detachHandler: (() => void) | undefined;
+  let untrackStream: (() => void) | undefined;
   /** 启动代际：stop 或新 start 会让仍在途的 start 响应作废并立即收流。 */
   let generation = 0;
   /** 启动串行链：同一时刻最多一个 stop/start RPC 在途，快速切容器只保留最新目标。 */
@@ -88,9 +112,15 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     detachHandler = undefined;
   }
 
+  function untrackCurrent(): void {
+    untrackStream?.();
+    untrackStream = undefined;
+  }
+
   /** 摘掉处理器并交出当前流 id：注册新流前先收走任何既有流。 */
   function takeCurrentStream(): string {
     detach();
+    untrackCurrent();
     const streamId = currentStreamId;
     currentStreamId = "";
     return streamId;
@@ -101,9 +131,9 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     // 这条流已不再被本实例接管：丢掉可能还在缓冲的早到事件，避免复用 id 回放。
     clearPendingDockerLogEvents(streamId);
     try {
-      await runDockerChannel(dockerChannelKey(readSessionId()), () =>
-        rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS }),
-      );
+      // stop 只取消既有流、不新开 SSH channel：不能排在 list/stats/files 的
+      // 连接级 FIFO 后面，否则关闭日志页时远端 docker logs -f 还要多活几秒。
+      await rpc("docker/logs/stop", { streamId }, { timeoutMs: STOP_TIMEOUT_MS });
     } catch {
       // 收流尽力而为。
     }
@@ -113,6 +143,7 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     const sessionId = readSessionId();
     return {
       ...(sessionId ? { sessionId } : { target: "local" as const }),
+      owner,
       containerId: current.containerId,
       tail: current.tail,
       ...(current.sudo ? { sudo: true } : {}),
@@ -124,11 +155,14 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     if (event.method === "docker/logs/chunk") {
       const chunk = typeof event.params.text === "string" ? event.params.text : "";
       if (!chunk) return;
-      buffer.append(chunk);
-      // 后端的转发任务已按约 100ms/8KiB 合并分片，这里按缓冲重算文本即可
-      // 保证与 clear/裁剪后的内容严格一致（行尾无多余空行）。
-      text.value = buffer.text();
+      // 只把新完成的整行交给 UI 增量渲染：不再每次分片 join 整段缓冲
+      // （万行日志下 join+split 是 O(总字节) 的主线程热点）。
+      const added = buffer.append(chunk);
       truncated.value = buffer.truncated;
+      if (added.length) {
+        textVersion.value += 1;
+        options.onLines?.(added);
+      }
       return;
     }
     if (event.method !== "docker/logs/end") return;
@@ -136,6 +170,7 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
     const message = typeof event.params.error === "string" ? event.params.error : "";
     const sudo = event.params.needsSudo === true;
     detach();
+    untrackCurrent();
     currentStreamId = "";
     exitCode.value = exitCodeValue;
     needsSudo.value = sudo;
@@ -203,10 +238,16 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
       error.value = "docker/logs/start returned no streamId";
       return;
     }
+    if (isDockerLogStreamRegistryClosed()) {
+      // 工作台已进入关闭流程：响应回来时没人会再发 stop，这里立即收掉。
+      void stopStream(streamId);
+      return;
+    }
     // 防御：注册前把任何残留的流收掉，保证同一时刻只有一条后端流。
     const leftoverStreamId = takeCurrentStream();
     if (leftoverStreamId && leftoverStreamId !== streamId) await stopStream(leftoverStreamId);
     currentStreamId = streamId;
+    untrackStream = trackDockerLogStream(streamId);
     // register 会同步回放早到的 chunk/end：fast end 可能在返回前就改写状态并清空
     // currentStreamId，此时不能再把状态覆盖回 streaming（否则页面停在收流中）。
     const detach = registerDockerLogStream(streamId, handleEvent);
@@ -247,17 +288,23 @@ export function useDockerLogStream(options: DockerLogStreamOptions = {}) {
   /** 清空视图（不断流）。 */
   function clear(): void {
     buffer.clear();
-    text.value = "";
+    textVersion.value += 1;
     truncated.value = false;
+    options.onReset?.();
   }
 
   onScopeDispose(() => {
+    releaseOwner();
     void stop();
+    // 关闭 scope：覆盖 start 还在途、拿不到 streamId 的窗口。后端对同一
+    // owner 的迟到 start 直接拒绝（短期墓碑），不会留下无人认领的流。
+    void closeDockerLogOwner(owner);
   });
 
   return {
     lines,
     text,
+    hasOutput,
     truncated,
     follow,
     status,

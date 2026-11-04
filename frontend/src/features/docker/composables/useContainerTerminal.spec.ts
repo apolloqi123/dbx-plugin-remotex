@@ -4,6 +4,7 @@
 // 宿主 harness 同形，简化掉了分屏的帧序号/回放能力）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useContainerTerminal, type UseContainerTerminalOptions } from "./useContainerTerminal";
+import { resetDockerTerminalRegistry, stopActiveDockerTerminals } from "../lib/dockerTerminalRegistry";
 
 interface BinaryEvent {
   channel: string;
@@ -83,6 +84,7 @@ function resizeCalls(harness: Harness): Array<[string, Record<string, unknown>]>
 describe("useContainerTerminal", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
+    resetDockerTerminalRegistry();
     delete (window as unknown as { dbxPlugin?: unknown }).dbxPlugin;
   });
 
@@ -98,7 +100,13 @@ describe("useContainerTerminal", () => {
 
     expect(harness.invoke).toHaveBeenCalledWith(
       "docker/terminal/open",
-      expect.objectContaining({ terminalId: "term-12345678", containerId: "d4a7c9f1e2b3", cols: 80, rows: 24 }),
+      expect.objectContaining({
+        terminalId: "term-12345678",
+        owner: expect.stringMatching(/^term-/),
+        containerId: "d4a7c9f1e2b3",
+        cols: 80,
+        rows: 24,
+      }),
       expect.anything(),
     );
     harness.emitOutput("term-12345678", "hello");
@@ -208,6 +216,47 @@ describe("useContainerTerminal", () => {
     await closing;
     await reopening;
     expect(ok("docker/terminal/open")).toBe(2);
+  });
+
+  it("keeps the latest PTY tracked when a stale open resolves late", async () => {
+    const resolvers: Array<(value: unknown) => void> = [];
+    const harness = installHarness(
+      () => new Promise((resolve) => resolvers.push(resolve)),
+    );
+    const terminal = useContainerTerminal(options({}));
+
+    const first = terminal.open(80, 24);
+    await vi.waitFor(() => expect(resolvers).toHaveLength(1));
+    // 第二次 open 在 A 的 RPC 在途时开始（连接级 FIFO 会让 B 排队）：
+    // B 的 teardown 已让 A 的代际过期。
+    const second = terminal.open(80, 24);
+    resolvers[0]?.({ terminalId: "term-stale" });
+    await first;
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+
+    // 旧 open 迟到：只收掉它自己的远端 PTY，不能把新 open 的登记项一并注销。
+    resolvers[1]?.({ terminalId: "term-latest" });
+    await second;
+
+    await stopActiveDockerTerminals();
+    expect(harness.invoke).toHaveBeenCalledWith(
+      "docker/terminal/close",
+      { terminalId: "term-latest" },
+      expect.anything(),
+    );
+  });
+
+  it("closes a tracked PTY through the workbench close hook", async () => {
+    const harness = installHarness();
+    const terminal = useContainerTerminal(options({}));
+    await terminal.open(80, 24);
+
+    await stopActiveDockerTerminals();
+    expect(harness.invoke).toHaveBeenCalledWith(
+      "docker/terminal/close",
+      { terminalId: "term-12345678" },
+      expect.anything(),
+    );
   });
 
   it("maps state events for the current terminal only", async () => {

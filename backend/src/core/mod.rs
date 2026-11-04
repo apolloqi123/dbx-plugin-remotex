@@ -1,3 +1,4 @@
+pub(crate) mod clipboard_uri;
 pub(crate) mod host_key;
 pub(crate) mod keys;
 pub(crate) mod model;

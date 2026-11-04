@@ -26,6 +26,8 @@ export interface RdpConnectOptions {
 interface Props {
   locale: string;
   open: boolean;
+  /** Saved-connection values for the fallback dialog; password is never seeded. */
+  seed?: RdpConnectOptions | null;
 }
 const props = defineProps<Props>();
 const emit = defineEmits<{ "update:open": [boolean]; connect: [RdpConnectOptions] }>();
@@ -39,8 +41,8 @@ const form = reactive({
   username: "",
   password: "",
   domain: "",
-  width: "1280",
-  height: "800",
+  width: "1920",
+  height: "1080",
   certificatePolicy: "prompt" as RdpConnectOptions["certificatePolicy"],
   clipboard: true,
   scaleMode: "fit" as RdpConnectOptions["scaleMode"],
@@ -85,10 +87,22 @@ const sizeError = ref(false);
 watch(
   () => props.open,
   (open) => {
-    if (open) {
-      hostError.value = false;
-      sizeError.value = false;
-    }
+    if (!open) return;
+    hostError.value = false;
+    sizeError.value = false;
+    // A fallback dialog for a saved connection must show its host/credentials;
+    // last-used preferences only fill what the connection does not provide.
+    const seed = props.seed;
+    if (!seed) return;
+    form.host = seed.host;
+    form.port = String(seed.port || 3389);
+    form.username = seed.username;
+    form.domain = seed.domain ?? "";
+    form.width = String(seed.width);
+    form.height = String(seed.height);
+    form.certificatePolicy = seed.certificatePolicy;
+    form.clipboard = seed.clipboard;
+    form.scaleMode = seed.scaleMode;
   },
 );
 

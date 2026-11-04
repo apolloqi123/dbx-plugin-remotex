@@ -197,6 +197,11 @@ impl Plugin {
                 Ok(crate::features::docker::logs_payload(&output))
             }
 
+            // 容器监控快照与 CPU 总量（拆到 docker_stats.rs，保持 600 行内）。
+            method if method == "docker/stats" || method == "docker/stats/limits" => {
+                self.handle_docker_stats(method, params)
+            }
+
             // 真流式日志跟随（容器管理分屏）：start 立即返回 streamId，分片
             // 走 `docker/logs/chunk`，收口走 `docker/logs/end`（自然结束给
             // exitCode，daemon 权限签名时 needsSudo；取消统一
@@ -215,6 +220,10 @@ impl Plugin {
                 ));
                 let engine = crate::features::docker::parse_engine(&params)?;
                 let sudo = params.get("sudo").and_then(Value::as_bool).unwrap_or(false);
+                // 日志页实例 id：同一实例再次 start 会先收掉上一条流（切容器
+                // 的服务端兜底），close 后迟到的 start 会被拒绝。旧前端不传时
+                // 回落到 sessionId（SSH）/"local"（本机）。
+                let owner = scope_owner(&params)?;
                 if crate::features::docker::parse_target(&params)?
                     == crate::features::docker::DockerTarget::Local
                 {
@@ -230,6 +239,7 @@ impl Plugin {
                             engine,
                             container_id.to_string(),
                             tail,
+                            owner,
                         )
                     })?;
                     return Ok(json!({ "streamId": stream_id }));
@@ -262,6 +272,7 @@ impl Plugin {
                         self.ssh.clone(),
                         emitter.clone(),
                         session_id.to_string(),
+                        owner,
                         command,
                         sudo,
                         tail,
@@ -278,6 +289,18 @@ impl Plugin {
                 Ok(json!({
                     "stopped": self.runtime.block_on(self.docker_streams.stop_and_wait(stream_id))
                 }))
+            }
+
+            "docker/logs/close" => {
+                // 日志页实例永久收口（卸载/关闭工作台）：按 owner 取消该实例
+                // 的所有流，并短期拒绝迟到的 start —— 若 start 仍在线路上，
+                // 页面已拆掉，没人能再为它发 stop。幂等。
+                let owner = scope_owner(&params)?;
+                if owner.is_empty() {
+                    return Err("owner is required".to_string());
+                }
+                self.docker_streams.close_owner(&owner);
+                Ok(json!({ "closed": true }))
             }
 
             // 容器文件浏览/传输（`docker/files/*`）拆到 docker_files.rs，
@@ -299,6 +322,10 @@ impl Plugin {
                 let cols = required_u32(&params, "cols")?;
                 let rows = required_u32(&params, "rows")?;
                 let terminal_id = params.get("terminalId").and_then(Value::as_str);
+                // 同一日志页/终端页实例的新 open 会先收掉旧 PTY；close 丢失
+                // 也不会在同一实例下留下第二个 shell。旧前端不传时回落
+                // sessionId（SSH）/"local"（本机）。
+                let owner = scope_owner(&params)?;
                 let audit_text = crate::features::docker::shell_audit_text(&engine, container_id)?;
                 if crate::features::docker::parse_target(&params)?
                     == crate::features::docker::DockerTarget::Local
@@ -315,6 +342,7 @@ impl Plugin {
                             emitter.clone(),
                             container_id,
                             engine,
+                            owner,
                             terminal_id,
                             cols,
                             rows,
@@ -330,6 +358,7 @@ impl Plugin {
                     self.ssh.clone(),
                     emitter.clone(),
                     session_id.to_string(),
+                    owner,
                     container_id,
                     engine,
                     terminal_id,
@@ -475,4 +504,27 @@ impl Plugin {
             _ => Err(format!("Method not found: {method}")),
         }
     }
+}
+
+/// Log-pane / terminal scope id supplied by the frontend (one per composable
+/// instance).
+/// Stored and compared verbatim, so it is length- and charset-gated here;
+/// missing/empty falls back to the session id / "local" in the registry
+/// (older frontends).
+fn scope_owner(params: &Value) -> Result<String, String> {
+    let Some(value) = params.get("owner") else {
+        return Ok(String::new());
+    };
+    let owner = value.as_str().ok_or("owner must be a string")?;
+    if owner.is_empty() {
+        return Ok(String::new());
+    }
+    if owner.len() > 128
+        || !owner
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("Invalid log stream owner".to_string());
+    }
+    Ok(owner.to_string())
 }

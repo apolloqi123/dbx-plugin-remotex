@@ -1,6 +1,6 @@
 // Locale block for zh-TW (split from shared/lib/i18n.ts).
 const messages = {
-    pluginName: "SSHX",
+    pluginName: "RemoteX",
     dividerResizeHint: "拖動或按 ←/→ 方向鍵調整寬度",
     dividerResizeHintHeight: "拖動或按 ↑/↓ 方向鍵調整高度",
     showPassword: "顯示密碼",
@@ -491,13 +491,6 @@ const messages = {
     extract: {
       action: "解壓縮到此處",
       done: "已解壓縮到 {name}",
-    },
-    editSave: {
-      edit: "編輯",
-      save: "儲存",
-      saved: "已儲存 {name}",
-      unsaved: "未儲存",
-      closeConfirm: "有未儲存的修改，確定放棄並繼續嗎？",
     },
     webDownload: {
       largeWarning: "{name} 大小為 {size}。瀏覽器下載會先將整個檔案讀入記憶體再儲存，可能占用大量記憶體。是否繼續？",

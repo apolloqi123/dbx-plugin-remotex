@@ -10,7 +10,7 @@
 
 ## 能力矩阵
 
-| 能力 | SSHX | OpenSSH + sftp | Tabby | Termius | FinalShell | electerm | iSHell Pro |
+| 能力 | RemoteX | OpenSSH + sftp | Tabby | Termius | FinalShell | electerm | iSHell Pro |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 图形化连接管理 | 内置 | — | 内置 | 内置 | 内置 | 内置 | 内置/移动端 |
 | 交互式 PTY 终端 | 内置 | 内置终端 | 内置 | 内置 | 内置 | 内置 | 内置 |
@@ -42,7 +42,7 @@
 | VNC | 内置 | — | — | — | — | — | 内置/版本相关 |
 | 七语插件界面 | 内置 | — | 部分/版本相关 | 部分/计划相关 | 部分/版本相关 | 版本相关 | 版本相关 |
 
-> **协议路线说明**：SSHX 当前以 SSH、SFTP、ProxyJump、PTY 和安全运维为
+> **协议路线说明**：RemoteX 当前以 SSH、SFTP、ProxyJump、PTY 和安全运维为
 > 核心。Telnet 已内置（M2，含声明式 auto_login），串口与 X11 转发已内置（M4），
 > VNC 已内置（M5），RDP 已内置（M12 收官：vendored IronRDP 链，NLA/CredSSP + TLS
 > 登录、文本剪贴板双向桥、按错误类型重连门控；真机 RDP server 联调仍为人工门，
@@ -51,7 +51,7 @@
 ## 与 Tabby 的定位差异
 
 Tabby 是通用终端方向:强在终端标签页与分屏、主题/配色自定义和插件生态、多协议
-(Telnet/串口)与跨设备配置同步。SSHX 的差异集中在服务器运维链路:
+(Telnet/串口)与跨设备配置同步。RemoteX 的差异集中在服务器运维链路:
 
 - 认证与提权编排更强:全局 Quick Sudo 档案、TOTP/2FA 自动应答、sudo 白名单、只读
   门禁和宿主 secret binding 全部内置;Tabby 通常依赖插件或脚本。
@@ -85,7 +85,7 @@ Tabby 是通用终端方向:强在终端标签页与分屏、主题/配色自定
 - 需要漂亮的终端标签页、分屏和主题自定义：Tabby 是通用终端方向；其安全策略取决于插件/配置。
 - 需要跨设备连接同步：Termius 更偏商业化跨端体验，具体功能取决于版本和计划。
 - 需要 SSH、SFTP 和服务器状态放在一个桌面工具：FinalShell 是直接替代方案之一。
-- 已在 DBX 中使用宿主连接、MCP 或插件工作台：SSHX 能把这些能力放在
+- 已在 DBX 中使用宿主连接、MCP 或插件工作台：RemoteX 能把这些能力放在
   同一套连接和权限边界内。
 - 需要 RDP 或更多协议：Telnet/串口/VNC/RDP 已内置（RDP 覆盖 NLA/CredSSP + TLS
   登录、文本剪贴板与断线重连；真机联调仍在推进，建议按具体版本的发布说明验证）。

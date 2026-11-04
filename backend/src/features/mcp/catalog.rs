@@ -236,7 +236,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "ssh_multi_exec",
-            "description": "Run one command on several saved connections and collect per-target results (hidden channel; never a visible terminal). targets: 1-10 connection references (connectionId or connectionName), deduplicated in order. mode: parallel (default) or sequential; stopOnError (sequential only) stops at the first failure. confirmDestructive: true covers catastrophic commands on every target; sudo is NOT available here - use single-target ssh_exec_sudo for escalation. Per target: read-only connections only accept whitelisted inspection commands; the host may abandon the wait after ~15s while commands keep running - for anything slow use ssh_run_bg.",
+            "description": "Run one command on several saved connections and collect per-target results (hidden channel; never a visible terminal). targets: 1-10 connection references (connectionId or connectionName), deduplicated in order. mode: parallel (default) or sequential; stopOnError (sequential only) stops at the first failure. confirmDestructive: true covers catastrophic commands on every target; sudo is NOT available here - use single-target ssh_exec_sudo for escalation. Per target: read-only connections only accept whitelisted inspection commands; the host may abandon the wait after ~15s while commands keep running - for anything slow use ssh_run_bg. For a host-level question tied to the active database connection, target only the SSH connection whose host matches that database server; do not fan out to every open connection unless the user explicitly asks for a fleet-wide check.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -308,7 +308,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "ssh_list_connections",
-            "description": "List the DBX app's saved SSH connections for this plugin (id, name, host, port, username, authentication method, read-only flag) merged with connections registered in this MCP session. Metadata only: credentials are never included. Use an entry's id as connectionId, its name as connectionName, or its host+port+username as an endpoint reference; a unique endpoint match reuses the saved connection without inline credentials.",
+            "description": "List the DBX app's saved SSH connections for this plugin (id, name, host, port, username, authentication method, read-only flag) merged with connections registered in this MCP session. Metadata only: credentials are never included. Use an entry's id as connectionId, its name as connectionName, or its host+port+username as an endpoint reference; a unique endpoint match reuses the saved connection without inline credentials. When the active context is a database connection, use the host/name fields to locate the SSH connection that hosts that database instead of querying every listed connection.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {

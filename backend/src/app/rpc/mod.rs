@@ -10,6 +10,7 @@ pub(super) mod automation;
 pub(super) mod connections;
 pub(super) mod docker;
 pub(super) mod docker_files;
+pub(super) mod docker_stats;
 pub(super) mod exec;
 pub(super) mod filesystem;
 pub(super) mod forwarding;
@@ -20,6 +21,7 @@ pub(super) mod metrics;
 pub(super) mod otp;
 pub(super) mod recording;
 pub(super) mod remote_desktop;
+pub(super) mod remote_files;
 pub(super) mod security;
 pub(super) mod serial;
 pub(super) mod sessions;
@@ -75,6 +77,7 @@ impl Plugin {
             "telnet" => self.handle_telnet(method, params, emitter),
             "serial" => self.handle_serial(method, params, emitter),
             "vnc" | "rdp" => self.handle_remote_desktop(method, params, emitter),
+            "filetransfer" => self.handle_remote_files(method, params, emitter),
             "sftp" => match group {
                 "upload" | "download" | "transfer" => {
                     self.handle_transfers(method, params, emitter)

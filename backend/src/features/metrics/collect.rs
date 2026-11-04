@@ -82,7 +82,16 @@ pub(crate) const METRICS_SCRIPT: &str = concat!(
 /// commands only; the extra `sleep 1` is bounded by the timeout below. The
 /// GPU/NPU accelerator overviews ride the same document (best-effort probe,
 /// see [`merge_accelerator_sections`]).
-pub async fn collect_metrics(handle: &Handle<SshClient>) -> Result<serde_json::Value, String> {
+/// Collector with the accelerator probes switchable. The dock panel samples
+/// every 5s for as long as a connection is open; probing GPU/NPU each time
+/// costs two extra exec channels per sample even on hosts that have neither.
+/// Callers that already know the host has no accelerator pass `false` and get
+/// a document without the `gpu`/`npu` keys (the frontend hides both sections
+/// when the keys are absent).
+pub async fn collect_metrics_with_accelerators(
+    handle: &Handle<SshClient>,
+    probe_accelerators: bool,
+) -> Result<serde_json::Value, String> {
     // Plugin-internal collector: no client setEnv so locale overrides on the
     // connection cannot reshape the output this parser expects.
     let outcome = exec_plain(
@@ -101,7 +110,9 @@ pub async fn collect_metrics(handle: &Handle<SshClient>) -> Result<serde_json::V
         ));
     }
     let mut metrics = parse_metrics_output(&outcome.output);
-    merge_accelerator_sections(handle, &mut metrics).await;
+    if probe_accelerators {
+        merge_accelerator_sections(handle, &mut metrics).await;
+    }
     Ok(metrics)
 }
 
@@ -193,7 +204,7 @@ async fn run_local_metrics_script_async(
         join_reader(stderr_reader, READER_JOIN_TIMEOUT),
     );
     let text = String::from_utf8_lossy(&stdout).into_owned();
-    // Same acceptance rule as [`collect_metrics`]: a non-zero exit with no
+    // Same acceptance rule as [`collect_metrics_with_accelerators`]: a non-zero exit with no
     // output is a failure; defensive `|| true` fallbacks normally keep the
     // script at 0 with parseable output even on partial /proc holes.
     if !status.success() && text.trim().is_empty() {
@@ -254,7 +265,7 @@ pub(crate) fn collect_local_metrics_with_shell(shell: &str) -> Result<serde_json
         .output()
         .map_err(|error| format!("local metrics unavailable: {error}"))?;
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
-    // Same acceptance rule as [`collect_metrics`]: a non-zero exit with no
+    // Same acceptance rule as [`collect_metrics_with_accelerators`]: a non-zero exit with no
     // output is a failure; defensive `|| true` fallbacks normally keep the
     // script at 0 with parseable output even on partial /proc holes.
     if !output.status.success() && text.trim().is_empty() {

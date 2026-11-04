@@ -175,12 +175,21 @@ function nameMatches(node: SftpFileTreeNode, query: string): boolean {
   return !query || node.name.toLowerCase().includes(query);
 }
 
-function hasMatchingDescendant(node: SftpFileTreeNode, query: string, type: SftpTreeFilter["type"]): boolean {
-  return node.children.some(
+function hasMatchingDescendant(
+  node: SftpFileTreeNode,
+  query: string,
+  type: SftpTreeFilter["type"],
+  cache: Map<SftpFileTreeNode, boolean>,
+): boolean {
+  const cached = cache.get(node);
+  if (cached !== undefined) return cached;
+  const result = node.children.some(
     (child) =>
       (typeMatches(child.kind, type) && nameMatches(child, query)) ||
-      hasMatchingDescendant(child, query, type),
+      hasMatchingDescendant(child, query, type, cache),
   );
+  cache.set(node, result);
+  return result;
 }
 
 /**
@@ -198,13 +207,16 @@ export function flattenVisibleTreeRows(
   const query = filter.search?.trim().toLowerCase() ?? "";
   const type = filter.type ?? "all";
   const rows: SftpTreeRow[] = [];
+  // 每个目录的“子树里有没有命中”只算一次：展开链上每个目录都重扫整棵
+  // 子树会让搜索在深层大树上退化成 O(n²)。
+  const descendantMatches = new Map<SftpFileTreeNode, boolean>();
 
   function isRowVisible(node: SftpFileTreeNode): boolean {
     const selfMatches = typeMatches(node.kind, type) && nameMatches(node, query);
     if (node.kind !== "directory") return selfMatches;
     if (selfMatches) return true;
     if (query && nameMatches(node, query)) return true;
-    return hasMatchingDescendant(node, query, type);
+    return hasMatchingDescendant(node, query, type, descendantMatches);
   }
 
   function walk(node: SftpFileTreeNode, depth: number): void {

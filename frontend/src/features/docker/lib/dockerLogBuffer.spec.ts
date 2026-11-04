@@ -9,6 +9,14 @@ import {
 } from "./dockerLogBuffer";
 
 describe("LogBuffer", () => {
+  it("returns only the lines completed by each chunk", () => {
+    const buffer = new LogBuffer();
+    expect(buffer.append("hel")).toEqual([]);
+    expect(buffer.append("lo\nwor")).toEqual(["hello"]);
+    expect(buffer.append("ld\nsecond\n")).toEqual(["world", "second"]);
+    expect(buffer).toBeDefined();
+  });
+
   it("joins partial lines across chunks", () => {
     const buffer = new LogBuffer();
     buffer.append("hel");
@@ -49,6 +57,16 @@ describe("LogBuffer", () => {
     expect(buffer.lineCount).toBe(MAX_LOG_LINES);
     expect(buffer.text().startsWith("line-2\n")).toBe(true);
     expect(buffer.truncated).toBe(true);
+  });
+
+  it("returns only the retained tail of a burst larger than the cap", () => {
+    const buffer = new LogBuffer();
+    const total = MAX_LOG_LINES * 5;
+    const added = buffer.append(Array.from({ length: total }, (_, i) => `line-${i}`).join("\n") + "\n");
+    expect(added).toHaveLength(MAX_LOG_LINES);
+    expect(added[0]).toBe(`line-${total - MAX_LOG_LINES}`);
+    expect(added.at(-1)).toBe(`line-${total - 1}`);
+    expect(buffer.text()).not.toContain("line-0\n");
   });
 
   it("does not flag truncation below the caps", () => {

@@ -7,6 +7,7 @@ use super::error::{
     classify_connector_error_text, classify_session_error_text, connector_error_message,
     reconnect_delay, session_error_message, GenerationEnd, RdpErrorKind, ReconnectBudget,
 };
+use super::file_clipboard::{is_plugin_temp_path, FileClipboardStage, CLIPBOARD_FILE_CHUNK_BYTES};
 use super::frame::RdpFrameState;
 use super::input::send_wire_input;
 use super::limits::{
@@ -14,8 +15,8 @@ use super::limits::{
 };
 use super::security::{resolve_security, CertPolicy};
 use super::wire::{
-    RdpStartRequest, RdpWireInput, MAX_DOMAIN_LEN, MAX_HOST_LEN, MAX_UNICODE_TEXT_CHARS,
-    MAX_USERNAME_LEN,
+    ClipboardFileEntry, RdpStartRequest, RdpWireInput, MAX_DOMAIN_LEN, MAX_HOST_LEN,
+    MAX_UNICODE_TEXT_CHARS, MAX_USERNAME_LEN,
 };
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
@@ -28,7 +29,9 @@ use ironrdp::client::rdp::{
     RdpClient as IronRdpClient, RdpInputEvent as IronRdpInputEvent, RdpOutputEvent,
 };
 use ironrdp::cliprdr::backend::ClipboardMessage;
-use ironrdp::cliprdr::pdu::{ClipboardFormat, ClipboardFormatId};
+use ironrdp::cliprdr::pdu::{
+    ClipboardFormat, ClipboardFormatId, FileContentsRequest, FileDescriptor,
+};
 use ironrdp::input::Database as IronRdpInputDatabase;
 use ironrdp::pdu::rdp::capability_sets::MajorPlatformType;
 use serde_json::{json, Value};

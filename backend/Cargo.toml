@@ -1,6 +1,6 @@
 [package]
 name = "dbx-plugin-sshx"
-version = "0.7.9-beta.87"
+version = "0.7.9-beta.140"
 edition = "2021"
 license = "MIT"
 authors = ["apolloqi"]
@@ -103,7 +103,7 @@ pageant = "0.2"
 # 进程级 kill-on-close job（src/platform/job_object.rs）：sidecar 死亡时由内核回收
 # ConPTY conhost/shell 全树。CreateJobObjectW 的 SECURITY_ATTRIBUTES 参数被
 # Win32_Security feature 门控（0.59 实测），故需要四组 feature。
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_DataExchange", "Win32_System_JobObjects", "Win32_System_Memory", "Win32_System_Threading", "Win32_UI_Shell"] }
 # RDP TLS backend: Schannel via native-tls on Windows (NyaTerm's split, see
 # the ironrdp comment above and docs/plans/RDP_VENDOR_FORK_PLAN.zh-CN.md §8-7).
 ironrdp = { version = "0.17", default-features = false, features = ["native-tls"] }
@@ -119,6 +119,11 @@ ironrdp = { version = "0.17", default-features = false, features = ["rustls"] }
 # backend (apple keychain / windows native), so no explicit feature list.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 keyring = "4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSPasteboard"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSURL", "NSString"] }
 
 # The DBX sidecar SDK is vendored under shared/ so a standalone checkout does
 # not depend on the source monorepo or a sibling host checkout. See

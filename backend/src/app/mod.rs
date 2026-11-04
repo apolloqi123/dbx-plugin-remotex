@@ -4,6 +4,7 @@ pub(crate) mod actions;
 mod bootstrap;
 pub(crate) mod diagnostics;
 mod handler;
+mod lifecycle_grace;
 pub(crate) mod params;
 pub(crate) mod rpc;
 #[cfg(test)]
@@ -37,6 +38,8 @@ struct Plugin {
     serial: Arc<crate::sessions::serial::SerialSessionRuntime>,
     vnc: Arc<crate::sessions::vnc::VncSessionRuntime>,
     rdp: Arc<crate::sessions::rdp::RdpSessionRuntime>,
+    /// Host ↔ remote SFTP transfer tasks for the remote desktop toolbar.
+    remote_files: Arc<crate::features::remote_files::RemoteFilesRuntime>,
     mcp: Arc<crate::features::mcp::McpState>,
     watcher: Arc<crate::filesystem::watch::WatchRuntime>,
     /// Live `docker logs -f` streams (`docker/logs/start|stop`): bounded at
@@ -52,6 +55,16 @@ struct Plugin {
     /// 非 SSH 连接（telnet/vnc/rdp）的已存凭据暂存：connection/connect 生命周期
     /// 存、*\/start 合并、connection/disconnect 清（见 non_ssh_credentials 模块）。
     non_ssh_creds: crate::core::non_ssh_credentials::NonSshCredentials,
+    /// Short grace windows for host-initiated teardown/re-push. DBX can
+    /// disconnect and reconnect an unchanged SSH connection while editing a
+    /// different connection; keeping the live PTY across that recycle avoids a
+    /// visible terminal reconnect. See `app/lifecycle_grace.rs`.
+    pending_ssh_disconnects: Arc<std::sync::Mutex<std::collections::HashMap<String, u64>>>,
+    pending_workbench_closes: Arc<std::sync::Mutex<std::collections::HashMap<String, u64>>>,
+    /// Session ids whose webview-initiated close is waiting out a host
+    /// workbench re-init; an attach to the same session cancels it.
+    pending_ssh_session_closes: Arc<std::sync::Mutex<std::collections::HashMap<String, u64>>>,
+    lifecycle_grace_seq: AtomicU64,
     /// Scheduler Task Provider（io.dbx.sshx.tasks）：固定 task/* RPC 面
     /// （validate/execute/start/stop/status）与常驻会话监管，见
     /// src/task_provider.rs 与冻结契约 ADR §6。

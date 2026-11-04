@@ -91,6 +91,38 @@ pub fn sudo_logs_body(
     ))
 }
 
+/// Elevated stats body for the Quick Sudo retry of `docker/stats`: same
+/// single `stats --no-stream` call as [`stats_script`], passed as argv
+/// (never stdin, the password owns it) through `sanitize_sudo_command`.
+pub fn sudo_stats_body(engine: &EngineConfig, container_id: &str) -> Result<String, String> {
+    validate_container_id(container_id)?;
+    Ok(format!(
+        "{PATH_PREFIX}{export}\
+         echo {STATS_MARKER}\n\
+         {cli} stats --no-stream --format '{STATS_FORMAT}' {container_id} 2>&1\n",
+        export = engine.env_prefix(),
+        cli = engine.cli,
+    ))
+}
+
+/// Builds the one-shot `docker stats` collector for one container. stderr
+/// is merged into the marked section so the parser can tell "container not
+/// running" (daemon reachable) from "permission denied" (needs Quick
+/// Sudo); a successful run prints one JSON object per line.
+pub fn stats_script(engine: &EngineConfig, container_id: &str) -> Result<String, String> {
+    validate_container_id(container_id)?;
+    Ok(format!(
+        "sh -s <<'DBXDOCKER'\n\
+         {PATH_PREFIX}{export}\
+         echo {STATS_MARKER}\n\
+         {cli} stats --no-stream --format '{STATS_FORMAT}' {container_id} 2>&1\n\
+         DBXDOCKER\n",
+        export = engine.env_prefix(),
+        cli = engine.cli,
+    ))
+}
+
+
 /// Builds the logs + inspect collector for one container. Inspect runs
 /// first so the (potentially large) log tail cannot bury the marker scan,
 /// and the log section is last by construction (everything after its
@@ -130,7 +162,7 @@ mod tests {
             crate::features::docker::test_engine("podman", Some("unix:///tmp/podman.sock"));
         let command = logs_follow_command(&engine, "d4a7c9f1e2b3", 9999);
         assert!(command.contains("DOCKER_HOST=unix:///tmp/podman.sock"));
-        assert!(command.ends_with("podman logs -f --tail 2000 d4a7c9f1e2b3"));
+        assert!(command.ends_with("podman logs -f --tail 1000 d4a7c9f1e2b3"));
     }
 
     /// The follow command must stay flat: it also runs on Windows OpenSSH
@@ -147,28 +179,71 @@ mod tests {
     }
 
     /// The POSIX supervisor must stay one flat, single-quoted argument (no
-    /// embedded single quotes from the endpoint/id), and must kill the docker
-    /// child both on HUP/TERM and on stdin EOF (the client's channel close).
+    /// embedded single quotes from the endpoint/id), keep the docker child in
+    /// the session's process group (no `setsid`, or sshd cleanup cannot reach
+    /// it), and kill it on HUP/TERM, stdin EOF and the TTL watchdog.
     #[test]
-    fn supervised_follow_command_reaps_child_on_signals_and_stdin_eof() {
+    fn supervised_follow_command_reaps_child_on_signals_stdin_eof_and_ttl() {
         let engine = crate::features::docker::test_engine("docker", None);
         let command = crate::features::docker::supervised_logs_follow_command(
             &engine,
             "d4a7c9f1e2b3",
             200,
         );
-        assert!(command.starts_with("exec sh -c 'exec 3<&0; "), "{command}");
-        assert!(command.contains("setsid docker logs -f --tail 200"), "{command}");
-        assert!(command.contains("kill -KILL $c"), "{command}");
-        assert!(command.contains("kill -KILL -$c"), "{command}");
         assert!(
-            command.contains("cat <&3 >/dev/null; kill -KILL $c"),
+            command.starts_with("DBX_DOCKER_LOGS_CMD='docker logs -f --tail 200 d4a7c9f1e2b3' exec sh -c 'exec 3<&0; $DBX_DOCKER_LOGS_CMD &"),
+            "{command}"
+        );
+        assert!(!command.contains("setsid"), "{command}");
+        // The supervisor and watchers must not carry the docker argv (a
+        // forked shell inherits it and `ps | grep docker logs` looked like
+        // several clients). Only the launched child may show the command.
+        assert!(command.contains("$DBX_DOCKER_LOGS_CMD &"), "{command}");
+        assert!(command.contains("kill -KILL \\$0"), "{command}");
+        // Never broadcast to the process group: not every sshd isolates an
+        // exec channel in its own session, so `kill -KILL 0` could reach
+        // sibling channels. The trap kills the three known pids instead.
+        assert!(!command.contains("kill -KILL 0"), "{command}");
+        assert!(
+            command.contains("kill -0 $c 2>/dev/null && kill -KILL $c"),
+            "{command}"
+        );
+        assert!(
+            command.contains("kill -0 $w 2>/dev/null && kill -KILL $w"),
+            "{command}"
+        );
+        assert!(
+            command.contains("kill -0 $d 2>/dev/null && kill -KILL $d"),
+            "{command}"
+        );
+        // Watchdog polls the supervisor and the docker child instead of
+        // sleeping for the whole TTL: a SIGKILLed supervisor (trap cannot run)
+        // still loses its docker child within a second.
+        assert!(command.contains("p=\\$PPID"), "{command}");
+        assert!(
+            command.contains(&format!("[ \\$n -lt {} ]", STREAM_TTL.as_secs())),
+            "{command}"
+        );
+        assert!(command.contains("sleep 1; n=\\$((n+1))"), "{command}");
+        // Do not kill a pid that is already gone (it may be recycled).
+        assert!(
+            command.contains("kill -0 \\$0 2>/dev/null && kill -KILL \\$0"),
+            "{command}"
+        );
+        assert!(
+            command.contains("cat <&3 >/dev/null; kill -KILL \\$0"),
+            "{command}"
+        );
+        // Propagate docker's exit status: the backend's `needsSudo`
+        // detection keys on a non-zero exit plus the permission signature.
+        assert!(
+            command.contains("wait $c; st=$?; kill $w $d 2>/dev/null; exit $st"),
             "{command}"
         );
         assert_eq!(
             command.matches('\'').count(),
-            2,
-            "only the sh -c argument may be quoted: {command}"
+            4,
+            "the env assignment and sh -c argument are single-quoted: {command}"
         );
     }
 
@@ -203,6 +278,6 @@ mod tests {
         for index in 0..MAX_ACTIVE_STREAMS {
             registry.insert_test(format!("s{index}"));
         }
-        assert!(registry.start_guard().is_err());
+        assert!(registry.try_register_test("pane-x").is_err());
     }
 }

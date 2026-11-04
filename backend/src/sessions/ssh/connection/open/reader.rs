@@ -415,6 +415,10 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
                 "state": "disconnected"
             }),
         );
+        // Spontaneous transport loss bypasses close_session: fire the same
+        // session-end hooks so feature runners release their cloned handles
+        // (and registry slots) instead of waiting for a TTL.
+        runtime_for_cleanup.notify_session_end(&task_id);
         let removed = sessions.write().await.remove(&task_id);
         if let Some(removed) = removed {
             removed.transport_lease.release().await;

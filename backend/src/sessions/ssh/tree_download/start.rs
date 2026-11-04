@@ -186,18 +186,15 @@ impl SshRuntime {
         } else {
             None
         };
-        let insertion = self
-            .downloads
-            .lock()
-            .map_err(|_| "Download registry is poisoned".to_string());
-        let mut downloads = match insertion {
-            Ok(downloads) => downloads,
-            Err(error) => {
-                let _ = std::fs::remove_dir_all(&root_local);
-                return Err(error);
-            }
-        };
-        downloads.insert(
+        {
+            let mut downloads = match self.downloads.lock() {
+                Ok(downloads) => downloads,
+                Err(error) => {
+                    let _ = std::fs::remove_dir_all(&root_local);
+                    return Err(error.to_string());
+                }
+            };
+            downloads.insert(
             task_id.clone(),
             DownloadState {
                 session_id: session_id.to_string(),
@@ -240,7 +237,7 @@ impl SshRuntime {
                 raw_client: Arc::new(AsyncMutex::new(None)),
             },
         );
-        drop(downloads);
+        }
         if let Some((gz_path, remote_path_for_prep)) = compressed_paths {
             // prep 注册 + 后台任务（远端 tar.gz → 拉取 → 本地解包 → ready）。
             let cancelled = Arc::new(AtomicBool::new(false));

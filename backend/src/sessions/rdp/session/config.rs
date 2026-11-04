@@ -64,11 +64,13 @@ pub(crate) fn build_ironrdp_config(
             .with_cliprdr_factory({
                 let session_id = session_id.to_string();
                 let stage = entry.clipboard_stage.clone();
+                let files = entry.clipboard_files.clone();
                 let emitter = emitter.clone();
                 move |proxy| {
                     Box::new(TextClipboardBackendFactory {
                         session_id: session_id.clone(),
                         stage: stage.clone(),
+                        files: files.clone(),
                         emitter: emitter.clone(),
                         proxy: Arc::new(StdMutex::new(proxy)),
                     })
@@ -76,6 +78,7 @@ pub(crate) fn build_ironrdp_config(
             });
     } else {
         entry.clipboard_stage.clear();
+        entry.clipboard_files.clear();
         builder = builder.with_clipboard(ClipboardType::Disable);
     }
 

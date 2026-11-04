@@ -22,7 +22,7 @@ const StubPane = defineComponent({
   },
 });
 
-function mountTree(node: TerminalLayoutNode = createTerminalLayout()) {
+function mountTree(node: TerminalLayoutNode = createTerminalLayout(), extra: Record<string, unknown> = {}) {
   return mount(TerminalLayoutTree, {
     props: {
       node,
@@ -31,6 +31,7 @@ function mountTree(node: TerminalLayoutNode = createTerminalLayout()) {
       t: (k: string) => k, locale: "en",
       canSplit: true, canCreateTab: true, engines: [],
       connected: true, canWrite: true, transferBusy: false,
+      ...extra,
     },
     global: { stubs: { SplitTerminalPane: StubPane } },
     slots: { main: "<div class='main-slot'>main</div>" },
@@ -50,6 +51,14 @@ beforeEach(() => {
 });
 
 describe("TerminalLayoutTree split pane lifecycle", () => {
+  it("hides the terminal tab strip for remote-desktop surfaces", async () => {
+    const wrapper = mountTree(createTerminalLayout(), { hideTabs: true });
+    await settle();
+    expect(wrapper.find(".terminal-pane-tabs").exists()).toBe(false);
+    expect(wrapper.find(".main-slot").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("forwards a split tab cwd with its tab id", async () => {
     const layout = splitTerminalLayout(createTerminalLayout(), "main", "row", "B", "tabB");
     const wrapper = mountTree(layout);

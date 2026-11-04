@@ -59,7 +59,12 @@ export function usePluginEvents(options: {
   vncSession: Ref<{ sessionId: string; host: string; port: number } | null>;
   vncState: Ref<string>;
   vncError: Ref<string>;
+  /** CursorPseudo 光标事件入口（与 RDP surface 同形）。 */
+  vncSurface: Ref<{ applyPointer(event: RdpPointerEvent): void } | null>;
   markVncClosed: (error: string | null) => void;
+  /** Remote clipboard arrived (host write is attempted here); the VNC session
+   *  uses it to suppress echoing the same text back to the remote. */
+  onVncClipboard?: (text: string) => void;
   serialSession: Ref<{ sessionId: string; port: string; baudRate: number } | null>;
   markSerialClosed: (error: string | null) => void;
   serialUpload: Ref<SerialUploadUiState>;
@@ -68,6 +73,13 @@ export function usePluginEvents(options: {
   rdpState: Ref<RdpSessionStateView>;
   rdpSurface: Ref<{ applyPointer(event: RdpPointerEvent): void } | null>;
   rdpClipboardChunks: Map<string, { parts: string[]; received: number }>;
+  /** Remote CF_UNICODETEXT arrived (already reassembled); the session owns the
+   *  host write and echo suppression. */
+  onRdpClipboard?: (text: string) => void;
+  /** RDP CLIPRDR file transfer events (available/progress/ready/error). */
+  onRdpClipboardFiles?: (method: string, params: Record<string, unknown>) => void;
+  /** RDP CLIPRDR channel state (ready / unavailable). */
+  onRdpClipboardStatus?: (params: Record<string, unknown>) => void;
   // Agent / 录制域
   agentPromptQueue: Ref<AgentPromptPayload[]>;
   agentRunning: Ref<AgentNoticePayload | undefined>;
@@ -102,7 +114,9 @@ export function usePluginEvents(options: {
     vncSession,
     vncState,
     vncError,
+    vncSurface,
     markVncClosed,
+    onVncClipboard,
     serialSession,
     markSerialClosed,
     serialUpload,
@@ -110,6 +124,9 @@ export function usePluginEvents(options: {
     rdpState,
     rdpSurface,
     rdpClipboardChunks,
+    onRdpClipboard,
+    onRdpClipboardFiles,
+    onRdpClipboardStatus,
     agentPromptQueue,
     agentRunning,
     recordingActive,
@@ -118,24 +135,6 @@ export function usePluginEvents(options: {
     uploadAckWaiters,
     updateTransfer,
   } = options;
-
-  // 远端 → 本地剪贴板回写的节流戳（8s 内只提示一次）。
-  let vncClipboardNoticeAt = 0;
-  let rdpClipboardNoticeAt = 0;
-
-  // 完整文本（含分片拼接结果）回写本地剪贴板 + 节流提示（与 VNC 同款）。
-  function writeRdpClipboard(text: string): void {
-    if (!text) return;
-    void navigator.clipboard
-      ?.writeText(text)
-      .then(() => {
-        if (Date.now() - rdpClipboardNoticeAt > 8000) {
-          rdpClipboardNoticeAt = Date.now();
-          showNotice(t("rdp.clipboardReceived"));
-        }
-      })
-      .catch(() => undefined);
-  }
 
   function handlePluginEvent(event: DbxPluginEvent) {
     // env（locale/theme）由 shared/frontend/hostThemeRuntime 的订阅分发；
@@ -256,18 +255,9 @@ export function usePluginEvents(options: {
     }
     if (event.method === "vnc/clipboard" && event.params.sessionId === vncSession.value?.sessionId) {
       const text = typeof event.params.text === "string" ? event.params.text : "";
-      if (text) {
-        void navigator.clipboard
-          ?.writeText(text)
-          .then(() => {
-            // 远端复制频繁时节流提示（8s 内只提示一次）。
-            if (Date.now() - vncClipboardNoticeAt > 8000) {
-              vncClipboardNoticeAt = Date.now();
-              showNotice(t("vnc.clipboardReceived"));
-            }
-          })
-          .catch(() => undefined);
-      }
+      // The VNC session owns the host write (and the poller's echo suppression/
+      // focus gating); this dispatcher only forwards the text.
+      if (text) onVncClipboard?.(text);
       return;
     }
     // RDP 生命周期（RDP-3 前端）：connecting → connected → (reconnecting →)
@@ -279,6 +269,14 @@ export function usePluginEvents(options: {
     }
     // 远端 → 本地剪贴板（text-only，CF_UNICODETEXT）：回写本地 + 节流提示，与 VNC 同款。
     // 超大文本按后端分片（chunkIndex/chunkTotal）拼接完整后再回写（C2）。
+    if (event.method.startsWith("rdp/clipboard-files/")) {
+      onRdpClipboardFiles?.(event.method, event.params as Record<string, unknown>);
+      return;
+    }
+    if (event.method === "rdp/clipboard-status" && event.params.sessionId === rdpSession.value?.sessionId) {
+      onRdpClipboardStatus?.(event.params as Record<string, unknown>);
+      return;
+    }
     if (event.method === "rdp/clipboard" && event.params.sessionId === rdpSession.value?.sessionId) {
       const params = event.params as Record<string, unknown>;
       const sessionId = String(params.sessionId ?? "");
@@ -297,13 +295,18 @@ export function usePluginEvents(options: {
         }
         if (buffer.received < total) return;
         rdpClipboardChunks.delete(sessionId);
-        writeRdpClipboard(buffer.parts.join(""));
+        if (buffer.parts.join("")) onRdpClipboard?.(buffer.parts.join(""));
         return;
       }
-      writeRdpClipboard(text);
+      if (text) onRdpClipboard?.(text);
       return;
     }
     // 服务端光标形状（default/hidden/position/bitmap）：落到画布 CSS cursor。
+    if (event.method === "vnc/pointer" && event.params.sessionId === vncSession.value?.sessionId) {
+      const pointer = decodeRdpPointerEvent(event.params);
+      if (pointer) vncSurface.value?.applyPointer(pointer);
+      return;
+    }
     if (event.method === "rdp/pointer" && event.params.sessionId === rdpSession.value?.sessionId) {
       const pointer = decodeRdpPointerEvent(event.params);
       if (pointer) rdpSurface.value?.applyPointer(pointer);

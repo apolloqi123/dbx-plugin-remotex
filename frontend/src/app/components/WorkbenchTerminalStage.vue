@@ -4,6 +4,7 @@
 import CommandSuggestions from "../../features/completion/components/CommandSuggestions.vue";
 import CompletionMenu from "../../features/completion/components/CompletionMenu.vue";
 import ConnectingCard from "../../features/connections/components/ConnectingCard.vue";
+import RdpClipboardFilesOverlay from "./RdpClipboardFilesOverlay.vue";
 import RdpSurface from "../../features/remote-desktop/components/RdpSurface.vue";
 import TerminalHistoryPanel from "../../features/terminal/components/TerminalHistoryPanel.vue";
 import TerminalPromptHints from "../../features/terminal/components/TerminalPromptHints.vue";
@@ -43,15 +44,17 @@ const {
   isVncMode, localCanSave, localExitCode, localShellRestored, localState,
   localUiMode, locale, onReplaySeek, openReplay, panelSurface,
   promptHintsAnchor, promptHintsCompletionsKey, promptHintsHistoryKey, promptHintsVisible, quickSelectActive,
-  quickSelectHits, quickSelectOpen, rdpClosedTitle, rdpDesktopSize, rdpDialogOpen,
+  quickSelectHits, quickSelectOpen, rdpAutoFit, rdpClosedTitle, rdpDesktopSize, rdpDialogOpen,
   rdpScaleMode, rdpState, rdpSurface, reconnect, reconnectCountdown,
-  reconnectNow, reconnectPending, reconnectRdpSession, recordCountdown, recordingActive,
+  rdpClipboardEnabled, rdpFileBusy, rdpFileProgress, rdpRemoteFiles, rdpArchiveReady, rdpRemoteReady,
+  startRdpRemoteDownload, saveRdpRemoteArchive, dismissRdpRemoteFiles,
+  reconnectNow, reconnectPending, reconnectRdpSession, reconnectVncSession, onRdpSurfaceResize, recordCountdown, recordingActive,
   recordingClearAllOpen, recordingClearAllSubmitting, recordingElapsedSec, recordingExportingId, recordingHits, recordingSearchBusy, recordingTarget,
   recordings, recordingsLoading, recordingsOpen, recordingsQuery, replayDurationMs,
   replayExporting, replayPlayheadMs, replayPlaying, replaySpeed, replayState,
   restartLocalTerminal, revealRecording, runTerminalSearch, searchMatchState, searchOpen,
   searchResultCount, searchResultIndex, searchSeedOptions, searchSeedQuery, selectHistoryEntry,
-  sendRdpClipboard, sendRdpInput, sendVncClipboard, sendVncInput, serialError,
+  sendRdpClipboard, pasteRdpClipboard, sendRdpInput, sendVncClipboard, pasteVncClipboard, pasteVncWithFileClipboard, probeVncRemoteClipboard, sendVncInput, onVncSurfaceResize, serialError,
   serialState, serialUpload, serialUploadBusy, serialUploadOverlayVisible, serialUploadPercentValue,
   serialUploadStatusLabel, setGhostTabAccept, sftpViewVisible, showTerminalMenu, stage,
   startConnect, suggestionActiveIndex, suggestionAnchor, suggestionItems, suggestionOpen,
@@ -107,13 +110,26 @@ const {
         <!-- VNC 画布（nyaterm-parity P2 2d）：盖在 xterm 之上（z-index 2），
              帧从 vnc/frame/{id} 二进制通道进入；键盘/鼠标由画布采集后经
              keysym 映射发 vnc/input。连接态/退出覆盖层沿用 terminal-overlay。 -->
-        <VncSurface v-if="isVncMode" ref="vncSurface" class="vnc-surface" :scale-mode="vncScaleMode" @input="sendVncInput" @clipboard-out="sendVncClipboard" />
+        <VncSurface v-if="isVncMode" ref="vncSurface" class="vnc-surface" :scale-mode="vncScaleMode" @input="sendVncInput" @clipboard-out="pasteVncClipboard" @paste-request="pasteVncWithFileClipboard" @copy-request="probeVncRemoteClipboard" @container-resize="onVncSurfaceResize" />
         <!-- RDP 画布（nyaterm-parity P3-4）：盖在 xterm 之上（z-index 2），帧从
              rdp/frame/{id} 二进制通道进入（与 vnc/frame 同一 44 字节 patch 头）；
              键盘经扫描码映射、鼠标/滚轮原样映射发 rdp/input，服务端光标形状
              （rdp/pointer）落到画布 CSS cursor。连接态/退出覆盖层沿用
              terminal-overlay。 -->
-        <RdpSurface v-if="isRdpMode" ref="rdpSurface" class="vnc-surface" :scale-mode="rdpScaleMode" @input="sendRdpInput" @clipboard-out="sendRdpClipboard" @desktop-size="(size) => (rdpDesktopSize = size)" />
+        <RdpSurface v-if="isRdpMode" ref="rdpSurface" class="vnc-surface" :scale-mode="rdpScaleMode" :clipboard-enabled="rdpClipboardEnabled" @input="sendRdpInput" @clipboard-out="pasteRdpClipboard" @paste-request="pasteRdpClipboard" @desktop-size="(size) => (rdpDesktopSize = size)" @container-resize="onRdpSurfaceResize" />
+        <RdpClipboardFilesOverlay
+          v-if="isRdpMode && rdpState.state === 'running'"
+          :t="t"
+          :busy="rdpFileBusy"
+          :progress="rdpFileProgress"
+          :remote-files="rdpRemoteFiles"
+          :archive-ready="rdpArchiveReady"
+          :remote-ready="rdpRemoteReady"
+          :start-remote-download="startRdpRemoteDownload"
+          :save-remote-archive="saveRdpRemoteArchive"
+          :dismiss-remote-files="dismissRdpRemoteFiles"
+          @focus-desktop="rdpSurface?.$el?.querySelector('canvas')?.focus()"
+        />
         </template>
         <template #cursor>
         <!-- 空提示符快捷键引导条（引导 Warp 对齐键位）：空行静置时浮在光标行
@@ -275,6 +291,7 @@ const {
           :vnc-state="vncState"
           :vnc-error="vncError"
           :is-rdp-mode="isRdpMode"
+          :is-rdp-connection="isRdpConnection"
           :rdp-state="rdpState"
           :rdp-closed-title="rdpClosedTitle"
           :format-duration="formatDuration"
@@ -288,6 +305,7 @@ const {
           @close-telnet="closeTelnetSession"
           @close-serial="closeSerialSession"
           @close-vnc="closeVncSession"
+          @vnc-reconnect="reconnectVncSession"
           @rdp-reconnect="reconnectRdpSession"
           @rdp-edit-credentials="rdpDialogOpen = true"
           @rdp-close="closeRdpSession"

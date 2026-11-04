@@ -2,7 +2,7 @@
 const messages = {
     // 工作台标签标题取自 iframe document.title（见 App.vue 对 locale 的 watch），
     // 插件名与 manifest localizations.name 保持一致。
-    pluginName: "SSHX",
+    pluginName: "RemoteX",
     dividerResizeHint: "Drag or use the ←/→ arrow keys to resize",
     dividerResizeHintHeight: "Drag or use the ↑/↓ arrow keys to resize the height",
     showPassword: "Show password",
@@ -493,13 +493,6 @@ const messages = {
     extract: {
       action: "Extract here",
       done: "Extracted to {name}",
-    },
-    editSave: {
-      edit: "Edit",
-      save: "Save",
-      saved: "Saved {name}",
-      unsaved: "Unsaved changes",
-      closeConfirm: "You have unsaved changes. Discard them and continue?",
     },
     webDownload: {
       largeWarning: "{name} is {size}. Browser downloads buffer the whole file in memory before saving. Continue?",

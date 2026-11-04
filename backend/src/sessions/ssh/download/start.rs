@@ -61,16 +61,18 @@ impl SshRuntime {
         task_id: &str,
         prep: DownloadPrep,
     ) -> Result<(), String> {
-        match self.download_preps.lock() {
+        let poisoned = match self.download_preps.lock() {
             Ok(mut preps) => {
                 preps.insert(task_id.to_string(), prep);
-                Ok(())
+                false
             }
-            Err(_) => {
-                self.rollback_registered_download(task_id).await;
-                Err("Download prep registry is poisoned".to_string())
-            }
+            Err(_) => true,
+        };
+        if poisoned {
+            self.rollback_registered_download(task_id).await;
+            return Err("Download prep registry is poisoned".to_string());
         }
+        Ok(())
     }
 
     /// Removes a start-path download whose task id never reached the caller
@@ -417,17 +419,18 @@ impl SshRuntime {
         } else {
             None
         };
-        let mut downloads = match self.downloads.lock() {
-            Ok(downloads) => downloads,
-            Err(_) => {
-                // No task will ever own the staging `.part`: clean it here.
-                if let Some(sink) = sink.as_ref() {
-                    let _ = std::fs::remove_file(&sink.part_path);
+        {
+            let mut downloads = match self.downloads.lock() {
+                Ok(downloads) => downloads,
+                Err(_) => {
+                    // No task will ever own the staging `.part`: clean it here.
+                    if let Some(sink) = sink.as_ref() {
+                        let _ = std::fs::remove_file(&sink.part_path);
+                    }
+                    return Err("Download registry is poisoned".to_string());
                 }
-                return Err("Download registry is poisoned".to_string());
-            }
-        };
-        downloads.insert(
+            };
+            downloads.insert(
             task_id.clone(),
             DownloadState {
                 session_id: session_id.to_string(),
@@ -454,7 +457,7 @@ impl SshRuntime {
                 raw_client: Arc::new(AsyncMutex::new(None)),
             },
         );
-        drop(downloads);
+        }
         if let Some((gz_path, staged_path, remote_path_for_prep)) = compressed_paths {
             // prep 注册 + 后台任务（远端 gzip → 拉取 → 解压 → ready）。
             // 登记先于 spawn：取消 RPC 立即可见。

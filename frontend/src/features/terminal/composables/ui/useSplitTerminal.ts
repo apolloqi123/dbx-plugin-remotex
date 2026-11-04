@@ -117,7 +117,7 @@ export function useSplitTerminal(options: UseSplitTerminalOptions): UseSplitTerm
   function closeRemote(targetSessionId: string) {
     const api = window.dbxPlugin;
     if (!api || !targetSessionId) return;
-    void api.invoke("ssh/session/close", { sessionId: targetSessionId }).catch(() => undefined);
+    void api.invoke("ssh/session/close", { sessionId: targetSessionId, immediate: true }).catch(() => undefined);
   }
 
   function stopListening() {

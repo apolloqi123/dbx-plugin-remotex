@@ -32,6 +32,7 @@ mod parse;
 mod scripts;
 mod shell;
 mod shell_local;
+mod stats_limits;
 mod stream;
 mod stream_batch;
 
@@ -55,6 +56,7 @@ pub use parse::*;
 #[allow(unused_imports)]
 pub use scripts::*;
 pub use shell::*;
+pub use stats_limits::*;
 pub use stream::*;
 pub use stream_batch::*;
 
@@ -62,13 +64,16 @@ pub use stream_batch::*;
 pub const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Wait cap for `docker logs --tail N`; tailing is bounded by `--tail`.
 pub const LOGS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Wait cap for one `docker stats --no-stream` snapshot (one daemon round-trip
+/// per poll; the monitor tab samples every few seconds).
+pub const STATS_TIMEOUT: Duration = Duration::from_secs(10);
 /// Wait cap for lifecycle actions; `stop`/`restart` default to a 10s
 /// container shutdown timeout, so 60s covers the worst case with slack.
 pub const ACTION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Bounds for the `--tail` line count of `docker/logs`.
 pub const TAIL_MIN: u64 = 10;
-pub const TAIL_MAX: u64 = 2000;
+pub const TAIL_MAX: u64 = 1000;
 pub const TAIL_DEFAULT: u64 = 200;
 
 /// Test-only engine constructor: the same shape `parse_engine` produces, so
@@ -108,6 +113,15 @@ pub const PS_FORMAT_LEGACY: &str =
 /// parser splits the `DBXDOCKER_PS` section on it; absent means the modern
 /// attempt produced rows (or the host is empty).
 pub const PS_LEGACY_MARKER: &str = "DBXDOCKER_PS_LEGACY";
+
+/// `docker stats` row template: one JSON object per sample carrying CPU%,
+/// memory usage/limit, network/block IO and PIDs (Docker ≥17.09). Older
+/// CLIs reject it; the payload then degrades to the stopped/denied shapes
+/// the parser already distinguishes, never a crash.
+pub const STATS_FORMAT: &str = "{{json .}}";
+
+/// Marker line that splits the stats snapshot from shell noise.
+pub const STATS_MARKER: &str = "DBXDOCKER_STATS";
 
 /// PATH hardening prepended to every remote collector heredoc (same
 /// well-known install dirs as the local CLI discovery below). Actions keep

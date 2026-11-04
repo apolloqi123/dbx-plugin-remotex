@@ -58,4 +58,31 @@ impl SshRuntime {
             session.connection_id == connection_id && session.connected.load(Ordering::Acquire)
         })
     }
+
+    /// Session ids matching either scope, in one registry pass. The webview
+    /// heartbeat renews their deferred teardown while the workbench is alive;
+    /// both scopes are passed together because a beat carries both and the
+    /// registry is only scanned while a per-session close is actually pending.
+    pub(crate) async fn session_ids_touching(
+        &self,
+        workbench_id: Option<&str>,
+        connection_id: Option<&str>,
+    ) -> Vec<String> {
+        self.sessions
+            .read()
+            .await
+            .iter()
+            .filter(|(_, session)| {
+                connection_id.is_some_and(|connection_id| session.connection_id == connection_id)
+                    || workbench_id.is_some_and(|workbench_id| {
+                        session
+                            .workbench_id
+                            .read()
+                            .map(|workbench| workbench.as_str() == workbench_id)
+                            .unwrap_or(false)
+                    })
+            })
+            .map(|(session_id, _)| session_id.clone())
+            .collect()
+    }
 }

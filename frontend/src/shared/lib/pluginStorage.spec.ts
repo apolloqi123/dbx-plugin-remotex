@@ -44,6 +44,12 @@ describe("ssh pluginStore wiring", () => {
         "telnet-connect-last",
         "serial-connect-last",
         "vnc-connect-last",
+        "rdp-connect-last",
+        "remote-files-connect-last",
+        // 指标面板磁盘/网卡显示开关（含 only-main 升级回退键）。
+        "ssh-metrics-show-all-disks",
+        "ssh-metrics-show-all-nics",
+        "ssh-metrics-only-main",
         // 结构化补全引擎（FIG wave-1）：fig-safe（默认）/ fig / off。
         // 旧结构化补全开关键已随 legacy spec 目录退役（键集全等断言本身
         // 即禁止任何退役键回流，故此处不写字面量，避免命中退役 grep 门禁）。
@@ -117,7 +123,13 @@ describe("ssh pluginStore wiring", () => {
   it("hydrates from a host bridge and writes through synchronously", async () => {
     // 用注入桥走一遍 host 通道：水合读存量 + set/remove 写穿（App.vue 调用
     // 点的同步 getItem/setItem/removeItem 语义依赖该行为）。
-    const map = new Map<string, unknown>([["ssh-keyword-highlight", "false"]]);
+    const map = new Map<string, unknown>([
+      ["ssh-keyword-highlight", "false"],
+      [
+        "remote-files-connect-last",
+        '{"host":"192.0.2.10","port":"22","username":"test-user","authentication":"password"}',
+      ],
+    ]);
     const bridge: DbxPluginStorageBridge & { map: Map<string, unknown> } = {
       map,
       get: async (key) => (map.has(key) ? map.get(key) : null),
@@ -134,6 +146,7 @@ describe("ssh pluginStore wiring", () => {
     const store = createPluginKvStore([...PLUGIN_STORE_KEYS], { bridge, localStorage: null });
     await store.ready;
     expect(store.getItem("ssh-keyword-highlight")).toBe("false");
+    expect(store.getItem("remote-files-connect-last")).toContain('"host":"192.0.2.10"');
     store.setItem("ssh-sftp-pane-open", "true");
     await Promise.resolve();
     expect(bridge.map.get("ssh-sftp-pane-open")).toBe("true");

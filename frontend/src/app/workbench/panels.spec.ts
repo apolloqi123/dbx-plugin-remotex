@@ -57,14 +57,14 @@ describe("workbench panels", () => {
 });
 
 describe("container split defaults", () => {
-  it("opens the container pane at a 50/50 split and resets to it", () => {
+  it("opens the container pane at a 6:4 terminal/container split and resets to it", () => {
     const layout = useLayoutState({ paneDirection: ref("auto"), sftpPaneOpen: ref(false) });
-    expect(layout.dockerSplitRatio.value).toBe(50);
-    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "50%" });
+    expect(layout.dockerSplitRatio.value).toBe(60);
+    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "40%" });
     layout.dockerSplitRatio.value = 72;
     layout.resetDockerSplitRatio();
-    expect(layout.dockerSplitRatio.value).toBe(50);
-    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "50%" });
+    expect(layout.dockerSplitRatio.value).toBe(60);
+    expect(layout.dockerPaneBasis.value).toEqual({ flexBasis: "40%" });
   });
 });
 

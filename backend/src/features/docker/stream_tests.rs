@@ -2,6 +2,7 @@
 //! inside the source-size budget (same layout as the SSH exec tests).
 
 use super::*;
+use super::stream_registry::StreamEntry;
 
 use dbx_plugin_sdk::PluginTransport;
 use std::io::Write;
@@ -16,12 +17,59 @@ impl DockerStreams {
                 cancel,
                 started: Instant::now(),
                 done: Arc::new(Notify::new()),
+                owner: String::new(),
+                session: String::new(),
             },
         );
     }
 
+    pub(crate) fn insert_test_owned(
+        &self,
+        stream_id: String,
+        owner: &str,
+    ) -> watch::Receiver<bool> {
+        let (cancel, receiver) = watch::channel(false);
+        self.lock().insert(
+            stream_id,
+            StreamEntry {
+                cancel,
+                started: Instant::now(),
+                done: Arc::new(Notify::new()),
+                owner: owner.to_string(),
+                session: String::new(),
+            },
+        );
+        receiver
+    }
+
+    pub(crate) fn insert_test_session(
+        &self,
+        stream_id: String,
+        session: &str,
+    ) -> watch::Receiver<bool> {
+        let (cancel, receiver) = watch::channel(false);
+        self.lock().insert(
+            stream_id,
+            StreamEntry {
+                cancel,
+                started: Instant::now(),
+                done: Arc::new(Notify::new()),
+                owner: "pane".to_string(),
+                session: session.to_string(),
+            },
+        );
+        receiver
+    }
+
     pub(crate) fn active_count(&self) -> usize {
         self.lock().len()
+    }
+
+    /// Registration attempt without spawning a runner (cap/admission tests).
+    pub(crate) fn try_register_test(&self, owner: &str) -> Result<String, String> {
+        let (cancel, _receiver) = watch::channel(false);
+        self.register(cancel, owner.to_string(), String::new())
+            .map(|(stream_id, _done)| stream_id)
     }
 
     /// Test runner: emits the given fragments, then reports `result`.
@@ -36,11 +84,32 @@ impl DockerStreams {
             emitter,
             is_local,
             StreamLimits::default(),
+            String::new(),
+            String::new(),
             move |sink, _cancel| async move {
                 for chunk in chunks {
                     let _ = sink.send(chunk.as_bytes().to_vec()).await;
                 }
                 result
+            },
+        )
+    }
+
+    /// Start attempt under an explicit owner (a log-pane scope).
+    pub(crate) fn start_fake_owned(
+        self: &Arc<Self>,
+        emitter: PluginEmitter,
+        owner: &str,
+    ) -> Result<String, String> {
+        self.start_tracked(
+            emitter,
+            true,
+            StreamLimits::default(),
+            owner.to_string(),
+            String::new(),
+            move |_sink, mut cancel| async move {
+                let _ = cancel.changed().await;
+                Ok(0)
             },
         )
     }
@@ -57,6 +126,8 @@ impl DockerStreams {
             emitter,
             is_local,
             StreamLimits::default(),
+            String::new(),
+            String::new(),
             move |sink, mut cancel| async move {
                 let _ = sink.send(b"before stop".to_vec()).await;
                 let _ = cancel.changed().await;
@@ -72,13 +143,77 @@ impl DockerStreams {
         emitter: PluginEmitter,
         limits: StreamLimits,
     ) -> Result<String, String> {
-        self.start_tracked(emitter, true, limits, move |sink, _cancel| async move {
+        self.start_tracked(emitter, true, limits, String::new(), String::new(), move |sink, _cancel| async move {
             let _ = sink.send(b"stuck\n".to_vec()).await;
             std::future::pending::<()>().await;
             unreachable!("the stuck runner is always aborted")
         })
     }
 }
+
+    #[test]
+    fn cancelling_an_owner_leaves_other_sessions_alone() {
+        let registry = DockerStreams::new();
+        let first = registry.insert_test_owned("first".to_string(), "session-1");
+        let second = registry.insert_test_owned("second".to_string(), "session-1");
+        let other = registry.insert_test_owned("other".to_string(), "session-2");
+        registry.cancel_owner("session-1");
+        assert!(*first.borrow(), "first stream of the owner must be cancelled");
+        assert!(*second.borrow(), "every stream of the owner must be cancelled");
+        assert!(!*other.borrow(), "another session keeps its stream");
+    }
+
+    #[test]
+    fn closing_a_scope_cancels_its_streams_and_rejects_late_starts() {
+        let registry = DockerStreams::new();
+        let stream = registry.insert_test_owned("pane-stream".to_string(), "pane-1");
+        let keep = registry.insert_test_owned("other-stream".to_string(), "pane-2");
+        registry.close_owner("pane-1");
+        assert!(*stream.borrow(), "closing a scope cancels its stream");
+        assert!(!*keep.borrow(), "another scope keeps its stream");
+        assert!(registry.is_owner_closed("pane-1"));
+        assert!(!registry.is_owner_closed("pane-2"));
+        assert_eq!(registry.active_count(), 1, "the slot is released at once");
+    }
+
+    #[tokio::test]
+    async fn a_new_start_supersedes_a_same_owner_stream_atomically() {
+        let registry = Arc::new(DockerStreams::new());
+        let old = registry.insert_test_owned("old".to_string(), "pane-1");
+        let keep = registry.insert_test_owned("keep".to_string(), "pane-2");
+        let (emitter, _sink) = emitter_for_test();
+
+        let new_id = registry.start_fake_owned(emitter, "pane-1").expect("start");
+
+        assert_ne!(new_id, "old");
+        assert!(*old.borrow(), "the previous stream of the same scope is cancelled");
+        assert!(!*keep.borrow(), "another scope keeps its stream");
+        assert_eq!(registry.active_count(), 2, "the pane is replaced, not doubled");
+        registry.stop_all();
+    }
+
+    #[test]
+    fn a_closed_scope_rejects_a_late_start_atomically() {
+        let registry = Arc::new(DockerStreams::new());
+        registry.close_owner("pane-1");
+        let (emitter, _sink) = emitter_for_test();
+        let error = registry
+            .start_fake_owned(emitter, "pane-1")
+            .expect_err("a start after close_owner must be rejected");
+        assert!(error.contains("scope is closed"), "{error}");
+        assert_eq!(registry.active_count(), 0);
+    }
+
+    #[test]
+    fn closing_a_session_only_cancels_that_sessions_streams() {
+        let registry = DockerStreams::new();
+        let first = registry.insert_test_session("first".to_string(), "sess-1");
+        let other = registry.insert_test_session("other".to_string(), "sess-2");
+        registry.cancel_session("sess-1");
+        assert!(*first.borrow());
+        assert!(!*other.borrow(), "another session keeps its stream");
+        assert_eq!(registry.active_count(), 1);
+    }
 
 struct SharedSink(Arc<Mutex<Vec<u8>>>);
 

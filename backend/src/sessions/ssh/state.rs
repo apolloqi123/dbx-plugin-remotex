@@ -28,6 +28,10 @@ pub(crate) struct SessionEntry {
     pub(crate) workbench_id: RwLock<String>,
     pub(crate) read_only: bool,
     pub(crate) connected: AtomicBool,
+    /// SFTP-only transport opened by the remote-desktop file transfer panel:
+    /// no PTY, no replay buffer, never listed as an SSH session and never a
+    /// batch/attach target.
+    pub(crate) files_only: bool,
     /// Unix seconds when the session was opened (for `ssh/sessions/list`).
     pub(crate) created_at_secs: u64,
     /// Monotonic per-runtime creation counter. created_at_secs has second
@@ -406,6 +410,10 @@ pub struct SshRuntime {
     pub(crate) sudo_keepalive: Arc<Mutex<HashMap<String, SudoKeepalive>>>,
     /// Last metrics snapshot per session, in-memory only (see `CachedMetrics`).
     pub(crate) metrics_cache: Mutex<HashMap<String, CachedMetrics>>,
+    /// Last time the GPU/NPU probes actually ran, per session. Kept apart from
+    /// `metrics_cache` because a skipped probe still refreshes the snapshot,
+    /// which would otherwise push the negative-cache deadline forever.
+    pub(crate) accelerator_probed_at: Mutex<HashMap<String, u64>>,
     /// In-flight remote command executions, cancellable by exec id.
     pub(crate) exec_tasks: Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
     /// Per-connection AI terminal mode (`agentTerminalMode`), persisted in
@@ -420,6 +428,13 @@ pub struct SshRuntime {
     pub(crate) agent_challenges: Mutex<HashMap<String, PendingChallenge>>,
     /// Monotonic session creation counter (see `SessionEntry::created_seq`).
     pub(crate) session_seq: AtomicU64,
+    /// Callbacks run whenever a session disappears — explicit close, workbench
+    /// close, connection disconnect, or a spontaneous transport drop. Feature
+    /// layers that clone the transport handle (container log streams / PTYs)
+    /// register here so their runners release the channel instead of keeping
+    /// the remote `docker logs -f` / `docker exec` process alive after the
+    /// session itself is gone.
+    pub(crate) session_end_hooks: RwLock<Vec<Arc<dyn Fn(&str) + Send + Sync>>>,
     /// Live user-facing port mappings (Xshell-style 端口映射, -L/-R):
     /// forward id -> mapping row. Runtime-scoped on purpose; rows die with
     /// their session so a closed SSH session cannot leave phantom ports.

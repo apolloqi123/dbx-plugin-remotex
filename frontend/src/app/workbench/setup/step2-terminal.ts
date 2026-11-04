@@ -339,6 +339,8 @@ export function installWorkbenchTerminal(deps: Deps) {
     toggleConnectionInfo,
     toggleRdpResolutionMenu,
     toggleRdpPasteMenu,
+    toggleRdpFileHintMenu,
+    toggleVncResolutionMenu,
     togglePanelPaletteMenu,
     toggleBatchQuickPopover,
     toggleTransferPanel,
@@ -393,6 +395,14 @@ export function installWorkbenchTerminal(deps: Deps) {
     rdpPaste: {
       isOpen: () => late.rdpPasteOpen.value,
       setOpen: (open) => { late.rdpPasteOpen.value = open; },
+    },
+    rdpFileHint: {
+      isOpen: () => late.rdpFileHintOpen.value,
+      setOpen: (open) => { late.rdpFileHintOpen.value = open; },
+    },
+    vncResolution: {
+      isOpen: () => late.vncResolutionOpen.value,
+      setOpen: (open) => { late.vncResolutionOpen.value = open; },
     },
     panelPalette: {
       isOpen: () => late.panelPaletteOpen.value,
@@ -495,7 +505,7 @@ export function installWorkbenchTerminal(deps: Deps) {
     loadTransferDownloadLimit, persistTransferDownloadLimit, uploadSource, waitWhilePaused, toggleTransferPause, cancelTransfer, transferPercent, transferBarValue,
     transferShownBytes, transferBytesTitle, resetDragHighlightOnWindowLeave, terminalMenuOpen, fileMenu, fileMenuProtected, menuSelectionSnapshot, showTerminalMenu,
     showFileMenu, showTransferHistoryMenu, onDocumentClickCloseMenus, copySelectedPaths, toggleQuickMenu, toggleSessionMenu, toggleConnectionInfo,
-    toggleRdpResolutionMenu, toggleRdpPasteMenu, togglePanelPaletteMenu, toggleBatchQuickPopover, toggleTransferPanel, commandRunning, historyScope, commandHistoryLimit,
+    toggleRdpResolutionMenu, toggleRdpPasteMenu, toggleRdpFileHintMenu, toggleVncResolutionMenu, togglePanelPaletteMenu, toggleBatchQuickPopover, toggleTransferPanel, commandRunning, historyScope, commandHistoryLimit,
     applyCommandHistoryLimit, commandHistory, commandHistoryTimes, commandHistoryMeta, commandHistoryIndex, commandHistoryBackup, persistCommandHistory, persistCommandHistoryTimes,
     pushTerminalCommandHistory, recordCommandExecutionMeta, loadRemoteShellHistory, quickCommands, quickSaving, quickImportBusy, hydrateQuickCommands, deleteQuickCommand,
     sendQuickCommand, pasteQuickCommand, sendSudoRefresh, saveQuickCommand, createQuickCommandGroup, quickGroups, renameQuickCommandGroupById, dissolveQuickCommandGroupById, importQuickCommands, quickMenuOpen,

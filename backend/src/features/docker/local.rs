@@ -195,6 +195,32 @@ pub async fn collect_list_local(engine: &EngineConfig) -> Result<Value, String> 
     )))
 }
 
+/// `docker/stats` for `target: "local"`: one direct `stats --no-stream`
+/// call (no shell, endpoint via env), assembled into the same marker text
+/// as the remote collector so [`stats_payload`] stays the only parser.
+pub async fn collect_stats_local(
+    engine: &EngineConfig,
+    container_id: &str,
+) -> Result<Value, String> {
+    validate_container_id(container_id)?;
+    let cli = find_local_cli(&engine.cli)
+        .ok_or_else(|| format!("{} CLI not found on this machine", engine.cli))?;
+    let (_, output) = run_local(
+        &cli,
+        &[
+            "stats",
+            "--no-stream",
+            "--format",
+            STATS_FORMAT,
+            container_id,
+        ],
+        STATS_TIMEOUT,
+        engine.endpoint.as_deref(),
+    )
+    .await?;
+    Ok(stats_payload(&format!("{STATS_MARKER}\n{output}")))
+}
+
 /// `docker/logs` for `target: "local"`: inspect first, then the tail, both
 /// assembled into the marker text so [`logs_payload`] parses unchanged.
 /// A failed inspect (container gone) degrades to `container: null` exactly

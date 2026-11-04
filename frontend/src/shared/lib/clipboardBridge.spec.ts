@@ -4,7 +4,7 @@
 // 未提供——任何一条路径缺失都不能让复制/粘贴整体失效。
 import { describe, expect, it, vi } from "vitest";
 
-import { readClipboardText, writeClipboardText, type ClipboardPort } from "./clipboardBridge";
+import { clipboardReadAvailable, readClipboardText, writeClipboardText, type ClipboardPort } from "./clipboardBridge";
 
 function port(overrides: Partial<ClipboardPort> = {}): ClipboardPort {
   return {
@@ -72,5 +72,23 @@ describe("readClipboardText fallback chain", () => {
 
   it("rejects when neither the bridge nor navigator.clipboard can read", async () => {
     await expect(readClipboardText({})).rejects.toThrow("clipboard read unavailable");
+  });
+});
+
+describe("clipboardReadAvailable", () => {
+  it("accepts the bridge or a native clipboard outside opaque origins", () => {
+    expect(clipboardReadAvailable({ bridge: port() })).toBe(true);
+    expect(clipboardReadAvailable({ nativeClipboard: port() })).toBe(true);
+    expect(clipboardReadAvailable({})).toBe(false);
+  });
+});
+
+
+describe("clipboard write options", () => {
+  it("can disable the focus-stealing execCommand fallback for event-driven writes", async () => {
+    const execCommand = vi.fn(() => true);
+    await expect(writeClipboardText("text", { execCommand }, { execCommandFallback: false }))
+      .rejects.toThrow("clipboard write unavailable");
+    expect(execCommand).not.toHaveBeenCalled();
   });
 });

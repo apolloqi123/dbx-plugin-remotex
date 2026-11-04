@@ -27,7 +27,7 @@ type Deps = InstallWorkbenchCoreResult & InstallWorkbenchTerminalResult & Instal
 export function installWorkbenchSessionIo(deps: Deps) {
   const {
   aiSearch, appearance, beginAiCommand, canWrite, captureOutputChunk, closeHistoryPanel,
-  closeSuggestions, commandMarkerParser, connected, connection, connectionId, currentPath,
+  closeSuggestions, commandMarkerParser, connected, connection, connectionId, connectionProtocol, currentPath,
   directoryParser, directoryTrackingSupported, dockerPaneOpen, downloadChunkWaiters, entries,
   followDirectory, followSftpPath, hostContext, isLocalMode, isRdpConnection, isRdpMode,
   isSerialMode, isTelnetMode, lastTerminalCommand, loadDirectory, loadDirectoryFollowPref, localLastCwd,
@@ -228,11 +228,13 @@ export function installWorkbenchSessionIo(deps: Deps) {
   // rdpState/rdpSurface 等模板共享态留守 App.vue，经 options 注入）。
   const {
     rdpCertPrompt, rdpCertRemember, rdpCertRemaining,
-    startRdpSession, closeRdpSession, sendRdpInput, sendRdpClipboard,
+    startRdpSession, closeRdpSession, sendRdpInput, sendRdpClipboard, pasteRdpClipboard, receiveRdpClipboard, receiveRdpClipboardFiles, receiveRdpClipboardStatus,
+    startRdpRemoteDownload, saveRdpRemoteArchive, dismissRdpRemoteFiles,
+    rdpClipboardEnabled, rdpClipboardStatus, rdpFileBusy, rdpFileProgress, rdpRemoteFiles, rdpArchiveReady, rdpRemoteReady, rdpNativeFileClipboard, rdpServerFileClipboard, rdpServerFileClipboardKnown, rdpFileError,
     reconnectRdpSession, resolveRdpCertificate,
   } = useRdpSession({
     t, showError, showNotice,
-    rdpSession, rdpState, rdpSurface, rdpScaleMode, rdpClipboardChunks,
+    rdpSession, rdpState, rdpDialogOpen, rdpSurface, rdpScaleMode, rdpClipboardChunks,
     workbenchId,
     connectionId,
     isDisposed: () => M.disposed,
@@ -241,17 +243,18 @@ export function installWorkbenchSessionIo(deps: Deps) {
   // —— RDP 工作台专属逻辑（大文本粘贴 + 分辨率入口）：收口在 rdp/useRdpWorkbench，
   // App.vue 只保留薄挂载点（模板绑定经解构同名透出）。 ——
   const {
-    rdpPasteOpen, rdpPasteText, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
+    rdpPasteOpen, rdpPasteText, rdpTypingBusy, rdpTypingSent, rdpTypingTotal, rdpFileHintOpen,
     rdpWriteRemoteClipboard, rdpTypeAsKeystrokes,
     RDP_RESOLUTION_PRESETS, rdpResolutionOpen, rdpCustomWidth, rdpCustomHeight, rdpResizing,
-    rdpDesktopSize, rdpPersistedSize, rdpResolutionLabel, isRdpResolutionActive,
+    rdpDesktopSize, rdpPersistedSize, rdpAutoFit, enableRdpAutoFit, onRdpSurfaceResize,
+    rdpResolutionLabel, isRdpResolutionActive,
     rdpWindowProportionPreset, applyRdpResolution, applyRdpCustomResolution,
-    routeRdpConnection, connectViaRdpDialog, startRdpFromConnection, rdpClosedTitle,
+    routeRdpConnection, connectViaRdpDialog, startRdpFromConnection, rdpDialogSeed, rdpClosedTitle,
   } = useRdpWorkbench({
     t, showError, showNotice, persistState,
     isRdpMode, rdpSession, rdpSurface,
     sendRdpInput, sendRdpClipboard,
-    rdpState, rdpDialogOpen, startRdpSession,
+    rdpState, rdpDialogOpen, rdpScaleMode, startRdpSession,
     getConnection: () => connection,
     getStoredConnectionProtocol: () => storedConnectionProtocol,
     sftpPaneOpen,
@@ -264,8 +267,11 @@ export function installWorkbenchSessionIo(deps: Deps) {
   const {
     vncSession, vncDialogOpen, vncState, vncError, vncScaleMode, vncSurface,
     isVncMode, vncTarget,
-    markVncClosed, startVncSession, closeVncSession, sendVncInput, sendVncClipboard,
-    handleVncFrame, reattachVncSession,
+    markVncClosed, startVncSession, closeVncSession, reconnectVncSession, sendVncInput, sendVncClipboard, pasteVncClipboard, receiveVncClipboard,
+    handleVncFrame, reattachVncSession, onVncSurfaceResize,
+    vncDesktopSize, VNC_RESOLUTION_PRESETS, vncAutoFit, vncResizing, vncCanResize, vncResolutionOpen,
+    vncCustomWidth, vncCustomHeight, vncResolutionLabel, isVncResolutionActive,
+    applyVncResolution, applyVncCustomResolution, enableVncAutoFit,
   } = useVncSession({
     t, showError, showNotice,
     connectionId,
@@ -280,6 +286,9 @@ export function installWorkbenchSessionIo(deps: Deps) {
     connection,
     startVncSession,
   });
+  // VNC 连接级门控：协议查询命中或会话已激活都算（与 isRdpConnection 同口径）。
+  // 失败/断开态下 SSH 工具组同样一处都不该出现。
+  const isVncConnection = computed(() => connectionProtocol.value === "vnc" || isVncMode.value);
   // 连接切换（宿主改推另一连接）时失效 sidecar 缓存的协议，避免把上一连接的
   // 协议带给下一个连接（权威协议与 connectionProtocol 派生在 state/useSessionState）。
   watch(connectionId, () => {
@@ -489,12 +498,16 @@ export function installWorkbenchSessionIo(deps: Deps) {
     commandMarker, commandMarkerElapsed, commandMarkerDetails, resetCommandMarker, startCommandMarkerTick, stopCommandMarkerTick, applyCommandMarker, pasteConfirm,
     copyTextToClipboard, clipboardDeps, copyTerminalSelection, pasteTerminal, interceptTerminalPaste, sendConfirmedPaste, confirmRiskyPaste, resolvePasteConfirm,
     selectAllTerminal, clearTerminal, rdpCertPrompt, rdpCertRemember, rdpCertRemaining, startRdpSession, closeRdpSession, sendRdpInput,
-    sendRdpClipboard, reconnectRdpSession, resolveRdpCertificate, rdpPasteOpen, rdpPasteText, rdpTypingBusy, rdpTypingSent, rdpTypingTotal,
+    sendRdpClipboard, pasteRdpClipboard, receiveRdpClipboard, receiveRdpClipboardFiles, receiveRdpClipboardStatus, reconnectRdpSession, resolveRdpCertificate, rdpPasteOpen, rdpPasteText, rdpTypingBusy, rdpTypingSent, rdpTypingTotal, rdpFileHintOpen,
+    startRdpRemoteDownload, saveRdpRemoteArchive, dismissRdpRemoteFiles,
+    rdpClipboardEnabled, rdpClipboardStatus, rdpFileBusy, rdpFileProgress, rdpRemoteFiles, rdpArchiveReady, rdpRemoteReady, rdpNativeFileClipboard, rdpServerFileClipboard, rdpServerFileClipboardKnown, rdpFileError,
     rdpWriteRemoteClipboard, rdpTypeAsKeystrokes, RDP_RESOLUTION_PRESETS, rdpResolutionOpen, rdpCustomWidth, rdpCustomHeight, rdpResizing, rdpDesktopSize,
-    rdpPersistedSize, rdpResolutionLabel, isRdpResolutionActive, rdpWindowProportionPreset, applyRdpResolution, applyRdpCustomResolution, routeRdpConnection, connectViaRdpDialog,
-    startRdpFromConnection, rdpClosedTitle, vncSession, vncDialogOpen, vncState, vncError, vncScaleMode, vncSurface,
-    isVncMode, vncTarget, markVncClosed, startVncSession, closeVncSession, sendVncInput, sendVncClipboard, handleVncFrame,
-    reattachVncSession, startVncFromConnection, terminalLayout, shellTabSessions, activeTerminalPaneId, shellTabCwd, activePaneCwd, openTerminalSplit,
+    rdpPersistedSize, rdpAutoFit, enableRdpAutoFit, onRdpSurfaceResize, rdpResolutionLabel, isRdpResolutionActive, rdpWindowProportionPreset, applyRdpResolution, applyRdpCustomResolution, routeRdpConnection, connectViaRdpDialog,
+    startRdpFromConnection, rdpClosedTitle, rdpDialogSeed, vncSession, vncDialogOpen, vncState, vncError, vncScaleMode, vncSurface,
+    isVncMode, isVncConnection, vncTarget, markVncClosed, startVncSession, closeVncSession, reconnectVncSession, sendVncInput, sendVncClipboard, pasteVncClipboard, receiveVncClipboard, handleVncFrame,
+    reattachVncSession, onVncSurfaceResize, vncDesktopSize, VNC_RESOLUTION_PRESETS, vncAutoFit, vncResizing, vncCanResize, vncResolutionOpen,
+    vncCustomWidth, vncCustomHeight, vncResolutionLabel, isVncResolutionActive, applyVncResolution,
+    applyVncCustomResolution, enableVncAutoFit, startVncFromConnection, terminalLayout, shellTabSessions, activeTerminalPaneId, shellTabCwd, activePaneCwd, openTerminalSplit,
     splitTerminalPane, closeTerminalSplit, closePane, createPaneTab, activatePaneTab, closePaneTab, onShellTabOpened, resetTerminalLayout,
     canSplitTerminal, terminalHasSplit, splitTerminalFont, onShellTabCwd, onPaneActivated, syncSftpToActivePane, canOpenShellTab, sessionStatus,
     sessionPillText, terminalErrorDetail, terminalErrorFriendly, connectionIdentity, connectionAuthMethodLabel, dividerResizeHint, sftpSearchDraft,

@@ -47,11 +47,15 @@ impl Plugin {
                 Ok(json!({ "success": true }))
             }
 
-            // 仅前端缩放（fit/stretch/actual），不改远端分辨率。
+            // 会话内动态分辨率：RFB SetDesktopSize（ExtendedDesktopSize），
+            // 服务端确认后替换保留桌面并整幅刷新，不换代。
             "vnc/resize" => {
-                let session_id = required_string(&params, "sessionId")?;
-                self.runtime.block_on(self.vnc.resize(session_id))?;
-                Ok(json!({ "success": true }))
+                let request: crate::sessions::vnc::VncResizeRequest = parse(params)?;
+                self.runtime.block_on(self.vnc.resize(
+                    &request.session_id,
+                    request.width,
+                    request.height,
+                ))
             }
 
             // 手动重连：generation 计数防串话，保留帧缓冲做整幅重绘。
@@ -94,8 +98,20 @@ impl Plugin {
             // 确认窗、remember 记入 rdp-known-certs.json）；剪贴板 text-only
             // + 16 MiB 上限；认证类失败不自动重连。
             "rdp/start" => {
-                rdp_start_gate(&plugin_data_dir())?;
                 let mut request: crate::sessions::rdp::RdpStartRequest = parse(params)?;
+                // A saved RDP connection is explicit opt-in: the user created an
+                // RDP card/profile, so its staged protocol lets `rdp/start`
+                // bypass the experimental dialog gate. Ad-hoc dialog sessions
+                // still require the setting.
+                let saved_rdp = request
+                    .connection_id
+                    .as_deref()
+                    .and_then(|id| self.non_ssh_creds.protocol_of(id))
+                    .as_deref()
+                    == Some("rdp");
+                if !saved_rdp {
+                    rdp_start_gate(&plugin_data_dir())?;
+                }
                 // 表单密码/用户名合并：请求已带密码（弹窗路径）时不覆盖；
                 // 用户名只在请求留空时补（连接表单 username 对 telnet/rdp 可见）。
                 if request
@@ -139,15 +155,14 @@ impl Plugin {
                 Ok(json!({ "success": true }))
             }
 
-            // 服务端动态分辨率：resize = 以新尺寸重连（会话内 display control
-            // PDU 真机不生效，见 crate::sessions::rdp::resize 文档与交付报告）。
+            // 会话内动态分辨率：MS-RDPEDISP Monitor Layout → 服务端
+            // Deactivate-Reactivation；不再换代重连（见 resize 文档）。
             "rdp/resize" => {
                 let request: crate::sessions::rdp::RdpResizeRequest = parse(params)?;
                 self.runtime.block_on(self.rdp.resize(
                     &request.session_id,
                     request.width,
                     request.height,
-                    emitter.clone(),
                 ))
             }
 
@@ -182,6 +197,73 @@ impl Plugin {
                 self.rdp
                     .resolve_certificate(challenge_id, accept, remember)?;
                 Ok(json!({ "success": true }))
+            }
+
+            // 文件/文件夹剪贴板（CLIPRDR 文件传输，双向）。出站：begin → chunk(1 MiB)
+            // → commit；commit 只在远端协商了 STREAM_FILECLIP_ENABLED 后入队。
+            // 入站：远端复制文件后自动下载并打包为 zip，前端按 read 流式取回。
+            "rdp/clipboard-files/begin" => {
+                let request: crate::sessions::rdp::wire::ClipboardFilesBeginRequest =
+                    parse(params)?;
+                self.runtime.block_on(
+                    self.rdp
+                        .clipboard_files_begin(&request.session_id, &request.files),
+                )
+            }
+            "rdp/clipboard-files/chunk" => {
+                let request: crate::sessions::rdp::wire::ClipboardFilesChunkRequest =
+                    parse(params)?;
+                self.runtime.block_on(self.rdp.clipboard_files_chunk(
+                    &request.session_id,
+                    &request.upload_id,
+                    request.index,
+                    request.offset,
+                    &request.data_base64,
+                ))
+            }
+            "rdp/clipboard-files/commit" => {
+                let request: crate::sessions::rdp::wire::ClipboardFilesUploadRequest =
+                    parse(params)?;
+                self.runtime.block_on(
+                    self.rdp
+                        .clipboard_files_commit(&request.session_id, &request.upload_id),
+                )
+            }
+            "rdp/clipboard-files/abort" => {
+                let request: crate::sessions::rdp::wire::ClipboardFilesUploadRequest =
+                    parse(params)?;
+                self.runtime.block_on(
+                    self.rdp
+                        .clipboard_files_abort(&request.session_id, &request.upload_id),
+                )
+            }
+            "rdp/clipboard-files/read" => {
+                let request: crate::sessions::rdp::wire::ClipboardFilesReadRequest = parse(params)?;
+                self.runtime.block_on(self.rdp.clipboard_files_read(
+                    &request.session_id,
+                    request.offset,
+                    request.length,
+                ))
+            }
+            "rdp/clipboard-files/archive" => {
+                let session_id = required_string(&params, "sessionId")?;
+                self.runtime
+                    .block_on(self.rdp.clipboard_files_archive(session_id))
+            }
+            "rdp/clipboard-files/download" => {
+                let session_id = required_string(&params, "sessionId")?;
+                self.runtime
+                    .block_on(self.rdp.clipboard_files_download(session_id))
+            }
+            "rdp/clipboard-files/clear" => {
+                let session_id = required_string(&params, "sessionId")?;
+                self.runtime
+                    .block_on(self.rdp.clipboard_files_clear(session_id))
+            }
+            "rdp/clipboard-files/status" => {
+                let session_id = required_string(&params, "sessionId")?;
+                self.runtime
+                    .block_on(self.rdp.clipboard_files_status(session_id))
             }
 
             "rdp/close" => {

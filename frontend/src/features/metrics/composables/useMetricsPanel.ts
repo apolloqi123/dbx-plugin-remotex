@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, reactive, ref, watch, type Ref } from "vue";
 import { confirmDialog } from "../../../shared/lib/confirmDialog";
+import { documentHidden, onDocumentVisibilityChange } from "../../../shared/lib/documentVisibility";
 import { distroBadge, type DistroBadge } from "../../connections/lib/distroBadge";
 import { pushSample, sparklinePath, METRICS_SAMPLE_CAPACITY } from "../lib/metricsSparkline";
 import { filterDiskMounts, filterNetworkInterfaces } from "../lib/metricsView";
@@ -184,7 +185,9 @@ function openMetrics() {
   void refreshMetrics();
   window.clearInterval(metricsTimer);
   metricsTimer = window.setInterval(() => {
-    if (metricsOpen.value && !metricsLoading.value) void refreshMetrics();
+    // 面板还开着但窗口在后台：不发这次远端采集（一个 poll 是若干 exec
+    // 通道），复现时由 visibilitychange 立即补一拍。
+    if (metricsOpen.value && !metricsLoading.value && !documentHidden()) void refreshMetrics();
   }, 5000);
 }
 
@@ -254,8 +257,13 @@ async function killProcessRow(row: ProcessRow, signal: 15 | 9) {
 }
 
 
+const stopVisibilityWatch = onDocumentVisibilityChange((hidden) => {
+  if (!hidden && metricsOpen.value && !metricsLoading.value) void refreshMetrics();
+});
+
 onBeforeUnmount(() => {
   window.clearInterval(metricsTimer);
+  stopVisibilityWatch();
 });
 
 // 换会话清空采样环（跨重连不残留旧趋势）。

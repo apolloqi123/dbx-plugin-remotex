@@ -1,6 +1,6 @@
 // Locale block for ja (split from shared/lib/i18n.ts).
 const messages = {
-    pluginName: "SSHX",
+    pluginName: "RemoteX",
     dividerResizeHint: "ドラッグまたは ←/→ キーで幅を調整",
     dividerResizeHintHeight: "ドラッグまたは ↑/↓ キーで高さを調整",
     showPassword: "パスワードを表示",
@@ -493,13 +493,6 @@ const messages = {
     extract: {
       action: "ここに展開",
       done: "{name} に展開しました",
-    },
-    editSave: {
-      edit: "編集",
-      save: "保存",
-      saved: "{name} を保存しました",
-      unsaved: "未保存の変更があります",
-      closeConfirm: "未保存の変更があります。破棄して続行しますか？",
     },
     webDownload: {
       largeWarning: "{name} は {size} です。ブラウザでのダウンロードは保存前にファイル全体をメモリに読み込みます。続行しますか？",

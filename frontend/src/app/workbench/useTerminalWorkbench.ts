@@ -59,7 +59,7 @@ const TERMINAL_KEYS = [
   "terminalInputQueue", "terminalLayout", "terminalMenuOpen", "terminalStackRef", "terminalState",
   "terminalSyncOutput", "terminalTheme", "terminalTransferBusy", "terminalTransportWatch", "terminalWriteThrottle",
   "toggleBatchBar", "toggleBatchQuickPopover", "toggleBatchTargetsPopover", "togglePanelToolbar",
-  "toggleRdpPasteMenu", "toggleSessionMenu", "tooltip", "trackPendingInput", "trzszBusy",
+  "toggleRdpPasteMenu", "toggleRdpFileHintMenu", "toggleSessionMenu", "tooltip", "trackPendingInput", "trzszBusy",
   "trzszDirection", "trzszFileCount", "trzszFileIndex", "trzszFileName", "trzszInput",
   "trzszMessage", "trzszOverlayVisible", "trzszPercent", "trzszPhase", "trzszSpeed",
   "trzszStatusLabel", "updateAiSettings", "updateGutterSettings", "updateTerminalAppearance", "updateWallpaperEnabled",

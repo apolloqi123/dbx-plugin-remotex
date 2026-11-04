@@ -1,6 +1,6 @@
 // Locale block for it (split from shared/lib/i18n.ts).
 const messages = {
-    pluginName: "SSHX",
+    pluginName: "RemoteX",
     dividerResizeHint: "Trascina o usa le frecce ←/→ per regolare la larghezza",
     dividerResizeHintHeight: "Trascina o usa le frecce ↑/↓ per regolare l'altezza",
     showPassword: "Mostra password",
@@ -493,13 +493,6 @@ const messages = {
     extract: {
       action: "Estrai qui",
       done: "Estratto in {name}",
-    },
-    editSave: {
-      edit: "Modifica",
-      save: "Salva",
-      saved: "{name} salvato",
-      unsaved: "Modifiche non salvate",
-      closeConfirm: "Ci sono modifiche non salvate. Scartarle e continuare?",
     },
     webDownload: {
       largeWarning: "{name} è di {size}. Il download nel browser carica l'intero file in memoria prima del salvataggio. Continuare?",

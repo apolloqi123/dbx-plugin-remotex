@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CONNECTION_PROVIDER_ID,
-  LOCAL_CONNECTION_PROVIDER_ID,
   PLUGIN_ID,
   TUNNELS_QUICK_ID,
   TUNNELS_WORKBENCH_ID,
@@ -14,7 +13,6 @@ describe("pluginIds", () => {
   it("matches the manifest identity and contribution ids", () => {
     expect(PLUGIN_ID).toBe("io.dbx.sshx");
     expect(CONNECTION_PROVIDER_ID).toBe("io.dbx.sshx.connection");
-    expect(LOCAL_CONNECTION_PROVIDER_ID).toBe("io.dbx.sshx.local");
     expect(WORKBENCH_ID).toBe("io.dbx.sshx.workbench");
     expect(TUNNELS_WORKBENCH_ID).toBe("io.dbx.sshx.tunnels");
     expect(TUNNELS_QUICK_ID).toBe("io.dbx.sshx.tunnels.quick");

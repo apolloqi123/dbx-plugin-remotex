@@ -49,6 +49,7 @@ impl SshRuntime {
             workbench_id: RwLock::new(workbench_id.to_string()),
             read_only: connection.read_only,
             connected: AtomicBool::new(true),
+            files_only: false,
             created_at_secs: unix_now_secs(),
             created_seq: self.session_seq.fetch_add(1, Ordering::Relaxed),
             handle,
@@ -71,6 +72,44 @@ impl SshRuntime {
         sessions.insert(session_id.clone(), entry.clone());
 
         (session_id, entry, terminal_rx)
+    }
+
+    /// Registers the remote-desktop file transfer transport: an authenticated
+    /// SSH connection with no PTY, replay buffer or read loop. The SFTP
+    /// helpers only need the handle and the shared transport lease, so this
+    /// lets the transfer panel reuse the whole upload/download pipeline
+    /// without opening a shell on the server.
+    pub(super) async fn register_files_session(
+        &self,
+        workbench_id: &str,
+        connection: &StoredConnection,
+        handle: Arc<Handle<SshClient>>,
+        transport_lease: Arc<SharedTransportLease>,
+    ) -> String {
+        let (terminal_tx, _terminal_rx) = mpsc::channel(1);
+        let replay = Arc::new(AsyncMutex::new(ReplayBuffer::default()));
+        let entry = Arc::new(SessionEntry {
+            connection_id: connection.id.clone(),
+            workbench_id: RwLock::new(workbench_id.to_string()),
+            read_only: false,
+            connected: AtomicBool::new(true),
+            files_only: true,
+            created_at_secs: unix_now_secs(),
+            created_seq: self.session_seq.fetch_add(1, Ordering::Relaxed),
+            handle,
+            transport_lease,
+            orchestration: Arc::new(RwLock::new(resolved_sudo_auth(connection, None))),
+            auto_sudo: Arc::new(Mutex::new(None)),
+            triggers: Arc::new(Mutex::new(None)),
+            terminal_tx,
+            replay,
+            agent_recorder: Arc::new(Mutex::new(None)),
+            session_recorder: Arc::new(Mutex::new(None)),
+            agent_exec_lock: Arc::new(AsyncMutex::new(())),
+        });
+        let session_id = Uuid::new_v4().to_string();
+        self.sessions.write().await.insert(session_id.clone(), entry);
+        session_id
     }
 
     /// Terminal activity keepalive: resets server-side idle policies that watch

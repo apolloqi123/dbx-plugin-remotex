@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Warm-target shim for `dbx-plugin package`.
+#
+# dbx-plugin always builds the Rust backend into
+# `<output-dir>/.build-rust-<target>` and deletes that directory afterwards
+# (CleanupDirectory). Setting CARGO_TARGET_DIR in the parent shell does not
+# help: the CLI overwrites it for the child cargo process. The result is a
+# cold release build of the whole dependency tree on every package run
+# (measured 5m49s / 408 crates).
+#
+# This shim is only put on PATH while `dbx-plugin package` runs. When it sees
+# the CLI's throwaway target directory it redirects cargo to the persistent
+# `backend/target` (already warmed by scripts/test.sh or a previous package),
+# then exposes the produced binary at the path the CLI expects, so packaging
+# becomes a no-op cargo build plus a file copy.
+#
+# Requires DBX_REAL_CARGO (absolute path to the real cargo) and
+# DBX_PLUGIN_ROOT (repository root). Arguments and environment are otherwise
+# passed through unchanged.
+set -euo pipefail
+
+target="${CARGO_TARGET_DIR:-}"
+case "$target" in
+  */dist/.build-rust-*)
+    root="${DBX_PLUGIN_ROOT:?DBX_PLUGIN_ROOT is required by the warm cargo shim}"
+    real_cargo="${DBX_REAL_CARGO:?DBX_REAL_CARGO is required by the warm cargo shim}"
+    warm="$root/backend/target"
+    exe="$(awk -F'"' '/^[[:space:]]*binary[[:space:]]*=/{print $2; exit}' "$root/dbx-plugin.toml" 2>/dev/null || true)"
+    [ -n "$exe" ] || exe="dbx-plugin-sshx"
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) exe="$exe.exe" ;;
+    esac
+    mkdir -p "$warm"
+    CARGO_TARGET_DIR="$warm" "$real_cargo" "$@"
+    triple="${CARGO_BUILD_TARGET:-}"
+    src="$warm/${triple:+$triple/}release/$exe"
+    if [ ! -f "$src" ]; then
+      echo "warm cargo shim: cargo did not produce $src" >&2
+      exit 1
+    fi
+    dst="$target/${triple:+$triple/}release"
+    mkdir -p "$dst"
+    cp -f "$src" "$dst/$exe"
+    ;;
+  *)
+    exec "${DBX_REAL_CARGO:?DBX_REAL_CARGO is required by the warm cargo shim}" "$@"
+    ;;
+esac

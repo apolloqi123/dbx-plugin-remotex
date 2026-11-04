@@ -93,6 +93,8 @@ export async function handleSessionInvoke(method: string, params: unknown): Prom
     const staged = protoFixture === "rdp" || protoFixture === "telnet" || protoFixture === "vnc" || protoFixture === "serial" ? protoFixture : "";
     return { protocol: protoFixture === "pending" ? "" : staged || "ssh" };
   }
+  // 工作台心跳：真实 sidecar 用它在宿主误发延迟拆除时续期；mock 只需应答成功。
+  if (method === "ssh/session/alive") return { success: true };
   if (method === "ssh/sessions/list") {
     return { sessions: failSessionOpen || freshSessionOpen ? [] : [{ sessionId: "visual-session", connectionId: context.connectionId, workbenchId: context.workbenchId, readOnly: !writable, connected: true, sudoKeepalive: true, createdAt: Math.floor(Date.now() / 1000), authMethod: authFixture === "auto" ? "auto" : "private-key", host: "server.demo.internal", port: 22, username: "demo" }] };
   }

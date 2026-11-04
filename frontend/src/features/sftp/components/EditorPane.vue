@@ -6,7 +6,7 @@
 // TextPreview（异步按需加载，避免 CodeMirror 进入启动分包），图片页签使用
 // 与预览弹窗同款缩放交互；加载/错误状态按页签展示。
 import { computed, ref, watch } from "vue";
-import { FileText, Image as ImageIcon, Loader2, Save, X } from "@lucide/vue";
+import { FileText, Image as ImageIcon, Loader2, RotateCw, Save, X } from "@lucide/vue";
 import { createPreviewAsyncComponent } from "../../../shared/lib/asyncPreview";
 import type { EditorTab } from "../composables/editor/useEditorTabs";
 
@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   activate: [id: string];
   close: [id: string];
+  reload: [id: string];
   save: [id: string];
   "update:text": [value: { id: string; text: string }];
 }>();
@@ -94,12 +95,25 @@ function onTextChange(text: string) {
         </div>
       </div>
       <button
+        v-if="activeTab"
+        type="button"
+        class="editor-reload"
+        :title="t('editSave.reload')"
+        :aria-label="t('editSave.reload')"
+        :disabled="activeTab.loading || activeTab.saving"
+        @click="emit('reload', activeTab.id)"
+      >
+        <Loader2 v-if="activeTab.loading" class="spinning" aria-hidden="true" />
+        <RotateCw v-else aria-hidden="true" />
+        <span>{{ t("editSave.reload") }}</span>
+      </button>
+      <button
         v-if="activeTab && activeTab.kind === 'text' && activeTab.editable"
         type="button"
         class="editor-save"
         :title="t('editSave.save')"
         :aria-label="t('editSave.save')"
-        :disabled="!activeTab.dirty || activeTab.saving"
+        :disabled="!activeTab.dirty || activeTab.loading || activeTab.saving"
         @click="emit('save', activeTab.id)"
       >
         <Loader2 v-if="activeTab.saving" class="spinning" aria-hidden="true" />
@@ -230,9 +244,9 @@ function onTextChange(text: string) {
 
 .editor-tab-close {
   display: inline-flex;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 20px;
+  height: 18px;
+  flex: 0 0 20px;
   align-items: center;
   justify-content: center;
   margin-right: 2px;
@@ -249,11 +263,12 @@ function onTextChange(text: string) {
 }
 
 .editor-tab-close svg {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
 }
 
-.editor-save {
+.editor-save,
+.editor-reload {
   display: inline-flex;
   min-height: 15px;
   flex: 0 0 auto;
@@ -270,16 +285,19 @@ function onTextChange(text: string) {
   cursor: pointer;
 }
 
-.editor-save:hover:not(:disabled) {
+.editor-save:hover:not(:disabled),
+.editor-reload:hover:not(:disabled) {
   background: var(--accent);
 }
 
-.editor-save:disabled {
+.editor-save:disabled,
+.editor-reload:disabled {
   cursor: default;
   opacity: 0.42;
 }
 
-.editor-save svg {
+.editor-save svg,
+.editor-reload svg {
   width: 10px;
   height: 10px;
   flex: 0 0 10px;

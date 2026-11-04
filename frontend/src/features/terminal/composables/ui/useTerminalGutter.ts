@@ -36,7 +36,12 @@ const gutterCellHeight = ref<number | null>(null);
 // 下一次 onRender/onScroll 事件跟上），避免 gutter 追帧放大 strained 场景开销。
 const GUTTER_SUSPEND_PENDING_BYTES = 256 * 1024;
 let gutterRafId = 0;
-let gutterScreenOffsetTop = 0;
+// 视口顶部像素偏移 = xterm 元素 padding-top。改外观（行高/字号/内边距）才会
+// 变，但 runGutterRecompute 每个渲染帧都跑：每帧 getComputedStyle 会强制样式
+// 求值。缓存并在 resize / 设置变化时失效，另加 2s 兜底重读。
+let gutterScreenOffsetTop: number | null = null;
+let gutterScreenOffsetAt = 0;
+const GUTTER_OFFSET_TTL_MS = 2_000;
 // 逻辑行首绝对行号 → 写入时刻。裁剪保留视口顶端前 3000 行。
 const gutterTimestamps = new Map<number, number>();
 let gutterLastStampedRow = -1;
@@ -65,7 +70,10 @@ function attachGutterListeners() {
   if (!term || gutterRenderDisposable || !isGutterActive()) return;
   gutterRenderDisposable = term.onRender(() => scheduleGutterRecompute());
   gutterScrollDisposable = term.onScroll(() => scheduleGutterRecompute());
-  gutterResizeDisposable = term.onResize(() => scheduleGutterRecompute());
+  gutterResizeDisposable = term.onResize(() => {
+    gutterScreenOffsetTop = null;
+    scheduleGutterRecompute();
+  });
   // 回车重盖光标逻辑行：独立 onData 挂子（routeTerminalData 输入路由不动）。
   gutterEnterDisposable = term.onData((data) => {
     if (!gutterSettings.value.showTimestamps) return;
@@ -94,6 +102,7 @@ function detachGutterListeners() {
   }
   gutterRows.value = [];
   gutterCellHeight.value = null;
+  gutterScreenOffsetTop = null;
 }
 
 function scheduleGutterRecompute() {
@@ -104,6 +113,17 @@ function scheduleGutterRecompute() {
   gutterRafId = window.requestAnimationFrame(runGutterRecompute);
 }
 
+/** 首视口行的像素起点 = xterm 元素的 padding-top（gutter 文本与画布行对齐）。 */
+function resolveGutterScreenOffset(term: Terminal): number {
+  const now = Date.now();
+  if (gutterScreenOffsetTop === null || now - gutterScreenOffsetAt >= GUTTER_OFFSET_TTL_MS) {
+    const paddingTop = term.element ? Number.parseFloat(window.getComputedStyle(term.element).paddingTop) : Number.NaN;
+    gutterScreenOffsetTop = Number.isFinite(paddingTop) ? paddingTop : 0;
+    gutterScreenOffsetAt = now;
+  }
+  return gutterScreenOffsetTop ?? 0;
+}
+
 function runGutterRecompute() {
   gutterRafId = 0;
   const term = terminalGet();
@@ -112,12 +132,9 @@ function runGutterRecompute() {
   if (outputGate.mode === "strained") return;
   gutterCellHeight.value = getRenderCellHeight(term);
   const buffer = term.buffer.active;
-  // 首视口行的像素起点 = xterm 元素的 padding-top（gutter 文本与画布行对齐）。
-  const paddingTop = term.element ? Number.parseFloat(window.getComputedStyle(term.element).paddingTop) : Number.NaN;
-  gutterScreenOffsetTop = Number.isFinite(paddingTop) ? paddingTop : 0;
   gutterRows.value = computeGutterRows({
     cellHeight: gutterCellHeight.value,
-    screenOffsetTop: gutterScreenOffsetTop,
+    screenOffsetTop: resolveGutterScreenOffset(term),
     scrollTop: buffer.viewportY,
     buffer: { type: buffer.type, length: buffer.length, getLine: (y) => buffer.getLine(y) },
     rows: term.rows,
@@ -173,6 +190,8 @@ function resetGutterTimestamps() {
 // gutter 设置变化：挂/摘挂子 + 宽度变化后重算终端列宽（xterm 左 padding 随
 // --dbx-gutter-width 变化，FitAddon 需要重新 fit）。
 watch(gutterSettings, () => {
+  // 开关会改左 padding 宽度；顶部偏移缓存一并失效，避免沿用旧对齐。
+  gutterScreenOffsetTop = null;
   if (terminalGet() && isGutterActive()) attachGutterListeners();
   else detachGutterListeners();
   scheduleGutterRecompute();

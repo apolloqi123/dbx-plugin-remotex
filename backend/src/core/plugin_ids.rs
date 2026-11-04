@@ -13,9 +13,14 @@ pub const PLUGIN_ID: &str = "io.dbx.sshx";
 /// Workbench contribution opened by the tunnel context menu.
 pub const TUNNELS_WORKBENCH_ID: &str = "io.dbx.sshx.tunnels";
 
-/// Connection-provider contribution id of the local shell target. The host
-/// stamps it onto every lifecycle payload for the scheduler task provider.
-pub const LOCAL_CONNECTION_PROVIDER: &str = "io.dbx.sshx.local";
+/// The unified RemoteX connection-provider contribution (identity check only).
+#[cfg(test)]
+pub const CONNECTION_PROVIDER: &str = "io.dbx.sshx.connection";
+
+/// Legacy standalone local-shell provider id. Connections saved before the
+/// provider collapse still carry this lifecycle stamp; new local targets are
+/// `protocol=local` inside [`CONNECTION_PROVIDER`].
+pub const LEGACY_LOCAL_CONNECTION_PROVIDER: &str = "io.dbx.sshx.local";
 
 #[cfg(test)]
 mod tests {
@@ -39,7 +44,7 @@ mod tests {
             .expect("manifest contributions array");
         for (kind, id) in [
             ("workbench", TUNNELS_WORKBENCH_ID),
-            ("connection-provider", LOCAL_CONNECTION_PROVIDER),
+            ("connection-provider", CONNECTION_PROVIDER),
         ] {
             assert!(
                 contributions

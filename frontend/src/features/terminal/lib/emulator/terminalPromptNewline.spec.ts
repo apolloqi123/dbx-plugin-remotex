@@ -30,6 +30,12 @@ describe("PromptNewlineTransformer", () => {
     expect(text(out2)).toBe(`\r\n${OSC7_BEL}`);
   });
 
+  it("tracks the plain prefix when text and a prompt frame share one chunk", () => {
+    const transformer = new PromptNewlineTransformer();
+    const out = transformer.push(bytes(`tail-of-output${OSC7_BEL}`));
+    expect(text(out)).toBe(`tail-of-output\r\n${OSC7_BEL}`);
+  });
+
   it("leaves the stream alone when output already ends on a line start", () => {
     const transformer = new PromptNewlineTransformer();
     expect(text(transformer.push(bytes("line\n")))).toBe("line\n");

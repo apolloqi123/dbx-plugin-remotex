@@ -19,6 +19,7 @@ import DockMetricsStrip from "./DockMetricsStrip.vue";
 import QuickCommandsMenu from "./QuickCommandsMenu.vue";
 import RecordingMenu from "../../features/recording/components/RecordingMenu.vue";
 import RdpToolbarControls from "./RdpToolbarControls.vue";
+import VncToolbarControls from "./VncToolbarControls.vue";
 import SessionMenu from "./SessionMenu.vue";
 import TransferPopover from "./TransferPopover.vue";
 import type { SshWorkbenchPaneOrder } from "../lib/workbenchLayout";
@@ -63,6 +64,8 @@ const props = defineProps<{
   isRdpConnection: boolean;
   isRdpMode: boolean;
   isSerialMode: boolean;
+  /** VNC 连接级门控（协议命中或会话激活）：SSH/终端工具组整组隐藏。 */
+  isVncConnection: boolean;
   isVncMode: boolean;
   isTelnetMode: boolean;
   localUiMode: boolean;
@@ -120,12 +123,24 @@ const props = defineProps<{
   quickSaving: boolean;
   quickImporting: boolean;
   // RDP 工具组（转发 RdpToolbarControls）
+  applePlatform: boolean;
+  rdpNativeFileClipboard: boolean;
+  rdpServerFileClipboard: boolean;
+  rdpServerFileClipboardKnown: boolean;
+  rdpClipboardEnabled: boolean;
   resolutionPresets: ReadonlyArray<{ width: number; height: number }>;
   rdpResizing: boolean;
+  rdpAutoFit: boolean;
   rdpDesktopSize: { width: number; height: number } | null;
   rdpTypingBusy: boolean;
   rdpTypingSent: number;
   rdpTypingTotal: number;
+  // VNC 工具组（转发 VncToolbarControls）
+  vncResolutionPresets: ReadonlyArray<{ width: number; height: number }>;
+  vncResizing: boolean;
+  vncCanResize: boolean;
+  vncAutoFit: boolean;
+  vncDesktopSize: { width: number; height: number } | null;
   // 传输弹层单实例（tab/panel 两表面共用）
   transferList: TransferTask[];
   transferHistory: TransferHistoryEntry[];
@@ -169,6 +184,11 @@ const rdpCustomWidth = defineModel<string>("rdpCustomWidth", { required: true })
 const rdpCustomHeight = defineModel<string>("rdpCustomHeight", { required: true });
 const rdpPasteOpen = defineModel<boolean>("rdpPasteOpen", { required: true });
 const rdpPasteText = defineModel<string>("rdpPasteText", { required: true });
+const rdpFileHintOpen = defineModel<boolean>("rdpFileHintOpen", { required: true });
+const vncScaleMode = defineModel<"fit" | "stretch" | "actual">("vncScaleMode", { required: true });
+const vncResolutionOpen = defineModel<boolean>("vncResolutionOpen", { required: true });
+const vncCustomWidth = defineModel<string>("vncCustomWidth", { required: true });
+const vncCustomHeight = defineModel<string>("vncCustomHeight", { required: true });
 
 const emit = defineEmits<{
   /** 传输历史右键菜单收起：写的是 App 的 ref，留在 App 侧收口。 */
@@ -249,8 +269,8 @@ function openForwardManager(mode: "add" | "manage") {
     </div>
     <div v-if="!panelSurface" class="toolbar-actions">
       <!-- —— 视图段（分栏互换 / 字号）：SFTP 面板入口已移到右缘文件组；
-           连接协议门控（!isRdpConnection）在组级判一次，RDP 连接下整组不渲染。 -->
-      <template v-if="!isRdpConnection">
+           连接协议门控（!isRdpConnection && !isVncConnection）在组级判一次，RDP 连接下整组不渲染。 -->
+      <template v-if="!isRdpConnection && !isVncConnection">
         <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :disabled="panelSurface" @click="togglePaneOrder"><WorkbenchGlyph name="pane-swap" /></button>
         <button class="icon-button" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
         <button class="icon-button" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
@@ -265,17 +285,40 @@ function openForwardManager(mode: "add" | "manage") {
         v-model:rdp-custom-height="rdpCustomHeight"
         v-model:rdp-paste-open="rdpPasteOpen"
         v-model:rdp-paste-text="rdpPasteText"
+        v-model:rdp-file-hint-open="rdpFileHintOpen"
         :t="t"
+        :apple-platform="applePlatform"
+        :native-file-clipboard="rdpNativeFileClipboard"
+        :server-file-clipboard="rdpServerFileClipboard"
+        :server-file-clipboard-known="rdpServerFileClipboardKnown"
+        :clipboard-enabled="rdpClipboardEnabled"
         :resolution-presets="resolutionPresets"
         :rdp-resizing="rdpResizing"
+        :rdp-auto-fit="rdpAutoFit"
         :rdp-desktop-size="rdpDesktopSize"
         :rdp-typing-busy="rdpTypingBusy"
         :rdp-typing-sent="rdpTypingSent"
         :rdp-typing-total="rdpTypingTotal"
         :actions="actions"
       />
-      <!-- 工具条语义分组分隔线：两侧（视图段/会话菜单）在 SSH 与 RDP 两种形态
-           下都各有一侧可见，永远不会成为孤儿分隔符。 -->
+      <!-- —— VNC 独立工具组（isVncMode 会话激活期）：缩放三档 + 桌面分辨率 +
+           断开。与 SSH 组互斥、与 RDP 组互斥。 -->
+      <VncToolbarControls
+        v-if="isVncMode"
+        v-model:vnc-scale-mode="vncScaleMode"
+        v-model:vnc-resolution-open="vncResolutionOpen"
+        v-model:vnc-custom-width="vncCustomWidth"
+        v-model:vnc-custom-height="vncCustomHeight"
+        :t="t"
+        :resolution-presets="vncResolutionPresets"
+        :vnc-resizing="vncResizing"
+        :vnc-can-resize="vncCanResize"
+        :vnc-auto-fit="vncAutoFit"
+        :vnc-desktop-size="vncDesktopSize"
+        :actions="actions"
+      />
+      <!-- 工具条语义分组分隔线：两侧（视图段/会话菜单）在 SSH 与远程桌面两种
+           形态下都各有一侧可见，永远不会成为孤儿分隔符。 -->
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 会话下拉：新建 / 复制 / 命令会话 / 本地终端 / Shell 选项 / 导入会话
            收敛为单入口。Shell 选项为同弹层视图切换（数据与 local/shells/list
@@ -310,10 +353,10 @@ function openForwardManager(mode: "add" | "manage") {
         @open-import="importPanelOpen = true"
       />
       <!-- —— SSH 工具组·连接运维 / 效率 / 录制 / 右缘固定组：组级
-           !isRdpConnection 判一次；组内按钮只保留 localUiMode/isSerialMode
+           !isRdpConnection && !isVncConnection 判一次；组内按钮只保留 localUiMode/isSerialMode
            等自身条件。右缘固定组按「设置 → 审计 → SFTP 面板 → 传输 →
            容器 → 指标」从右往左排列，SFTP 面板与传输紧邻。 -->
-      <template v-if="!isRdpConnection">
+      <template v-if="!isRdpConnection && !isVncConnection">
       <!-- 本地 shell 没有 SSH 会话，运维组为空：分隔线随组隐藏，避免双分隔线。 -->
       <span v-if="!localUiMode || isSerialMode" class="toolbar-separator" aria-hidden="true" />
       <!-- 连接与运维 -->
@@ -427,11 +470,11 @@ function openForwardManager(mode: "add" | "manage") {
     <div v-if="panelSurface" class="toolbar-actions panel-actions">
       <!-- 面板紧凑组：新标签 → 字号 → 录制 → 传输 → SFTP 面板（与传输紧邻）
            → 配色 → 设置 → 收起。 -->
-      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><WorkbenchGlyph name="new-tab" /></button>
-      <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
-      <button v-if="!isRdpMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
+      <button v-if="!localUiMode && !isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><WorkbenchGlyph name="new-tab" /></button>
+      <button v-if="!isRdpMode && !isVncMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
+      <button v-if="!isRdpMode && !isVncMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
       <RecordingMenu
-        v-if="!isRdpConnection"
+        v-if="!isRdpConnection && !isVncConnection"
         compact
         :t="t"
         :can-record="!!recordingTarget"
@@ -442,8 +485,22 @@ function openForwardManager(mode: "add" | "manage") {
         :recordings-open="recordingsOpen"
         :actions="recordingActions"
       />
-      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
-      <button v-if="!localUiMode && !isRdpConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
+      <button v-if="!isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
+      <button v-if="!localUiMode && !isRdpConnection && !isVncConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
+      <VncToolbarControls
+        v-if="isVncMode"
+        v-model:vnc-scale-mode="vncScaleMode"
+        v-model:vnc-resolution-open="vncResolutionOpen"
+        v-model:vnc-custom-width="vncCustomWidth"
+        v-model:vnc-custom-height="vncCustomHeight"
+        :t="t"
+        :resolution-presets="vncResolutionPresets"
+        :vnc-resizing="vncResizing"
+        :vnc-can-resize="vncCanResize"
+        :vnc-auto-fit="vncAutoFit"
+        :vnc-desktop-size="vncDesktopSize"
+        :actions="actions"
+      />
       <AppearanceMenu
         v-model:panel-palette-open="panelPaletteOpen"
         :t="t"
@@ -452,7 +509,7 @@ function openForwardManager(mode: "add" | "manage") {
         :panel-active-scheme-id="panelActiveSchemeId"
         :actions="actions"
       />
-      <button v-if="!isRdpConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
+      <button v-if="!isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
       <button class="icon-button compact" :title="t('panel.hideToolbar')" :aria-label="t('panel.hideToolbar')" :aria-pressed="panelToolbarHidden" @click="togglePanelToolbar"><WorkbenchGlyph name="collapse-up" /></button>
     </div>
     <!-- 传输弹层单实例（tab/panel 两表面共用）：Popover 挂在 header 层，锚点是

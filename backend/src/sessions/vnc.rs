@@ -15,10 +15,13 @@
 //! `closed`/`error`).
 //!
 //! Engine: upstream `vnc-rs 0.6` (HsuJv/vnc-rs, MIT OR Apache-2.0) with
-//! `PixelFormat::rgba()`, encodings ZRLE + Raw (+ DesktopSizePseudo) only —
-//! Tight is deliberately not advertised, and a server that still sends a
-//! Tight/JPEG rectangle fails the session with a readable error. Due
-//! diligence (why route A, what the upstream limits cover) lives in
+//! `PixelFormat::rgba()`, encodings Raw + CopyRect + ZRLE + TRLE + Tight (+
+//! DesktopSizePseudo/ExtendedDesktopSizePseudo/CursorPseudo). Tight JPEG rects
+//! are decoded to RGBA in the sidecar, CopyRect is composited into the retained
+//! desktop, cursor pseudo-encoding updates are forwarded as `vnc/pointer`
+//! events, and ExtendedDesktopSize drives live `vnc/resize` (SetDesktopSize +
+//! DesktopUpdate → framebuffer swap + full refresh). Due diligence (why route
+//! A, what the upstream limits cover) lives in
 //! `docs/plans/SPIKE_VNC_SESSION.zh-CN.md`.
 //!
 //! Bounds (tighter than upstream's per-message decoder limits):
@@ -28,7 +31,7 @@
 //!   still re-validates stride/rect/payload on every frame;
 //! - classic VNC-Auth passwords are rejected above 8 bytes at `vnc/start`
 //!   (the protocol truncates silently otherwise);
-//! - clipboard text is Latin-1 and ≤ 1 MiB in both directions.
+//! - clipboard text is UTF-8 (vnc-rs wire encoding) and ≤ 1 MiB in both directions.
 //!
 //! Reconnect: every worker run captures a `generation` counter; `vnc/
 //! reconnect` (or the automatic retry loop) bumps it, the superseded worker
@@ -54,12 +57,14 @@ use serde_json::{json, Value};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use vnc::{
-    ClientKeyEvent, ClientMouseEvent, PixelFormat, Rect, Screen, VncClient, VncConnector,
-    VncEncoding, VncError, VncEvent, X11Event,
+    ClientKeyEvent, ClientMouseEvent, PixelFormat, Rect, ResizeError as VncResizeError, Screen,
+    VncClient, VncConnector, VncEncoding, VncError, VncEvent, X11Event,
 };
 use zeroize::Zeroizing;
 
+mod clipboard;
 mod frame;
+mod resize;
 mod runtime;
 mod types;
 mod worker;
@@ -69,6 +74,8 @@ mod tests;
 
 #[allow(unused_imports)]
 pub(crate) use frame::*;
+#[allow(unused_imports)]
+pub(crate) use resize::*;
 #[allow(unused_imports)]
 pub(crate) use runtime::*;
 #[allow(unused_imports)]

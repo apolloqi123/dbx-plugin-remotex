@@ -79,7 +79,7 @@ pub fn validate_container_id(container_id: &str) -> Result<(), String> {
     ))
 }
 
-/// Clamps the requested tail line count into [10, 2000].
+/// Clamps the requested tail line count into [10, 1000].
 pub fn clamp_tail(tail: u64) -> u64 {
     tail.clamp(TAIL_MIN, TAIL_MAX)
 }

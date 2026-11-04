@@ -1,5 +1,5 @@
-<!-- SSHX plugin mark: bold purple terminal prompt on transparent. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SSHX">
+<!-- RemoteX plugin mark: bold purple terminal prompt on transparent. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RemoteX">
   <path d="M14 15 33 32 14 49" fill="none" stroke="#A855F7" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M37 49h13" fill="none" stroke="#A855F7" stroke-width="9.5" stroke-linecap="round"/>
 </svg>

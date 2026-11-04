@@ -126,6 +126,11 @@ describe("EditorPane", () => {
     await wrapper.findAll(".editor-tab-close")[1].trigger("click");
     expect(wrapper.emitted("close")).toEqual([["t2"]]);
 
+    const reload = wrapper.get(".editor-reload");
+    expect(reload.attributes("disabled")).toBeUndefined();
+    await reload.trigger("click");
+    expect(wrapper.emitted("reload")).toEqual([["t1"]]);
+
     const save = wrapper.get(".editor-save");
     expect(save.attributes("disabled")).toBeUndefined();
     await save.trigger("click");

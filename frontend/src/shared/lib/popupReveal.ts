@@ -58,9 +58,14 @@ export function watchPopupReveal(root: ParentNode = document.body): void {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof Element)) continue;
-        const layer = node.matches(POPUP_LAYER_SELECTOR)
-          ? node
-          : node.querySelector(POPUP_LAYER_SELECTOR);
+        if (node.matches(POPUP_LAYER_SELECTOR)) {
+          schedulePopupReveal(node);
+          continue;
+        }
+        // 高吞吐输出（容器日志一次突发上千个 span）会走这里：空元素不可能
+        // 包裹弹层，跳过 querySelector 的整套选择器匹配。
+        if (node.childElementCount === 0) continue;
+        const layer = node.querySelector(POPUP_LAYER_SELECTOR);
         if (layer) schedulePopupReveal(layer);
       }
     }

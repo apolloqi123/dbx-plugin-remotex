@@ -312,6 +312,10 @@ fn bindings_match_parse_surfaces() {
         "rdp_resolution",
         "rdp_certificate_policy",
         "rdp_clipboard",
+        // protocol=local 的本地 Shell 目标：外部配置由 LocalTarget 读取。
+        "shell",
+        "cwd",
+        "env",
     ];
     let mut seen_secret: Vec<String> = Vec::new();
     let mut seen_config: Vec<String> = Vec::new();

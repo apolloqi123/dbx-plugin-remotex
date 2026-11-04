@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod clipboard;
+
 use crate::core::time::unix_now_secs;
 
 impl RdpSessionRuntime {
@@ -73,6 +75,7 @@ impl RdpSessionRuntime {
             .map(Zeroizing::new);
         let session_id = uuid::Uuid::new_v4().to_string();
         let entry = Arc::new(RdpSessionEntry {
+            connection_id: std::sync::Mutex::new(request.connection_id.clone()),
             workbench_id: request.workbench_id.clone(),
             host: host.clone(),
             port,
@@ -94,6 +97,7 @@ impl RdpSessionRuntime {
             cert_wait: Arc::new(AtomicBool::new(false)),
             command_sender: tokio::sync::Mutex::new(None),
             clipboard_stage: Arc::new(ClipboardStage::default()),
+            clipboard_files: Arc::new(FileClipboardStage::new(session_id.clone())),
             broker: self.broker.clone(),
             known_certs: KnownCertStore::new(data_dir),
         });
@@ -111,6 +115,17 @@ impl RdpSessionRuntime {
                 .find(|(_, candidate)| candidate.workbench_id == request.workbench_id)
                 .map(|(session_id, entry)| (session_id.clone(), entry.clone()))
             {
+                // Adopt a connection id that the first start could not supply
+                // (legacy/dialog path), so a later disconnect still reclaims it.
+                if let Some(connection_id) = request.connection_id.as_deref() {
+                    let mut stored = existing
+                        .connection_id
+                        .lock()
+                        .expect("rdp connection id mutex");
+                    if stored.is_none() {
+                        *stored = Some(connection_id.to_string());
+                    }
+                }
                 crate::platform::diagnostics::log_rdp_debug(format!(
                     "rdp/start idempotent hit workbench={} -> reuse {existing_id}",
                     request.workbench_id
@@ -174,22 +189,16 @@ impl RdpSessionRuntime {
             .map_err(|_| "RDP session is closed".to_string())
     }
 
-    /// Desktop resize (`rdp/resize`). Implementation is "resize = reconnect
-    /// with the new size": the entry keeps the requested desktop size per
-    /// generation, so retargeting it and restarting the worker re-dials with
-    /// the new dimensions (the vendored chain's in-session display-control
-    /// PDU path was verified to send a well-formed MS-RDPEDISP monitor
-    /// layout, but a real Windows target did not apply it — see the RDP
-    /// report; a live resize stays future work on the vendored stack).
-    /// Credentials are retained in the entry (Zeroizing), so the re-dial
-    /// reuses them without any frontend involvement.
-    pub async fn resize(
-        &self,
-        session_id: &str,
-        width: u16,
-        height: u16,
-        emitter: PluginEmitter,
-    ) -> Result<Value, String> {
+    /// Desktop resize (`rdp/resize`). Queues a live MS-RDPEDISP monitor-layout
+    /// update on the current engine; the vendored client applies it through
+    /// the Display Control DVC and the server's Deactivate-Reactivation
+    /// sequence. The generation and session id stay put, so the frontend
+    /// never falls back into `connecting`. Servers without display control are
+    /// handled inside the same engine (it re-dials with the new size).
+    ///
+    /// When no engine is attached (dialling exhausted/backing off), only the
+    /// stored size is retargeted; the next generation dials with it.
+    pub async fn resize(&self, session_id: &str, width: u16, height: u16) -> Result<Value, String> {
         validate_desktop_size(width, height)?;
         let entry = self.session(session_id).await?;
         if entry.close_requested.load(Ordering::Acquire) {
@@ -201,45 +210,30 @@ impl RdpSessionRuntime {
         );
         if previous != (width, height) {
             crate::platform::diagnostics::log_rdp_debug(format!(
-                "rdp/resize id={session_id}: {previous:?} -> ({width}, {height}) via reconnect"
+                "rdp/resize id={session_id}: {previous:?} -> ({width}, {height}) live"
             ));
             entry.width.store(width, Ordering::Release);
             entry.height.store(height, Ordering::Release);
         }
-        // Same teardown as the manual reconnect: the next generation dials
-        // with the stored size; superseded workers exit without emitting.
-        entry.close_requested.store(false, Ordering::Release);
-        entry.generation.fetch_add(1, Ordering::AcqRel);
-        entry.frame_state.lock().await.clear();
-        self.broker.cancel_session(session_id);
-        if let Some(sender) = entry.command_sender.lock().await.take() {
-            let _ = sender.send(RdpCommand::Close).await;
-        }
-        spawn_worker(
-            session_id.to_string(),
-            entry,
-            emitter,
-            self.sessions.clone(),
-        );
-        Ok(json!({ "sessionId": session_id, "success": true, "reconnected": true }))
-    }
-
-    /// Local clipboard → remote (`rdp/set-clipboard`): stage the text and
-    /// advertise it as CF_UNICODETEXT.
-    pub async fn set_clipboard(&self, session_id: &str, text: String) -> Result<(), String> {
-        let entry = self.session(session_id).await?;
-        if !entry.clipboard_enabled {
-            return Err(
-                "rdp/set-clipboard: clipboard redirection is disabled for this session".to_string(),
-            );
-        }
-        validate_clipboard_text(&text)?;
-        entry.clipboard_stage.set_text(text);
-        let sender = self.command_sender(session_id).await?;
-        sender
-            .send(RdpCommand::ClipboardAdvertise)
+        let sender = entry.command_sender.lock().await.clone();
+        let Some(sender) = sender else {
+            return Ok(json!({
+                "sessionId": session_id,
+                "success": true,
+                "live": false,
+            }));
+        };
+        // A closed command channel belongs to a worker that is already
+        // tearing down; the stored size is enough for the next generation.
+        let live = sender
+            .send(RdpCommand::Resize { width, height })
             .await
-            .map_err(|_| "RDP session is closed".to_string())
+            .is_ok();
+        Ok(json!({
+            "sessionId": session_id,
+            "success": true,
+            "live": live,
+        }))
     }
 
     /// Manual reconnect: kill the current generation and restart the pump.
@@ -252,6 +246,9 @@ impl RdpSessionRuntime {
         entry.close_requested.store(false, Ordering::Release);
         entry.generation.fetch_add(1, Ordering::AcqRel);
         entry.frame_state.lock().await.clear();
+        // A new CLIPRDR channel invalidates staged/offered files and any
+        // in-flight download.
+        entry.clipboard_files.clear();
         self.broker.cancel_session(session_id);
         if let Some(sender) = entry.command_sender.lock().await.take() {
             let _ = sender.send(RdpCommand::Close).await;
@@ -279,10 +276,35 @@ impl RdpSessionRuntime {
         // and the staged clipboard text is dropped with the entry.
         self.broker.cancel_session(session_id);
         entry.clipboard_stage.clear();
+        entry.clipboard_files.clear();
         if let Some(sender) = entry.command_sender.lock().await.take() {
             let _ = sender.send(RdpCommand::Close).await;
         }
         Ok(())
+    }
+
+    /// Closing a connection tears down its RDP sessions (`connection/
+    /// disconnect`), matching the Telnet/VNC/SSH lifecycle. A webview reload
+    /// never calls this, so live sessions stay reattachable.
+    pub async fn close_connection(&self, connection_id: &str) {
+        let session_ids: Vec<String> = self
+            .sessions
+            .read()
+            .await
+            .iter()
+            .filter(|(_, entry)| {
+                entry
+                    .connection_id
+                    .lock()
+                    .expect("rdp connection id mutex")
+                    .as_deref()
+                    == Some(connection_id)
+            })
+            .map(|(session_id, _)| session_id.clone())
+            .collect();
+        for session_id in session_ids {
+            let _ = self.close(&session_id).await;
+        }
     }
 
     /// Closing a workbench tears down its RDP sessions (same contract as the
@@ -310,6 +332,11 @@ impl RdpSessionRuntime {
             .map(|(session_id, entry)| {
                 json!({
                     "sessionId": session_id,
+                    "connectionId": entry
+                        .connection_id
+                        .lock()
+                        .expect("rdp connection id mutex")
+                        .clone(),
                     "workbenchId": entry.workbench_id,
                     "host": entry.host,
                     "port": entry.port,

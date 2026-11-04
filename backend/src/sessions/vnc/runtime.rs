@@ -3,6 +3,7 @@
 use super::*;
 
 use crate::core::time::unix_now_secs;
+use crate::platform::diagnostics::log_rdp_debug;
 
 impl VncSessionRuntime {
     pub fn new() -> Self {
@@ -108,17 +109,49 @@ impl VncSessionRuntime {
             .map_err(|_| "VNC session is closed".to_string())
     }
 
-    /// Frontend scaling hint only — validated against the live session,
-    /// never forwarded to the remote desktop.
-    pub async fn resize(&self, session_id: &str) -> Result<(), String> {
-        // Touches the table so an unknown/dead session still errors.
-        self.session(session_id).await.map(|_| ())
+    /// Live remote resize (`vnc/resize`): queues RFB SetDesktopSize for the
+    /// current engine. The server confirms with an ExtendedDesktopSize update
+    /// (DesktopUpdate → retained framebuffer swap + full refresh), so the
+    /// generation/session id stay put. Returns `live=false` when no engine is
+    /// attached (dialling/backoff); the request is then dropped.
+    pub async fn resize(
+        &self,
+        session_id: &str,
+        width: u16,
+        height: u16,
+    ) -> Result<Value, String> {
+        validate_resize_size(width, height)?;
+        let entry = self.session(session_id).await?;
+        if entry.close_requested.load(Ordering::Acquire) {
+            return Err("VNC session is closed".to_string());
+        }
+        let sender = entry.command_sender.lock().await.clone();
+        let Some(sender) = sender else {
+            return Ok(json!({
+                "sessionId": session_id,
+                "success": true,
+                "live": false,
+            }));
+        };
+        let live = sender
+            .send(VncCommand::Resize { width, height })
+            .await
+            .is_ok();
+        Ok(json!({
+            "sessionId": session_id,
+            "success": true,
+            "live": live,
+        }))
     }
 
     /// Local clipboard → remote (`vnc/set-clipboard`).
     pub async fn set_clipboard(&self, session_id: &str, text: String) -> Result<(), String> {
         validate_clipboard_text(&text)?;
         let entry = self.session(session_id).await?;
+        log_rdp_debug(format!(
+            "vnc clipboard session={session_id} set-clipboard len={}",
+            text.len()
+        ));
         let sender = entry
             .command_sender
             .lock()

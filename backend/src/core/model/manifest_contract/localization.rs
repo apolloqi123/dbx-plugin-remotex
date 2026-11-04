@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn defaults_match_parser_fallbacks() {
     let expected_defaults: &[(&str, Value)] = &[
-        ("display_name", Value::from("SSH server")),
+        ("display_name", Value::from("RemoteX")),
         ("protocol", Value::from("ssh")),
         ("host", Value::from("127.0.0.1")),
         ("port", Value::from(22)),

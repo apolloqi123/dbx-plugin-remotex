@@ -9,6 +9,7 @@ import ContainerTerminalTab from "./ContainerTerminalTab.vue";
 import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import type { DockerContainer } from "../lib/dockerPanelModel";
 import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
+import { resetDockerTerminalRegistry } from "../lib/dockerTerminalRegistry";
 
 const TERMINAL_ID = "term-12345678";
 
@@ -195,6 +196,7 @@ function terminal(): InstanceType<typeof MockTerminal> | undefined {
 afterEach(() => {
   while (wrappers.length) wrappers.pop()?.unmount();
   resetDockerChannelQueues();
+  resetDockerTerminalRegistry();
   MockTerminal.reset();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
@@ -214,6 +216,17 @@ describe("ContainerTerminalTab", () => {
     expect(terminal()?.options.scrollback).toBe(5_000);
     expect(wrapper.find("[data-terminal-overlay]").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("docker.terminalConnecting");
+  });
+
+  it("does not create an xterm until the tab is first shown", async () => {
+    installHost();
+    const wrapper = mountTab({ visible: false });
+    await flushPromises();
+    expect(terminal()).toBeUndefined();
+
+    await wrapper.setProps({ visible: true });
+    await vi.waitFor(() => expect(terminal()).toBeDefined());
+    expect(wrapper.find("[data-xterm-host]").attributes("data-xterm")).toBe("ready");
   });
 
   it("does not open while hidden and keeps the PTY alive when the tab is hidden", async () => {

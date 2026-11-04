@@ -60,6 +60,7 @@ import { handleMetricsInvoke } from "./mock/host/metrics";
 import { handleSettingsInvoke } from "./mock/host/settings";
 import { handleMiscInvoke } from "./mock/host/misc";
 import { handleRdpInvoke } from "./mock/host/rdp";
+import { handleRemoteFilesInvoke } from "./mock/host/remoteFiles";
 import { handleOtpInvoke } from "./mock/host/otp";
 import { aiConversations, aiGenerations, getAiRecommendationStats, handleAiHostRequest } from "./mock/host/ai";
 
@@ -94,6 +95,7 @@ const invokeHandlers: Array<(method: string, params?: unknown) => Promise<unknow
   handleSettingsInvoke,
   handleMiscInvoke,
   handleRdpInvoke,
+  handleRemoteFilesInvoke,
   handleOtpInvoke,
 ];
 
@@ -275,6 +277,12 @@ queueMicrotask(() => document.dispatchEvent(new CustomEvent("dbx-plugin-init", {
 // 建议/ghost 浮层让位远端）。语义与真实 PTY 输出一致（走既有 binary 帧）。
 (window as unknown as { __dbxMockEmitTerminal?: (text: string) => void }).__dbxMockEmitTerminal = (text: string) => {
   emitTerminal(text);
+};
+
+// mock 专有调试入口：直接向容器日志流注入输出（走真实事件桥），用于日志页
+// 渲染压测；streamId 与 docker/logs/start 的夹具返回值一致。
+(window as unknown as { __dbxMockEmitDockerLog?: (text: string) => void }).__dbxMockEmitDockerLog = (text: string) => {
+  emitHostEvent({ method: "docker/logs/chunk", params: { streamId: "mock-stream", text } });
 };
 
 // 供单元测试（mockDbxHost.spec.ts）以模块形式动态导入并重置状态。

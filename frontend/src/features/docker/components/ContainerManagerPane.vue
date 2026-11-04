@@ -33,12 +33,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: "close"): void }>();
 
-const DEFAULT_LIST_WIDTH = 40;
+const DEFAULT_LIST_WIDTH = 30;
 const MIN_LIST_WIDTH = 25;
 const MAX_LIST_WIDTH = 70;
 
 const selected = ref<DockerContainer>();
-type DetailTab = "logs" | "files" | "terminal";
+type DetailTab = "logs" | "files" | "terminal" | "monitor";
 const activeTab = ref<DetailTab>("logs");
 /** 首轮自动打开只发生一次：列表首轮非空数据落地后以 logs 打开详情。 */
 const autoOpened = ref(false);

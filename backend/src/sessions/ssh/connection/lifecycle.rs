@@ -19,8 +19,10 @@ impl SshRuntime {
             downloads: Mutex::new(HashMap::new()),
             transfer_history: Mutex::new(VecDeque::new()),
             session_seq: AtomicU64::new(0),
+            session_end_hooks: RwLock::new(Vec::new()),
             sudo_keepalive: Arc::new(Mutex::new(HashMap::new())),
             metrics_cache: Mutex::new(HashMap::new()),
+            accelerator_probed_at: Mutex::new(HashMap::new()),
             exec_tasks: Mutex::new(HashMap::new()),
             forwards: Arc::new(forward::ForwardRegistry::default()),
             forward_transports: Arc::new(AsyncMutex::new(HashMap::new())),
@@ -138,6 +140,9 @@ impl SshRuntime {
         // Keyed globally by session id, so prune against the full live set.
         if let Ok(mut cache) = self.metrics_cache.lock() {
             cache.retain(|session_id, _| live_session_ids.contains(session_id));
+        }
+        if let Ok(mut probed) = self.accelerator_probed_at.lock() {
+            probed.retain(|session_id, _| live_session_ids.contains(session_id));
         }
         if let Ok(mut hinted) = self.compat_hinted.lock() {
             hinted.retain(|session_id| live_session_ids.contains(session_id));

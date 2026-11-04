@@ -2,7 +2,7 @@
 // 容器管理分屏的布局生命周期：首轮列表落地即打开「列表 + 日志」分栏；收起详情
 // 后列表恢复整宽，行点击以日志重开，轮询刷新只更新已打开的快照、绝不重开；
 // 列表清空/连接切换收起详情并复位首轮自动打开；详情打开后列表/详情之间是可
-// 拖拽/方向键调整的分隔条（25%–70%，默认 40%）。
+// 拖拽/方向键调整的分隔条（25%–70%，默认 30%，列表/详情 3:7）。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
@@ -151,7 +151,7 @@ describe("container manager layout", () => {
       expect(wrapper.get(".container-detail-head").text()).toContain("web-nginx");
       expect(wrapper.get('[data-tab="logs"]').attributes("aria-selected")).toBe("true");
       expect(wrapper.find(".container-manager-divider").exists()).toBe(true);
-      expect(listBasis(wrapper)).toBe("40%");
+      expect(listBasis(wrapper)).toBe("30%");
     } finally {
       wrapper.unmount();
     }
@@ -280,13 +280,13 @@ describe("container manager layout", () => {
       expect(divider.attributes("aria-orientation")).toBe("vertical");
       expect(divider.attributes("aria-valuemin")).toBe("25");
       expect(divider.attributes("aria-valuemax")).toBe("70");
-      expect(divider.attributes("aria-valuenow")).toBe("40");
+      expect(divider.attributes("aria-valuenow")).toBe("30");
 
       await divider.trigger("pointerdown", { clientX: 400, button: 0 });
       window.dispatchEvent(new MouseEvent("pointermove", { clientX: 600 }));
       await nextTick();
-      expect(divider.attributes("aria-valuenow")).toBe("60");
-      expect(listBasis(wrapper)).toBe("60%");
+      expect(divider.attributes("aria-valuenow")).toBe("50");
+      expect(listBasis(wrapper)).toBe("50%");
 
       window.dispatchEvent(new MouseEvent("pointermove", { clientX: 2000 }));
       await nextTick();
@@ -317,12 +317,12 @@ describe("container manager layout", () => {
 
       const divider = wrapper.get(".container-manager-divider");
       await divider.trigger("keydown", { key: "ArrowRight" });
-      expect(divider.attributes("aria-valuenow")).toBe("44");
+      expect(divider.attributes("aria-valuenow")).toBe("34");
       await divider.trigger("keydown", { key: "ArrowLeft" });
-      expect(divider.attributes("aria-valuenow")).toBe("40");
+      expect(divider.attributes("aria-valuenow")).toBe("30");
       await divider.trigger("keydown", { key: "ArrowRight", shiftKey: true });
-      expect(divider.attributes("aria-valuenow")).toBe("52");
-      expect(listBasis(wrapper)).toBe("52%");
+      expect(divider.attributes("aria-valuenow")).toBe("42");
+      expect(listBasis(wrapper)).toBe("42%");
 
       await wrapper.get(".container-detail-close").trigger("click");
       expect(wrapper.find(".container-manager-divider").exists()).toBe(false);

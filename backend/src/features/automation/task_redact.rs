@@ -127,10 +127,17 @@ pub(super) struct LineBuffer {
 impl LineBuffer {
     pub(super) fn push(&mut self, data: &[u8], mut emit: impl FnMut(String)) {
         self.pending.extend_from_slice(data);
-        while let Some(position) = self.pending.iter().position(|&byte| byte == b'\n') {
-            let line: Vec<u8> = self.pending.drain(..position).collect();
-            self.pending.remove(0); // the '\n'
-            emit(String::from_utf8_lossy(&line).into_owned());
+        // Scan forward once and drain the consumed prefix afterwards: the
+        // previous drain-per-line/remove(0) pair shifted the whole buffer for
+        // every line, which is O(n²) on a burst with thousands of lines.
+        let mut start = 0usize;
+        while let Some(offset) = self.pending[start..].iter().position(|&byte| byte == b'\n') {
+            let end = start + offset;
+            emit(String::from_utf8_lossy(&self.pending[start..end]).into_owned());
+            start = end + 1;
+        }
+        if start > 0 {
+            self.pending.drain(..start);
         }
         if self.pending.len() >= PARTIAL_LINE_LIMIT {
             let drained = std::mem::take(&mut self.pending);

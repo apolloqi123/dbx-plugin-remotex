@@ -6,7 +6,7 @@ use super::*;
 /// into the DES key); longer secrets truncate silently, so reject up front.
 pub(crate) const MAX_PASSWORD_BYTES: usize = 8;
 
-/// Clipboard bounds (RFC 6143 7.6.4 is Latin-1 only).
+/// Clipboard bounds (vnc-rs exchanges UTF-8 cut text; classic RFB is Latin-1).
 pub(crate) const MAX_CLIPBOARD_BYTES: usize = 1024 * 1024;
 
 /// Default automatic reconnects after a transport failure.
@@ -16,8 +16,9 @@ pub(crate) const MAX_RECONNECT_ATTEMPTS: u32 = 10;
 
 // —— request/response shapes ——
 
-/// Front-end scaling hint only — the backend never resizes the remote
-/// desktop (`vnc/resize` is accepted and validated, nothing is sent).
+/// Frontend canvas scaling mode. `fit` also enables automatic remote
+/// SetDesktopSize negotiation (`vnc/resize`); `stretch`/`actual` never touch
+/// the remote resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ScaleMode {
     #[default]
@@ -95,6 +96,15 @@ pub struct VncInputRequest {
     pub event: VncInputEvent,
 }
 
+/// `vnc/resize` payload: live SetDesktopSize via ExtendedDesktopSize.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VncResizeRequest {
+    pub session_id: String,
+    pub width: u16,
+    pub height: u16,
+}
+
 /// Classic VNC-Auth secret → DES key: the first ≤8 password bytes, each
 /// bit-reversed (RFC 6143 7.2.2). Spec-reference helper: upstream applies the
 /// same transform inside `AuthHelper` (not part of its public API), so this
@@ -122,13 +132,24 @@ pub fn validate_password(password: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Clipboard text guard: RFB cut-text is Latin-1 and bounded.
+/// Clipboard text guard: the vendored `vnc-rs` chain carries cut text as
+/// UTF-8 bytes (the classic RFB field is nominally Latin-1, but modern servers
+/// exchange UTF-8). Bound it by bytes; do not reject non-ASCII text.
 pub fn validate_clipboard_text(text: &str) -> Result<(), String> {
     if text.len() > MAX_CLIPBOARD_BYTES {
         return Err("vnc/set-clipboard: text exceeds the 1 MiB clipboard limit".to_string());
     }
-    if !text.chars().all(|ch| u32::from(ch) <= 0xff) {
-        return Err("vnc/set-clipboard: the VNC clipboard only carries Latin-1 text".to_string());
+    Ok(())
+}
+
+/// Remote resize guard (`vnc/resize`): RFB SetDesktopSize carries u16 dims,
+/// but the retained framebuffer contract (and patch payload budget) is
+/// 3840×2160. Keep a sane floor so a collapsed pane cannot ask for 1×1.
+pub(crate) fn validate_resize_size(width: u16, height: u16) -> Result<(), String> {
+    if width < 200 || height < 200 || width > MAX_FRAMEBUFFER_WIDTH || height > MAX_FRAMEBUFFER_HEIGHT {
+        return Err(format!(
+            "vnc/resize: desktop size must be within 200x200 .. {MAX_FRAMEBUFFER_WIDTH}x{MAX_FRAMEBUFFER_HEIGHT}"
+        ));
     }
     Ok(())
 }
@@ -147,6 +168,10 @@ pub(crate) fn reconnect_delay(attempt: u32) -> Duration {
 
 pub(crate) enum VncCommand {
     Input(VncInputEvent),
+    /// Live RFB SetDesktopSize (ExtendedDesktopSize pseudo-encoding). The
+    /// server applies it and answers with a DesktopUpdate; the generation
+    /// and session id stay put.
+    Resize { width: u16, height: u16 },
     Clipboard(String),
     Close,
 }
@@ -179,6 +204,33 @@ pub(crate) struct VncSessionEntry {
 
 pub struct VncSessionRuntime {
     pub(crate) sessions: Arc<RwLock<HashMap<String, Arc<VncSessionEntry>>>>,
+}
+
+impl VncSessionEntry {
+    /// Locks the retained desktop and lazily creates it from a rect when the
+    /// server streamed pixels before the DesktopSize pseudo-encoding (same
+    /// fallback NyaTerm uses). Callers must hold the guard while applying the
+    /// patch so realtime mutation stays ordered.
+    pub(crate) async fn framebuffer_for(
+        &self,
+        rect: Rect,
+    ) -> Result<tokio::sync::MutexGuard<'_, Option<VncFramebuffer>>, String> {
+        let mut framebuffer = self.framebuffer.lock().await;
+        if framebuffer.is_none() {
+            let width = u32::from(rect.x)
+                .checked_add(u32::from(rect.width))
+                .and_then(NonZeroU32::new)
+                .and_then(|size| u16::try_from(size.get()).ok())
+                .ok_or_else(|| "VNC rectangle bounds overflow".to_string())?;
+            let height = u32::from(rect.y)
+                .checked_add(u32::from(rect.height))
+                .and_then(NonZeroU32::new)
+                .and_then(|size| u16::try_from(size.get()).ok())
+                .ok_or_else(|| "VNC rectangle bounds overflow".to_string())?;
+            *framebuffer = Some(VncFramebuffer::new(width, height)?);
+        }
+        Ok(framebuffer)
+    }
 }
 
 /// Why one protocol generation ended. `Superseded` means a newer generation

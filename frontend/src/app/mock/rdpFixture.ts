@@ -276,7 +276,8 @@ export function createRdpFixture(deps: RdpFixtureDeps) {
     };
   }
 
-  /** rdp/resize：对齐真实 sidecar 的 resize 语义（重连生效）。 */
+  /** rdp/resize：会话内动态分辨率（对齐真实 sidecar 的 MS-RDPEDISP 路径，
+   * 不经历 connecting，也不重发 connected；直接以新尺寸重绘桌面）。 */
   function resize(input: Record<string, unknown>) {
     const target = String(input.sessionId ?? "");
     if (!target || target !== sessionId) throw new Error("RDP session was not found");
@@ -285,9 +286,10 @@ export function createRdpFixture(deps: RdpFixtureDeps) {
     validateDesktopSize(width, height);
     desktopW = width;
     desktopH = height;
-    emitState("connecting");
-    setTimeout(() => startDesktop(target), 120);
-    return { sessionId: target, success: true, reconnected: true };
+    stopFrames();
+    frameCount = 0;
+    emitFrame();
+    return { sessionId: target, success: true, live: true };
   }
 
   function reconnect(input: Record<string, unknown>) {

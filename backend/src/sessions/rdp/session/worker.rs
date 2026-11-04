@@ -1,6 +1,7 @@
 //! Metrics support.
 
 use super::*;
+use crate::platform::diagnostics::log_rdp_debug;
 
 // —— worker (generation-guarded pump) ——
 
@@ -144,6 +145,15 @@ pub(crate) async fn run_generation(
 
     let mut input_database = IronRdpInputDatabase::new();
     let mut was_active = false;
+    let mut clipboard_status_armed = false;
+    // macOS native file clipboard: poll the pasteboard change counter (cheap)
+    // and only read file URLs when it changes. A copy made before connecting is
+    // advertised once the CLIPRDR channel becomes Ready.
+    let mut pasteboard_timer = tokio::time::interval(std::time::Duration::from_millis(700));
+    pasteboard_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut pasteboard_change = i64::MIN;
+    let mut pasteboard_wanted: Option<Vec<std::path::PathBuf>> = None;
+    let mut pasteboard_warned = false;
     let end = loop {
         if entry.generation.load(Ordering::Acquire) != generation {
             break GenerationEnd::Superseded;
@@ -160,6 +170,14 @@ pub(crate) async fn run_generation(
                     .await
                     {
                         break end;
+                    }
+                    // The desktop is live but CLIPRDR may still be missing: a
+                    // server policy can refuse the clipboard channel without
+                    // any error. Probe once per generation so the UI can say so
+                    // instead of silently doing nothing.
+                    if was_active && !clipboard_status_armed && entry.clipboard_enabled {
+                        clipboard_status_armed = true;
+                        arm_clipboard_status_probe(session_id, entry, generation, emitter);
                     }
                 }
                 None => {
@@ -187,9 +205,25 @@ pub(crate) async fn run_generation(
                         };
                     }
                 }
-                // 注意：RdpCommand::Resize 已随 rdp/resize 的“重连生效”方案
-                // 移除（见 RdpSessionRuntime::resize 文档）——会话内 display
-                // control PDU 真机不生效，运行中改尺寸走 generation 重拨。
+                // 会话内改尺寸：交给 vendored 引擎的 display-control 路径
+                // （Monitor Layout DVC → 服务端 Deactivate-Reactivation）。
+                // 引擎在通道不可用时会自行同会话重拨，本代 worker 不换代。
+                Some(RdpCommand::Resize { width, height }) => {
+                    let sent = input_sender.send(IronRdpInputEvent::Resize {
+                        width,
+                        height,
+                        scale_factor: 100,
+                        physical_size: None,
+                    });
+                    if sent.is_err() {
+                        break GenerationEnd::Failed {
+                            error: "RDP input channel is closed".to_string(),
+                            error_kind: RdpErrorKind::Session,
+                            retryable: false,
+                            was_active,
+                        };
+                    }
+                }
                 Some(RdpCommand::ClipboardAdvertise) => {
                     let sent = input_sender.send(IronRdpInputEvent::Clipboard(
                         ClipboardMessage::SendInitiateCopy(vec![ClipboardFormat::new(
@@ -205,8 +239,103 @@ pub(crate) async fn run_generation(
                         };
                     }
                 }
+                Some(RdpCommand::ClipboardAdvertiseFiles(files)) => {
+                    // The engine stores the file list and sends a FormatList
+                    // with FileGroupDescriptorW; later FileContentsRequests
+                    // are answered by the backend from the staged files.
+                    let sent = input_sender.send(IronRdpInputEvent::Clipboard(
+                        ClipboardMessage::SendInitiateFileCopy(files),
+                    ));
+                    if sent.is_err() {
+                        break GenerationEnd::Failed {
+                            error: "RDP input channel is closed".to_string(),
+                            error_kind: RdpErrorKind::Session,
+                            retryable: false,
+                            was_active,
+                        };
+                    }
+                }
+                Some(RdpCommand::ClipboardDownloadFiles(request)) => {
+                    let sent = input_sender.send(IronRdpInputEvent::Clipboard(
+                        ClipboardMessage::SendFileContentsRequest(request),
+                    ));
+                    if sent.is_err() {
+                        break GenerationEnd::Failed {
+                            error: "RDP input channel is closed".to_string(),
+                            error_kind: RdpErrorKind::Session,
+                            retryable: false,
+                            was_active,
+                        };
+                    }
+                }
                 Some(RdpCommand::Close) | None => break GenerationEnd::Closed,
             },
+            // Native Finder→remote file clipboard. `change_count` is a cheap
+            // metadata read; file URLs are read once per change and contents
+            // never (the server asks per file when the user pastes).
+            _ = pasteboard_timer.tick(), if entry.clipboard_enabled
+                && crate::platform::pasteboard::supported() =>
+            {
+                let change = crate::platform::pasteboard::change_count();
+                if change != pasteboard_change {
+                    pasteboard_change = change;
+                    let mut paths = crate::platform::pasteboard::file_urls();
+                    // Our own download results land on the pasteboard too; never
+                    // advertise them back to the remote.
+                    paths.retain(|path| !is_plugin_temp_path(path));
+                    pasteboard_wanted = Some(paths);
+                }
+                let Some(paths) = pasteboard_wanted.clone() else {
+                    continue;
+                };
+                if paths.is_empty() {
+                    if entry.clipboard_files.clear_pasteboard_outgoing() {
+                        let _ = input_sender.send(IronRdpInputEvent::Clipboard(
+                            ClipboardMessage::SendInitiateCopy(vec![ClipboardFormat::new(
+                                ClipboardFormatId::CF_UNICODETEXT,
+                            )]),
+                        ));
+                    }
+                    pasteboard_wanted = None;
+                    continue;
+                }
+                // initiate_file_copy hard-fails before Ready; retry next tick.
+                if !entry.clipboard_files.supports_file_copy() {
+                    if entry.clipboard_files.is_ready() && !pasteboard_warned {
+                        pasteboard_warned = true;
+                        let _ = emitter.event(
+                            "rdp/clipboard-files/error",
+                            json!({
+                                "sessionId": session_id,
+                                "message": "the remote does not support file clipboard transfer",
+                            }),
+                        );
+                    }
+                    continue;
+                }
+                match entry.clipboard_files.stage_local_files(&paths) {
+                    Ok((descriptors, total)) => {
+                        log_rdp_debug(format!(
+                            "rdp clipboard session={session_id} local files advertised count={} bytes={total}",
+                            descriptors.len()
+                        ));
+                        let _ = input_sender.send(IronRdpInputEvent::Clipboard(
+                            ClipboardMessage::SendInitiateFileCopy(descriptors),
+                        ));
+                        pasteboard_wanted = None;
+                    }
+                    Err(error) => {
+                        log_rdp_debug(format!(
+                            "rdp clipboard session={session_id} local files rejected: {error}"
+                        ));
+                        let _ = emitter.event(
+                            "rdp/clipboard-files/error",
+                            json!({ "sessionId": session_id, "message": error }),
+                        );
+                        pasteboard_wanted = None;
+                    }
+                }
+            }
             // 首帧前连接进度预算（CONNECT_PROGRESS_BUDGET）：预算随每个循环
             // 重建（任一事件/命令即重置）。到期竞态兜底：证书窗恰在此刻开启
             // 则本轮豁免，回循环重算（guard 是进入 select 时的旧值）。
@@ -229,6 +358,9 @@ pub(crate) async fn run_generation(
     // worker must not drop the successor's sender.
     if entry.generation.load(Ordering::Acquire) == generation {
         *entry.command_sender.lock().await = None;
+        // The CLIPRDR channel dies with this generation; abort an in-flight
+        // inbound transfer so the UI cannot freeze on stale progress.
+        entry.clipboard_files.reset_channel();
     }
     // Tell the engine to finish; the abort channel's sender drops when this
     // function returns, which aborts a still-running engine (see the channel
@@ -241,6 +373,40 @@ pub(crate) async fn run_generation(
         }
     }
     end
+}
+
+/// Grace period after the first desktop frame before declaring the CLIPRDR
+/// channel unavailable (the handshake needs a round trip after activation).
+const CLIPBOARD_READY_GRACE: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// One-shot, generation-guarded clipboard status probe. Emits
+/// `rdp/clipboard-status` with `unavailable` when the channel never became
+/// Ready; `TextClipboardBackend::on_ready` emits the positive `ready` state.
+fn arm_clipboard_status_probe(
+    session_id: &str,
+    entry: &Arc<RdpSessionEntry>,
+    generation: u64,
+    emitter: &PluginEmitter,
+) {
+    let entry = entry.clone();
+    let emitter = emitter.clone();
+    let session_id = session_id.to_string();
+    tokio::spawn(async move {
+        tokio::time::sleep(CLIPBOARD_READY_GRACE).await;
+        if entry.generation.load(Ordering::Acquire) != generation
+            || entry.clipboard_files.is_ready()
+        {
+            return;
+        }
+        log_rdp_debug(format!(
+            "rdp clipboard session={} unavailable after {CLIPBOARD_READY_GRACE:?}",
+            session_id
+        ));
+        let _ = emitter.event(
+            "rdp/clipboard-status",
+            json!({ "sessionId": session_id, "state": "unavailable" }),
+        );
+    });
 }
 
 /// Handles one engine output event; `Some(end)` aborts the pump.

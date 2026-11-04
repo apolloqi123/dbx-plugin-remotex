@@ -11,8 +11,10 @@ import { readFileSync } from "node:fs";
 
 const root = new URL("../../../", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("manifest.json", root), "utf8"));
-const provider = manifest.contributions.find((item) => item.type === "connection-provider");
-assert(provider, "SSH manifest must define a connection provider");
+const providers = manifest.contributions.filter((item) => item.type === "connection-provider");
+assert.equal(providers.length, 1, "RemoteX must expose exactly one connection-provider card");
+const provider = providers[0];
+assert.equal(provider.label, "RemoteX", "the single connection card is RemoteX");
 const fields = provider.fields;
 const byKey = Object.fromEntries(fields.map((field) => [field.key, field]));
 const defaults = Object.fromEntries(fields.map((field) => [field.key, field.default]));
@@ -405,23 +407,23 @@ assert.equal(
   undefined,
   "picker.accept must stay unset so extension-less keys (id_rsa, id_ed25519) stay selectable",
 );
-const dbxFloor = String((manifest.engines || {}).dbx || "");
-assert(
-  /^>=\d+\.\d+\.\d+$/.test(dbxFloor),
-  `engines.dbx must stay a plain '>=x.y.z' floor (got '${dbxFloor}')`,
+// Do NOT reintroduce an `engines.dbx` requirement. The host evaluates it with
+// the semver crate, whose requirements exclude prerelease versions unless the
+// comparator names the exact same major.minor.patch. A plain ">=0.6.16" floor
+// therefore marks every DBX beta (for example 0.6.63-beta.20261101.3) as
+// incompatible and blocks the whole plugin. `host_api` remains the stable
+// engine gate; hosts too old to parse `picker` already reject the manifest at
+// parse time (PROTOCOL documents that picker predates host API 1.1's usage and
+// cannot be gated by host_api).
+assert.equal(
+  manifest.engines?.dbx,
+  undefined,
+  "engines.dbx must stay unset so DBX prerelease builds are not blocked by semver",
 );
-// 0.6.16 is the release that first parses `picker`; a lower floor would ship a
-// manifest that older hosts reject outright instead of merely hiding a button.
-const PICKER_RELEASE = [0, 6, 16];
-const floorParts = dbxFloor.replace(/^>=/, "").split(".").map((part) => Number(part));
-const floorAtLeastPickerRelease = floorParts.some((part, index) => {
-  const target = PICKER_RELEASE[index];
-  if (part !== target) return part > target;
-  return index === PICKER_RELEASE.length - 1;
-});
-assert(
-  floorAtLeastPickerRelease,
-  `engines.dbx must be >= ${PICKER_RELEASE.join(".")} — the first release whose form parser accepts 'picker' (got '${dbxFloor}')`,
+assert.match(
+  String(manifest.engines?.host_api || ""),
+  /^>=\d+\.\d+\.\d+$/,
+  "engines.host_api must stay a plain '>=x.y.z' floor",
 );
 // Both halves of the either-or must keep pointing at each other in every
 // locale: the file action only makes sense if the text also names where an
@@ -723,14 +725,17 @@ for (const key of ["rdp_domain", "rdp_resolution", "rdp_certificate_policy", "rd
 }
 // serial_port 不设必填：设备可能尚未插上（后端连接时校验，表单不拦）。
 assert.equal(byKey.serial_port.required, undefined, "serial_port must not be form-required (device may be attached later)");
-assert.deepEqual(options("protocol"), ["ssh", "telnet", "vnc", "serial", "rdp"], "protocol options must list every routed protocol");
+assert.deepEqual(options("protocol"), ["ssh", "rdp", "vnc", "telnet", "serial", "local"],
+  "the single RemoteX card must offer every routed protocol plus local shell");
 for (const protocol of options("protocol")) {
   const current = state({ protocol });
+  const isLocal = protocol === "local";
   current.visible("display_name", true);
   current.visible("host", TCP_PROTOCOLS.includes(protocol));
   current.visible("port", TCP_PROTOCOLS.includes(protocol));
   current.visible("username", ["ssh", "telnet", "rdp"].includes(protocol));
-  // SSH 凭据/调优字段只属于 ssh；serial/rdp 表单不得残留 SSH 行。
+  current.visible("password", isLocal ? false : (["telnet", "vnc", "rdp"].includes(protocol) || protocol === "ssh"));
+  // SSH 凭据/调优字段只属于 ssh；serial/rdp/local 表单不得残留 SSH 行。
   current.visible("sudo_source", protocol === "ssh");
   current.visible("advanced_options", protocol === "ssh");
   current.visible("serial_port", protocol === "serial");
@@ -743,7 +748,37 @@ for (const protocol of options("protocol")) {
   current.visible("rdp_resolution", protocol === "rdp");
   current.visible("rdp_certificate_policy", protocol === "rdp");
   current.visible("rdp_clipboard", protocol === "rdp");
+  // Local shell: only process-level fields, no network endpoint/credentials.
+  current.visible("shell", isLocal);
+  current.visible("cwd", isLocal);
+  current.visible("env", isLocal);
 }
+
+
+// —— Single RemoteX connection card (2026-11-02) ——
+// DBX renders one picker card per connection-provider contribution. RemoteX
+// therefore ships exactly one card and lets the protocol select inside the
+// form drive host/port/credential visibility.
+assert.equal(manifest.name, "RemoteX", "plugin display name");
+assert.equal(provider.label, "RemoteX", "single connection card label");
+assert.equal(provider.database_type, "ssh", "the unified card keeps the host's stable database type");
+assert.equal(provider.workbench, "io.dbx.sshx.workbench", "the card binds the shared workbench");
+assert.equal(byKey.protocol.type, "select", "protocol must be an in-form select");
+assert.equal(byKey.protocol.default, "ssh", "protocol default");
+assert.equal(byKey.display_name.binding, "name", "name binding");
+assert.equal(byKey.display_name.required, true, "name required");
+assert.equal(byKey.display_name.default, "RemoteX", "new connection name default");
+assert.equal(byKey.host.binding, "host", "host binding");
+assert.equal(byKey.host.required, true, "host required");
+assert.equal(byKey.port.binding, "port", "port binding");
+assert.equal(byKey.port.required, true, "port required");
+assert.equal(byKey.port.default, 22, "port default stays 22 for the default SSH protocol");
+for (const locale of locales) {
+  const localized = manifest.localizations[locale]?.contributions?.[provider.id];
+  assert.equal(localized?.label, "RemoteX", `${locale}: provider label must be RemoteX`);
+  assert(localized?.description?.trim(), `${locale}: missing provider description`);
+}
+console.log("PASS RemoteX connection card: one provider, protocol selector covers ssh/rdp/vnc/telnet/serial/local, seven-language labels");
 
 console.log(`PASS SSH connection form: ${scenarios} combinations; field ordering and seven-language labels/options`);
 console.log(`PASS SSH timeout scope contract: ${timeoutScenarios} cases; global/per-connection sentinels survive save+reopen (issue #20, host-side fix tracked separately)`);

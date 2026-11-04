@@ -1,30 +1,30 @@
-# SSHX
+# RemoteX
 
 [![CI](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml/badge.svg)](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/jinpy666/dbx-plugin-sshx?display_name=tag)](https://github.com/jinpy666/dbx-plugin-sshx/releases)
 
 [English](README.en.md) · [产品宣传页](docs/guides/MEDIA.zh-CN.md) · [特性与竞品对比](docs/architecture/COMPARISON.zh-CN.md) · [独立仓库迁移说明](docs/architecture/REPOSITORY_SPLIT.zh-CN.md)
 
-SSHX 是面向现代运维团队的服务器终端：打开一个连接，就能完成终端操作、
-文件传输、跳板访问、受控提权和 MCP 自动化。它把“登录服务器之后的下一小时”压缩成
-一个连贯、可审计、可复用的工作流。
+RemoteX 是面向现代运维团队的远程连接工作台：一个入口即可连接 SSH、Telnet、VNC、
+RDP、串口与本地 Shell，并完成终端操作、文件传输、跳板访问、受控提权和 MCP 自动化。
+它把“登录服务器之后的下一小时”压缩成一个连贯、可审计、可复用的工作流。
 
-> SSHX · SFTP · Remote Operations：终端、文件、自动化和受控运维操作集中在一个 DBX 终端面板中。
+> RemoteX · SFTP · Remote Operations：终端、文件、自动化和受控运维操作集中在一个 DBX 终端面板中。
 
 ## 先看效果
 
 [观看 87 秒真实操作演示（点击在线播放）](docs/media/dbx-ssh-live-demo.mp4) ·
 [观看 15 秒功能预览](docs/media/dbx-ssh-demo.mp4)
 
-![SSHX 产品总览](docs/media/dbx-ssh-overview.png)
+![RemoteX 产品总览](docs/media/dbx-ssh-overview.png)
 
 如果你正在工具之间来回切换：终端一个窗口、SFTP 一个窗口、跳板机靠配置文件、
-自动化又要另写脚本，那么 SSHX 的价值很直接——连接、终端、文件和自动化
+自动化又要另写脚本，那么 RemoteX 的价值很直接——连接、终端、文件和自动化
 都围绕同一个 DBX 连接上下文工作。
 
 ## 为什么值得用
 
-| 你要完成的事 | SSHX 给你的体验 |
+| 你要完成的事 | RemoteX 给你的体验 |
 | --- | --- |
 | 快速处理线上问题 | PTY 终端、命令历史、快速命令、可取消命令和目录跟随 |
 | 安全地传文件 | SFTP 预览、拖放、断点确认、进度、取消和原子替换 |
@@ -55,8 +55,7 @@ SSHX 是面向现代运维团队的服务器终端：打开一个连接，就能
 完整的能力矩阵和与 OpenSSH、Tabby、Termius、FinalShell 等方案的定位对比见
 [特性与竞品对比](docs/architecture/COMPARISON.zh-CN.md)。
 
-> **协议路线**：当前版本聚焦 SSH/SFTP 运维；RDP、Telnet 等协议支持仍在持续加强，
-> 后续会逐步补齐更多远程访问场景，请以对应版本发布说明为准。
+> **协议路线**：DBX 新建连接的插件分类现在只有一个 **RemoteX** 入口；在连接表单内选择 SSH、Telnet、VNC、RDP（实验性）、串口或本地 Shell，主机、端口、凭据与协议专属字段会随类型切换。更多远程访问场景会持续补齐，请以对应版本发布说明为准。
 
 更多截图见[产品宣传页](docs/guides/MEDIA.zh-CN.md)。
 

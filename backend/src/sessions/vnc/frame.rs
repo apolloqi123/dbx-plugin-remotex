@@ -100,6 +100,10 @@ pub(crate) struct VncFramebuffer {
 }
 
 impl VncFramebuffer {
+    pub(crate) fn matches_size(&self, width: u16, height: u16) -> bool {
+        self.width == width && self.height == height
+    }
+
     pub(crate) fn new(width: u16, height: u16) -> Result<Self, String> {
         if width == 0
             || height == 0
@@ -151,6 +155,44 @@ impl VncFramebuffer {
                 .copy_from_slice(&pixels[src_start..src_start + row_bytes]);
         }
         Ok(())
+    }
+
+    /// CopyRect: copy the source rect into the destination rect and return the
+    /// destination RGBA payload for the incremental patch. Overlap is handled
+    /// through a temporary buffer, and both rects are re-validated against the
+    /// framebuffer (server-supplied coordinates).
+    pub(crate) fn copy_rect(&mut self, dst: Rect, src: Rect) -> Result<Vec<u8>, String> {
+        if dst.width != src.width || dst.height != src.height {
+            return Err("VNC CopyRect source and destination sizes differ".to_string());
+        }
+        for rect in [dst, src] {
+            let right = u32::from(rect.x) + u32::from(rect.width);
+            let bottom = u32::from(rect.y) + u32::from(rect.height);
+            if rect.width == 0
+                || rect.height == 0
+                || right > u32::from(self.width)
+                || bottom > u32::from(self.height)
+            {
+                return Err("VNC CopyRect exceeds framebuffer bounds".to_string());
+            }
+        }
+        let row_bytes = usize::from(dst.width) * BYTES_PER_PIXEL;
+        let framebuffer_stride = usize::from(self.width) * BYTES_PER_PIXEL;
+        let height = usize::from(dst.height);
+        let mut temp = vec![0u8; row_bytes * height];
+        for row in 0..height {
+            let start = (usize::from(src.y) + row) * framebuffer_stride
+                + usize::from(src.x) * BYTES_PER_PIXEL;
+            temp[row * row_bytes..(row + 1) * row_bytes]
+                .copy_from_slice(&self.rgba[start..start + row_bytes]);
+        }
+        for row in 0..height {
+            let start = (usize::from(dst.y) + row) * framebuffer_stride
+                + usize::from(dst.x) * BYTES_PER_PIXEL;
+            self.rgba[start..start + row_bytes]
+                .copy_from_slice(&temp[row * row_bytes..(row + 1) * row_bytes]);
+        }
+        Ok(temp)
     }
 
     pub(crate) fn patch_bytes(

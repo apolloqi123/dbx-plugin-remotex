@@ -35,10 +35,14 @@ import telnet from "./messages/supplemental/telnet";
 import x11 from "./messages/supplemental/x11";
 import startupCommands from "./messages/supplemental/startupCommands";
 import otpPanel from "./messages/supplemental/otpPanel";
+import dockerPanel from "./messages/supplemental/dockerPanel";
+import dockerMonitor from "./messages/supplemental/dockerMonitor";
 import importWizard from "./messages/supplemental/importWizard";
 import serial from "./messages/supplemental/serial";
 import vnc from "./messages/supplemental/vnc";
 import rdp from "./messages/supplemental/rdp";
+import rdpClipboardFiles from "./messages/supplemental/rdpClipboardFiles";
+import remoteFiles from "./messages/supplemental/remoteFiles";
 import completionMenu from "./messages/supplemental/completionMenu";
 import terminalGhost from "./messages/supplemental/terminalGhost";
 import historyPanelSettings from "./messages/supplemental/historyPanelSettings";
@@ -52,6 +56,7 @@ import transferCompress from "./messages/supplemental/transferCompress";
 import sftpWorkbenchEnhancements from "./messages/supplemental/sftpWorkbenchEnhancements";
 import terminalTabs from "./messages/supplemental/terminalTabs";
 import editorFind from "./messages/supplemental/editorFind";
+import editSave from "./messages/supplemental/editSave";
 import forwarding from "./messages/supplemental/forwarding";
 
 export type WorkbenchLocale = "en" | "es" | "it" | "ja" | "pt-BR" | "zh-CN" | "zh-TW";
@@ -102,10 +107,14 @@ telnet,
 x11,
 startupCommands,
 otpPanel,
+dockerPanel,
+dockerMonitor,
 importWizard,
 serial,
 vnc,
 rdp,
+rdpClipboardFiles,
+remoteFiles,
 completionMenu,
 terminalGhost,
 historyPanelSettings,
@@ -119,6 +128,7 @@ transferCompress,
 sftpWorkbenchEnhancements,
 terminalTabs,
 editorFind,
+editSave,
 forwarding,
 ];
 for (const table of supplementalTables) {

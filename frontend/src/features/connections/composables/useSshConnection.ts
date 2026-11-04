@@ -199,7 +199,7 @@ async function openSession(forceNew = false, bootRestore = false, isRetry = fals
       return;
     }
     if (storedProtocol === "local") {
-      // 本地 Shell 连接（LOCAL_CONNECTION_PROVIDER_ID，见 shared/lib/pluginIds.ts）：无网络语义，直接在连接绑定的
+      // 本地 Shell 连接（protocol=local）：无网络语义，直接在连接绑定的
       // 工作台里开本地终端；连接表单 shell/cwd/env 为空时逐级回落偏好/默认
       // 解析链（cwd/env 的合并优先级见 startLocalTerminal）。
       await startLocalTerminal(stored.shell.trim() || undefined, {
@@ -278,7 +278,7 @@ async function openSession(forceNew = false, bootRestore = false, isRetry = fals
     // 用户取消后在途 open 仍可能成功（invoke 无法中止）：立即关闭这个孤儿
     // 会话并提前返回——不置 connected、不补发 replay，卡片停在已取消态。
     if (connectCancelled.value) {
-      void window.dbxPlugin.invoke("ssh/session/close", { sessionId: info.sessionId }).catch(() => undefined);
+      void window.dbxPlugin.invoke("ssh/session/close", { sessionId: info.sessionId, immediate: true }).catch(() => undefined);
       connectLog.push("warn", t("connectCard.log.orphanClosed"));
       return;
     }
@@ -508,7 +508,7 @@ async function closeSession(updateStatus = true) {
     activeExternalWatches.value = {};
     watchModifiedQueue.value = [];
   }
-  if (sessionId) await window.dbxPlugin.invoke("ssh/session/close", { sessionId }).catch(() => undefined);
+  if (sessionId) await window.dbxPlugin.invoke("ssh/session/close", { sessionId, immediate: true }).catch(() => undefined);
   if (updateStatus) {
     terminalState.value = "disconnected";
     terminalError.value = t("disconnected");

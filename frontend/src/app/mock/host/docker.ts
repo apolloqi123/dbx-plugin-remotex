@@ -31,7 +31,7 @@ const LOG_TICK_MS = 700;
 const LOG_STREAM_MS = 10_000;
 const TAIL_DEFAULT = 200;
 const TAIL_MIN = 10;
-const TAIL_MAX = 2000;
+const TAIL_MAX = 1000;
 const UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 256 * 1024;
 const FIXTURE_MTIME = 1786262400;
@@ -186,7 +186,7 @@ function guardMode(cli: string, method = "files/list"): void {
   }
 }
 
-/** tail 钳制与 sidecar 一致（10–2000，缺省 200）。 */
+/** tail 钳制与 sidecar 一致（10–1000，缺省 200）。 */
 function clampTail(raw: unknown): number {
   const value = Number(raw);
   if (raw === undefined || raw === null || !Number.isFinite(value)) return TAIL_DEFAULT;
@@ -310,8 +310,59 @@ function startLogStream(streamId: string, tail: number): void {
     }, LOG_TICK_MS);
     return;
   }
+  if (mode === "stress") {
+    // 压测夹具（?docker=stress）：按新上限预填 1000 行后每 150ms 推 6 行，持续 10 分钟。
+    // 用于复现「日志页长时间打开逐���变卡」并回归渲染开销。
+    const prefill = Array.from(
+      { length: 1000 },
+      (_, index) => `${LOG_LINES[index % LOG_LINES.length]} seq=${index}`,
+    );
+    emitHostEvent({ method: "docker/logs/chunk", params: { streamId, text: `${prefill.join("\n")}\n` } });
+    let tick = 0;
+    logTimer = setInterval(() => {
+      tick += 1;
+      const burst = Array.from(
+        { length: 6 },
+        (_, index) => `${LOG_LINES[(tick + index) % LOG_LINES.length]} burst=${tick}`,
+      );
+      emitHostEvent({ method: "docker/logs/chunk", params: { streamId, text: `${burst.join("\n")}\n` } });
+    }, 150);
+    logEndTimer = setTimeout(() => endLogStream(streamId, { exitCode: 0 }), 10 * 60_000);
+    return;
+  }
   logTimer = setInterval(() => emitLogChunk(streamId), LOG_TICK_MS);
   logEndTimer = setTimeout(() => endLogStream(streamId, { exitCode: 0 }), LOG_STREAM_MS);
+}
+
+/** 监控夹具：按 tick 生成连续波动的快照；累计计数器逐次递增，前端差分得到
+ *  稳定的上传/下载速率曲线（模拟 `docker stats --no-stream` 每 3s 一次）。 */
+const statsTicks = new Map<string, number>();
+const statsTotals = new Map<string, { rx: number; tx: number; read: number; write: number }>();
+
+function mockStatsSample(containerId: string) {
+  const tick = (statsTicks.get(containerId) ?? 0) + 1;
+  statsTicks.set(containerId, tick);
+  const totals = statsTotals.get(containerId) ?? { rx: 1_200_000, tx: 400_000, read: 2_000_000, write: 800_000 };
+  const phase = (tick % 20) / 20;
+  totals.rx += Math.round(180_000 + Math.sin(phase * Math.PI * 2) * 120_000 + (tick % 7) * 9_000);
+  totals.tx += Math.round(60_000 + Math.cos(phase * Math.PI * 2) * 40_000);
+  totals.read += 20_000;
+  totals.write += 12_000;
+  statsTotals.set(containerId, totals);
+  return {
+    available: true,
+    needsSudo: false,
+    running: true,
+    cpuPercent: Number((8 + Math.sin(phase * Math.PI * 2) * 6 + (tick % 5)).toFixed(2)),
+    memPercent: Number((12 + Math.sin(phase * Math.PI) * 3).toFixed(2)),
+    memUsedBytes: 210_000_000 + Math.round(Math.sin(phase * Math.PI) * 20_000_000),
+    memLimitBytes: 8_160_437_862,
+    netRxBytes: totals.rx,
+    netTxBytes: totals.tx,
+    blockReadBytes: totals.read,
+    blockWriteBytes: totals.write,
+    pids: 5 + (tick % 3),
+  };
 }
 
 export async function handleDockerInvoke(method: string, params: unknown): Promise<unknown | Unhandled> {
@@ -331,6 +382,23 @@ export async function handleDockerInvoke(method: string, params: unknown): Promi
         { id: "0f1e2d3c4b5a", name: "worker-queue", image: "python:3.12-slim", state: "paused", status: "Up 5 days (Paused)", ports: "", createdAt: "2026-09-23 12:00:00 +0000 UTC" },
       ],
     };
+  }
+  if (method === "docker/stats") {
+    const containerId = String(input.containerId || "");
+    if (!CONTAINER_ID.test(containerId)) throw new Error(`Invalid containerId '${containerId}': expected 12-64 lowercase hex characters`);
+    const mode = fixtureParams.get("docker");
+    if (mode === "off") return { available: false, needsSudo: false, running: false, error: "docker CLI not found" };
+    if (mode === "sudo") return { available: false, needsSudo: true, running: false };
+    if (containerId.startsWith("1a2b3c4d")) return { available: true, needsSudo: false, running: false };
+    return mockStatsSample(containerId);
+  }
+  // CPU 总量（监控卡分母）：默认无限制、显示主机 8 核；?docker=cpulimit
+  // 模拟容器限制 2 核。
+  if (method === "docker/stats/limits") {
+    const containerId = String(input.containerId || "");
+    if (!CONTAINER_ID.test(containerId)) throw new Error(`Invalid containerId '${containerId}': expected 12-64 lowercase hex characters`);
+    const mode = fixtureParams.get("docker");
+    return { hostCpus: 8, cpuLimitCores: mode === "cpulimit" ? 2 : null };
   }
   if (method === "docker/logs") {
     const containerId = String(input.containerId || "");
@@ -396,6 +464,12 @@ export async function handleDockerInvoke(method: string, params: unknown): Promi
     const active = stopLogStream();
     if (active) emitHostEvent({ method: "docker/logs/end", params: { streamId, error: "cancelled" } });
     return { stopped: active };
+  }
+  // 日志页实例收口（卸载/关闭工作台）：夹具只有一条流，直接停掉。
+  if (method === "docker/logs/close") {
+    const active = stopLogStream();
+    if (active) emitHostEvent({ method: "docker/logs/end", params: { streamId: STREAM_ID, error: "cancelled" } });
+    return { closed: true };
   }
 
   if (method === "docker/files/list") {

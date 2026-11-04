@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workbenchCloseTargets } from "./workbenchCloseSessions";
+import { workbenchClosePayload, workbenchCloseTargets } from "./workbenchCloseSessions";
 
 /** 关闭一个 workbench 只回收它自己的会话（issue #193a 回归锁）：
  * workbench/close 的回收目标按「本工作台各会话域」逐一收集，空槽位（该域当前
@@ -30,5 +30,19 @@ describe("workbenchCloseTargets", () => {
       ["ssh/session/close", undefined],
       ["telnet/close", ""],
     ])).toEqual([]);
+  });
+});
+
+describe("workbenchClosePayload", () => {
+  it("defers SSH closes for a host workbench re-init", () => {
+    expect(workbenchClosePayload("ssh/session/close", "ssh-1")).toEqual({
+      sessionId: "ssh-1",
+      deferForHostReinit: true,
+    });
+  });
+
+  it("closes other session domains immediately", () => {
+    expect(workbenchClosePayload("local/session/close", "local-1")).toEqual({ sessionId: "local-1" });
+    expect(workbenchClosePayload("vnc/close", "vnc-1")).toEqual({ sessionId: "vnc-1" });
   });
 });

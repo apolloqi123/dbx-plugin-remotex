@@ -1,17 +1,17 @@
-//! Local shell connection targets (`io.dbx.sshx.local`) — the plugin's second
-//! connection provider, for scheduler tasks that must run on the machine
-//! running DBX itself instead of over SSH.
+//! Local shell connection targets — connections whose `protocol` is `local`
+//! in the unified RemoteX provider, for scheduler tasks and terminals that
+//! must run on the machine running DBX itself instead of over SSH. The
+//! legacy standalone provider id (`io.dbx.sshx.local`) is still accepted so
+//! connections saved before the provider collapse keep working.
 //!
 //! Division of labor mirrors the SSH provider: the host owns the form, the
 //! saved-connection store, and the connection lifecycle routing (it stamps
-//! `params.provider.id` on every lifecycle call, so the decision of "is this
-//! a local target" is the plugin reading the provider marker the host
-//! declared — never a host-side per-provider branch, never a hardcoded
-//! connection-id string comparison in task logic). This module owns the
-//! payload parsing and the pure provider-marker predicate; the registry
-//! itself lives on [`crate::sessions::ssh::SshRuntime`] next to the SSH stored
-//! connections so both providers share one lifecycle (store on connect, drop
-//! on disconnect, read in the task provider).
+//! `params.provider.id` on every lifecycle call; the unified provider's
+//! protocol is read from `external_config`). This module owns the payload
+//! parsing and the pure local-target predicate; the registry itself lives on
+//! [`crate::sessions::ssh::SshRuntime`] next to the SSH stored connections so
+//! both targets share one lifecycle (store on connect, drop on disconnect,
+//! read in the task provider).
 //!
 //! There are no credentials on a local target: the payload carries a display
 //! name and an optional absolute shell path only. `shell` staying empty means
@@ -22,14 +22,17 @@
 
 use serde_json::Value;
 
-/// Connection-provider contribution id of the local shell target. This is
-/// the plugin declaring itself; the host matches it against the manifest and
-/// stamps it back onto every lifecycle payload. Declared once in the plugin
-/// id registry; re-exported here for the local-target API.
-pub(crate) use crate::core::plugin_ids::LOCAL_CONNECTION_PROVIDER;
+/// Legacy standalone local-shell provider id. Connections saved while that
+/// card existed still carry this provider stamp (and cannot be edited against
+/// the unified provider), so the lifecycle keeps recognizing them.
+pub(crate) use crate::core::plugin_ids::LEGACY_LOCAL_CONNECTION_PROVIDER;
+
+/// `external_config.protocol` value of a local shell target inside the
+/// unified RemoteX provider.
+const LOCAL_PROTOCOL: &str = "local";
 
 /// A hydrated local shell target: the scheduler task provider's view of one
-/// `io.dbx.sshx.local` connection. No secret material by construction.
+/// local connection. No secret material by construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LocalTarget {
     pub id: String,
@@ -55,13 +58,17 @@ impl LocalTarget {
     /// malformed, so the lifecycle call must fail loudly instead of silently
     /// dropping the registration.
     pub(crate) fn from_lifecycle_params(params: &Value) -> Result<Option<Self>, String> {
-        if !connection_is_local(provider_id(params).as_deref()) {
+        let legacy_provider = connection_is_local(provider_id(params).as_deref());
+        let Some(connection) = params.get("connection").and_then(Value::as_object) else {
+            return if legacy_provider {
+                Err("Missing connection payload".to_string())
+            } else {
+                Ok(None)
+            };
+        };
+        if !legacy_provider && !protocol_is_local(connection) {
             return Ok(None);
         }
-        let connection = params
-            .get("connection")
-            .and_then(Value::as_object)
-            .ok_or("Missing connection payload")?;
         let id = connection
             .get("id")
             .and_then(Value::as_str)
@@ -109,13 +116,25 @@ impl LocalTarget {
 }
 
 /// The lifecycle payload's `provider.id` stamp, if any. Older hosts may omit
-/// the whole `provider` object; absence simply means "not local".
+/// the whole `provider` object; absence simply means "not legacy-local".
 fn provider_id(params: &Value) -> Option<String> {
     params
         .get("provider")
         .and_then(|provider| provider.get("id"))
         .and_then(Value::as_str)
         .map(str::to_string)
+}
+
+/// Whether the unified provider's `external_config.protocol` selects the
+/// local shell. Only the exact value matches; absent/unknown protocols fall
+/// through to the SSH or non-SSH lifecycle.
+fn protocol_is_local(connection: &serde_json::Map<String, Value>) -> bool {
+    connection
+        .get("external_config")
+        .and_then(Value::as_object)
+        .and_then(|config| config.get("protocol"))
+        .and_then(Value::as_str)
+        == Some(LOCAL_PROTOCOL)
 }
 
 /// Extracts the connection form's `cwd` and `env` values. `env` is a
@@ -155,7 +174,7 @@ fn config_cwd_env(connection: &serde_json::Map<String, Value>) -> (String, Vec<(
 /// Pure provider-marker predicate. The task provider's local-vs-SSH decision
 /// routes through this constant so the mapping stays one declaration wide.
 pub(crate) fn connection_is_local(provider_id: Option<&str>) -> bool {
-    provider_id == Some(LOCAL_CONNECTION_PROVIDER)
+    provider_id == Some(LEGACY_LOCAL_CONNECTION_PROVIDER)
 }
 
 #[cfg(test)]
@@ -175,9 +194,38 @@ mod tests {
         })
     }
 
+    fn unified_lifecycle(protocol: &str) -> Value {
+        json!({
+            "provider": { "id": "io.dbx.sshx.connection", "databaseType": "ssh" },
+            "connection": {
+                "id": "conn-local-1",
+                "name": "ops box",
+                "external_config": { "protocol": protocol, "shell": " /bin/bash " },
+            },
+            "runtime": { "host": "", "port": 0 },
+        })
+    }
+
+    #[test]
+    fn unsaved_protocol_selector_uses_local_protocol() {
+        let target = LocalTarget::from_lifecycle_params(&unified_lifecycle(LOCAL_PROTOCOL))
+            .expect("parse")
+            .expect("local target");
+        assert_eq!(target.shell, "/bin/bash");
+        assert!(!connection_is_local(Some("io.dbx.sshx.connection")));
+        // Every other protocol remains SSH/non-SSH, never a local target.
+        for protocol in ["ssh", "telnet", "vnc", "rdp", "serial"] {
+            assert_eq!(
+                LocalTarget::from_lifecycle_params(&unified_lifecycle(protocol)).expect("parse"),
+                None,
+                "{protocol} must not parse as a local target"
+            );
+        }
+    }
+
     #[test]
     fn local_provider_payload_parses_with_trimmed_fields() {
-        let target = LocalTarget::from_lifecycle_params(&lifecycle(LOCAL_CONNECTION_PROVIDER))
+        let target = LocalTarget::from_lifecycle_params(&lifecycle(LEGACY_LOCAL_CONNECTION_PROVIDER))
             .expect("parse")
             .expect("local target");
         assert_eq!(target.id, "conn-local-1");
@@ -191,7 +239,7 @@ mod tests {
 
     #[test]
     fn connection_form_cwd_and_env_lines_parse_and_sanitize() {
-        let mut payload = lifecycle(LOCAL_CONNECTION_PROVIDER);
+        let mut payload = lifecycle(LEGACY_LOCAL_CONNECTION_PROVIDER);
         payload["connection"]["external_config"] = json!({
             "shell": "/bin/sh",
             "cwd": "  /tmp/work  ",
@@ -227,17 +275,17 @@ mod tests {
         );
         assert!(!connection_is_local(None));
         assert!(!connection_is_local(Some("io.dbx.sshx.connection")));
-        assert!(connection_is_local(Some(LOCAL_CONNECTION_PROVIDER)));
+        assert!(connection_is_local(Some(LEGACY_LOCAL_CONNECTION_PROVIDER)));
     }
 
     #[test]
     fn malformed_local_payloads_fail_loudly() {
         // Claims the local provider but carries no connection object.
-        let missing_connection = json!({ "provider": { "id": LOCAL_CONNECTION_PROVIDER } });
+        let missing_connection = json!({ "provider": { "id": LEGACY_LOCAL_CONNECTION_PROVIDER } });
         assert!(LocalTarget::from_lifecycle_params(&missing_connection).is_err());
         // Connection without an id cannot be registered.
         let missing_id = json!({
-            "provider": { "id": LOCAL_CONNECTION_PROVIDER },
+            "provider": { "id": LEGACY_LOCAL_CONNECTION_PROVIDER },
             "connection": { "name": "no id" },
         });
         assert!(LocalTarget::from_lifecycle_params(&missing_id).is_err());

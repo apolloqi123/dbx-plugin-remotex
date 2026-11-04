@@ -22,6 +22,11 @@ if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
   export PATH="$HOME/Library/pnpm:${NODE_BIN:+$NODE_BIN:}$PATH"
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
+REAL_CARGO="$(command -v cargo)"
+# 固定 SDK 垫片路径 + 共用 backend/target：先给 release 构建打上 CLI 打包时
+# 使用的同一个 patch，打包阶段的 cargo build 才能直接复用、不重复编译。
+SDK_SHIM="$(bash scripts/lib/sdk_root_shim.sh)"
+export DBX_PLUGIN_SDK_ROOT="$SDK_SHIM"
 
 # 用一次性数据目录跑全套：known_hosts / Quick Sudo 配置等状态不落用户真实
 # 插件数据，主机密钥挑战类用例也可重复——否则测试容器一旦重建（host key
@@ -48,8 +53,13 @@ node scripts/verify/mock_host_registry_check.mjs
 # app 数据目录——开发机上 DBX 运行中会让 read_only 稳定性等用例读到真实连接
 # （首次命中/二次抖动即漂移），甚至经 ensure_app_bridge 的 open -a 兜底拉起
 # DBX。钉到一次性空目录（与 CI 无运行 DBX 同态），启动命令置 no-op。
+# Parallel process spawning is flaky on macOS sandboxes (portable-pty's
+# fork/pre_exec path can report ENOENT for /bin/sh when the machine is busy).
+# One thread keeps the suite deterministic; override with BACKEND_TEST_THREADS
+# to match CI once the environment is known to tolerate parallelism.
 DBX_APP_DATA_DIR="$DBX_PLUGIN_DATA_DIR" DBX_APP_LAUNCH_CMD="true" \
-  cargo test --manifest-path backend/Cargo.toml
+  cargo test --manifest-path backend/Cargo.toml \
+  -- --test-threads="${BACKEND_TEST_THREADS:-1}"
 
 echo "==> dead-code warning gate"
 # 未接线的功能会先以 dead_code 警告形态暴露（案例：remembered 审批 /
@@ -60,16 +70,24 @@ echo "==> dead-code warning gate"
 # 退出，cargo 继续写输出会收到 SIGPIPE（141），pipefail 下整条管道非零、
 # if 被判假，门禁静默放行。这里只构建一次并落盘，再对文件做匹配。
 #
-# cargo 对已是最新的单元不重放警告（热 target 只打印 "Finished"），门禁
-# 会静默放行。先 clean 掉本包的产物强制重编（依赖保留缓存，不是冷构建）。
+# cargo 对已是最新的单元不重放警告（热 target 只打印 "Finished"）。不要用
+# `cargo clean -p`（会丢掉增量缓存并重编整包）：把 crate 根 mtime 推后 1s，
+# 强制 bin target 重编并重放 dead_code 警告；实测约 5s，clean+build 约 35s。
+# 检查完把 mtime 还原：Cargo 按路径源 mtime 判定新鲜度，否则后续 release
+# 构建会被这次 touch 连带重编（多花 1m40s）。
 deadcode_log="$(mktemp -t dbx-deadcode.XXXXXX)"
-trap 'rm -f "${deadcode_log:-}"' EXIT
-cargo clean -p dbx-plugin-sshx --manifest-path backend/Cargo.toml
+main_mtime="$(mktemp -t dbx-main-mtime.XXXXXX)"
+trap 'rm -f "${deadcode_log:-}" "${main_mtime:-}"' EXIT
+touch -r backend/src/main.rs "$main_mtime"
+sleep 1
+touch backend/src/main.rs
 if ! cargo build --manifest-path backend/Cargo.toml >"$deadcode_log" 2>&1; then
+  touch -r "$main_mtime" backend/src/main.rs
   cat "$deadcode_log" >&2
   echo "FAIL: cargo build failed (output above)" >&2
   exit 1
 fi
+touch -r "$main_mtime" backend/src/main.rs
 # dead_code 的三种形态：未使用项 "never used"、未读字段 "is never read"、
 # 未构造的结构体/枚举变体 "is never constructed"。模式抽成变量，判定与
 # 打印共用，避免两处漂移。
@@ -98,19 +116,22 @@ pnpm --dir frontend test
 pnpm --dir frontend build
 
 echo "==> sidecar release build"
-cargo build --release --manifest-path backend/Cargo.toml
+# Use the same SDK patch path as dbx-plugin package (stable shim under
+# backend/target), so the CLI's packaging build is a warm no-op instead of
+# recompiling the SDK + plugin every time.
+cargo build --release --locked --manifest-path backend/Cargo.toml \
+  --config "patch.crates-io.dbx-plugin-sdk.path=\"$SDK_SHIM/plugins/sdk/rust/dbx-plugin-sdk\""
 
 echo "==> package .dbxp"
-# 与 build.sh 一致：把 CLI 内部 cargo build 重定向到热的 backend/target。
-# 不重定向时 CLI 用一次性 dist/.build-rust-<triple> 暂存目录——整树冷编译，
-# 且会被并发/下一次打包的清理踩掉（表现为写 .fingerprint 时 ENOENT）。
-export CARGO_TARGET_DIR="$ROOT/backend/target"
-# CLI 打包的内部 cargo build 会把 Rust SDK patch 覆盖到 DBX_PLUGIN_SDK_ROOT；
-# 未设置时 npm 包装器注入 CLI 自带 sdk-root，vendored SDK（shared/sdk/）的本地
-# 修复进不了产物——用垫片把 SDK 根指回 vendored 副本，打完做字节级反例断言。
+# dbx-plugin package 总是把内部 cargo build 放到一次性的
+# dist/.build-rust-<target> 并在结束后删除；在父 shell 设 CARGO_TARGET_DIR
+# 无效（CLI 会覆盖子进程的环境）。cargo-warm-bin 垫片只在打包这一条命令上
+# 生效：把构建重定向到热的 backend/target，并在 CLI 期望的位置放好产物。
 if command -v dbx-plugin >/dev/null 2>&1; then
-  export DBX_PLUGIN_SDK_ROOT="$(bash scripts/lib/sdk_root_shim.sh)"
-  NO_COLOR=1 dbx-plugin package .
+  PATH="$ROOT/scripts/lib/cargo-warm-bin:$PATH" \
+    DBX_REAL_CARGO="$REAL_CARGO" \
+    DBX_PLUGIN_ROOT="$ROOT" \
+    NO_COLOR=1 dbx-plugin package .
   python3 scripts/release/verify_packaged_sdk.py
 else
   echo "SKIP: dbx-plugin CLI unavailable; install @dbx-app/plugin-cli to run package verification"

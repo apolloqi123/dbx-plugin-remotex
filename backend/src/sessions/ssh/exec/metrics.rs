@@ -6,8 +6,11 @@ use super::*;
 /// with sysctl/`vm_stat`/`iostat` fallbacks on macOS, `df -kP` for mounts,
 /// plus the network-rate and top-process extensions. Thin delegation to
 /// [`crate::metrics`], which owns the extended collector and parsers.
-pub async fn collect_metrics(handle: &Handle<SshClient>) -> Result<serde_json::Value, String> {
-    crate::features::metrics::collect_metrics(handle).await
+pub async fn collect_metrics_with_accelerators(
+    handle: &Handle<SshClient>,
+    probe_accelerators: bool,
+) -> Result<serde_json::Value, String> {
+    crate::features::metrics::collect_metrics_with_accelerators(handle, probe_accelerators).await
 }
 
 /// Parses the output of the collector script (`METRICS_SCRIPT` in metrics.rs)

@@ -144,3 +144,46 @@ pub struct RdpResizeRequest {
     pub width: u16,
     pub height: u16,
 }
+
+// —— 文件/文件夹剪贴板（rdp/clipboard-files/*） ——
+
+/// One regular file offered to the remote (`begin` manifest entry).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardFileEntry {
+    pub name: String,
+    pub relative_path: Option<String>,
+    pub size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardFilesBeginRequest {
+    pub session_id: String,
+    pub files: Vec<ClipboardFileEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardFilesChunkRequest {
+    pub session_id: String,
+    pub upload_id: String,
+    pub index: usize,
+    pub offset: u64,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardFilesUploadRequest {
+    pub session_id: String,
+    pub upload_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardFilesReadRequest {
+    pub session_id: String,
+    pub offset: u64,
+    pub length: Option<u64>,
+}

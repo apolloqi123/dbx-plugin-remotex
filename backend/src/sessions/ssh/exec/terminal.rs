@@ -44,8 +44,19 @@ impl TerminalAutoSudo {
     /// A fragment cut by a chunk boundary is carried over, so entry/exit is
     /// never lost.
     fn track_alternate_screen(&mut self, chunk: &str) {
-        let mut scan = std::mem::take(&mut self.escape_carry);
-        scan.push_str(chunk);
+        // Plain chunks (no escape at all) cannot change the alternate-screen
+        // state and are the common case on a busy shell: skip the copy+scan.
+        if self.escape_carry.is_empty() && !chunk.as_bytes().contains(&0x1b) {
+            return;
+        }
+        // Only concatenate when a sequence really was split; otherwise scan the
+        // borrowed chunk instead of copying every 32 KiB frame into a String.
+        let carried = std::mem::take(&mut self.escape_carry);
+        let scan = if carried.is_empty() {
+            std::borrow::Cow::Borrowed(chunk)
+        } else {
+            std::borrow::Cow::Owned(format!("{carried}{chunk}"))
+        };
         let bytes = scan.as_bytes();
         let mut index = 0;
         while index < bytes.len() {
@@ -116,12 +127,15 @@ impl TerminalAutoSudo {
             // text in its output is file content, never a live question.
             return None;
         }
+        // Borrow the shared settings instead of cloning them: this runs on
+        // every PTY chunk (30–60/s on a busy shell) and `SudoAuth` owns the
+        // password, OTP secret list and hint strings. All mutations below
+        // touch disjoint fields, so the read guard can stay alive.
         let auth = self
             .auth
             .read()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
-        let auth = &auth;
+            .unwrap_or_else(|poison| poison.into_inner());
+        let auth = &*auth;
         let normalized = normalize_auth_prompt_text(chunk);
         if normalized.is_empty() {
             return None;
@@ -240,11 +254,12 @@ impl TerminalAutoSudo {
         if now < due {
             return None;
         }
+        // Same borrow-not-clone rule as `observe` (retries run every second
+        // while a prompt is deferred).
         let auth = self
             .auth
             .read()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
+            .unwrap_or_else(|poison| poison.into_inner());
         let (answer, retry_at) = auth.answer_for_with_retry(kind);
         match answer {
             Some(text) => {

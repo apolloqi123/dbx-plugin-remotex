@@ -24,6 +24,9 @@ use uuid::Uuid;
 
 use crate::sessions::ssh::{exec, SshRuntime};
 
+#[path = "shell_forward.rs"]
+mod shell_forward;
+
 /// Per-sidecar ceiling on concurrent container terminals. Each terminal holds
 /// an SSH channel or a child PTY plus a forwarder task, so the cap keeps a
 /// stuck UI (or a runaway script) from exhausting either.
@@ -47,6 +50,11 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 const CLOSE_WAIT: Duration = Duration::from_secs(2);
 /// State-event error for a terminal that hit [`TERMINAL_TTL`].
 const TIMEOUT_ERROR: &str = "Container terminal timed out";
+/// How long a closed terminal id stays tombstoned. An open that raced the
+/// close (webview torn down mid-open) must not register a PTY that nobody
+/// can stop; ids are client-generated and never reused.
+const CLOSED_TERMINAL_TTL: Duration = Duration::from_secs(120);
+const CLOSED_TERMINAL_ERROR: &str = "Container terminal was closed";
 
 /// Tunables of one terminal. Production uses [`TerminalLimits::default`];
 /// tests shorten the TTL so expiry is observable in milliseconds.
@@ -82,6 +90,13 @@ struct TerminalEntry {
     resize: mpsc::Sender<(u32, u32)>,
     closed: Arc<AtomicBool>,
     started: Instant,
+    /// Log-pane scope that owns this terminal (frontend instance id). A new
+    /// open on the same scope replaces the old PTY even if its close RPC was
+    /// lost.
+    owner: String,
+    /// SSH session the PTY runs on (empty for local PTYs); `ssh/session/close`
+    /// cancels by this key.
+    session: String,
     /// Signalled once the forwarder has removed this entry.
     done: Arc<Notify>,
 }
@@ -138,12 +153,15 @@ pub fn requested_terminal_id(requested: Option<&str>) -> Result<String, String> 
 /// Boundary marker between the shared reservation helpers and the start paths.
 pub struct DockerTerminals {
     inner: Mutex<HashMap<String, TerminalEntry>>,
+    /// Terminal ids whose close already arrived. See [`CLOSED_TERMINAL_TTL`].
+    closed_ids: Mutex<HashMap<String, Instant>>,
 }
 
 impl DockerTerminals {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
+            closed_ids: Mutex::new(HashMap::new()),
         }
     }
 
@@ -153,42 +171,98 @@ impl DockerTerminals {
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
+    fn closed_lock(&self) -> MutexGuard<'_, HashMap<String, Instant>> {
+        self.closed_ids
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    /// Prunes expired tombstones and reports whether `terminal_id` is one.
+    fn is_closed(&self, terminal_id: &str) -> bool {
+        let mut closed = self.closed_lock();
+        let now = Instant::now();
+        closed.retain(|_, at| now.duration_since(*at) < CLOSED_TERMINAL_TTL);
+        closed.contains_key(terminal_id)
+    }
+
+    /// Remembers a closed id so an open that raced the close is rejected.
+    /// Called while holding the streams lock (same order as `reserve`).
+    fn tombstone(&self, terminal_id: &str) {
+        let mut closed = self.closed_lock();
+        let now = Instant::now();
+        closed.retain(|_, at| now.duration_since(*at) < CLOSED_TERMINAL_TTL);
+        closed.insert(terminal_id.to_string(), now);
+    }
+
     /// Admission check + entry insertion in one critical section: two racing
-    /// opens cannot both observe the last free slot.
-    fn reserve(&self, terminal_id: &str) -> Result<Reserved, String> {
-        let mut inner = self.lock();
-        if inner.len() >= MAX_ACTIVE_TERMINALS {
-            return Err(format!(
-                "Too many active container terminals ({MAX_ACTIVE_TERMINALS}). Close one before opening another."
-            ));
+    /// opens cannot both observe the last free slot. A new open on the same
+    /// owner (pane) or SSH session supersedes the old entry, so a lost close
+    /// or a rapid remount cannot leave a second PTY alive.
+    fn reserve(
+        &self,
+        terminal_id: &str,
+        owner: &str,
+        session: &str,
+    ) -> Result<Reserved, String> {
+        let mut superseded = Vec::new();
+        let reserved = {
+            let mut inner = self.lock();
+            if self.is_closed(terminal_id) {
+                return Err(CLOSED_TERMINAL_ERROR.to_string());
+            }
+            if !owner.is_empty() || !session.is_empty() {
+                inner.retain(|_, entry| {
+                    let matches = (!owner.is_empty() && entry.owner == owner)
+                        || (!session.is_empty() && entry.session == session);
+                    if matches {
+                        superseded.push((entry.cancel.clone(), Arc::clone(&entry.closed)));
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+            if inner.len() >= MAX_ACTIVE_TERMINALS {
+                Err(format!(
+                    "Too many active container terminals ({MAX_ACTIVE_TERMINALS}). Close one before opening another."
+                ))
+            } else if inner.contains_key(terminal_id) {
+                Err(format!("terminalId '{terminal_id}' is already in use"))
+            } else {
+                let (cancel, cancel_rx) = watch::channel(false);
+                let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
+                let (resize_tx, resize_rx) = mpsc::channel(RESIZE_QUEUE);
+                let closed = Arc::new(AtomicBool::new(false));
+                let done = Arc::new(Notify::new());
+                inner.insert(
+                    terminal_id.to_string(),
+                    TerminalEntry {
+                        cancel: cancel.clone(),
+                        input: input_tx,
+                        resize: resize_tx,
+                        closed: Arc::clone(&closed),
+                        started: Instant::now(),
+                        owner: owner.to_string(),
+                        session: session.to_string(),
+                        done: Arc::clone(&done),
+                    },
+                );
+                Ok(Reserved {
+                    cancel,
+                    cancel_rx,
+                    input_rx,
+                    resize_rx,
+                    closed,
+                    done,
+                })
+            }
+        };
+        // Superseded PTYs are explicit replacements: no state event.
+        for (cancel, closed) in superseded {
+            closed.store(true, Ordering::Relaxed);
+            let _ = cancel.send(true);
         }
-        if inner.contains_key(terminal_id) {
-            return Err(format!("terminalId '{terminal_id}' is already in use"));
-        }
-        let (cancel, cancel_rx) = watch::channel(false);
-        let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
-        let (resize_tx, resize_rx) = mpsc::channel(RESIZE_QUEUE);
-        let closed = Arc::new(AtomicBool::new(false));
-        let done = Arc::new(Notify::new());
-        inner.insert(
-            terminal_id.to_string(),
-            TerminalEntry {
-                cancel: cancel.clone(),
-                input: input_tx,
-                resize: resize_tx,
-                closed: Arc::clone(&closed),
-                started: Instant::now(),
-                done: Arc::clone(&done),
-            },
-        );
-        Ok(Reserved {
-            cancel,
-            cancel_rx,
-            input_rx,
-            resize_rx,
-            closed,
-            done,
-        })
+        reserved
     }
 
     /// Starts a container shell over an SSH session. `ensure_writable` is the
@@ -203,6 +277,7 @@ impl DockerTerminals {
         ssh: Arc<SshRuntime>,
         emitter: PluginEmitter,
         session_id: String,
+        owner: String,
         container_id: &str,
         engine: EngineConfig,
         terminal_id: Option<&str>,
@@ -211,6 +286,11 @@ impl DockerTerminals {
     ) -> Result<Value, String> {
         let command = shell_ssh_command(&engine, container_id)?;
         let terminal_id = requested_terminal_id(terminal_id)?;
+        let owner = if owner.is_empty() {
+            session_id.clone()
+        } else {
+            owner
+        };
         // Resolve the session before admission so a vanished session is a
         // clear RPC error instead of an open that immediately emits `state`.
         ssh.ensure_container_session(&session_id).await?;
@@ -221,7 +301,7 @@ impl DockerTerminals {
             resize_rx,
             closed,
             done,
-        } = self.reserve(&terminal_id)?;
+        } = self.reserve(&terminal_id, &owner, &session_id)?;
         let (sink, sink_rx) = mpsc::channel(OUTPUT_QUEUE);
         let runner_id = terminal_id.clone();
         let handle = tokio::spawn(async move {
@@ -256,12 +336,18 @@ impl DockerTerminals {
         emitter: PluginEmitter,
         container_id: &str,
         engine: EngineConfig,
+        owner: String,
         terminal_id: Option<&str>,
         cols: u32,
         rows: u32,
     ) -> Result<Value, String> {
         let terminal_id = requested_terminal_id(terminal_id)?;
         validate_container_id(container_id)?;
+        let owner = if owner.is_empty() {
+            "local".to_string()
+        } else {
+            owner
+        };
         let Reserved {
             cancel,
             cancel_rx,
@@ -269,7 +355,7 @@ impl DockerTerminals {
             resize_rx,
             closed,
             done,
-        } = self.reserve(&terminal_id)?;
+        } = self.reserve(&terminal_id, &owner, "")?;
         let pty = match spawn_local_pty(&engine, container_id, cols, rows) {
             Ok(pty) => pty,
             Err(error) => {
@@ -298,85 +384,6 @@ impl DockerTerminals {
                 .await;
         });
         Ok(json!({ "terminalId": terminal_id }))
-    }
-
-    /// Drains raw PTY chunks into binary events, enforces the TTL, then emits
-    /// the terminal state (unless the close was explicit) and releases the
-    /// slot. A runner that ends immediately still lands here: the closed sink
-    /// wakes the loop and its result becomes the state event.
-    #[allow(clippy::too_many_arguments)]
-    async fn forward(
-        self: Arc<Self>,
-        terminal_id: String,
-        emitter: PluginEmitter,
-        closed: Arc<AtomicBool>,
-        done: Arc<Notify>,
-        cancel: watch::Sender<bool>,
-        mut runner: JoinHandle<Result<Option<i32>, String>>,
-        mut sink: mpsc::Receiver<Vec<u8>>,
-        limits: TerminalLimits,
-    ) {
-        let started = self.started(&terminal_id);
-        let mut ticker = tokio::time::interval(limits.tick());
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut expired = false;
-        let result = loop {
-            tokio::select! {
-                biased;
-                _ = ticker.tick() => {
-                    if started.is_some_and(|started| started.elapsed() >= limits.ttl) {
-                        expired = true;
-                        let _ = cancel.send(true);
-                        break stop_runner(&mut runner, limits.stop_grace).await;
-                    }
-                }
-                chunk = sink.recv() => match chunk {
-                    Some(bytes) if !bytes.is_empty() => {
-                        let _ = emitter.binary(&format!("docker/terminal/out/{terminal_id}"), &bytes);
-                    }
-                    Some(_) => {}
-                    None => break stop_runner(&mut runner, limits.stop_grace).await,
-                },
-                status = &mut runner => break status,
-            }
-        };
-        while let Ok(bytes) = sink.try_recv() {
-            if !bytes.is_empty() {
-                let _ = emitter.binary(&format!("docker/terminal/out/{terminal_id}"), &bytes);
-            }
-        }
-        self.lock().remove(&terminal_id);
-        done.notify_one();
-        // An explicit close is not a state transition the UI has to handle.
-        if closed.load(Ordering::Relaxed) {
-            return;
-        }
-        let payload = if expired {
-            json!({ "terminalId": terminal_id, "state": "error", "error": TIMEOUT_ERROR })
-        } else {
-            match result {
-                Ok(Ok(code)) => json!({
-                    "terminalId": terminal_id,
-                    "state": "exited",
-                    "exitCode": code.unwrap_or(-1),
-                }),
-                Ok(Err(error)) => {
-                    json!({ "terminalId": terminal_id, "state": "error", "error": error })
-                }
-                Err(error) => json!({
-                    "terminalId": terminal_id,
-                    "state": "error",
-                    "error": format!("Container terminal task failed: {error}"),
-                }),
-            }
-        };
-        let _ = emitter.event("docker/terminal/state", payload);
-    }
-
-    fn started(&self, terminal_id: &str) -> Option<Instant> {
-        self.lock()
-            .get(terminal_id)
-            .map(|entry| entry.started)
     }
 
     /// Enqueues keystrokes for one terminal. Only a closed queue (the runner
@@ -411,22 +418,53 @@ impl DockerTerminals {
     /// SSH channel. Serialising close→open avoids tripping the server's
     /// `MaxSessions` guard when the user switches containers quickly.
     pub async fn close_and_wait(&self, terminal_id: &str) -> bool {
-        let (cancel, closed, done) = {
+        let found = {
             let inner = self.lock();
-            match inner.get(terminal_id) {
-                Some(entry) => (
+            // Tombstone even an unknown id: an open that was still on the
+            // wire when the pane closed must not register a PTY afterwards.
+            self.tombstone(terminal_id);
+            inner.get(terminal_id).map(|entry| {
+                (
                     entry.cancel.clone(),
                     Arc::clone(&entry.closed),
                     Arc::clone(&entry.done),
-                ),
-                None => return false,
-            }
+                )
+            })
+        };
+        let Some((cancel, closed, done)) = found else {
+            return false;
         };
         closed.store(true, Ordering::Relaxed);
         let notified = done.notified();
         let _ = cancel.send(true);
         let _ = tokio::time::timeout(CLOSE_WAIT, notified).await;
         true
+    }
+
+    /// Cancels every terminal running on one SSH session (session teardown).
+    /// The PTY channel would die with the transport anyway; doing it here
+    /// releases the registry slot and reaps the runner deterministically.
+    pub(crate) fn cancel_session(&self, session: &str) {
+        if session.is_empty() {
+            return;
+        }
+        let retired = {
+            let mut inner = self.lock();
+            let mut retired = Vec::new();
+            inner.retain(|_, entry| {
+                if entry.session == session {
+                    retired.push((entry.cancel.clone(), Arc::clone(&entry.closed)));
+                    false
+                } else {
+                    true
+                }
+            });
+            retired
+        };
+        for (cancel, closed) in retired {
+            closed.store(true, Ordering::Relaxed);
+            let _ = cancel.send(true);
+        }
     }
 
     /// Cancels every registered terminal (registry teardown). The runners wind
@@ -440,22 +478,6 @@ impl DockerTerminals {
         for entry in entries {
             entry.closed.store(true, Ordering::Relaxed);
             let _ = entry.cancel.send(true);
-        }
-    }
-}
-
-/// Waits out a runner after the pump ends, bounded by `grace`. A runner that
-/// ignores cancellation is aborted instead of awaited forever: the SSH
-/// channel task is dropped and the local child is killed by its own pump.
-async fn stop_runner(
-    runner: &mut JoinHandle<Result<Option<i32>, String>>,
-    grace: Duration,
-) -> Result<Result<Option<i32>, String>, tokio::task::JoinError> {
-    match tokio::time::timeout(grace, &mut *runner).await {
-        Ok(result) => result,
-        Err(_) => {
-            runner.abort();
-            runner.await
         }
     }
 }
@@ -478,86 +500,3 @@ pub fn audit_terminal_intent(data_dir: &Path, command: &str) {
     super::local::audit_intent(data_dir, "docker/terminal", command);
 }
 
-#[cfg(test)]
-impl DockerTerminals {
-    /// Inserts a placeholder entry (no runner) so cap tests stay cheap.
-    pub(crate) async fn insert_for_test(&self, terminal_id: String) -> String {
-        match self.reserve(&terminal_id) {
-            Ok(reserved) => {
-                drop(reserved);
-                String::new()
-            }
-            Err(error) => error,
-        }
-    }
-
-    pub(crate) fn active_for_test(&self) -> usize {
-        self.lock().len()
-    }
-
-    /// Starts a runner that emits one chunk and then ignores cancellation, so
-    /// only the TTL can reap it (the same shape as a wedged child).
-    pub(crate) fn start_fake_for_test(
-        self: &Arc<Self>,
-        emitter: PluginEmitter,
-        ttl: Duration,
-    ) -> Result<String, String> {
-        self.start_fake_with(emitter, ttl, false)
-    }
-
-    /// Starts a runner that exits as soon as its cancellation fires, so a
-    /// test can observe the explicit-close suppression path.
-    pub(crate) fn start_cancellable_fake_for_test(
-        self: &Arc<Self>,
-        emitter: PluginEmitter,
-    ) -> Result<String, String> {
-        self.start_fake_with(emitter, Duration::from_secs(60), true)
-    }
-
-    fn start_fake_with(
-        self: &Arc<Self>,
-        emitter: PluginEmitter,
-        ttl: Duration,
-        cancellable: bool,
-    ) -> Result<String, String> {
-        let terminal_id = requested_terminal_id(None)?;
-        let Reserved {
-            cancel,
-            cancel_rx,
-            input_rx,
-            resize_rx,
-            closed,
-            done,
-        } = self.reserve(&terminal_id)?;
-        let (sink, sink_rx) = mpsc::channel(OUTPUT_QUEUE);
-        let handle = tokio::spawn(async move {
-            // Keep the queues open while the fake runner lives so resize/input
-            // admission behaves like a real terminal.
-            let _input_rx = input_rx;
-            let _resize_rx = resize_rx;
-            let _ = sink.send(b"ready".to_vec()).await;
-            if cancellable {
-                let mut cancel_rx = cancel_rx;
-                let _ = cancel_rx.changed().await;
-                return Ok(Some(0));
-            }
-            drop(cancel_rx);
-            std::future::pending::<()>().await;
-            unreachable!("the fake terminal is only aborted by the TTL")
-        });
-        let registry = Arc::clone(self);
-        let forward_id = terminal_id.clone();
-        let limits = TerminalLimits {
-            ttl,
-            stop_grace: Duration::from_millis(20),
-        };
-        tokio::spawn(async move {
-            registry
-                .forward(
-                    forward_id, emitter, closed, done, cancel, handle, sink_rx, limits,
-                )
-                .await;
-        });
-        Ok(terminal_id)
-    }
-}

@@ -17,6 +17,7 @@ import {
   dockerStateClass,
   filterContainers,
   isDockerContainerRunning,
+  searchContainers,
   type ContainerFilter,
   type DockerContainer,
 } from "../lib/dockerPanelModel";
@@ -25,6 +26,7 @@ import { useDockerContainers } from "../composables/useDockerContainers";
 import DockerEnginePopover from "./DockerEnginePopover.vue";
 import DockerRowMenu from "./DockerRowMenu.vue";
 import DockerConfirmDialog from "./DockerConfirmDialog.vue";
+import DockerSearchField from "./DockerSearchField.vue";
 import DockerWhaleLogo from "./DockerWhaleLogo.vue";
 
 const props = defineProps<{
@@ -76,7 +78,14 @@ const {
 // —— 状态筛选：默认只显示 running + 5 分钟内停止的容器 —————————————
 const containerFilter = ref<ContainerFilter>("recent");
 
-const filteredContainers = computed(() => filterContainers(containers.value, containerFilter.value));
+/** 搜索词（页头输入框）：与状态筛选叠加，空白分词 AND，标识字段支持子序列模糊。 */
+const searchQuery = ref("");
+
+const filteredContainers = computed(() =>
+  searchContainers(filterContainers(containers.value, containerFilter.value), searchQuery.value),
+);
+
+const searchActive = computed(() => searchQuery.value.trim().length > 0);
 
 /** 齿轮弹层开合：只在关闭时落状态（与 reka 的 update:open 语义一致）。 */
 function setEngineOpen(open: boolean): void {
@@ -211,6 +220,12 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
       <span v-if="mode === 'local'" class="docker-source-badge">{{ props.t("docker.localSource") }}</span>
       <span v-if="available && filteredContainers.length" class="docker-count">{{ filteredContainers.length }}</span>
       <span class="container-list-spacer" />
+      <DockerSearchField
+        :model-value="searchQuery"
+        :placeholder="props.t('docker.searchPlaceholder')"
+        :clear-label="props.t('docker.searchClear')"
+        @update:model-value="searchQuery = $event"
+      />
       <div class="container-filter-wrap">
         <select
           v-model="containerFilter"
@@ -296,8 +311,11 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
       </p>
     </div>
 
-    <!-- 空列表 -->
-    <p v-else-if="!filteredContainers.length" class="docker-empty">{{ props.t("docker.empty") }}</p>
+    <!-- 空列表（有搜索词时提示“无匹配”，并保留清除入口） -->
+    <p v-else-if="!filteredContainers.length" class="docker-empty">
+      <template v-if="searchActive">{{ props.t("docker.searchEmpty", { query: searchQuery.trim() }) }}</template>
+      <template v-else>{{ props.t("docker.empty") }}</template>
+    </p>
 
     <!-- 容器行：名称 + 状态徽标在上，镜像/端口/状态文案在下（窄列可读） -->
     <ul v-else class="container-rows" role="listbox" :aria-label="props.t('docker.title')">
@@ -355,6 +373,8 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  /* 容器查询基准：超窄列（拖窄或分屏）里优先保住刷新/引擎/关闭按钮。 */
+  container-type: inline-size;
 }
 
 .container-list-head {

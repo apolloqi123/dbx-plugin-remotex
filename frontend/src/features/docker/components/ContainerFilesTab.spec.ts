@@ -261,6 +261,22 @@ describe("ContainerFilesTab browsing", () => {
     expect(rpc).toHaveBeenCalledWith("docker/files/list", expect.objectContaining({ path: "/" }));
   });
 
+  it("keeps the current directory when the same container snapshot is refreshed", async () => {
+    const wrapper = mountTab();
+    await flushPromises();
+    await wrapper.get('[data-name="etc"]').trigger("dblclick");
+    await flushPromises();
+    expect(wrapper.find('[data-name="hosts"]').exists()).toBe(true);
+    const calls = rpcMock.mock.calls.length;
+
+    // 列表轮询会用新对象替换同一个容器（status 文本变化）：文件页不能回到根目录。
+    await wrapper.setProps({ container: { ...container, status: "Up 4 minutes" } });
+    await flushPromises();
+
+    expect(rpcMock.mock.calls.length).toBe(calls);
+    expect(wrapper.find('[data-name="hosts"]').exists()).toBe(true);
+  });
+
   it("disables the parent button at the root and keeps directories out of downloads", async () => {
     const wrapper = mountTab();
     await flushPromises();

@@ -19,6 +19,9 @@ use std::time::Duration;
 
 use crate::core::time::unix_now_secs;
 
+mod file_clipboard;
+mod lifecycle;
+
 // —— 配置归一化 ————————————————————————————————————————————
 
 #[test]
@@ -1061,8 +1064,14 @@ async fn start_rejects_oversized_wire_identities() {
 
 /// 构造一条测试用会话条目（不 spawn worker），供幂等查重测试直接播种
 /// 进 sessions 表，得到确定性的"已存在活会话"前置态。
-fn test_session_entry(workbench_id: &str, host: &str, data_dir: &Path) -> Arc<RdpSessionEntry> {
+fn test_session_entry(
+    workbench_id: &str,
+    connection_id: Option<&str>,
+    host: &str,
+    data_dir: &Path,
+) -> Arc<RdpSessionEntry> {
     Arc::new(RdpSessionEntry {
+        connection_id: std::sync::Mutex::new(connection_id.map(str::to_string)),
         workbench_id: workbench_id.to_string(),
         host: host.to_string(),
         port: 3389,
@@ -1082,6 +1091,7 @@ fn test_session_entry(workbench_id: &str, host: &str, data_dir: &Path) -> Arc<Rd
         cert_wait: Arc::new(AtomicBool::new(false)),
         command_sender: tokio::sync::Mutex::new(None),
         clipboard_stage: Arc::new(ClipboardStage::default()),
+        clipboard_files: Arc::new(FileClipboardStage::new("test-session".to_string())),
         broker: Arc::new(CertPromptBroker::new()),
         known_certs: KnownCertStore::new(data_dir),
     })
@@ -1114,7 +1124,7 @@ async fn start_reuses_live_session_for_same_workbench() {
     let seeded_id = uuid::Uuid::new_v4().to_string();
     runtime.sessions.write().await.insert(
         seeded_id.clone(),
-        test_session_entry("w1", "10.255.255.1", data_dir.path()),
+        test_session_entry("w1", None, "10.255.255.1", data_dir.path()),
     );
     // 第二次 rdp/start（同 workbenchId）必须命中幂等：复用既有 sessionId。
     let started = runtime
@@ -1138,7 +1148,7 @@ async fn start_creates_fresh_session_once_previous_one_closed() {
     let seeded_id = uuid::Uuid::new_v4().to_string();
     runtime.sessions.write().await.insert(
         seeded_id.clone(),
-        test_session_entry("w1", "10.255.255.1", data_dir.path()),
+        test_session_entry("w1", None, "10.255.255.1", data_dir.path()),
     );
     // 终态（close 移除表项）后，同 workbenchId 的 start 照常新建，
     // 不得命中幂等复用。

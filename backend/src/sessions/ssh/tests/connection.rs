@@ -864,3 +864,36 @@ mod auto_auth {
         assert_eq!(attempted.method, "agent");
     }
 }
+
+#[test]
+fn session_end_hooks_run_for_every_removed_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let runtime = SshRuntime::new(dir.path().to_path_buf());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    runtime.on_session_end(Arc::new(move |session_id: &str| {
+        sink.lock().unwrap().push(session_id.to_string());
+    }));
+
+    runtime.notify_session_end("session-1");
+    runtime.notify_session_end("session-2");
+
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["session-1".to_string(), "session-2".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn closing_a_missing_session_runs_no_hooks() {
+    let dir = tempfile::tempdir().unwrap();
+    let runtime = SshRuntime::new(dir.path().to_path_buf());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    runtime.on_session_end(Arc::new(move |session_id: &str| {
+        sink.lock().unwrap().push(session_id.to_string());
+    }));
+
+    assert!(runtime.close_session("missing-session").await.is_err());
+    assert!(seen.lock().unwrap().is_empty());
+}

@@ -191,6 +191,12 @@ export function useWorkbenchPersistence(options: {
       : null;
   }
 
+  // 终端输出期间 persistState 每 150ms 落一次盘：序列号在变、布局不变。
+  // 布局镜像与全局布局键只在载荷真正变化时写，避免持续输出下每秒数次
+  // 重复的宿主 storage 写入。
+  let lastUiMirrorJson = "";
+  let lastLayoutJson = "";
+
   function writeWorkbenchState() {
     const uiMirror = {
       sftpPath: currentPath.value,
@@ -210,24 +216,32 @@ export function useWorkbenchPersistence(options: {
     };
     // 布局镜像双写（issue #178）：宿主缺 workbenchState 桥时它是唯一持久层；
     // 桥在时镜像只作恢复兜底（见 restoreUiState 的合并方向）。
-    writeWorkbenchUiMirror(uiMirror);
+    const mirrorJson = JSON.stringify(uiMirror);
+    if (mirrorJson !== lastUiMirrorJson) {
+      lastUiMirrorJson = mirrorJson;
+      writeWorkbenchUiMirror(uiMirror);
+    }
     // 同一载荷写穿跨重启的全局布局偏好（ssh-workbench-layout）：workbenchState 按
     // sessionId 键控、重启即孤儿化，这里把最近一次布局/视图状态另存一份作新工作台初始值。
-    try {
-      pluginStore.setItem(WORKBENCH_LAYOUT_KEY, JSON.stringify({
-        paneOrder: paneOrder.value,
-        paneDirection: paneDirection.value,
-        splitRatio: splitRatio.value,
-        splitRatioV2: true,
-        sftpPaneOpen: sftpPaneOpen.value,
-        visibleColumns: visibleColumns.value,
-        sftpColumnWidths: { ...sftpColumnWidths },
-        sftpNameWidth: sftpNameWidth.value,
-        showHidden: sftpShowHidden.value,
-        sort: sort.value,
-      }));
-    } catch {
-      // 存储不可用（沙箱降级链耗尽）：会话恢复态照写，全局偏好退化为本次会话。
+    const layoutJson = JSON.stringify({
+      paneOrder: paneOrder.value,
+      paneDirection: paneDirection.value,
+      splitRatio: splitRatio.value,
+      splitRatioV2: true,
+      sftpPaneOpen: sftpPaneOpen.value,
+      visibleColumns: visibleColumns.value,
+      sftpColumnWidths: { ...sftpColumnWidths },
+      sftpNameWidth: sftpNameWidth.value,
+      showHidden: sftpShowHidden.value,
+      sort: sort.value,
+    });
+    if (layoutJson !== lastLayoutJson) {
+      lastLayoutJson = layoutJson;
+      try {
+        pluginStore.setItem(WORKBENCH_LAYOUT_KEY, layoutJson);
+      } catch {
+        // 存储不可用（沙箱降级链耗尽）：会话恢复态照写，全局偏好退化为本次会话。
+      }
     }
     // 宿主桥可能尚未注入（window.dbxPlugin 未定义）或为旧宿主（无
     // workbenchState）：返回 resolved promise 而不是解引用抛 TypeError。

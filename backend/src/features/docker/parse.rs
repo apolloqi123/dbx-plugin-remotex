@@ -247,6 +247,115 @@ pub fn is_daemon_permission_failure(exit_code: i32, output: &str) -> bool {
     exit_code != 0 && output.to_ascii_lowercase().contains("permission denied")
 }
 
+// —— Container stats (docker/stats) ————————————————————————————
+
+/// `"0.15%"` → 0.15; `"--"`/empty/garbage → 0. Docker prints `--` for
+/// stopped containers in some versions, so this must never fail.
+pub fn parse_percent(text: &str) -> f64 {
+    let trimmed = text.trim().trim_end_matches('%').trim();
+    let value = trimmed.parse::<f64>().unwrap_or(0.0);
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
+/// Docker size strings → bytes. The CLI mixes decimal (`kB`, `MB`) and
+/// binary (`KiB`, `MiB`) units, so each unit keeps its own factor; unknown
+/// or empty units fall back to a raw byte count.
+pub fn parse_size(text: &str) -> u64 {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "--" {
+        return 0;
+    }
+    let split = trimmed
+        .find(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .unwrap_or(trimmed.len());
+    let (number, unit) = trimmed.split_at(split);
+    let value = number.parse::<f64>().unwrap_or(0.0);
+    let factor = match unit.trim() {
+        "kB" | "KB" => 1e3,
+        "KiB" => 1024.0,
+        "MB" => 1e6,
+        "MiB" => 1024.0 * 1024.0,
+        "GB" => 1e9,
+        "GiB" => 1024.0 * 1024.0 * 1024.0,
+        "TB" => 1e12,
+        "TiB" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        _ => 1.0,
+    };
+    if !value.is_finite() || value < 0.0 {
+        return 0;
+    }
+    (value * factor).round() as u64
+}
+
+/// `"1.5MiB / 7.6GiB"` → (used, limit); missing halves degrade to 0.
+pub fn parse_size_pair(text: &str) -> (u64, u64) {
+    match text.split_once('/') {
+        Some((used, limit)) => (parse_size(used), parse_size(limit)),
+        None => (parse_size(text), 0),
+    }
+}
+
+/// Assembles the `docker/stats` snapshot. A JSON stats row wins; otherwise
+/// the merged stderr text distinguishes "container is not running" (daemon
+/// reachable, monitor shows the stopped state) from "permission denied"
+/// (the Quick Sudo retry trigger). Everything else is an unavailable
+/// snapshot carrying the last error line for the panel hint.
+pub fn stats_payload(output: &str) -> Value {
+    let section = marker_section(output, "DBXDOCKER_STATS", None);
+    if let Some(row) = section.lines().find_map(|line| {
+        serde_json::from_str::<Value>(line.trim())
+            .ok()
+            .filter(Value::is_object)
+    }) {
+        let field = |name: &str| {
+            row.get(name)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let (mem_used, mem_limit) = parse_size_pair(&field("MemUsage"));
+        let (net_rx, net_tx) = parse_size_pair(&field("NetIO"));
+        let (block_read, block_write) = parse_size_pair(&field("BlockIO"));
+        return json!({
+            "available": true,
+            "needsSudo": false,
+            "running": true,
+            "cpuPercent": parse_percent(&field("CPUPerc")),
+            "memPercent": parse_percent(&field("MemPerc")),
+            "memUsedBytes": mem_used,
+            "memLimitBytes": mem_limit,
+            "netRxBytes": net_rx,
+            "netTxBytes": net_tx,
+            "blockReadBytes": block_read,
+            "blockWriteBytes": block_write,
+            "pids": field("PIDs").trim().parse::<u64>().unwrap_or(0),
+        });
+    }
+    let lowered = section.to_ascii_lowercase();
+    if lowered.contains("permission denied") {
+        return json!({ "available": false, "needsSudo": true, "running": false });
+    }
+    if lowered.contains("is not running") || lowered.contains("no such container") {
+        return json!({ "available": true, "needsSudo": false, "running": false });
+    }
+    let error = section
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .last()
+        .unwrap_or_default();
+    json!({
+        "available": false,
+        "needsSudo": false,
+        "running": false,
+        "error": error,
+    })
+}
+
 /// Readable error when even the Quick Sudo fallback failed; points at the
 /// configuration surface instead of leaking raw sudo noise.
 pub fn sudo_fallback_error(error: String) -> String {

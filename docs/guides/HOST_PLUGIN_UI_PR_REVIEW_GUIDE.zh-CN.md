@@ -29,39 +29,39 @@
 
 ## 2. 三方模型对齐
 
-| 关注点 | VS Code | IntelliJ Platform | DBX 当前 | DBX 目标 | 评审结论 |
-| --- | --- | --- | --- | --- | --- |
-| 插件描述文件 | `package.json`，`contributes`、`activationEvents`、`engines.vscode` | `plugin.xml`，extensions、actions、depends、版本范围 | `manifest.json`，严格 Manifest v1 | A1 继续严格；新能力要求宿主先行和 engines 门槛 | 采用 DBX 严格模型，不复制宽松未知字段行为 |
-| 扩展能力声明 | 每类 contribution 有独立 Schema | 平台声明 extension point，插件注册实现 | 5 类固定 contribution | A1 增加 `command`、`menus`；复杂 provider 以后独立提案 | 类型按渲染/调用契约划分，不追求数量 |
-| 命令/动作 | command 元数据与运行时 `registerCommand` 分离 | `AnAction` 同时实现 `update()` 与 `actionPerformed()` | openWorkbench、表单 action、context-menu 分散 | command 是通用入口原子，v1 handler 仅 `open-workbench` | 不强行迁移领域 action |
-| UI 摆放 | `menus` 引用 command，支持 `when`、group | action group、place、anchor/order | 无统一入口摆放 | `menus.location + when + group + order` | 明确采用 |
-| 可见/可用 | menu `when` 与 command `enablement` 分开 | `update()` 分别更新 visible/enabled | 未统一 | placement `when` 与 command `enablement` 分开 | A1 必须完成 |
-| 上下文 | 宿主 context key + 扩展 `setContext` | `DataContext` 传给 action update/perform | workbench context 快照 | A1 仅宿主 key；后续受限 plugin context key | 禁止渲染路径同步调用 Sidecar |
-| 激活 | command/view 等事件触发懒激活 | extension/factory/service 按需实例化 | workbench/Sidecar 按现有路径启动 | 静态入口不激活；执行/打开时激活 | A1 必须有“不启动 Sidecar”测试 |
-| 面板/视图 | View Container/View 与 Webview Panel 分开 | declarative Tool Window 与 programmatic Tool Window 分开 | workbench tab，无通用 dock | command panel 处理临时内容；未来 view-container/view 处理持久视图 | 不用一个 `surface` 字段覆盖所有场景 |
-| 运行时状态 | ExtensionContext subscriptions、Disposable | application/project service 与 Disposable | 主要按 plugin/connection/workbench 隐式管理 | plugin/connection/workbench/invocation scope | 生命周期单独 PR，但数据模型需预留 |
-| 恢复 | webview state + serializer，恢复不等于重跑 command | Tool Window 工厂按需重建内容 | `restored` 布尔，语义不完整 | `none/placeholder/state/reattach` | BottomDock 前必须冻结 |
-| 可选能力 | engines + 不同 contribution；平台能力由产品决定 | optional dependency + 独立 config file | 单一严格 Manifest | Manifest v2 feature fragment + capability gate | 不采用逐 contribution optional |
-| 动态卸载 | subscriptions/dispose，Extension Host 重载 | dynamic extension + unload 检查 + Disposable | Sidecar/子进程清理缺统一协议 | prepareUnload → close scopes → deactivate → kill fallback | 原生插件发布前必须补齐 |
-| 插件间扩展 | command/API 导出，但受扩展宿主管理 | 插件可定义自有 extension point | 禁止跨插件 Host API 调用 | 继续禁止，直到依赖、权限和版本隔离完整 | 当前明确拒绝 |
+| 关注点       | VS Code                                                                     | IntelliJ Platform                                           | DBX 当前                                      | DBX 目标                                                          | 评审结论                                  |
+| ------------ | --------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| 插件描述文件 | `package.json`，`contributes`、`activationEvents`、`engines.vscode` | `plugin.xml`，extensions、actions、depends、版本范围      | `manifest.json`，严格 Manifest v1           | A1 继续严格；新能力要求宿主先行和 engines 门槛                    | 采用 DBX 严格模型，不复制宽松未知字段行为 |
+| 扩展能力声明 | 每类 contribution 有独立 Schema                                             | 平台声明 extension point，插件注册实现                      | 5 类固定 contribution                         | A1 增加 `command`、`menus`；复杂 provider 以后独立提案        | 类型按渲染/调用契约划分，不追求数量       |
+| 命令/动作    | command 元数据与运行时 `registerCommand` 分离                             | `AnAction` 同时实现 `update()` 与 `actionPerformed()` | openWorkbench、表单 action、context-menu 分散 | command 是通用入口原子，v1 handler 仅 `open-workbench`          | 不强行迁移领域 action                     |
+| UI 摆放      | `menus` 引用 command，支持 `when`、group                                | action group、place、anchor/order                           | 无统一入口摆放                                | `menus.location + when + group + order`                         | 明确采用                                  |
+| 可见/可用    | menu `when` 与 command `enablement` 分开                                | `update()` 分别更新 visible/enabled                       | 未统一                                        | placement `when` 与 command `enablement` 分开                 | A1 必须完成                               |
+| 上下文       | 宿主 context key + 扩展 `setContext`                                      | `DataContext` 传给 action update/perform                  | workbench context 快照                        | A1 仅宿主 key；后续受限 plugin context key                        | 禁止渲染路径同步调用 Sidecar              |
+| 激活         | command/view 等事件触发懒激活                                               | extension/factory/service 按需实例化                        | workbench/Sidecar 按现有路径启动              | 静态入口不激活；执行/打开时激活                                   | A1 必须有“不启动 Sidecar”测试           |
+| 面板/视图    | View Container/View 与 Webview Panel 分开                                   | declarative Tool Window 与 programmatic Tool Window 分开    | workbench tab，无通用 dock                    | command panel 处理临时内容；未来 view-container/view 处理持久视图 | 不用一个 `surface` 字段覆盖所有场景     |
+| 运行时状态   | ExtensionContext subscriptions、Disposable                                  | application/project service 与 Disposable                   | 主要按 plugin/connection/workbench 隐式管理   | plugin/connection/workbench/invocation scope                      | 生命周期单独 PR，但数据模型需预留         |
+| 恢复         | webview state + serializer，恢复不等于重跑 command                          | Tool Window 工厂按需重建内容                                | `restored` 布尔，语义不完整                 | `none/placeholder/state/reattach`                               | BottomDock 前必须冻结                     |
+| 可选能力     | engines + 不同 contribution；平台能力由产品决定                             | optional dependency + 独立 config file                      | 单一严格 Manifest                             | Manifest v2 feature fragment + capability gate                    | 不采用逐 contribution optional            |
+| 动态卸载     | subscriptions/dispose，Extension Host 重载                                  | dynamic extension + unload 检查 + Disposable                | Sidecar/子进程清理缺统一协议                  | prepareUnload → close scopes → deactivate → kill fallback      | 原生插件发布前必须补齐                    |
+| 插件间扩展   | command/API 导出，但受扩展宿主管理                                          | 插件可定义自有 extension point                              | 禁止跨插件 Host API 调用                      | 继续禁止，直到依赖、权限和版本隔离完整                            | 当前明确拒绝                              |
 
 ## 3. 采用、改造与拒绝
 
-| 分类 | 机制 | DBX 决策 |
-| --- | --- | --- |
-| 采用 | command 与 placement 分离 | command 定义身份、展示与 handler；menus 只负责摆放 |
-| 采用 | 懒激活 | 解析、展示、条件求值均不得启动 Sidecar |
-| 采用 | 可见与可用分离 | `menus.when` 控制显示；`command.enablement` 控制执行 |
-| 采用 | 生命周期清理 | 所有运行时资源必须归属显式 scope |
-| 改造 | VS Code `when` 字符串 DSL | DBX 使用结构化 JSON 条件，便于 Schema 校验和安全演进 |
-| 改造 | IntelliJ `AnAction.update()` | DBX 只允许宿主本地纯条件求值；不允许高频 Sidecar 回调 |
-| 改造 | Tool Window/View Container | 临时 panel 与持久 view container 分开设计 |
-| 改造 | optional dependency | DBX 使用 capability-gated feature fragment，并作为 Manifest v2 独立评审 |
-| 拒绝 | command 自动进入命令面板 | DBX 要求显式 `menus.location = commandPalette`，避免插件默认污染全局入口 |
-| 拒绝 | 插件定义任意全局 menu group/anchor | 只允许宿主稳定词表和整数 order |
-| 拒绝 | 插件传 `pluginId`、`workbenchId` 等宿主身份 | 所有身份由桥或宿主生成 |
-| 拒绝 | 首版 command 任意 RPC | 防止静态入口一次性升级为远程执行面 |
-| 拒绝 | 已知贡献解析失败后静默跳过 | 拼写错误、未知字段和悬空引用必须拒装 |
+| 分类 | 机制                                            | DBX 决策                                                                   |
+| ---- | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| 采用 | command 与 placement 分离                       | command 定义身份、展示与 handler；menus 只负责摆放                         |
+| 采用 | 懒激活                                          | 解析、展示、条件求值均不得启动 Sidecar                                     |
+| 采用 | 可见与可用分离                                  | `menus.when` 控制显示；`command.enablement` 控制执行                   |
+| 采用 | 生命周期清理                                    | 所有运行时资源必须归属显式 scope                                           |
+| 改造 | VS Code `when` 字符串 DSL                     | DBX 使用结构化 JSON 条件，便于 Schema 校验和安全演进                       |
+| 改造 | IntelliJ `AnAction.update()`                  | DBX 只允许宿主本地纯条件求值；不允许高频 Sidecar 回调                      |
+| 改造 | Tool Window/View Container                      | 临时 panel 与持久 view container 分开设计                                  |
+| 改造 | optional dependency                             | DBX 使用 capability-gated feature fragment，并作为 Manifest v2 独立评审    |
+| 拒绝 | command 自动进入命令面板                        | DBX 要求显式 `menus.location = commandPalette`，避免插件默认污染全局入口 |
+| 拒绝 | 插件定义任意全局 menu group/anchor              | 只允许宿主稳定词表和整数 order                                             |
+| 拒绝 | 插件传 `pluginId`、`workbenchId` 等宿主身份 | 所有身份由桥或宿主生成                                                     |
+| 拒绝 | 首版 command 任意 RPC                           | 防止静态入口一次性升级为远程执行面                                         |
+| 拒绝 | 已知贡献解析失败后静默跳过                      | 拼写错误、未知字段和悬空引用必须拒装                                       |
 
 ## 4. A1 数据模型
 
@@ -143,16 +143,16 @@ Reviewer 应确认 JSON Schema、Rust 反序列化类型、TypeScript 前端 reg
 
 ## 6. PR 切片建议
 
-| PR | 范围 | 必须包含 | 明确不包含 |
-| --- | --- | --- | --- |
-| PR-A1 | Manifest/runtime 模型 | Schema、Rust 类型、严格解析、引用校验、golden manifests | UI、BottomDock、RPC |
-| PR-A2 | Desktop command registry | command 注册、enablement 求值、来源信息、命令面板 | Sidecar handler |
-| PR-A3 | menus surfaces | toolbar/sidebar 渲染、group/order、settings/search、卸载清理 | panel |
-| PR-A4 | SSH 消费者 | 新 manifest、context namespace、恢复分支修复、真实宿主测试 | 宿主特例 |
-| PR-P2 | BottomDock | panel presentation、实例键、focus、关闭、恢复、Web 降级 | view-container |
-| PR-Runtime | 生命周期 | scope、contextKeys、prepareUnload/deactivate、子进程回收 | Manifest v2 |
-| PR-M2 | Manifest v2 | feature fragments、capability gate、升级矩阵 | A1 兼容补丁 |
-| PR-Views | 持久视图 | view-container/view、lazy factory、状态与动态更新 | 临时 workbench panel 重写 |
+| PR         | 范围                     | 必须包含                                                     | 明确不包含                |
+| ---------- | ------------------------ | ------------------------------------------------------------ | ------------------------- |
+| PR-A1      | Manifest/runtime 模型    | Schema、Rust 类型、严格解析、引用校验、golden manifests      | UI、BottomDock、RPC       |
+| PR-A2      | Desktop command registry | command 注册、enablement 求值、来源信息、命令面板            | Sidecar handler           |
+| PR-A3      | menus surfaces           | toolbar/sidebar 渲染、group/order、settings/search、卸载清理 | panel                     |
+| PR-A4      | SSH 消费者               | 新 manifest、context namespace、恢复分支修复、真实宿主测试   | 宿主特例                  |
+| PR-P2      | BottomDock               | panel presentation、实例键、focus、关闭、恢复、Web 降级      | view-container            |
+| PR-Runtime | 生命周期                 | scope、contextKeys、prepareUnload/deactivate、子进程回收     | Manifest v2               |
+| PR-M2      | Manifest v2              | feature fragments、capability gate、升级矩阵                 | A1 兼容补丁               |
+| PR-Views   | 持久视图                 | view-container/view、lazy factory、状态与动态更新            | 临时 workbench panel 重写 |
 
 如果实现团队希望合并 PR-A1～A3，reviewer 至少应要求提交按上述边界拆分，确保 Schema/runtime 与 UI diff 可以独立审查和回滚。
 
@@ -235,18 +235,18 @@ Reviewer 应确认 JSON Schema、Rust 反序列化类型、TypeScript 前端 reg
 
 最终 PR 描述应列出实际文件；从现有代码结构看，reviewer 至少应关注以下模块：
 
-| 层 | 关注点 |
-| --- | --- |
-| Manifest runtime | 新 Rust 类型、严格反序列化、ID/引用/上限校验 |
-| JSON Schema | command、menus、condition、枚举和条件组合 |
-| Installer/registry | engines 检查顺序、错误文案、静态注册和卸载清理 |
-| Host bridge | openWorkbench 身份绑定、context 合并顺序、scope ID 生成 |
-| Query/workbench store | singleton/new、presentation、instance_key、恢复行为 |
-| Command registry | 全限定 ID、enablement、来源信息、执行前复核 |
-| Toolbar/sidebar | group/order、默认显隐、More 菜单、来源提示 |
-| Settings/search | 动态显隐项、已卸载插件键清理 |
-| Dev host/mock | 与真实宿主同字段、同缺省值、同错误行为 |
-| Tests | golden manifest、兼容、排序、隔离、生命周期、降级矩阵 |
+| 层                    | 关注点                                                  |
+| --------------------- | ------------------------------------------------------- |
+| Manifest runtime      | 新 Rust 类型、严格反序列化、ID/引用/上限校验            |
+| JSON Schema           | command、menus、condition、枚举和条件组合               |
+| Installer/registry    | engines 检查顺序、错误文案、静态注册和卸载清理          |
+| Host bridge           | openWorkbench 身份绑定、context 合并顺序、scope ID 生成 |
+| Query/workbench store | singleton/new、presentation、instance_key、恢复行为     |
+| Command registry      | 全限定 ID、enablement、来源信息、执行前复核             |
+| Toolbar/sidebar       | group/order、默认显隐、More 菜单、来源提示              |
+| Settings/search       | 动态显隐项、已卸载插件键清理                            |
+| Dev host/mock         | 与真实宿主同字段、同缺省值、同错误行为                  |
+| Tests                 | golden manifest、兼容、排序、隔离、生命周期、降级矩阵   |
 
 ## 10. 上游依据
 

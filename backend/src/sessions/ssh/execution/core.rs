@@ -64,6 +64,23 @@ impl SshRuntime {
         }))
     }
 
+    /// Runs a fixed read-only command on the remote-desktop transfer session.
+    /// That session has no PTY and is absent from the host's connection
+    /// registry, so it cannot use `ssh/exec`; the transfer feature only needs
+    /// a fresh channel on the already authenticated transport.
+    pub async fn files_session_exec(
+        &self,
+        session_id: &str,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<crate::sessions::ssh::exec::ExecOutcome, String> {
+        let session = self.session(session_id).await?;
+        if !session.files_only {
+            return Err("Not a file transfer session".to_string());
+        }
+        crate::sessions::ssh::exec::exec_plain(&session.handle, command, timeout, &[]).await
+    }
+
     /// Runs a command on the session's connection, optionally with Quick Sudo
     /// orchestration (password injection plus automatic 2FA/TOTP answers).
     pub async fn exec(

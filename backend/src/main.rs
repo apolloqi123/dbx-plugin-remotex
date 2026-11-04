@@ -1,4 +1,4 @@
-//! DBX SSHX plugin sidecar entrypoint.
+//! DBX RemoteX plugin sidecar entrypoint.
 
 mod app;
 mod core;

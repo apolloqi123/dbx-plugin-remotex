@@ -11,6 +11,7 @@ import { dispatchDockerLogEvent } from "../lib/dockerLogEvents";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 import { DOCKER_ENGINE_STORE_KEY, saveDockerEngineSettings } from "../lib/dockerEngine";
 import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
+import { resetDockerLogStreamRegistry } from "../lib/dockerLogStreamRegistry";
 
 const t = (key: string) => key;
 
@@ -27,6 +28,7 @@ function stubHost(): Call[] {
       calls.push({ method, params });
       if (method === "docker/logs/start") return { streamId: `stream-${next++}` };
       if (method === "docker/logs/stop") return { stopped: true };
+      if (method === "docker/logs/close") return { closed: true };
       throw new Error(`unexpected rpc ${method}`);
     },
   });
@@ -78,9 +80,17 @@ function sizeScroller(wrapper: MountedTab, scrollHeight = 1000, clientHeight = 1
   return element;
 }
 
+/** 日志渲染按 100ms 节拍合并：断言 DOM 前等一拍。 */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  await flushPromises();
+  await nextTick();
+}
+
 afterEach(() => {
   while (wrappers.length) wrappers.pop()?.unmount();
   resetDockerChannelQueues();
+  resetDockerLogStreamRegistry();
   pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
   vi.unstubAllGlobals();
 });
@@ -93,7 +103,7 @@ describe("ContainerLogsTab streaming", () => {
       streamId: "stream-1",
       text: "2026-10-29T12:00:00Z INFO booting\nERROR <script>boom</script>\n\u001b[31mred\u001b[0m plain\n",
     });
-    await nextTick();
+    await settle();
 
     const scroller = wrapper.get(".docker-log-scroll");
     expect(scroller.text()).toBe(
@@ -107,11 +117,81 @@ describe("ContainerLogsTab streaming", () => {
     expect(scroller.html()).not.toContain("<script>");
   });
 
+  it("appends rows incrementally without rebuilding existing lines", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "first\nsecond\n" });
+    await settle();
+    const firstNode = wrapper.get(".docker-log-line").element;
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(2);
+
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "third\n" });
+    await settle();
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(3);
+    expect(wrapper.get(".docker-log-line").element).toBe(firstNode);
+    expect(wrapper.get(".docker-log-scroll").text()).toBe("first\nsecond\nthird");
+  });
+
+  it("renders only the newest window while following (1000-line buffer)", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    const total = 10_050;
+    const bulk = Array.from({ length: total }, (_, index) => `line-${index}`).join("\n") + "\n";
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: bulk });
+    // DOM 只保留当前窗口（200 行）；1000 行缓冲供换窗回看。
+    await settle();
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(200);
+    expect(wrapper.get(".docker-log-line").text()).toBe("line-9850");
+    expect(wrapper.get(".docker-log-scroll").text()).not.toContain("line-0\n");
+    expect(wrapper.find('[data-action="older"]').exists()).toBe(false);
+  });
+
+  it("keeps the render window and the scroll position while paused", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    const element = sizeScroller(wrapper, 100_000, 100);
+    element.scrollTop = 0;
+    await wrapper.get(".docker-log-scroll").trigger("scroll");
+    await vi.waitFor(() => expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false"));
+
+    const bulk = Array.from({ length: 1_500 }, (_, index) => `line-${index}`).join("\n") + "\n";
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: bulk });
+    await settle();
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(200);
+    expect(wrapper.get(".docker-log-line").text()).toBe("line-500");
+    expect(element.scrollTop).toBe(0);
+
+    // 恢复跟随 → 跳回最新一屏。
+    await wrapper.get('[data-action="follow"]').trigger("click");
+    await settle();
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(200);
+    expect(wrapper.get(".docker-log-line").text()).toBe("line-1300");
+    expect(element.scrollTop).toBe(element.scrollHeight);
+  });
+
+  it("slides the render window when scrolling to the top edge", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    const bulk = Array.from({ length: 300 }, (_, index) => `line-${index}`).join("\n") + "\n";
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: bulk });
+    await settle();
+    // 跟随时窗口是最后 200 行（line-100..line-299）。
+    expect(wrapper.get(".docker-log-line").text()).toBe("line-100");
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(200);
+
+    sizeScroller(wrapper, 10_000, 100);
+    const element = wrapper.get(".docker-log-scroll").element as HTMLElement;
+    element.scrollTop = 0;
+    await wrapper.get(".docker-log-scroll").trigger("scroll");
+    await vi.waitFor(() => expect(wrapper.get(".docker-log-line").text()).toBe("line-0"));
+    expect(wrapper.findAll(".docker-log-line")).toHaveLength(200);
+  });
+
   it("keeps plain text for lines without any color tokens", async () => {
     stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "just words\n" });
-    await nextTick();
+    await settle();
     expect(wrapper.get(".docker-log-scroll").text()).toBe("just words");
     expect(wrapper.find(".docker-log-scroll span").exists()).toBe(true);
   });
@@ -124,7 +204,7 @@ describe("ContainerLogsTab streaming", () => {
       params: { sessionId: "sess-1", containerId: "abc123def456", tail: 200 },
     });
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "boot\nready\n" });
-    await nextTick();
+    await settle();
     expect(wrapper.get(".docker-log-scroll").text()).toBe("boot\nready");
   });
 
@@ -136,6 +216,7 @@ describe("ContainerLogsTab streaming", () => {
       method: "docker/logs/start",
       params: {
         sessionId: "sess-1",
+        owner: expect.any(String),
         containerId: "abc123def456",
         tail: 200,
         cli: "podman",
@@ -151,8 +232,7 @@ describe("ContainerLogsTab streaming", () => {
     expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("true");
 
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "line-1\nline-2\n" });
-    await nextTick();
-    await nextTick();
+    await settle();
     expect(element.scrollTop).toBe(element.scrollHeight);
   });
 
@@ -162,13 +242,12 @@ describe("ContainerLogsTab streaming", () => {
     const element = sizeScroller(wrapper);
     element.scrollTop = 500;
     await wrapper.get(".docker-log-scroll").trigger("scroll");
-
-    expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false");
+    await vi.waitFor(() => expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false"));
     expect(wrapper.text()).toContain("docker.followPaused");
     expect(wrapper.get('[data-action="follow"]').text()).toBe("docker.followResume");
 
     await wrapper.get('[data-action="follow"]').trigger("click");
-    await nextTick();
+    await settle();
     expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("true");
     expect(element.scrollTop).toBe(element.scrollHeight);
   });
@@ -179,11 +258,11 @@ describe("ContainerLogsTab streaming", () => {
     const element = sizeScroller(wrapper);
     element.scrollTop = 500;
     await wrapper.get(".docker-log-scroll").trigger("scroll");
-    expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false");
+    await vi.waitFor(() => expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false"));
 
     element.scrollTop = 1000;
     await wrapper.get(".docker-log-scroll").trigger("scroll");
-    expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("true");
+    await vi.waitFor(() => expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("true"));
   });
 
   it("stops auto-scrolling from the button without stopping the stream", async () => {
@@ -194,7 +273,7 @@ describe("ContainerLogsTab streaming", () => {
     expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false");
 
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "still-arriving\n" });
-    await nextTick();
+    await settle();
     expect(wrapper.get(".docker-log-scroll").text()).toBe("still-arriving");
     expect(calls.some((call) => call.method === "docker/logs/stop")).toBe(false);
   });
@@ -205,9 +284,10 @@ describe("ContainerLogsTab streaming", () => {
     const element = sizeScroller(wrapper);
     element.scrollTop = 0;
     await wrapper.get(".docker-log-scroll").trigger("scroll");
+    await vi.waitFor(() => expect(wrapper.get('[data-action="follow"]').attributes("aria-pressed")).toBe("false"));
 
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "while-paused\n" });
-    await nextTick();
+    await settle();
     expect(wrapper.get(".docker-log-scroll").text()).toBe("while-paused");
     expect(element.scrollTop).toBe(0);
   });
@@ -216,7 +296,7 @@ describe("ContainerLogsTab streaming", () => {
     const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "one\ntwo\n" });
-    await nextTick();
+    await settle();
     await wrapper.get('[data-action="clear"]').trigger("click");
     expect(wrapper.get(".docker-log-scroll").text()).toBe("");
     expect(calls.some((call) => call.method === "docker/logs/stop")).toBe(false);
@@ -226,11 +306,11 @@ describe("ContainerLogsTab streaming", () => {
     const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "old-output\n" });
-    await nextTick();
+    await settle();
 
     await wrapper.get('[data-action="tail"]').setValue("500");
     await flushPromises();
-    await nextTick();
+    await settle();
 
     expect(wrapper.get(".docker-log-scroll").text()).toBe("");
     expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
@@ -242,7 +322,7 @@ describe("ContainerLogsTab streaming", () => {
     const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "first\n" });
-    await nextTick();
+    await settle();
 
     await wrapper.setProps({ container: container({ id: "def456abc123", name: "web-next" }) });
     await flushPromises();
@@ -251,6 +331,32 @@ describe("ContainerLogsTab streaming", () => {
     expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
     const starts = calls.filter((call) => call.method === "docker/logs/start");
     expect(starts.at(-1)?.params).toMatchObject({ containerId: "def456abc123" });
+  });
+
+  it("stops the remote stream after the DBX window stays hidden", async () => {
+    const calls = stubHost();
+    const wrapper = await mountTab();
+    expect(calls.filter((call) => call.method === "docker/logs/start")).toHaveLength(1);
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      vi.useFakeTimers();
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushPromises();
+      // 后台超过宽限期：立即收掉远端 docker logs -f，避免服务器 CPU 被常驻跟随占用。
+      expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true);
+
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushPromises();
+      const starts = calls.filter((call) => call.method === "docker/logs/start");
+      expect(starts).toHaveLength(2);
+      expect(starts.at(-1)?.params).toMatchObject({ containerId: "abc123def456", tail: 200 });
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    }
   });
 
   it("does not open a log channel while the tab is hidden", async () => {
@@ -263,7 +369,7 @@ describe("ContainerLogsTab streaming", () => {
     const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "visible\n" });
-    await nextTick();
+    await settle();
 
     await wrapper.setProps({ visible: false });
     await flushPromises();
@@ -298,11 +404,10 @@ describe("ContainerLogsTab streaming", () => {
     await wrapper.setProps({ visible: true });
     await flushPromises();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "while-hidden\n" });
-    await nextTick();
+    await settle();
     element.scrollTop = 0;
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "more\n" });
-    await nextTick();
-    await nextTick();
+    await settle();
     expect(element.scrollTop).toBe(element.scrollHeight);
   });
 
@@ -320,7 +425,7 @@ describe("ContainerLogsTab streaming", () => {
     });
     const wrapper = mount(ContainerLogsTab, { props: { t, container: container(), sessionId: "sess-1" } });
     wrappers.push(wrapper);
-    await nextTick();
+    await settle();
     expect(wrapper.find(".docker-log-empty").exists()).toBe(false);
     // 释放连接级队列，避免后续用例排在未完成的 start 后面。
     resolveStart?.({ streamId: "stream-starting" });
@@ -331,7 +436,7 @@ describe("ContainerLogsTab streaming", () => {
     stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "one\n" });
-    await nextTick();
+    await settle();
     await wrapper.get('[data-action="clear"]').trigger("click");
     expect(wrapper.get('[data-action="clear"]').text()).toBe("docker.logsClear");
     expect(wrapper.get(".docker-log-empty").text()).toBe("docker.logsCleared");
@@ -342,9 +447,45 @@ describe("ContainerLogsTab streaming", () => {
     const wrapper = await mountTab();
     wrapper.unmount();
     wrappers.splice(wrappers.indexOf(wrapper), 1);
-    // 收流 RPC 经连接队列排队，等它出队后再断言。
+    // 收流 RPC 直连（不排连接队列），等它落地后再断言。
     await vi.waitFor(() =>
       expect(calls.some((call) => call.method === "docker/logs/stop" && call.params.streamId === "stream-1")).toBe(true),
+    );
+  });
+
+  it("closes the owner scope when unmounted while the start is still in flight", async () => {
+    const calls: Call[] = [];
+    let resolveStart: ((value: unknown) => void) | undefined;
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        if (method === "docker/logs/start") {
+          return new Promise((resolve) => {
+            resolveStart = resolve;
+          });
+        }
+        return Promise.resolve({ stopped: true, closed: true });
+      },
+    });
+    const wrapper = mount(ContainerLogsTab, { props: { t, container: container(), sessionId: "sess-1" } });
+    wrappers.push(wrapper);
+    await nextTick();
+
+    wrapper.unmount();
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    // 还没拿到 streamId：按 owner 收口，后端会拒绝这条迟到的 start。
+    await vi.waitFor(() =>
+      expect(calls).toContainEqual({
+        method: "docker/logs/close",
+        params: { owner: calls[0].params.owner },
+      }),
+    );
+
+    resolveStart?.({ streamId: "late-stream" });
+    await flushPromises();
+    // 本实例已卸载且 start 晚了：响应回来时仍必须把后端流收掉。
+    await vi.waitFor(() =>
+      expect(calls).toContainEqual({ method: "docker/logs/stop", params: { streamId: "late-stream" } }),
     );
   });
 });
@@ -355,7 +496,7 @@ describe("ContainerLogsTab end banners", () => {
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "bye\n" });
     dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", exitCode: 137 });
-    await nextTick();
+    await settle();
 
     expect(wrapper.get(".docker-log-scroll").text()).toBe("bye");
     const banner = wrapper.get('[data-role="stream-end"]');
@@ -364,7 +505,7 @@ describe("ContainerLogsTab end banners", () => {
 
     await wrapper.get('[data-action="restart"]').trigger("click");
     await flushPromises();
-    await nextTick();
+    await settle();
     expect(calls.filter((call) => call.method === "docker/logs/start")).toHaveLength(2);
     // 重新开始会清掉上一轮输出，避免 tail 行重复。
     expect(wrapper.get(".docker-log-scroll").text()).toBe("");
@@ -374,7 +515,7 @@ describe("ContainerLogsTab end banners", () => {
     const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", error: "permission denied", needsSudo: true });
-    await nextTick();
+    await settle();
 
     const banner = wrapper.get('[data-role="stream-end"]');
     expect(banner.text()).toContain("permission denied");
@@ -394,7 +535,7 @@ describe("ContainerLogsTab end banners", () => {
     stubHost();
     const wrapper = await mountTab({ canWrite: false });
     dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", needsSudo: true });
-    await nextTick();
+    await settle();
     expect(wrapper.get('[data-action="sudo-retry"]').attributes("disabled")).toBeDefined();
   });
 
@@ -402,7 +543,7 @@ describe("ContainerLogsTab end banners", () => {
     stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", error: "stream timed out" });
-    await nextTick();
+    await settle();
     expect(wrapper.get('[data-role="stream-end"]').text()).toContain("stream timed out");
     expect(wrapper.find('[data-action="restart"]').exists()).toBe(true);
   });

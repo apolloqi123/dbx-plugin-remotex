@@ -11,6 +11,7 @@ import {
 } from "../lib/dockerEngine";
 import { pluginStore } from "../../../shared/lib/pluginStore";
 import { resetDockerChannelQueues } from "../lib/dockerChannelQueue";
+import { resetDockerLogStreamRegistry, stopActiveDockerLogStreams } from "../lib/dockerLogStreamRegistry";
 
 type Call = { method: string; params: Record<string, unknown> };
 
@@ -28,6 +29,7 @@ function stubHost(options: { streamIds?: string[]; failStart?: string } = {}): C
         return { streamId };
       }
       if (method === "docker/logs/stop") return { stopped: true };
+      if (method === "docker/logs/close") return { closed: true };
       throw new Error(`unexpected rpc ${method}`);
     },
   });
@@ -44,6 +46,7 @@ function createStream(options: Parameters<typeof useDockerLogStream>[0] = {}) {
 afterEach(() => {
   resetDockerChannelQueues();
   clearPendingDockerLogEvents();
+  resetDockerLogStreamRegistry();
   pluginStore.removeItem(DOCKER_ENGINE_STORE_KEY);
   vi.unstubAllGlobals();
 });
@@ -56,8 +59,14 @@ describe("useDockerLogStream", () => {
 
     expect(calls[0]).toEqual({
       method: "docker/logs/start",
-      params: { sessionId: "sess-1", containerId: "abc123def456", tail: 200 },
+      params: {
+        sessionId: "sess-1",
+        owner: expect.any(String),
+        containerId: "abc123def456",
+        tail: 200,
+      },
     });
+    expect(calls[0].params.owner as string).toMatch(/^log-[a-z0-9]+-\d+-[a-z0-9]+$/);
     expect(stream.status.value).toBe("streaming");
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "hel" });
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "lo\nwor" });
@@ -65,17 +74,65 @@ describe("useDockerLogStream", () => {
     expect(stream.lines.value).toEqual(["hello", "wor"]);
 
     scope.stop();
-    // 连接级队列把 stop 排到微任务，等它真正出队后再断言。
-    await vi.waitFor(() =>
-      expect(calls.at(-1)).toEqual({ method: "docker/logs/stop", params: { streamId: "stream-1" } }),
-    );
+    // stop 走直连 RPC（不排连接队列），收流后再按 owner 关掉 scope。
+    await vi.waitFor(() => {
+      expect(calls).toContainEqual({ method: "docker/logs/stop", params: { streamId: "stream-1" } });
+      expect(calls).toContainEqual({
+        method: "docker/logs/close",
+        params: { owner: calls[0].params.owner },
+      });
+    });
+  });
+
+  it("caps the requested read at 1000 lines", async () => {
+    const calls = stubHost();
+    const { stream, scope } = createStream({ sessionId: () => "sess-1" });
+    await stream.start("abc123def456", { tail: "9999" });
+
+    expect(calls[0]).toMatchObject({
+      method: "docker/logs/start",
+      params: { sessionId: "sess-1", containerId: "abc123def456", tail: 1_000 },
+    });
+    scope.stop();
+  });
+
+  it("hands newly completed lines to the incremental renderer and resets on clear", async () => {
+    stubHost();
+    const batches: string[][] = [];
+    let resets = 0;
+    const { stream, scope } = createStream({
+      sessionId: () => "sess-1",
+      onLines: (lines) => batches.push([...lines]),
+      onReset: () => {
+        resets += 1;
+      },
+    });
+    await stream.start("abc123def456");
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "hel" });
+    expect(batches).toHaveLength(0);
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "lo\nwor" });
+    expect(batches).toEqual([["hello"]]);
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: "ld\nsecond\n" });
+    expect(batches.at(-1)).toEqual(["world", "second"]);
+    expect(stream.hasOutput.value).toBe(true);
+
+    stream.clear();
+    expect(resets).toBe(1);
+    expect(stream.text.value).toBe("");
+    expect(stream.hasOutput.value).toBe(false);
+    scope.stop();
   });
 
   it("targets the local daemon when no session is bound", async () => {
     const calls = stubHost();
     const { stream, scope } = createStream();
     await stream.start("abc123def456");
-    expect(calls[0].params).toEqual({ target: "local", containerId: "abc123def456", tail: 200 });
+    expect(calls[0].params).toEqual({
+      target: "local",
+      owner: expect.any(String),
+      containerId: "abc123def456",
+      tail: 200,
+    });
     scope.stop();
   });
 
@@ -91,6 +148,7 @@ describe("useDockerLogStream", () => {
       method: "docker/logs/start",
       params: {
         sessionId: "sess-1",
+        owner: expect.any(String),
         containerId: "abc123def456",
         tail: 200,
         cli: "podman",
@@ -251,6 +309,35 @@ describe("useDockerLogStream", () => {
     scope.stop();
   });
 
+  it("stops a start that resolves after the workbench began closing", async () => {
+    const calls: Call[] = [];
+    let resolveStart: ((value: unknown) => void) | undefined;
+    vi.stubGlobal("dbxPlugin", {
+      invoke: (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        if (method === "docker/logs/start") {
+          return new Promise((resolve) => {
+            resolveStart = resolve;
+          });
+        }
+        return Promise.resolve({ stopped: true, closed: true });
+      },
+    });
+    const { stream, scope } = createStream({ sessionId: () => "sess-1" });
+    const pending = stream.start("abc123def456");
+    await vi.waitFor(() => expect(resolveStart).toBeTypeOf("function"));
+
+    // 工作台关闭：登记表进入 closed，页面拆掉后没人会再为这条流发 stop。
+    await stopActiveDockerLogStreams();
+    resolveStart?.({ streamId: "late-stream" });
+    await pending;
+
+    await vi.waitFor(() =>
+      expect(calls).toContainEqual({ method: "docker/logs/stop", params: { streamId: "late-stream" } }),
+    );
+    scope.stop();
+  });
+
   it("delivers chunk and a fast end that arrive before the start response", async () => {
     let resolveStart: ((value: unknown) => void) | undefined;
     vi.stubGlobal("dbxPlugin", {
@@ -356,10 +443,24 @@ describe("useDockerLogStream", () => {
     stubHost();
     const { stream, scope } = createStream({ sessionId: () => "sess-1" });
     await stream.start("abc123def456");
-    const bulk = Array.from({ length: 10_050 }, (_, i) => `line-${i}`).join("\n");
+    const bulk = Array.from({ length: 10_050 }, (_, i) => `line-${i}`).join("\n") + "\n";
     dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: bulk });
     expect(stream.truncated.value).toBe(true);
-    expect(stream.lines.value).toHaveLength(10_000);
+    expect(stream.lines.value).toHaveLength(1_000);
+    expect(stream.lines.value[0]).toBe("line-9050");
+    scope.stop();
+  });
+
+  it("hands only the retained tail to the renderer on a huge burst", async () => {
+    stubHost();
+    const lines: string[][] = [];
+    const { stream, scope } = createStream({ sessionId: () => "sess-1", onLines: (batch) => lines.push([...batch]) });
+    await stream.start("abc123def456");
+    const bulk = Array.from({ length: 5_000 }, (_, i) => `line-${i}`).join("\n") + "\n";
+    dispatchDockerLogEvent("docker/logs/chunk", { streamId: "stream-1", text: bulk });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveLength(1_000);
+    expect(lines[0][0]).toBe("line-4000");
     scope.stop();
   });
 });

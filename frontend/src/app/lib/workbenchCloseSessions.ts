@@ -15,3 +15,8 @@ export function workbenchCloseTargets(
 ): Array<[string, string]> {
   return owned.filter((pair): pair is [string, string] => typeof pair[1] === "string" && pair[1] !== "");
 }
+
+/** SSH sits behind a host-reinit grace in the sidecar; other domains close now. */
+export function workbenchClosePayload(method: string, sessionId: string): Record<string, unknown> {
+  return method === "ssh/session/close" ? { sessionId, deferForHostReinit: true } : { sessionId };
+}

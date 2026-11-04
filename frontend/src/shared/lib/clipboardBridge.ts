@@ -26,7 +26,22 @@ export interface ClipboardDeps {
 
 export type ClipboardWritePath = "bridge" | "native" | "execCommand";
 
-export async function writeClipboardText(text: string, deps: ClipboardDeps = {}): Promise<ClipboardWritePath> {
+export function clipboardReadAvailable(deps: ClipboardDeps = {}): boolean {
+  if (deps.bridge) return true;
+  if (!deps.nativeClipboard) return false;
+  // Opaque-origin sandboxed iframes (the DBX workbench) reject reads even when
+  // the API exists; in that case let the native paste event carry the data.
+  if (typeof window === "undefined") return false;
+  return window.origin !== "null";
+}
+
+export interface ClipboardWriteOptions {
+  /** Event-driven writes (remote clipboard → host) must not steal focus with
+   *  the textarea fallback; bridge/native only. Defaults to true. */
+  execCommandFallback?: boolean;
+}
+
+export async function writeClipboardText(text: string, deps: ClipboardDeps = {}, options: ClipboardWriteOptions = {}): Promise<ClipboardWritePath> {
   if (deps.bridge) {
     try {
       await deps.bridge.writeText(text);
@@ -43,7 +58,7 @@ export async function writeClipboardText(text: string, deps: ClipboardDeps = {})
       // Sandboxed iframes often reject this even with user activation.
     }
   }
-  if (copyViaExecCommand(text, deps.execCommand)) return "execCommand";
+  if (options.execCommandFallback !== false && copyViaExecCommand(text, deps.execCommand)) return "execCommand";
   throw new Error("clipboard write unavailable");
 }
 
@@ -67,6 +82,7 @@ export async function readClipboardText(deps: ClipboardDeps = {}): Promise<strin
 }
 
 function copyViaExecCommand(text: string, execCommand?: (command: string) => boolean): boolean {
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   try {
     const textarea = document.createElement("textarea");
     textarea.value = text;
@@ -86,5 +102,9 @@ function copyViaExecCommand(text: string, execCommand?: (command: string) => boo
     return copied;
   } catch {
     return false;
+  } finally {
+    // select() moved focus to the hidden textarea; restore the VNC/RDP canvas
+    // so keyup/blur handling and subsequent key forwarding keep working.
+    activeElement?.focus({ preventScroll: true });
   }
 }

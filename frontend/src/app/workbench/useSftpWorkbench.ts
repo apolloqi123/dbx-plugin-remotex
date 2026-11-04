@@ -36,7 +36,7 @@ const SFTP_KEYS = [
   "previewText", "previewTitle", "previewTruncated", "reconcileActiveTransfers", "refreshBookmarks",
   "refreshSftpAfterMutation", "refreshSftpFolder", "refreshSftpHomePath", "refreshTransferHistory", "remoteBasename",
   "renameDraft", "renameSubmitting", "resetSftpTree", "resolveDropUpload", "resolveUploadDuplicateName",
-  "resumableTasks", "resumeTargetTaskId", "revealSftpPath", "saveAttributesPermissions", "saveEditorTab",
+  "reloadEditorTab", "resumableTasks", "resumeTargetTaskId", "revealSftpPath", "saveAttributesPermissions", "saveEditorTab",
   "saveHostFile", "searchSelectionOnline", "selectFile", "selectedEntries", "selectedEntry",
   "selectedPath", "selectedShellInjectable", "selectedUriSet", "selectedUris", "setDirectoryTracking",
   "sftpBookmarks", "sftpClipboard", "sftpColumnWidths", "sftpCompatModeState", "sftpDragDropTarget",

@@ -75,18 +75,38 @@ export interface QuickCommandsMenuActions {
   showError(cause: unknown): void;
 }
 
-/** RDP 独立工具组（缩放三档 + 分辨率 + 大文本粘贴 + 断开）。 */
+/** RDP 独立工具组（缩放三档 + 分辨率 + 大文本粘贴 + 断开）。
+ *  文件传输入口是组件内的剪贴板提示：RDP 走 CLIPRDR 文件通道，
+ *  因此这里不再需要打开 SFTP 双栏窗口的动作。 */
 export interface RdpToolbarActions {
   toggleRdpResolutionMenu(): void;
   applyRdpResolution(width: number, height: number): void;
   rdpResolutionLabel(width: number, height: number): string;
   isRdpResolutionActive(width: number, height: number): boolean;
   rdpWindowProportionPreset(): { width: number; height: number };
+  enableRdpAutoFit(): void;
   applyRdpCustomResolution(): void;
   toggleRdpPasteMenu(): void;
+  /** 打开/收起剪贴板文件传输提示弹层（与其它工具条弹层互斥）。 */
+  toggleRdpFileHintMenu(): void;
+  /** 远端不支持 CLIPRDR 文件流时的回退出口（SSH/SFTP 双栏窗口）。 */
+  openRemoteFileTransfer(): void;
   rdpWriteRemoteClipboard(): void;
   rdpTypeAsKeystrokes(): void;
   closeRdpSession(): void;
+}
+
+/** VNC 独立工具组（缩放三档 + 分辨率 + 断开）。 */
+export interface VncToolbarActions {
+  toggleVncResolutionMenu(): void;
+  applyVncResolution(width: number, height: number): void;
+  vncResolutionLabel(width: number, height: number): string;
+  isVncResolutionActive(width: number, height: number): boolean;
+  enableVncAutoFit(): void;
+  applyVncCustomResolution(): void;
+  closeVncSession(): void;
+  /** Open the host ↔ remote file transfer window (SFTP companion channel). */
+  openRemoteFileTransfer(): void;
 }
 
 /** dock 面板配色快切弹层。 */
@@ -101,6 +121,7 @@ export interface WorkbenchToolbarActions
   extends SessionMenuActions,
     QuickCommandsMenuActions,
     RdpToolbarActions,
+    VncToolbarActions,
     AppearanceMenuActions,
     RecordingMenuActions {
   togglePanelToolbar(): void;

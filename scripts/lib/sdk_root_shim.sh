@@ -11,17 +11,26 @@
 # 占位——Rust 工程不会用到）。垫片目录名不得含 "sdk-root" 字样，它会被
 # 嵌进二进制的 panic 路径，而 verify_packaged_sdk.py 以该字样做反例断言。
 #
+# 路径必须稳定：Cargo 按 patch 的路径识别 SDK 源，mktemp 每次换路径会让
+# SDK 与整个插件在每次打包时重新编译（实测 release 多花 1m40s）。这里固定
+# 放在 backend/target 下，随 target 缓存一起保留/清理。
+#
 # 用法：export DBX_PLUGIN_SDK_ROOT="$(bash scripts/lib/sdk_root_shim.sh)"
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RUST_SDK="$ROOT/shared/sdk/rust/dbx-plugin-sdk"
 [ -f "$RUST_SDK/Cargo.toml" ] || { echo "vendored Rust SDK not found at $RUST_SDK" >&2; exit 1; }
 
-shim="$(mktemp -d "${TMPDIR:-/tmp}/dbx-vendored-sdk.XXXXXX")"
+if [ ! -d "$ROOT/backend/target" ]; then
+  mkdir -p "$ROOT/backend/target"
+fi
+shim="$ROOT/backend/target/dbx-sdk-shim"
 mkdir -p "$shim/plugins/sdk/rust" "$shim/plugins/sdk/go"
+rm -rf "$shim/plugins/sdk/rust/dbx-plugin-sdk"
 ln -s "$RUST_SDK" "$shim/plugins/sdk/rust/dbx-plugin-sdk"
 
 go_sdk="$(ls -d "$(npm root -g 2>/dev/null)/@dbx-app/plugin-cli/sdk-root/plugins/sdk/go/dbx-plugin-sdk" 2>/dev/null || true)"
+rm -rf "$shim/plugins/sdk/go/dbx-plugin-sdk"
 if [ -n "$go_sdk" ] && [ -f "$go_sdk/go.mod" ]; then
   ln -s "$go_sdk" "$shim/plugins/sdk/go/dbx-plugin-sdk"
 else

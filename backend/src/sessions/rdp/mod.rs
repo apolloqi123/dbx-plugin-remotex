@@ -7,7 +7,8 @@
 //! - `limits`：尺寸/剪贴板纯校验（零依赖）
 //! - `error`：错误分类 + 重连预算/退避（零依赖）
 //! - `cert`：已知证书存储 + 120s 提示代理 + TLS 校验器（依赖 security）
-//! - `clipboard`：text-only CLIPRDR 桥（依赖 limits 的 16 MiB 门限）
+//! - `clipboard`：CLIPRDR 桥（文本 + 文件适配层，依赖 limits 的 16 MiB 门限）
+//! - `file_clipboard`：文件/文件夹剪贴板状态机（出站暂存 + 入站下载/打包）
 //! - `frame`：44 字节补丁帧编码 + 回放桌面（依赖 limits 的尺寸门限）
 //! - `input`：键鼠映射（依赖 wire 的输入形状）
 //! - `session`：会话运行时（汇聚以上全部，且是唯一持有vendored 引擎类型处）
@@ -22,6 +23,7 @@
 pub mod cert;
 pub mod clipboard;
 pub mod error;
+pub(crate) mod file_clipboard;
 pub mod frame;
 pub mod input;
 pub mod limits;
@@ -40,6 +42,8 @@ pub(crate) use cert::*;
 pub(crate) use clipboard::*;
 #[cfg(test)]
 pub(crate) use error::*;
+#[cfg(test)]
+pub(crate) use file_clipboard::*;
 #[cfg(test)]
 pub(crate) use frame::*;
 #[cfg(test)]

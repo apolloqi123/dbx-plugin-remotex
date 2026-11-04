@@ -61,6 +61,19 @@ export class PromptNewlineTransformer {
     // While inside an OSC, whether its payload is the prompt signal (ESC]7;).
     let oscIsPromptSignal = false;
     let i = 0;
+    // Fast path for plain chunks (no escape and no carried sequence): most
+    // output bursts are newline/printable text, and scanning them byte by byte
+    // in JS showed up as a per-chunk cost on multi-MB transfers. Line-start
+    // only depends on the last newline/printable byte in the chunk.
+    if (this.carry.length === 0) {
+      const firstEscape = data.indexOf(ESC);
+      if (firstEscape < 0) {
+        this.trackLineStartTail(data);
+        return data;
+      }
+      if (firstEscape > 0) this.trackLineStartTail(data.subarray(0, firstEscape));
+      i = firstEscape;
+    }
 
     while (i < combined.length) {
       const byte = combined[i];
@@ -190,6 +203,22 @@ export class PromptNewlineTransformer {
     if (!inserted) return combined;
     if (emit < combined.length) pieces.push(combined.subarray(emit));
     return concatAll(pieces);
+  }
+
+  /** Byte-for-byte equivalent of the ground-mode loop: the final state is set
+   *  by the last newline or printable byte; other control bytes are ignored. */
+  private trackLineStartTail(bytes: Uint8Array): void {
+    for (let index = bytes.length - 1; index >= 0; index -= 1) {
+      const byte = bytes[index];
+      if (byte === 0x0a || byte === 0x0d) {
+        this.atLineStart = true;
+        return;
+      }
+      if (byte >= 0x20 && byte !== 0x7f) {
+        this.atLineStart = false;
+        return;
+      }
+    }
   }
 
   reset(): void {

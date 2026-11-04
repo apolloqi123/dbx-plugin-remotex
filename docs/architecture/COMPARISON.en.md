@@ -12,7 +12,7 @@ positioning and should be verified against the target platform and exact version
 
 ## Capability matrix
 
-| Capability | SSHX | OpenSSH + sftp | Tabby | Termius | FinalShell | electerm | iSHell Pro |
+| Capability | RemoteX | OpenSSH + sftp | Tabby | Termius | FinalShell | electerm | iSHell Pro |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Graphical connection management | Built in | — | Built in | Built in | Built in | Built in | Built in/mobile |
 | Interactive PTY terminal | Built in | Built-in terminal | Built in | Built in | Built in | Built in | Built in |
@@ -44,7 +44,7 @@ positioning and should be verified against the target platform and exact version
 | VNC | Built in | — | — | — | — | — | Built in/version dependent |
 | Seven-language plugin UI | Built in | — | Partial/version dependent | Partial/plan dependent | Partial/version dependent | Version dependent | Version dependent |
 
-> **Protocol roadmap**: SSHX currently focuses on SSH, SFTP, ProxyJump, PTY, and
+> **Protocol roadmap**: RemoteX currently focuses on SSH, SFTP, ProxyJump, PTY, and
 > governed server operations. Telnet is built in (M2, incl. declarative auto_login), serial
 > and X11 forwarding are built in (M4), VNC is built in (M5), and RDP is built in (M12
 > closure: vendored IronRDP chain with NLA/CredSSP + TLS login, text-only clipboard bridge,
@@ -55,7 +55,7 @@ positioning and should be verified against the target platform and exact version
 
 Tabby is a general-purpose terminal: its strengths are terminal tabs and split panes,
 theme/color customization with a plugin ecosystem, multi-protocol support (Telnet/serial),
-and cross-device config sync. SSHX differs on the server operations chain:
+and cross-device config sync. RemoteX differs on the server operations chain:
 
 - Stronger authentication and privilege-escalation orchestration: global Quick Sudo
   profiles, TOTP/2FA auto-answer, sudo allowlists, read-only gates, and host secret
@@ -99,7 +99,7 @@ secret, and workbench boundaries.
 - For cross-device connection synchronization, Termius is more cloud/commercial oriented;
   exact capabilities depend on its version and plan.
 - For a desktop tool combining SSH, SFTP, and server status, FinalShell is one direct option.
-- If you already use DBX host connections, MCP, and plugin workbenches, SSHX keeps
+- If you already use DBX host connections, MCP, and plugin workbenches, RemoteX keeps
   those workflows inside the same connection and permission boundary.
 - If you need RDP or additional protocols, Telnet, serial, VNC, and RDP are built in
   (RDP covers NLA/CredSSP + TLS login, text clipboard, and reconnection; real-server

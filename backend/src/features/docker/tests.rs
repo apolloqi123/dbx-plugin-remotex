@@ -383,7 +383,7 @@ fn logs_and_sudo_bodies_follow_engine() {
         "{script}"
     );
     let clamped = logs_script(&podman, "d4a7c9f1e2b3", 99_999).unwrap();
-    assert!(clamped.contains("podman logs --tail 2000"), "{clamped}");
+    assert!(clamped.contains("podman logs --tail 1000"), "{clamped}");
     assert!(logs_script(&podman, "web-nginx", 100).is_err());
     // Sudo body: same content, no heredoc wrapper (stdin = password).
     let body = sudo_logs_body(&podman, "d4a7c9f1e2b3", 120).unwrap();
@@ -660,4 +660,76 @@ fn local_marker_assembly_feeds_the_shared_parsers() {
             .len(),
         0
     );
+}
+
+// —— docker/stats snapshot (container monitor tab) ——————————————————
+
+const STATS_FIXTURE: &str = "\
+DBXDOCKER_STATS
+{\"BlockIO\":\"12.3MB / 4.56MB\",\"CPUPerc\":\"3.47%\",\"Container\":\"d4a7c9f1e2b3\",\"ID\":\"d4a7c9f1e2b3\",\"MemPerc\":\"0.02%\",\"MemUsage\":\"1.5MiB / 7.6GiB\",\"Name\":\"web-nginx\",\"NetIO\":\"1.2kB / 3.4kB\",\"PIDs\":\"5\"}
+";
+
+#[test]
+fn stats_payload_parses_percent_sizes_and_pids() {
+    let payload = stats_payload(STATS_FIXTURE);
+    assert_eq!(payload["available"], true);
+    assert_eq!(payload["running"], true);
+    assert_eq!(payload["needsSudo"], false);
+    assert_eq!(payload["cpuPercent"], 3.47);
+    assert_eq!(payload["memPercent"], 0.02);
+    assert_eq!(payload["memUsedBytes"], 1_572_864);
+    assert_eq!(payload["memLimitBytes"].as_u64().unwrap(), 8_160_437_862);
+    assert_eq!(payload["netRxBytes"], 1_200);
+    assert_eq!(payload["netTxBytes"], 3_400);
+    assert_eq!(payload["blockReadBytes"], 12_300_000);
+    assert_eq!(payload["blockWriteBytes"], 4_560_000);
+    assert_eq!(payload["pids"], 5);
+}
+
+#[test]
+fn stats_payload_distinguishes_stopped_and_denied() {
+    let stopped = stats_payload("DBXDOCKER_STATS\nError response from daemon: container d4a7 is not running\n");
+    assert_eq!(stopped["available"], true);
+    assert_eq!(stopped["running"], false);
+    assert_eq!(stopped["needsSudo"], false);
+
+    let denied = stats_payload("DBXDOCKER_STATS\ndocker: permission denied while trying to connect to the Docker daemon socket\n");
+    assert_eq!(denied["available"], false);
+    assert_eq!(denied["needsSudo"], true);
+    assert_eq!(denied["running"], false);
+
+    let broken = stats_payload("DBXDOCKER_STATS\ntemplate parsing error\n");
+    assert_eq!(broken["available"], false);
+    assert_eq!(broken["error"], "template parsing error");
+}
+
+#[test]
+fn stats_size_parsing_handles_docker_units_and_placeholders() {
+    assert_eq!(parse_size("0B"), 0);
+    assert_eq!(parse_size("999B"), 999);
+    assert_eq!(parse_size("1kB"), 1_000);
+    assert_eq!(parse_size("1KiB"), 1_024);
+    assert_eq!(parse_size("1.5MiB"), 1_572_864);
+    assert_eq!(parse_size("2GiB"), 2_147_483_648);
+    assert_eq!(parse_size("--"), 0);
+    assert_eq!(parse_size(""), 0);
+    assert_eq!(parse_size_pair("1KiB / 2KiB"), (1_024, 2_048));
+    assert_eq!(parse_percent("12.5%"), 12.5);
+    assert_eq!(parse_percent("--"), 0.0);
+}
+
+#[test]
+fn stats_script_keeps_the_id_marker_and_endpoint_inside_the_script() {
+    let engine = test_engine("podman", Some("unix:///tmp/podman.sock"));
+    let script = stats_script(&engine, "d4a7c9f1e2b3").unwrap();
+    assert!(script.starts_with("sh -s <<'DBXDOCKER'\n"));
+    assert!(script.contains("echo DBXDOCKER_STATS\n"));
+    assert!(script.contains("DOCKER_HOST='unix:///tmp/podman.sock'"));
+    assert!(script.contains(
+        "podman stats --no-stream --format '{{json .}}' d4a7c9f1e2b3 2>&1"
+    ));
+    assert!(stats_script(&engine, "../evil").is_err());
+    let sudo = sudo_stats_body(&engine, "d4a7c9f1e2b3").unwrap();
+    assert!(sudo.contains("podman stats --no-stream"));
+    assert!(!sudo.contains("sh -s"));
 }

@@ -34,7 +34,7 @@ const {
   editorPaneRef, editorSplitRatio, editorTabs, ensureExternalEditors, extractEntry,
   fileMenu, filteredBatchQuickCommands, focusSftpPaneOnPointerDown, folderMenuAction,
   goToPath, groupedBatchQuickCommands, hasEditorTabs, isLocalMode,
-  isRdpConnection, killProcessRow, loadDirectory, loadHome, localRecentCommands,
+  isRdpConnection, isVncMode, killProcessRow, loadDirectory, loadHome, localRecentCommands,
   localUiMode, locale, nudgeSplitDivider, onDividerKeydown, onDockerDividerKeydown, onDrop,
   onEditorDividerKeydown, onFileAreaContextMenu, onFileRowKeydown, onPaneActivated, onSftpClipboardPaste,
   onSftpDragEnter, onSftpDragLeave, onSftpTreeDrop, onShellTabCwd, onShellTabOpened,
@@ -44,7 +44,7 @@ const {
   paneLayout, paneSplitStyle, pasteClipboard, pasteTerminal, pathBarEditing,
   bookmarksOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
   quickCommands, quickGroupName, quickHasRealGroups, refreshBatchTargets, refreshMetrics,
-  refreshProcessList, refreshSftpFolder, removeBookmark, renamingPath, rerunLocalCommand,
+  refreshProcessList, refreshSftpFolder, reloadEditorTab, removeBookmark, renamingPath, rerunLocalCommand,
   saveEditorTab, searchSelectionOnline, searchTextOnline, selectAllTerminal,
   selectTreeEntry, sendBatchCommand, sendSudoRefresh, session, setDirectoryTracking,
   setMetricsProcessSort, sftpDragDropTarget, sftpPaneOpen, sftpSearchDraft, sftpTypeFilter,
@@ -114,6 +114,7 @@ function dockerTerminalStateEvents(
         :appearance="appearance"
         @activate="activateEditorTab"
         @close="closeEditorTab"
+        @reload="reloadEditorTab"
         @save="saveEditorTab"
         @update:text="({ id, text }) => updateEditorText(id, text)"
       />
@@ -148,6 +149,7 @@ function dockerTerminalStateEvents(
         :locale="locale"
         :can-split="canSplitTerminal"
         :can-create-tab="canOpenShellTab"
+        :hide-tabs="isRdpConnection || isVncMode"
         :engines="ctxSearchEngines"
         :connected="connected"
         :can-write="canWrite"

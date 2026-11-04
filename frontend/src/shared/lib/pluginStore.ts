@@ -68,6 +68,16 @@ export const PLUGIN_STORE_KEYS: readonly string[] = [
   "telnet-connect-last",
   "serial-connect-last",
   "vnc-connect-last",
+  "rdp-connect-last",
+  // 远程桌面文件传输浮窗的上次 SSH 参数（host/port/username/auth/key path；
+  // 密码在 sidecar vault，不进前端存储）。漏注册 = 加密密码按主机/用户
+  // 匹配不到，浮窗每次都要重新输入。
+  "remote-files-connect-last",
+  // 指标面板磁盘/网卡显示开关（useMetricsPanel 自治读写；旧 only-main 键
+  // 作为升级回退）。漏注册 = 重启后恢复为默认，与“记住上次选择”契约不符。
+  "ssh-metrics-show-all-disks",
+  "ssh-metrics-show-all-nics",
+  "ssh-metrics-only-main",
   // 行内 ghost 自动建议（对标 Warp 线 1）：SettingsDialog 开关行自治读写，
   // 默认开。
   "ssh-terminal-ghost-suggest",

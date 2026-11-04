@@ -201,8 +201,10 @@ export function useContainerFiles(options: UseContainerFilesOptions) {
     if (isVisible()) void scheduleLoad("/");
   }
 
+  // 用字符串键而不是 `() => [..]`：列表轮询会用新对象替换同一个容器
+  // （status 文本变化），数组 getter 每次返回新引用会让文件页无端回到根目录。
   watch(
-    () => [options.containerId(), readSessionId(), readConnectionId()] as const,
+    () => [options.containerId(), readSessionId(), readConnectionId()].join("\u0000"),
     () => reset(),
   );
 

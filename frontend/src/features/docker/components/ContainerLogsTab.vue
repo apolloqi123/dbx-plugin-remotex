@@ -1,17 +1,19 @@
 <script setup lang="ts">
 // 容器日志页：真流式 + 默认跟随。`useDockerLogStream` 由本组件内部持有（props
-// 契约固定为 t/container/sessionId/connectionId/canWrite）。页签不可见时停止
-// 跟随（不再占用一条 SSH session channel，服务器 MaxSessions 较小时尤其重要），
-// 切回日志页再按当前 tail 重新跟随；容器切换/页面关闭/卸载同样收流。
+// 契约固定为 t/container/sessionId/connectionId/canWrite）；窗口化渲染引擎在
+// `useDockerLogView`（1000 行缓冲 / 200 行 DOM 窗口 / 100ms 合帧）。页签不可见
+// 时停止跟随（不再占用一条 SSH session channel，服务器 MaxSessions 较小时尤其
+// 重要），切回日志页再按当前 tail 重新跟随；容器切换/页面关闭/卸载同样收流。
 //
 // 跟随规则（spec §3.2）：默认跟随；向上滚动距底 >24px 暂停自动滚动但继续接收；
 // 滚回距底 ≤4px 自动恢复；按钮在跟随时点一下只关自动滚动（不断流）。
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { FOLLOW_PAUSE_PX, MAX_LOG_CHARS, MAX_LOG_LINES, shouldFollow } from "../lib/dockerLogBuffer";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { MAX_LOG_CHARS, MAX_LOG_LINES } from "../lib/dockerLogBuffer";
 import { TAIL_OPTIONS, type DockerContainer } from "../lib/dockerPanelModel";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { useDockerLogStream, type DockerLogStreamStatus } from "../composables/useDockerLogStream";
-import { escapeLogHtml, tokenizeOutputLine } from "../../../shared/lib/logTokens";
+import { useDockerLogView, type DockerLogView } from "../composables/useDockerLogView";
+import { documentHidden, onDocumentVisibilityChange } from "../../../shared/lib/documentVisibility";
 
 // Vue 对未传的 Boolean prop 会转成 false；这里显式默认 true，避免「未声明
 // visible」的调用方被误判为隐藏页签而不开流。
@@ -25,14 +27,20 @@ const props = withDefaults(defineProps<{
   visible?: boolean;
 }>(), { visible: true });
 
+const scroller = ref<HTMLElement>();
+let view: DockerLogView | undefined;
+
 const stream = useDockerLogStream({
   sessionId: () => props.sessionId,
   // 引擎设置与 list/files/exec 同口径按连接附带；缺省走默认 docker/本机 daemon。
   engineParams: () => dockerEngineParams(loadDockerEngineSettings(props.connectionId || "")),
+  // 增量渲染：只把新完成的整行交给窗口引擎（不重建整段日志）。
+  onLines: (lines) => view?.appendLines(lines),
+  onReset: () => view?.reset(),
 });
 
 const {
-  text,
+  hasOutput,
   truncated,
   follow,
   status,
@@ -46,45 +54,18 @@ const {
   clear,
 } = stream;
 
+view = useDockerLogView({ scroller, follow });
+
 const tail = ref<string>("200");
-const scroller = ref<HTMLElement>();
 /** 用户是否刚点过“清空”（只用于空态提示，不参与流状态）。 */
 const clearedNotice = ref(false);
 /** 流是否因页签隐藏而停止：只有这种停止才在重新可见时自动重开。 */
 let pausedByHidden = false;
-
-// —— 日志着色 ——————————————————————————————————————————————
-// 逐行按 logTokens 语义着色（级别/时间戳/键值/数字/IP/URL + 应用自带的 ANSI
-// 颜色）。行 HTML 按内容缓存：流式追加时只有新行付出解析成本，重复行直接复用。
-// 高亮上限之外的头部按纯文本整段渲染，避免万行缓冲把 DOM 撑爆。
-const LOG_HIGHLIGHT_MAX_LINES = 2000;
-const LOG_ROW_CACHE_LIMIT = 8192;
-const rowHtmlCache = new Map<string, string>();
-
-function logRowHtml(line: string): string {
-  const cached = rowHtmlCache.get(line);
-  if (cached !== undefined) return cached;
-  let html = "";
-  for (const token of tokenizeOutputLine(line)) {
-    html += token.kind === "plain"
-      ? escapeLogHtml(token.text)
-      : `<span class="log-${token.kind}">${escapeLogHtml(token.text)}</span>`;
-  }
-  if (rowHtmlCache.size >= LOG_ROW_CACHE_LIMIT) rowHtmlCache.clear();
-  rowHtmlCache.set(line, html);
-  return html;
-}
-
-const renderedLog = computed(() => {
-  const value = text.value;
-  if (!value) return { prefix: "", rows: [] as string[] };
-  const lines = value.split("\n");
-  const highlightFrom = Math.max(0, lines.length - LOG_HIGHLIGHT_MAX_LINES);
-  return {
-    prefix: highlightFrom > 0 ? `${lines.slice(0, highlightFrom).join("\n")}\n` : "",
-    rows: lines.slice(highlightFrom).map(logRowHtml),
-  };
-});
+/** 流是否因 DBX 窗口隐藏而停止（后台不再养远端 docker logs 客户端）。 */
+let pausedByDocument = false;
+/** 窗口隐藏后的收流宽限：短暂切走不重启，久挂后台才停掉远端进程。 */
+const DOCUMENT_PAUSE_GRACE_MS = 10_000;
+let documentPauseTimer = 0;
 
 /** 截断提示文案；数值直接取自缓冲上限，避免两处漂移。 */
 const truncatedHint = computed(() =>
@@ -92,11 +73,48 @@ const truncatedHint = computed(() =>
 );
 
 function scrollToBottom(): void {
-  void nextTick(() => {
-    const element = scroller.value;
-    if (element) element.scrollTop = element.scrollHeight;
-  });
+  void nextTick(() => view?.scrollToBottom());
 }
+
+function startStream(): void {
+  void start(props.container.id, { tail: tail.value });
+}
+
+function clearDocumentPauseTimer(): void {
+  if (documentPauseTimer) {
+    window.clearTimeout(documentPauseTimer);
+    documentPauseTimer = 0;
+  }
+}
+
+// DBX 窗口隐藏超过宽限期就停流：远端 `docker logs -f` 是服务器上的真实进程，
+// 后台一直跟随会持续占用 CPU（尤其容器日志量大时）。复现时按当前 tail 重开。
+const stopVisibilityWatch = onDocumentVisibilityChange((hidden) => {
+  if (hidden) {
+    clearDocumentPauseTimer();
+    if (status.value !== "streaming" && status.value !== "starting") return;
+    documentPauseTimer = window.setTimeout(() => {
+      documentPauseTimer = 0;
+      if (!documentHidden() || pausedByDocument) return;
+      pausedByDocument = true;
+      void stop();
+    }, DOCUMENT_PAUSE_GRACE_MS);
+    return;
+  }
+  clearDocumentPauseTimer();
+  if (!pausedByDocument) return;
+  pausedByDocument = false;
+  // 页签本身仍不可见时不动：等页签显隐 watcher 恢复，避免后台重开。
+  if (props.visible === false) return;
+  clearedNotice.value = false;
+  clear();
+  startStream();
+});
+
+onBeforeUnmount(() => {
+  clearDocumentPauseTimer();
+  stopVisibilityWatch();
+});
 
 /** 清空按钮：只清视图（不断流），并在空态提示“已清空”。 */
 function handleClear(): void {
@@ -105,12 +123,11 @@ function handleClear(): void {
 }
 
 function resumeFollow(): void {
-  if (!follow.value) follow.value = true;
-  scrollToBottom();
+  view?.resume();
 }
 
 function pauseFollow(): void {
-  if (follow.value) follow.value = false;
+  view?.pause();
 }
 
 /** 按钮：跟随时点一下只停自动滚动；暂停时恢复并跳到最新。 */
@@ -120,11 +137,7 @@ function toggleFollow(): void {
 }
 
 function onScroll(): void {
-  const element = scroller.value;
-  if (!element) return;
-  const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-  if (distance > FOLLOW_PAUSE_PX) pauseFollow();
-  else if (shouldFollow(element.scrollTop, element.clientHeight, element.scrollHeight)) resumeFollow();
+  view?.handleScroll();
 }
 
 /** tail 变更：停旧流、清空缓冲、按新 tail 重启（spec §3.2）。 */
@@ -143,14 +156,18 @@ function restartFromEnd(): void {
 
 const endedBanner = (value: DockerLogStreamStatus): boolean => value === "ended" || value === "error";
 /** 启动中还没有任何输出是正常的：不要显示“无输出”空态。 */
-const showEmptyState = computed(() => !text.value && status.value !== "starting");
+const showEmptyState = computed(() => !hasOutput.value && status.value !== "starting");
 
 onMounted(() => {
   if (props.visible === false) {
     pausedByHidden = true;
     return;
   }
-  void start(props.container.id, { tail: tail.value });
+  if (documentHidden()) {
+    pausedByDocument = true;
+    return;
+  }
+  startStream();
 });
 
 // 容器切换：先清视图再开新流（start 内部会停掉旧流）。页签隐藏时只清视图，
@@ -164,15 +181,18 @@ watch(
       pausedByHidden = true;
       return;
     }
+    if (documentHidden()) {
+      pausedByDocument = true;
+      return;
+    }
     pausedByHidden = false;
     void start(containerId, { tail: tail.value });
   },
 );
 
-// 新日志到达：跟随态滚到底；暂停态不动滚动位置（内容继续进缓冲）。
-watch(text, (value) => {
+// 有输出即清掉「已清空」提示；滚动跟随在窗口引擎追加后同步完成。
+watch(hasOutput, (value) => {
   if (value) clearedNotice.value = false;
-  if (follow.value) scrollToBottom();
 });
 
 // 页签显隐：隐藏即停流（日志页不可见时不必占用 SSH channel）；重新可见时
@@ -188,11 +208,12 @@ watch(
       }
       return;
     }
-    if (pausedByHidden) {
+    if (pausedByHidden || pausedByDocument) {
       pausedByHidden = false;
+      pausedByDocument = false;
       clearedNotice.value = false;
       clear();
-      void start(props.container.id, { tail: tail.value });
+      startStream();
     }
     if (follow.value) scrollToBottom();
   },
@@ -245,7 +266,7 @@ watch(
       </button>
     </div>
     <div class="docker-log-body">
-      <pre ref="scroller" class="docker-log-scroll" @scroll="onScroll"><template v-if="renderedLog.prefix">{{ renderedLog.prefix }}</template><template v-for="(row, index) in renderedLog.rows" :key="index"><span class="docker-log-line" v-html="row"></span>{{ index + 1 < renderedLog.rows.length ? "\n" : "" }}</template></pre>
+      <pre ref="scroller" class="docker-log-scroll" @scroll="onScroll"></pre>
       <p v-if="showEmptyState" class="docker-log-empty">
         {{ clearedNotice ? t("docker.logsCleared") : t("docker.logsEmpty") }}
       </p>
@@ -285,6 +306,7 @@ watch(
 
 .docker-log-follow,
 .docker-log-clear,
+.docker-log-older,
 .docker-log-sudo,
 .docker-log-restart {
   border: 1px solid var(--border);

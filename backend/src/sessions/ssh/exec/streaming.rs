@@ -5,6 +5,21 @@
 
 use super::*;
 
+/// Log streams give the remote supervisor's HUP/TERM trap a settle window
+/// before the uncatchable KILL; shared exec paths keep the immediate
+/// HUP→TERM→KILL sequence (no added latency on ordinary cancellations).
+async fn abort_step(
+    settle: bool,
+    channel: &mut russh::Channel<russh::client::Msg>,
+    error: String,
+) -> String {
+    if settle {
+        abort_stream_channel(channel, error).await
+    } else {
+        abort_exec_channel(channel, error).await
+    }
+}
+
 /// Shared body of [`exec_with_sudo_cancellable`] and [`exec_sudo_stream`]:
 /// `timeout: None` disables the overall deadline (log following must not be
 /// killed by an exec cap), `sink: None` keeps the buffered-only behavior.
@@ -17,6 +32,7 @@ pub(super) async fn exec_with_sudo_inner(
     timeout: Option<Duration>,
     cancel: &mut watch::Receiver<bool>,
     sink: Option<&tokio::sync::mpsc::Sender<Vec<u8>>>,
+    settle: bool,
 ) -> Result<ExecOutcome, String> {
     if auth.password.is_empty() {
         let command_line = format!("sudo -n {}", sanitize_sudo_command(command));
@@ -29,7 +45,7 @@ pub(super) async fn exec_with_sudo_inner(
             biased;
             _ = wait_cancelled(cancel) => {
                 return Err(
-                    abort_exec_channel(&mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
+                    abort_step(settle, &mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
                 );
             }
             started = async {
@@ -40,13 +56,13 @@ pub(super) async fn exec_with_sudo_inner(
                     .map_err(|error| format!("Failed to start sudo command: {error}"))
             } => {
                 if let Err(error) = started {
-                    return Err(abort_exec_channel(&mut channel, error).await);
+                    return Err(abort_step(settle, &mut channel, error).await);
                 }
             }
         }
         let outcome = match run_to_completion(&mut channel, timeout, None, cancel, sink).await {
             Ok(outcome) => outcome,
-            Err(error) => return Err(abort_exec_channel(&mut channel, error).await),
+            Err(error) => return Err(abort_step(settle, &mut channel, error).await),
         };
         if outcome.exit_code != 0 {
             return Err(format!(
@@ -79,7 +95,7 @@ pub(super) async fn exec_with_sudo_inner(
         biased;
         _ = wait_cancelled(cancel) => {
             return Err(
-                abort_exec_channel(&mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
+                abort_step(settle, &mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
             );
         }
         started = async {
@@ -90,7 +106,7 @@ pub(super) async fn exec_with_sudo_inner(
                 .map_err(|error| format!("Failed to start sudo command: {error}"))
         } => {
             if let Err(error) = started {
-                return Err(abort_exec_channel(&mut channel, error).await);
+                return Err(abort_step(settle, &mut channel, error).await);
             }
         }
     }
@@ -112,7 +128,8 @@ pub(super) async fn exec_with_sudo_inner(
         otp_piped = true;
     }
     if let Err(error) = channel.data(payload.as_slice()).await {
-        return Err(abort_exec_channel(
+        return Err(abort_step(
+            settle,
             &mut channel,
             format!("Failed to write sudo password: {error}"),
         )
@@ -132,7 +149,7 @@ pub(super) async fn exec_with_sudo_inner(
     .await
     {
         Ok(outcome) => outcome,
-        Err(error) => return Err(abort_exec_channel(&mut channel, error).await),
+        Err(error) => return Err(abort_step(settle, &mut channel, error).await),
     };
     if outcome.exit_code != 0 {
         return Err(format!(
@@ -154,6 +171,9 @@ pub async fn exec_plain_stream(
     sink: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) -> Result<i32, String> {
     let mut cancel = cancel;
+    // This channel runs a POSIX supervisor for `logs -f`: let its trap run
+    // before the KILL backstop (see `abort_stream_channel`).
+    let settle = true;
     // Uncancellable dial: dropping a channel-open future after sshd allocated
     // the channel leaks that session against `MaxSessions`. Cancellation is
     // honoured by the env/exec select below, which closes the channel.
@@ -166,7 +186,7 @@ pub async fn exec_plain_stream(
         biased;
         _ = wait_cancelled(&mut cancel) => {
             return Err(
-                abort_exec_channel(&mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
+                abort_step(settle, &mut channel, EXEC_CANCELLED_MESSAGE.to_string()).await
             );
         }
         started = async {
@@ -177,7 +197,7 @@ pub async fn exec_plain_stream(
                 .map_err(|error| format!("Failed to start command: {error}"))
         } => {
             if let Err(error) = started {
-                return Err(abort_exec_channel(&mut channel, error).await);
+                return Err(abort_step(settle, &mut channel, error).await);
             }
         }
     }
@@ -185,7 +205,7 @@ pub async fn exec_plain_stream(
         Ok(outcome) => Ok(outcome.exit_code),
         // Spec 4.2: cancellation must close the channel through the regular
         // abort path so sshd reaps `docker logs -f` instead of leaking it.
-        Err(error) => Err(abort_exec_channel(&mut channel, error).await),
+        Err(error) => Err(abort_step(settle, &mut channel, error).await),
     }
 }
 
@@ -211,6 +231,7 @@ pub async fn exec_sudo_stream(
         None,
         &mut cancel,
         Some(&sink),
+        true,
     )
     .await?;
     Ok(outcome.exit_code)

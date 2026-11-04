@@ -6,8 +6,9 @@
 // sendRdpClipboard/persistState...），不 import App.vue，也不 import 任何
 import { rpc } from "../../../shared/lib/rpc";
 // SSH 内部符号——App.vue 是唯一消费方。
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, watch, type Ref } from "vue";
 import type { RdpConnectOptions } from "../components/RdpConnectDialog.vue";
+import { matchWindowDesktopSize } from "../lib/desktopAutoSize";
 import { rdpErrorKindKey, type RdpInputEvent, type RdpSessionStateView } from "../lib/rdpFrame";
 
 /** RDP 会话内用户选择的桌面尺寸（持久化到 workbenchState 的 rdpWidth/Height，
@@ -41,6 +42,7 @@ export function useRdpWorkbench(options: {
   sendRdpClipboard: (text: string) => void;
   rdpState: Ref<RdpSessionStateView>;
   rdpDialogOpen: Ref<boolean>;
+  rdpScaleMode: Ref<"fit" | "stretch" | "actual">;
   startRdpSession: (connectOptions: RdpConnectOptions) => Promise<boolean>;
   // 装配依赖（声明/装配在本组合式函数之后）：一律 getter 惰性接入；函数内按
   // 原名解构，迁出代码保持逐行原样。
@@ -52,7 +54,7 @@ export function useRdpWorkbench(options: {
 }) {
   const {
     t, showError, showNotice, persistState, isRdpMode, rdpSession, rdpSurface, sendRdpInput, sendRdpClipboard,
-    rdpState, rdpDialogOpen, startRdpSession,
+    rdpState, rdpDialogOpen, rdpScaleMode, startRdpSession,
     getConnection, getStoredConnectionProtocol, sftpPaneOpen, closeRightPanel, getBatchBarOpen,
   } = options;
 
@@ -63,6 +65,9 @@ export function useRdpWorkbench(options: {
   const rdpTypingBusy = ref(false);
   const rdpTypingSent = ref(0);
   const rdpTypingTotal = ref(0);
+  // 文件传输提示弹层：RDP 直接走 CLIPRDR 文件通道，按钮只解释剪贴板用法，
+  // 不再打开 VNC 的 SSH/SFTP 双栏窗口。
+  const rdpFileHintOpen = ref(false);
 
   function rdpWriteRemoteClipboard() {
     const text = rdpPasteText.value;
@@ -89,22 +94,132 @@ export function useRdpWorkbench(options: {
     }
   }
 
-  // —— 分辨率入口（P0-2）：预设 + 自定义宽高，走 rdp/resize。后端语义是
-  // “以新尺寸重连”（会话内 display control PDU 真机不生效），sessionId 不变，
-  // 状态由 rdp/session/state 事件驱动回 connecting→running。选择持久化进
-  // workbenchState（rdpWidth/rdpHeight），恢复 tab 时优先于连接表单。 ——
+  // —— 分辨率入口（P0-2）：预设 + 自定义宽高，走 rdp/resize。后端把新尺寸
+  // 排队给当前引擎（MS-RDPEDISP 显示器布局 + 服务端 Deactivate-Reactivation），
+  // 会话内生效，不再经历 connecting 覆盖层；仅无引擎（拨号/退避）时留待下代。
+  // 选择持久化进 workbenchState（rdpWidth/rdpHeight），恢复 tab 时优先于
+  // 连接表单。 ——
   const RDP_RESOLUTION_PRESETS: ReadonlyArray<{ width: number; height: number }> = [
     { width: 1280, height: 800 },
     { width: 1600, height: 900 },
     { width: 1920, height: 1080 },
     { width: 2560, height: 1440 },
   ];
+
+  /** Remote resolution for "match window": the pane's CSS size (not its
+   * physical pixels — a DPR-sized desktop made Windows text far too small on
+   * Retina panes), aspect preserved, inside the comfortable display range. */
+  function targetRdpSize(cssWidth: number, cssHeight: number): { width: number; height: number } {
+    return matchWindowDesktopSize(cssWidth, cssHeight);
+  }
+
+  function autoRdpDesktopSize(): { width: number; height: number } {
+    if (typeof window === "undefined") return { width: 1920, height: 1080 };
+    const heap =
+      document.querySelector<HTMLElement>(".terminal-workspace .terminal-pane") ??
+      document.querySelector<HTMLElement>(".terminal-workspace .terminal-layout-pane") ??
+      document.querySelector<HTMLElement>(".terminal-workspace");
+    const rect = heap?.getBoundingClientRect();
+    const cssWidth = rect && rect.width > 0 ? rect.width : window.innerWidth || 1440;
+    const cssHeight = rect && rect.height > 0 ? rect.height : Math.max(480, (window.innerHeight || 900) - 96);
+    return targetRdpSize(cssWidth, cssHeight);
+  }
+
   const rdpResolutionOpen = ref(false);
   const rdpCustomWidth = ref("");
   const rdpCustomHeight = ref("");
   const rdpResizing = ref(false);
   const rdpDesktopSize = ref<{ width: number; height: number } | null>(null);
   const rdpPersistedSize = ref<RdpPersistedSize | null>(null);
+  /** 自动匹配画布：默认开启，用户手选固定分辨率后关闭。 */
+  const rdpAutoFit = ref(true);
+  let autoResizeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearAutoResizeTimer() {
+    if (autoResizeTimer !== undefined) {
+      clearTimeout(autoResizeTimer);
+      autoResizeTimer = undefined;
+    }
+  }
+
+  /** Sidebar/window changes resize the pane; renegotiate the remote desktop
+   * after a short debounce so fit mode keeps filling without letterboxing.
+   * The backend applies this live (no reconnect), so the canvas never drops
+   * into the connecting overlay. */
+  async function applyAutoRdpSize(width: number, height: number) {
+    const sessionId = rdpSession.value?.sessionId;
+    if (!rdpAutoFit.value || rdpScaleMode.value !== "fit" || !sessionId || rdpResizing.value || rdpState.value.state !== "running") return;
+    const current = rdpDesktopSize.value;
+    if (current && Math.abs(current.width - width) <= 8 && Math.abs(current.height - height) <= 8) return;
+    rdpResizing.value = true;
+    try {
+      await rpc("rdp/resize", { sessionId, width, height });
+    } catch (cause) {
+      showError(cause, "terminal");
+    } finally {
+      rdpResizing.value = false;
+    }
+  }
+
+  function scheduleAutoRdpSize(cssWidth: number, cssHeight: number) {
+    if (!rdpAutoFit.value) return;
+    clearAutoResizeTimer();
+    const target = targetRdpSize(cssWidth, cssHeight);
+    autoResizeTimer = setTimeout(() => {
+      autoResizeTimer = undefined;
+      void applyAutoRdpSize(target.width, target.height);
+    }, 400);
+  }
+
+  function onRdpSurfaceResize(size: { width: number; height: number }) {
+    scheduleAutoRdpSize(size.width, size.height);
+  }
+
+  function enableRdpAutoFit() {
+    rdpAutoFit.value = true;
+    rdpScaleMode.value = "fit";
+    // Drop the manual size from workbench state so reopening stays automatic.
+    rdpPersistedSize.value = null;
+    persistState();
+    const element = rdpSurface.value?.$el as HTMLElement | undefined;
+    const rect = element?.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      const target = targetRdpSize(rect.width, rect.height);
+      clearAutoResizeTimer();
+      void applyAutoRdpSize(target.width, target.height);
+    }
+  }
+
+  // A sidebar/window change during connecting is not resizable yet; re-check
+  // the pane once the session reaches running so the first frame already fits.
+  watch(
+    () => rdpState.value.state,
+    (state) => {
+      if (state !== "running") return;
+      const element = rdpSurface.value?.$el as HTMLElement | undefined;
+      const rect = element?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) scheduleAutoRdpSize(rect.width, rect.height);
+    },
+  );
+
+  /** Fallback dialog seed: saved connection values win, persisted session size
+   * overrides the form resolution like the direct-start path. */
+  const rdpDialogSeed = computed<RdpConnectOptions | null>(() => {
+    const conn = getConnection().value;
+    if (!conn.host) return null;
+    const auto = autoRdpDesktopSize();
+    return {
+      host: conn.host,
+      port: conn.port && conn.port > 0 ? conn.port : 3389,
+      username: conn.username || "",
+      ...(conn.rdpDomain ? { domain: conn.rdpDomain } : {}),
+      width: rdpPersistedSize.value?.width ?? conn.rdpWidth ?? auto.width,
+      height: rdpPersistedSize.value?.height ?? conn.rdpHeight ?? auto.height,
+      certificatePolicy: conn.rdpCertificatePolicy ?? "prompt",
+      clipboard: conn.rdpClipboard ?? true,
+      scaleMode: "fit",
+    };
+  });
 
   function rdpResolutionLabel(width: number, height: number): string {
     return `${width}×${height}`;
@@ -132,6 +247,9 @@ export function useRdpWorkbench(options: {
       showError(new Error(t("rdp.sizeError")), "terminal");
       return;
     }
+    // Manual choice wins over the pane matcher until the user re-enables it.
+    rdpAutoFit.value = false;
+    clearAutoResizeTimer();
     rdpResizing.value = true;
     try {
       await rpc("rdp/resize", { sessionId, width, height });
@@ -161,7 +279,15 @@ async function routeRdpConnection(): Promise<void> {
   if (rdpRouteInFlight) return;
   rdpRouteInFlight = true;
   try {
-    if (!(await startRdpFromConnection())) rdpDialogOpen.value = true;
+    const conn = getConnection().value;
+    // A saved RDP connection already carries host/username: connect directly.
+    // Only missing required fields fall back to the (prefilled) dialog; a
+    // start failure must stay in the RDP error overlay instead of nagging.
+    if (!conn.host || !conn.username?.trim()) {
+      rdpDialogOpen.value = true;
+      return;
+    }
+    await startRdpFromConnection();
   } finally {
     rdpRouteInFlight = false;
   }
@@ -198,14 +324,23 @@ async function startRdpFromConnection(): Promise<boolean> {
   // 的开启态，进入 RDP 会话前收掉，避免隐藏门控下的幽灵分栏占位。
   if (sftpPaneOpen.value) closeRightPanel();
   if (batchBarOpen.value) batchBarOpen.value = false;
+  const persisted = rdpPersistedSize.value;
+  // Card defaults ("auto" stored as no width/height), 1280×800 and 1920×1080
+  // are treated as "not explicitly chosen": use the pane's CSS size.
+  const legacyDefault = !conn.rdpWidth || !conn.rdpHeight
+    || (conn.rdpWidth === 1280 && conn.rdpHeight === 800)
+    || (conn.rdpWidth === 1920 && conn.rdpHeight === 1080);
+  const auto = persisted ? null : legacyDefault ? autoRdpDesktopSize() : null;
+  rdpAutoFit.value = Boolean(auto);
+  clearAutoResizeTimer();
   return startRdpSession({
     host: conn.host,
     port: conn.port && conn.port > 0 ? conn.port : 3389,
     username: conn.username || "",
     // 尺寸优先级（P0-2）：workbenchState 里用户会话内选择的尺寸 > 连接表单
-    // rdp_resolution > 默认 1280x800。
-    width: rdpPersistedSize.value?.width ?? conn.rdpWidth ?? 1280,
-    height: rdpPersistedSize.value?.height ?? conn.rdpHeight ?? 800,
+    // rdp_resolution > 窗口物理尺寸。
+    width: persisted?.width ?? auto?.width ?? conn.rdpWidth ?? 1280,
+    height: persisted?.height ?? auto?.height ?? conn.rdpHeight ?? 800,
     certificatePolicy: conn.rdpCertificatePolicy ?? "prompt",
     clipboard: conn.rdpClipboard ?? true,
     scaleMode: "fit",
@@ -219,6 +354,7 @@ async function startRdpFromConnection(): Promise<boolean> {
     rdpTypingBusy,
     rdpTypingSent,
     rdpTypingTotal,
+    rdpFileHintOpen,
     rdpWriteRemoteClipboard,
     rdpTypeAsKeystrokes,
     RDP_RESOLUTION_PRESETS,
@@ -228,6 +364,9 @@ async function startRdpFromConnection(): Promise<boolean> {
     rdpResizing,
     rdpDesktopSize,
     rdpPersistedSize,
+    rdpAutoFit,
+    enableRdpAutoFit,
+    onRdpSurfaceResize,
     rdpResolutionLabel,
     isRdpResolutionActive,
     rdpWindowProportionPreset,
@@ -236,6 +375,7 @@ async function startRdpFromConnection(): Promise<boolean> {
     routeRdpConnection,
     connectViaRdpDialog,
     startRdpFromConnection,
+    rdpDialogSeed,
     rdpClosedTitle,
   };
 }

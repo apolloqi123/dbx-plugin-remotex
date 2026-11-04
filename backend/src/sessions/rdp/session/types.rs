@@ -29,8 +29,21 @@ pub(crate) const MAX_TOTAL_RECONNECTS: u32 = 50;
 
 pub(crate) enum RdpCommand {
     Input(RdpWireInput),
+    /// Live desktop resize (MS-RDPEDISP monitor layout over the Display
+    /// Control DVC). The vendored client applies it with the server's
+    /// Deactivate-Reactivation sequence, so the generation/session id stays.
+    Resize {
+        width: u16,
+        height: u16,
+    },
     /// The staged clipboard text was updated; advertise it to the remote.
     ClipboardAdvertise,
+    /// Staged clipboard files were committed; advertise them with
+    /// `SendInitiateFileCopy` (the engine records the file list so later
+    /// `FileContentsRequest`s can be served).
+    ClipboardAdvertiseFiles(Vec<FileDescriptor>),
+    /// Start the explicit remote→host file download with its first request.
+    ClipboardDownloadFiles(FileContentsRequest),
     Close,
 }
 
@@ -39,6 +52,10 @@ pub(crate) enum RdpCommand {
 // that order.
 
 pub(crate) struct RdpSessionEntry {
+    /// Owning plugin connection; used by `connection/disconnect` to reclaim
+    /// every RDP session of that connection (same contract as VNC). Mutex so
+    /// an idempotent `start` reuse can adopt a late connection id.
+    pub(crate) connection_id: std::sync::Mutex<Option<String>>,
     pub(crate) workbench_id: String,
     pub(crate) host: String,
     pub(crate) port: u16,
@@ -47,9 +64,9 @@ pub(crate) struct RdpSessionEntry {
     /// Zeroizing-held credential; materialized once per generation at the
     /// vendored `with_password` boundary, dropped (zeroized) with the entry.
     pub(crate) password: Option<Zeroizing<String>>,
-    /// Requested desktop size; read at every generation's config build, so a
-    /// `rdp/resize` can retarget the *next* generation (resize = reconnect,
-    /// see `RdpSessionRuntime::resize`).
+    /// Requested desktop size; read at every generation's config build. A live
+    /// `rdp/resize` updates it too, so an engine-level reconnect (transport
+    /// failure) re-dials with the size the user is already looking at.
     pub(crate) width: AtomicU16,
     pub(crate) height: AtomicU16,
     pub(crate) use_nla: bool,
@@ -72,6 +89,9 @@ pub(crate) struct RdpSessionEntry {
     pub(crate) command_sender: tokio::sync::Mutex<Option<mpsc::Sender<RdpCommand>>>,
     /// Local clipboard text staged for the remote (`rdp/set-clipboard`).
     pub(crate) clipboard_stage: Arc<ClipboardStage>,
+    /// Bidirectional file/folder clipboard state (outbound staging + inbound
+    /// download/zip). Shared with the CLIPRDR backend of every generation.
+    pub(crate) clipboard_files: Arc<FileClipboardStage>,
     pub(crate) broker: Arc<CertPromptBroker>,
     pub(crate) known_certs: KnownCertStore,
 }

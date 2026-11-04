@@ -3,6 +3,7 @@
  */
 import { TERMINAL_TRANSPORT_PROBE_TIMEOUT_MS } from "../../../features/terminal/composables/session/useTerminalTransportWatch";
 import { type ReplayResult, useSshConnection } from "../../../features/connections/composables/useSshConnection";
+import { startSshSessionHeartbeat } from "../../../features/connections/composables/useSshSessionHeartbeat";
 import { useAgentTerminalMode } from "../../../features/agent/composables/useAgentTerminalMode";
 import { useAuditLogViewer } from "../../../features/security/composables/useAuditLogViewer";
 import { useConnectCard } from "../../../features/connections/composables/useConnectCard";
@@ -11,10 +12,12 @@ import { useTerminalActionLinks } from "../../../features/terminal/composables/u
 import { useTerminalGutter } from "../../../features/terminal/composables/ui/useTerminalGutter";
 import { useTerminalHighlight } from "../../../features/terminal/composables/ui/useTerminalHighlight";
 import { useTerminalReconnect } from "../../../features/terminal/composables/session/useTerminalReconnect";
+import { stopActiveDockerLogStreams } from "../../../features/docker/lib/dockerLogStreamRegistry";
+import { stopActiveDockerTerminals } from "../../../features/docker/lib/dockerTerminalRegistry";
 import { useTransferHistory } from "../../../features/transfers/composables/useTransferHistory";
 import { useWorkbenchSpawnTabs } from "../composables/useWorkbenchSpawnTabs";
 import { watch } from "vue";
-import { workbenchCloseTargets } from "../../lib/workbenchCloseSessions";
+import { workbenchClosePayload, workbenchCloseTargets } from "../../lib/workbenchCloseSessions";
 import type { SetupState } from "./setupState";
 import type { InstallWorkbenchCoreResult } from "./step1-core";
 import type { InstallWorkbenchTerminalResult } from "./step2-terminal";
@@ -142,6 +145,14 @@ export function installWorkbenchConnections(deps: Deps) {
     // 手动重连路径本体在连接卡片（useConnectCard）；点击时才求值，可引用下方解构。
     reconnectNow: () => connectCardReconnectNow(),
   });
+  // 会话心跳：宿主在编辑其它连接/重建工作台时会发延迟拆除通知；只要本工作台
+  // 仍持有活会话就持续续期，延迟拆除不会落到已显示的终端上。真实关页签后心跳
+  // 随 webview 停止，拆除按原宽限落地。
+  startSshSessionHeartbeat(() => {
+    const sessionId = session.value?.sessionId;
+    if (!sessionId) return null;
+    return { sessionId, connectionId: connectionId.value, workbenchId: workbenchId.value };
+  });
   // 连接卡片四态与手动重连入口：收口在 composables/useConnectCard（会话主干
   // openSession/closeSession/宿主重开由 useSshConnection 持有，经 options 注入）。
   const { connectCardState, connectLogEntries, reconnect, cancelConnect, startConnect, reconnectNow: connectCardReconnectNow } = useConnectCard({
@@ -164,6 +175,12 @@ export function installWorkbenchConnections(deps: Deps) {
   if (window.dbxPlugin.workbench?.onClose) {
     window.dbxPlugin.workbench.onClose(async () => {
       M.disposed = true;
+      // 容器日志流与容器 PTY 先收口：两者都是服务器/本机上的真实进程，宿主
+      // 拆除 webview 后不能再靠组件卸载补发 stop/close。幂等，失败不阻断关闭。
+      await Promise.allSettled([
+        stopActiveDockerLogStreams(),
+        stopActiveDockerTerminals(),
+      ]);
       // 只枚举本工作台自有会话（workbenchCloseTargets 契约）：同连接其他 tab、
       // 底部 dock 终端等兄弟工作台的会话不在列表里，关闭本 tab 绝不波及它们。
       // 连接级清场（connection/disconnect）是宿主生命周期语义，插件不代劳。
@@ -177,7 +194,12 @@ export function installWorkbenchConnections(deps: Deps) {
         ["vnc/close", vncSession.value?.sessionId],
         ["rdp/close", rdpSession.value?.sessionId],
       ]);
-      await Promise.allSettled(ownedSessions.map(([method, sessionId]) => window.dbxPlugin.notify(method, { sessionId })));
+      // SSH closes are deferred in the sidecar: a host workbench re-init
+      // (measured up to ~16s) restores the same session via attach, which
+      // cancels the close. Other session domains close immediately.
+      await Promise.allSettled(ownedSessions.map(([method, sessionId]) =>
+        window.dbxPlugin.notify(method, workbenchClosePayload(method, sessionId)),
+      ));
       localSession.value = null;
       session.value = undefined;
       telnetSession.value = null;

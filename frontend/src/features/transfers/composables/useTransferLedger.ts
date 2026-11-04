@@ -138,6 +138,13 @@ export function useTransferLedger(options: {
   onBeforeUnmount(() => {
     for (const timer of terminalTaskSweepTimers.values()) window.clearTimeout(timer);
     terminalTaskSweepTimers.clear();
+    // 卸载后 watchdogs 仍会每 15s 发 sftp/transfer/status（sidecar 可能已随之
+    // 退出，全部失败也照轮询）：清定时器并把等待中的收尾显式收口。
+    for (const [taskId, waiter] of transferCompletionWaiters) {
+      window.clearTimeout(waiter.watchdog);
+      waiter.reject(Object.assign(new Error(`transfer ledger disposed (${taskId})`), { code: "transfer-terminal" }));
+    }
+    transferCompletionWaiters.clear();
   });
 
   /** 终态事件结算 finish 之后的收尾等待器：completed 兑现；cancelled 按用户

@@ -41,7 +41,7 @@ export const POLL_MAX_FAILURES = 3;
 export const LIST_TIMEOUT_MS = 20_000;
 export const LOGS_TIMEOUT_MS = 35_000;
 export const ACTION_TIMEOUT_MS = 70_000;
-export const TAIL_OPTIONS = ["100", "200", "500", "1000", "2000"] as const;
+export const TAIL_OPTIONS = ["100", "200", "500", "1000"] as const;
 
 export function dockerListPayload(raw: unknown): { available: boolean; needsSudo: boolean; containers: DockerContainer[] } {
   const record = (raw ?? {}) as Record<string, unknown>;
@@ -120,4 +120,57 @@ export function filterContainers(containers: DockerContainer[], filter: Containe
     const minutes = parseStoppedMinutesAgo(c.status);
     return minutes !== null && minutes <= 5;
   });
+}
+
+/** 字符子序列匹配（模糊搜索兜底）：`wng` 命中 `web-nginx`。 */
+function isSubsequence(haystack: string, needle: string): boolean {
+  let cursor = 0;
+  for (const char of needle) {
+    cursor = haystack.indexOf(char, cursor);
+    if (cursor === -1) return false;
+    cursor += 1;
+  }
+  return true;
+}
+
+/** 名字/镜像/ID 三个标识字段允许子序列模糊；状态/端口/状态文案只做子串。 */
+const FUZZY_FIELDS: ReadonlyArray<keyof DockerContainer> = ["name", "id", "image"];
+const SUBSTRING_FIELDS: ReadonlyArray<keyof DockerContainer> = ["name", "id", "image", "state", "status", "ports"];
+
+/**
+ * 容器搜索：空白分隔的多个词按 AND 组合（`web 8080` 同时命中名字与端口），
+ * 大小写不敏感；标识字段先子串后字符子序列（`wng` → `web-nginx`）。
+ * 空查询视为全部命中。
+ */
+export function containerMatchesQuery(container: DockerContainer, query: string): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const substringFields = SUBSTRING_FIELDS.map((key) => container[key].toLowerCase());
+  const fuzzyFields = FUZZY_FIELDS.map((key) => container[key].toLowerCase());
+  return terms.every(
+    (term) =>
+      substringFields.some((field) => field.includes(term)) ||
+      fuzzyFields.some((field) => isSubsequence(field, term)),
+  );
+}
+
+/**
+ * 列表载荷签名（可用性 + 每行身份字段）。10s 轮询结果没变时复用旧数组，
+ * 避免整块列表/详情每轮无谓重渲染（容器多时尤其明显）。
+ */
+export function dockerListSignature(
+  available: boolean,
+  needsSudo: boolean,
+  containers: DockerContainer[],
+): string {
+  const rows = containers.map((container) =>
+    [container.id, container.name, container.image, container.state, container.status, container.ports, container.createdAt].join("\u0000"),
+  );
+  return `${available ? 1 : 0}${needsSudo ? 1 : 0}${rows.join("\u0001")}`;
+}
+
+/** 在已按状态筛出的列表上叠加搜索；空查询原样返回（同一引用）。 */
+export function searchContainers(containers: DockerContainer[], query: string): DockerContainer[] {
+  if (!query.trim()) return containers;
+  return containers.filter((container) => containerMatchesQuery(container, query));
 }

@@ -5,14 +5,15 @@
 // 三个页签用 v-show 常驻挂载（Task 9）：日志流由 ContainerLogsTab 自己持有，
 // 切到文件/终端页若卸载组件会停流、丢掉历史；因此只在容器切换/关闭/卸载时收流。
 // Wave 2 在页内填充实现，props 契约不变。
-import { Box, FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
+import { Activity, Box, FolderOpen, ScrollText, Terminal, X } from "@lucide/vue";
 import type { ContainerTerminalStateEvent } from "../composables/useContainerTerminal";
 import { dockerStateClass, type DockerContainer } from "../lib/dockerPanelModel";
 import ContainerLogsTab from "./ContainerLogsTab.vue";
 import ContainerFilesTab from "./ContainerFilesTab.vue";
 import ContainerTerminalTab from "./ContainerTerminalTab.vue";
+import ContainerMonitorTab from "./ContainerMonitorTab.vue";
 
-type DetailTab = "logs" | "files" | "terminal";
+type DetailTab = "logs" | "files" | "terminal" | "monitor";
 
 defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -78,6 +79,18 @@ const emit = defineEmits<{
         >
           <Terminal />
         </button>
+        <button
+          type="button"
+          role="tab"
+          class="container-detail-tab"
+          data-tab="monitor"
+          :aria-selected="activeTab === 'monitor'"
+          :title="t('docker.monitorTab')"
+          :aria-label="t('docker.monitorTab')"
+          @click="emit('update:activeTab', 'monitor')"
+        >
+          <Activity />
+        </button>
       </div>
       <span class="container-detail-spacer" />
       <button
@@ -120,6 +133,14 @@ const emit = defineEmits<{
       :font-family="fontFamily"
       :font-size="fontSize"
       :terminal-state-events="terminalStateEvents"
+    />
+    <ContainerMonitorTab
+      v-show="activeTab === 'monitor'"
+      :t="t"
+      :container="container"
+      :session-id="sessionId"
+      :connection-id="connectionId"
+      :visible="activeTab === 'monitor'"
     />
   </section>
 </template>

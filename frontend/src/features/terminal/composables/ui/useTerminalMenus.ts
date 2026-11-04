@@ -47,6 +47,8 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
   refreshConnectionInfo: () => void;
   rdpResolution: PopoverBinding;
   rdpPaste: PopoverBinding;
+  rdpFileHint: PopoverBinding;
+  vncResolution: PopoverBinding;
   panelPalette: PopoverBinding;
   batchQuick: PopoverBinding;
   transferPanelOpen: Ref<boolean>;
@@ -59,7 +61,7 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     isLoadedDirectoryUri, isProtectedDirectory, copyTextToClipboard,
     quickMenu, resetQuickMenu, sessionMenu, closeSessionShellViews,
     connectionInfo, refreshConnectionInfo,
-    rdpResolution, rdpPaste, panelPalette, batchQuick, transferPanelOpen, closeMetrics,
+    rdpResolution, rdpPaste, rdpFileHint, vncResolution, panelPalette, batchQuick, transferPanelOpen, closeMetrics,
   } = options;
 
   // 右键菜单由 reka ContextMenu 承载（定位/碰撞/Esc/外点关闭均交给 reka）；
@@ -223,6 +225,19 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     rdpPaste.setOpen(next);
   }
 
+  // RDP 文件传输提示与分辨率/粘贴同属工具条弹层族，打开前先收兄弟弹层。
+  function toggleRdpFileHintMenu() {
+    const next = !rdpFileHint.isOpen();
+    closeToolbarPopovers();
+    rdpFileHint.setOpen(next);
+  }
+
+  function toggleVncResolutionMenu() {
+    const next = !vncResolution.isOpen();
+    closeToolbarPopovers();
+    vncResolution.setOpen(next);
+  }
+
   function togglePanelPaletteMenu() {
     const next = !panelPalette.isOpen();
     closeToolbarPopovers();
@@ -258,6 +273,8 @@ export function useTerminalMenus<E extends FileMenuEntry>(options: {
     toggleConnectionInfo,
     toggleRdpResolutionMenu,
     toggleRdpPasteMenu,
+    toggleRdpFileHintMenu,
+    toggleVncResolutionMenu,
     togglePanelPaletteMenu,
     toggleBatchQuickPopover,
     toggleTransferPanel,

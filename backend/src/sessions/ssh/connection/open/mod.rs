@@ -8,6 +8,43 @@ mod reader;
 mod register;
 
 impl SshRuntime {
+    /// Opens the PTY-free transport used by the remote-desktop file transfer
+    /// panel. The connection is supplied by the panel instead of the host
+    /// lifecycle registry; the resulting session is hidden from
+    /// `ssh/sessions/list` and must be closed with `close_session`.
+    pub async fn open_files_session(
+        self: &Arc<Self>,
+        connection: &StoredConnection,
+        workbench_id: &str,
+        emitter: &PluginEmitter,
+    ) -> Result<String, String> {
+        let connection = resolve_password_command(connection).await;
+        let (handle, jump_chain) = self
+            .connect_authenticated(
+                &connection,
+                &Uuid::new_v4().to_string(),
+                Some(emitter.clone()),
+            )
+            .await?;
+        let lease = Arc::new(SharedTransportLease::new(
+            jump_chain.into_iter().map(Arc::new).collect(),
+        ));
+        Ok(self
+            .register_files_session(workbench_id, &connection, Arc::new(handle), lease)
+            .await)
+    }
+
+    /// Liveness probe for the file transfer panel's PTY-free session. It has
+    /// no read loop to flip `connected`, so check the transport handle.
+    pub async fn files_session_alive(&self, session_id: &str) -> bool {
+        self.sessions
+            .read()
+            .await
+            .get(session_id)
+            .map(|session| !session.handle.is_closed())
+            .unwrap_or(false)
+    }
+
     pub async fn open_session(
         self: &Arc<Self>,
         request: &SessionOpenRequest,

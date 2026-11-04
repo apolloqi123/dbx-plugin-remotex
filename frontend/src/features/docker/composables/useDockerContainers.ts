@@ -7,6 +7,7 @@ import { onMounted, onScopeDispose, onUnmounted, ref, watch } from "vue";
 import { normalizeBatchTargets } from "../../terminal/lib/transfer/batchSend";
 import { rpc } from "../../../shared/lib/rpc";
 import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
+import { documentHidden, onDocumentVisibilityChange } from "../../../shared/lib/documentVisibility";
 import {
   dockerEngineParams,
   loadDockerEngineSettings,
@@ -26,6 +27,7 @@ import {
   POLL_MAX_FAILURES,
   POLL_MS,
   dockerListPayload,
+  dockerListSignature,
   type DockerConfirmTarget,
   type DockerContainer,
 } from "../lib/dockerPanelModel";
@@ -131,6 +133,8 @@ export function useDockerContainers(options: UseDockerContainersOptions = {}) {
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let consecutiveFailures = 0;
+  /** 上一轮列表签名（同签名不替换数组，避免每 10s 重渲染整个面板）。 */
+  let lastListSignature = "";
 
   async function refresh(): Promise<void> {
     if (loading.value) return;
@@ -143,7 +147,14 @@ export function useDockerContainers(options: UseDockerContainersOptions = {}) {
           () => rpc<unknown>("docker/list", dockerParams(), { timeoutMs: LIST_TIMEOUT_MS }),
         ),
       );
-      containers.value = payload.containers;
+      // 轮询结果与上轮一致时复用旧数组：列表/详情的整个子树不做无谓重渲染。
+      // 签名带上连接键：切换连接后即使容器行相同也必须重新下发（选中规则会重置）。
+      const connectionKeyForList = `${sessionId.value}|${readConnectionId()}`;
+      const signature = `${connectionKeyForList}|${dockerListSignature(payload.available, payload.needsSudo, payload.containers)}`;
+      if (signature !== lastListSignature) {
+        lastListSignature = signature;
+        containers.value = payload.containers;
+      }
       available.value = payload.available;
       needsSudo.value = payload.needsSudo;
       listError.value = "";
@@ -160,6 +171,7 @@ export function useDockerContainers(options: UseDockerContainersOptions = {}) {
 
   function startPolling(): void {
     stopPolling();
+    if (documentHidden()) return;
     pollTimer = setInterval(() => void refresh(), POLL_MS);
   }
 
@@ -177,14 +189,28 @@ export function useDockerContainers(options: UseDockerContainersOptions = {}) {
     startPolling();
   }
 
+  // 窗口不可见时暂停 10s 轮询；回来立即补一拍并恢复（后台挂着不再空跑 SSH）。
+  const offVisibility = onDocumentVisibilityChange((hidden) => {
+    if (hidden) {
+      stopPolling();
+      return;
+    }
+    if (pollPaused.value) return;
+    void refresh();
+    startPolling();
+  });
+
   onMounted(() => {
     void (async () => {
-      await refresh();
+      if (!documentHidden()) await refresh();
       if (!pollPaused.value) startPolling();
     })();
   });
 
-  onUnmounted(stopPolling);
+  onUnmounted(() => {
+    offVisibility();
+    stopPolling();
+  });
 
   // —— 生命周期动作（kill/rm 先确认）———————————————————————
   const busyContainerId = ref("");

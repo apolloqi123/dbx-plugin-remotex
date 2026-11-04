@@ -331,6 +331,68 @@ export function useEditorTabs(options: EditorTabsOptions) {
     tab.dirty = text !== tab.baseline;
   }
 
+  /** Re-reads one tab from the remote. Dirty text asks before discarding; a
+   *  failed reload keeps the current content and surfaces the error on the tab. */
+  async function reloadTab(id: string): Promise<void> {
+    const tab = tabs.value.find((candidate) => candidate.id === id);
+    const sessionId = session.value?.sessionId;
+    if (!tab || !sessionId || tab.loading || tab.saving) return;
+    if (tab.dirty && !(await confirmDialog(t("editSave.reloadConfirm")))) return;
+    tab.loading = true;
+    tab.error = undefined;
+    try {
+      if (tab.kind === "image") {
+        const result = sudoMode.value
+          ? await rpc<RemoteReadResult>("sudo/readFile", {
+              sessionId,
+              path: tab.path,
+              offset: 0,
+              length: MAX_IMAGE_PREVIEW_BYTES,
+            })
+          : await rpc<RemoteReadResult>("sftp/read", {
+              sessionId,
+              path: tab.path,
+              maxBytes: MAX_IMAGE_PREVIEW_BYTES,
+            });
+        if (result.truncated) {
+          showNotice(t("previewDialog.truncated", {
+            limit: formatBytes(MAX_IMAGE_PREVIEW_BYTES),
+            size: formatBytes(tab.size),
+          }));
+          return;
+        }
+        tab.imageUrl = `data:image/${IMAGE_MIME_BY_EXTENSION[imagePreviewExtension(tab.name)]};base64,${result.dataBase64}`;
+      } else {
+        const result = sudoMode.value
+          ? await rpc<RemoteReadResult>("sudo/readFile", {
+              sessionId,
+              path: tab.path,
+              offset: 0,
+              length: MAX_INLINE_PREVIEW_BYTES,
+            })
+          : await rpc<RemoteReadResult>("sftp/read", {
+              sessionId,
+              path: tab.path,
+              maxBytes: MAX_INLINE_PREVIEW_BYTES,
+            });
+        const text = new TextDecoder("utf-8", { fatal: false }).decode(
+          window.dbxPlugin.decodeBase64(result.dataBase64),
+        );
+        tab.text = text;
+        tab.baseline = text;
+        tab.dirty = false;
+        tab.truncated = result.truncated === true;
+        tab.size = new TextEncoder().encode(text).byteLength;
+        tab.editable = canWrite.value && !tab.truncated && tab.size <= MAX_DIRECT_WRITE_BYTES;
+      }
+      showNotice(t("editSave.reloaded", { name: tab.name }));
+    } catch (cause) {
+      tab.error = errorMessage(cause);
+    } finally {
+      tab.loading = false;
+    }
+  }
+
   async function saveTab(id: string): Promise<void> {
     const tab = tabs.value.find((candidate) => candidate.id === id);
     const sessionId = session.value?.sessionId;
@@ -410,6 +472,7 @@ export function useEditorTabs(options: EditorTabsOptions) {
     updateText,
     handleRename,
     closeTabsUnder,
+    reloadTab,
     saveTab,
     saveActive,
     closeTab,

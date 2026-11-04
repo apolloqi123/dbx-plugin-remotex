@@ -175,7 +175,9 @@ function createTerminal(): void {
 }
 
 onMounted(() => {
-  createTerminal();
+  // 懒创建：没打开过终端页签就不占一个 xterm + WebGL 上下文（每个详情页常驻
+  // 四个页签，v-show 只隐藏不卸载）。首次可见/首次输入时再建实例。
+  if (props.visible) createTerminal();
   const host = hostRef.value;
   if (host && typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(() => scheduleFit());
@@ -212,6 +214,10 @@ watch(
   () => props.visible,
   async (visible) => {
     if (!visible || disposed) return;
+    if (!terminal) {
+      createTerminal();
+      scheduleFit();
+    }
     await nextTick();
     fitNow();
     terminal?.focus();

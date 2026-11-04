@@ -1,31 +1,32 @@
-# SSHX
+# RemoteX
 
 [![CI](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml/badge.svg)](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/jinpy666/dbx-plugin-sshx?display_name=tag)](https://github.com/jinpy666/dbx-plugin-sshx/releases)
 
 [中文](README.md) · [Showcase](docs/guides/MEDIA.en.md) · [Feature comparison](docs/architecture/COMPARISON.en.md) · [Repository split notes](docs/architecture/REPOSITORY_SPLIT.en.md)
 
-SSHX is a server terminal for modern operations teams. Open one connection
-and move from terminal work to file transfer, jump-host access, guarded elevation, and
-MCP automation without losing context. It turns the next hour after “logging into a
-server” into one coherent, reusable, auditable workflow.
+RemoteX is a remote-connection workspace for modern operations teams. One entry
+reaches SSH, Telnet, VNC, RDP, serial and local shell sessions, then moves into file
+transfer, jump-host access, guarded elevation, and MCP automation without losing
+context. It turns the next hour after “logging into a server” into one coherent,
+reusable, auditable workflow.
 
-> SSHX · SFTP · Remote Operations: one DBX workspace for interactive terminals, files, automation, and guarded server operations.
+> RemoteX · SFTP · Remote Operations: one DBX workspace for interactive terminals, files, automation, and guarded server operations.
 
 ## See it in action
 
 [Watch the 87-second live workflow demo (click to play)](docs/media/dbx-ssh-live-demo.mp4) ·
 [Watch the 15-second feature preview](docs/media/dbx-ssh-demo.mp4)
 
-![SSHX product overview](docs/media/dbx-ssh-overview.png)
+![RemoteX product overview](docs/media/dbx-ssh-overview.png)
 
 If your workflow jumps between a terminal, a separate SFTP client, jump-host config files,
-and one-off automation scripts, SSHX gives you a simpler center of gravity:
+and one-off automation scripts, RemoteX gives you a simpler center of gravity:
 connections, terminal, files, and automation share the same DBX connection context.
 
 ## Why teams reach for it
 
-| Your job | The SSHX workflow |
+| Your job | The RemoteX workflow |
 | --- | --- |
 | Resolve an incident quickly | PTY terminal, command history, quick commands, cancellable commands, and directory tracking |
 | Move files safely | SFTP preview, drag and drop, progress, cancellation, acknowledgements, and atomic replacement |
@@ -64,9 +65,10 @@ does not expose that event, the Upload button and drag-and-drop workflow remain 
 See the [feature and competitor comparison](docs/architecture/COMPARISON.en.md) for a capability matrix
 covering OpenSSH + sftp, Tabby, Termius, FinalShell, electerm, and iSHell Pro.
 
-> **Protocol roadmap:** the current release focuses on SSH/SFTP operations. RDP, Telnet, and
-> additional remote-access protocols are still being strengthened; check the release notes for
-> the exact capability in each version.
+> **Protocol roadmap:** the DBX plugin picker now exposes a single **RemoteX** entry. Choose
+> SSH, Telnet, VNC, RDP (experimental), serial, or local shell inside the connection form;
+> host, port, credentials and protocol-specific fields follow the selected type. More
+> remote-access scenarios are on the way — check the release notes for each version.
 
 More screenshots live in the [showcase page](docs/guides/MEDIA.en.md).
 

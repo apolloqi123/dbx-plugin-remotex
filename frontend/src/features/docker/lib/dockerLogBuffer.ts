@@ -5,10 +5,11 @@
 // 上限约束，超限一律从头部裁剪并记住“已截断”供 UI 提示；`clear` 只清视图
 // （流不停止）。
 
-/** 最多保留的行数（含未完成的 partial 行）。 */
-export const MAX_LOG_LINES = 10_000;
-/** 最多保留的字符数（含换行与 partial 行）。 */
-export const MAX_LOG_CHARS = 2_000_000;
+/** 最多保留的行数（含未完成的 partial 行）。超出即丢弃最旧行：日志页只做
+ *  「最近一屏历史」视图，长时间跟随不再让缓冲/渲染成本随运行时长增长。 */
+export const MAX_LOG_LINES = 1_000;
+/** 最多保留的字符数（含换行与 partial 行）：防止超长行绕过行数上限。 */
+export const MAX_LOG_CHARS = 1_000_000;
 
 /** 距底部 ≤4px 视为贴底：自动恢复跟随。 */
 export const FOLLOW_RESUME_PX = 4;
@@ -32,17 +33,35 @@ export class LogBuffer {
   private chars = 0;
   private wasTruncated = false;
 
-  /** 追加一个分片：可能跨行、可能以半行结尾。 */
-  append(text: string): void {
-    if (!text) return;
+  /**
+   * 追加一个分片：可能跨行、可能以半行结尾。返回本次**新完成**的整行
+   * （半行留在 partial），供增量渲染只处理新增行而不是整段重算。
+   */
+  append(text: string): string[] {
+    if (!text) return [];
     const parts = (this.partial + text).split("\n");
     this.partial = parts.pop() ?? "";
-    for (const line of parts) {
+    if (!parts.length) {
+      // 只有未完成行：char 上限仍可能把它裁短。
+      this.recount();
+      this.trim();
+      return [];
+    }
+    // A burst larger than the whole ring only needs its tail: drop the head
+    // here so those lines are never stored, decoded for rendering or colored.
+    const skip = Math.max(0, parts.length - MAX_LOG_LINES);
+    if (skip > 0) this.wasTruncated = true;
+    const kept = skip ? parts.slice(skip) : parts;
+    const before = this.lines.length;
+    for (const line of kept) {
       this.lines.push(line);
       this.lineChars += line.length;
     }
     this.recount();
-    this.trim();
+    const dropped = this.trim();
+    // Only the lines that survived trimming are new UI rows.
+    const droppedFromBatch = Math.max(0, dropped - before);
+    return droppedFromBatch >= kept.length ? [] : kept.slice(droppedFromBatch);
   }
 
   /** 只清空视图；不改变已有流的订阅状态。 */
@@ -74,10 +93,11 @@ export class LogBuffer {
     this.chars = this.lineChars + Math.max(0, this.lines.length - 1) + (this.partial ? this.partial.length + 1 : 0);
   }
 
-  /** 从头部裁剪到上限内：先按行数超量丢行，再按字符数继续丢行。 */
-  private trim(): void {
+  /** 从头部裁剪到上限内：先按行数超量丢行，再按字符数继续丢行。
+   *  返回本次丢弃的行数（供增量渲染判断哪些新行还需上屏）。 */
+  private trim(): number {
     let total = this.lines.length + (this.partial ? 1 : 0);
-    if (total <= MAX_LOG_LINES && this.chars <= MAX_LOG_CHARS) return;
+    if (total <= MAX_LOG_LINES && this.chars <= MAX_LOG_CHARS) return 0;
     this.wasTruncated = true;
     let drop = Math.max(0, total - MAX_LOG_LINES);
     let chars = this.chars;
@@ -87,16 +107,18 @@ export class LogBuffer {
       drop += 1;
     }
     if (drop > 0) {
+      let removedChars = 0;
+      for (let i = 0; i < drop; i += 1) removedChars += this.lines[i].length;
       this.lines.splice(0, drop);
-      this.lineChars = 0;
-      for (const line of this.lines) this.lineChars += line.length;
+      this.lineChars = Math.max(0, this.lineChars - removedChars);
       this.recount();
     }
     // 单行 partial 自身就可能超过字符上限（EOL 已收，不能靠丢行解决）：
-    // 保留末尾 MAX_LOG_CHARS 个字符，否则 text() 会突破 2 MB 预算。
+    // 保留末尾 MAX_LOG_CHARS 个字符，否则 text() 会突破字符预算。
     if (this.partial.length > MAX_LOG_CHARS) {
       this.partial = this.partial.slice(this.partial.length - MAX_LOG_CHARS);
       this.recount();
     }
+    return drop;
   }
 }

@@ -387,7 +387,7 @@ export function useWorkbenchBootstrap(options: {
     try {
       const result = await window.dbxPlugin.invoke<{ sessions?: Array<{ sessionId?: string; workbenchId?: string }> }>("ssh/sessions/list", {}, { timeoutMs: 10_000 });
       const orphans = (result?.sessions ?? []).filter((entry) => entry.workbenchId === splitWorkbenchId && entry.sessionId);
-      await Promise.allSettled(orphans.map((entry) => window.dbxPlugin.invoke("ssh/session/close", { sessionId: entry.sessionId })));
+      await Promise.allSettled(orphans.map((entry) => window.dbxPlugin.invoke("ssh/session/close", { sessionId: entry.sessionId, immediate: true })));
     } catch {
       // 旧 sidecar / 无会话列表时静默；没有分屏就没有孤儿。
     }

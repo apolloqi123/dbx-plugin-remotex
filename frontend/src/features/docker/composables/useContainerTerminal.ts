@@ -10,6 +10,8 @@ import { randomUUID } from "../../../shared/lib/uuid";
 import { createTerminalInputQueue } from "../../terminal/lib/emulator/terminalInputQueue";
 import { dockerEngineParams, loadDockerEngineSettings } from "../lib/dockerEngine";
 import { dockerChannelKey, runDockerChannel } from "../lib/dockerChannelQueue";
+import { createDockerScopeOwner } from "../lib/dockerScopeOwner";
+import { trackDockerTerminal } from "../lib/dockerTerminalRegistry";
 
 export type ContainerTerminalStatus = "idle" | "connecting" | "connected" | "exited" | "error" | "disabled";
 
@@ -55,6 +57,8 @@ const INPUT_CHANNEL_PREFIX = "docker/terminal/in/";
 export function useContainerTerminal(options: UseContainerTerminalOptions): UseContainerTerminal {
   const status = ref<ContainerTerminalStatus>("idle");
   const errorMessage = ref("");
+  /** 终端页实例 scope：同一实例的新 open 会先收掉旧 PTY（lost close 兜底）。 */
+  const owner = createDockerScopeOwner("term");
 
   let terminalId = "";
   // 只有 open 成功过的 terminalId 才值得 close：打开失败时后端未保留槽位，
@@ -62,11 +66,13 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
   let live = false;
   let generation = 0;
   let unsubscribeBinary: (() => void) | undefined;
+  let untrackTerminal: (() => void) | undefined;
   let stopped = true;
   let lastResizeCols = 0;
   let lastResizeRows = 0;
   /** 后端 resize 队列满时回 false：最多补发一次，避免静默卡在旧尺寸。 */
   let resizeRetries = 0;
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   /** 最近一次 close RPC；后续 open 必须等它完成再建新 channel。 */
   let pendingClose: Promise<void> = Promise.resolve();
 
@@ -109,6 +115,12 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     stopped = true;
     stopListening();
     inputQueue.reset();
+    if (resizeTimer) {
+      clearTimeout(resizeTimer);
+      resizeTimer = undefined;
+    }
+    untrackTerminal?.();
+    untrackTerminal = undefined;
     const target = live ? terminalId : "";
     terminalId = "";
     live = false;
@@ -167,6 +179,9 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
     }
 
     terminalId = newTerminalId();
+    // 先登记再发 open：工作台在 open 在途时关闭，onClose 仍能按这个 id 收口
+    // （后端对未知 id 打墓碑，迟到的 open 会被拒绝）。
+    untrackTerminal = trackDockerTerminal(terminalId);
     const spawnCols = Math.max(1, Math.floor(cols));
     const spawnRows = Math.max(1, Math.floor(rows));
     lastResizeCols = spawnCols;
@@ -178,6 +193,7 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       const sessionId = options.sessionId();
       const params: Record<string, unknown> = {
         terminalId,
+        owner,
         containerId: options.containerId(),
         cols: spawnCols,
         rows: spawnRows,
@@ -191,6 +207,8 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       );
       if (current !== generation || stopped) {
         // close()/新 open 已取代本次打开：后端可能已建好 PTY，不能让它泄漏。
+        // 本实例的登记项已由取代者的 teardown 注销，这里不能再动
+        // `untrackTerminal`（它此时指向新 open 的 id）。
         const created = result?.terminalId;
         if (created) {
           void runDockerChannel(channelKey(), () =>
@@ -201,7 +219,12 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       }
       if (!result?.terminalId) throw new Error("missing terminalId");
       // 返回的 id 是权威值；订阅按当前 terminalId 过滤，无需重新订阅。
-      terminalId = result.terminalId;
+      if (result.terminalId !== terminalId) {
+        // 后端没有沿用预生成 id（异常/旧 sidecar）时，登记表跟随权威 id。
+        untrackTerminal?.();
+        terminalId = result.terminalId;
+        untrackTerminal = trackDockerTerminal(terminalId);
+      }
       live = true;
       setStatus("connected");
     } catch (cause) {
@@ -213,6 +236,8 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       errorMessage.value = options.t("docker.terminalOpenFailed", { error: message });
       setStatus("error", { error: errorMessage.value });
       stopListening();
+      untrackTerminal?.();
+      untrackTerminal = undefined;
       terminalId = "";
       live = false;
       if (failedId) {
@@ -263,7 +288,9 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
         resizeRetries += 1;
         lastResizeCols = 0;
         lastResizeRows = 0;
-        setTimeout(() => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          resizeTimer = undefined;
           if (!stopped && terminalId) resize(nextCols, nextRows);
         }, 150);
       })
@@ -276,11 +303,15 @@ export function useContainerTerminal(options: UseContainerTerminalOptions): UseC
       errorMessage.value = event.error?.trim() || options.t("docker.terminalEnded");
       setStatus("error", { error: errorMessage.value });
       stopListening();
+      untrackTerminal?.();
+      untrackTerminal = undefined;
       return;
     }
     if (event.state === "exited") {
       setStatus("exited", { exitCode: typeof event.exitCode === "number" ? event.exitCode : undefined });
       stopListening();
+      untrackTerminal?.();
+      untrackTerminal = undefined;
     }
   }
 

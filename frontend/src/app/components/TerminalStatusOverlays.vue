@@ -26,6 +26,8 @@ const props = defineProps<{
   vncState: "idle" | "connecting" | "running" | "closed";
   vncError: string;
   isRdpMode: boolean;
+  /** 连接级 RDP：启动失败时没有 rdpSession，但仍应显示错误覆盖层。 */
+  isRdpConnection: boolean;
   rdpState: RdpSessionStateView;
   rdpClosedTitle: string;
   formatDuration: (seconds: number) => string;
@@ -42,6 +44,7 @@ const emit = defineEmits<{
   (e: "close-telnet"): void;
   (e: "close-serial"): void;
   (e: "close-vnc"): void;
+  (e: "vnc-reconnect"): void;
   (e: "rdp-reconnect"): void;
   (e: "rdp-edit-credentials"): void;
   (e: "rdp-close"): void;
@@ -132,6 +135,7 @@ function onLocalExitClose() {
       <strong>{{ t("vnc.closed") }}</strong>
       <span v-if="vncError" class="mono local-exit-code">{{ vncError }}</span>
       <div class="local-exit-actions">
+        <button class="primary-button" @click="emit('vnc-reconnect')">{{ t("vnc.reconnect") }}</button>
         <button @click="emit('close-vnc')">{{ t("vnc.close") }}</button>
       </div>
     </div>
@@ -145,7 +149,7 @@ function onLocalExitClose() {
   <!-- RDP 退出覆盖层（graceful close / 终态错误）：errorKind 友好文案为
        主行、sidecar 原因文本为细节行；给出 Reconnect（rdp/reconnect）与
        关闭双出口（协议：服务端主动断开不自动重连，由用户决定）。 -->
-  <div v-if="isRdpMode && rdpState.state === 'closed'" class="terminal-overlay">
+  <div v-if="isRdpConnection && rdpState.state === 'closed'" class="terminal-overlay">
     <div class="local-exit-card" role="status">
       <TriangleAlert class="local-exit-icon" />
       <strong>{{ rdpClosedTitle }}</strong>

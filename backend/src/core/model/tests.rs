@@ -216,6 +216,10 @@ fn manifest_connection_fields_stay_in_sync_with_parsing() {
         "rdp_resolution",
         "rdp_certificate_policy",
         "rdp_clipboard",
+        // 统一 RemoteX 连接把本地 Shell 折叠为 protocol=local 的一组字段。
+        "shell",
+        "cwd",
+        "env",
     ];
     assert_eq!(keys, expected, "manifest field list drifted from parsing");
 

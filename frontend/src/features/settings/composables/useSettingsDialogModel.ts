@@ -136,15 +136,6 @@ export function useSettingsDialogModel(options: {
   const x11Enabled = ref(false);
   const x11ReadOnlyNote = ref(false);
 
-  async function loadX11Preference() {
-    try {
-      const prefs = await window.dbxPlugin?.invoke<{ x11_forwarding?: unknown }>("local/preferences/get", {});
-      x11Enabled.value = prefs?.x11_forwarding === true;
-    } catch {
-      x11Enabled.value = false;
-    }
-  }
-
   async function setX11Enabled(next: boolean) {
     x11Enabled.value = next;
     try {
@@ -161,15 +152,6 @@ export function useSettingsDialogModel(options: {
   /** RDP 仍处实验阶段：默认关闭，必须由用户在设置中显式启用。 */
   const rdpExperimentalEnabled = ref(false);
 
-  async function loadRdpExperimentalPreference() {
-    try {
-      const prefs = await window.dbxPlugin?.invoke<{ rdp_experimental_enabled?: unknown }>("local/preferences/get", {});
-      rdpExperimentalEnabled.value = parseRdpExperimentalEnabled(prefs?.rdp_experimental_enabled);
-    } catch {
-      rdpExperimentalEnabled.value = false;
-    }
-  }
-
   async function setRdpExperimentalEnabled(next: boolean) {
     rdpExperimentalEnabled.value = next;
     try {
@@ -181,11 +163,17 @@ export function useSettingsDialogModel(options: {
     }
   }
 
-  async function loadAutoRecordPreference() {
+  /** 三个开关同一份 sidecar 偏好快照：此前各发一次完整 get，弹窗一挂载
+   *  就连打三个相同的 RPC；合并成一次读取，任一失败整体回落默认。 */
+  async function loadLocalTogglePreferences() {
     try {
-      const prefs = await window.dbxPlugin?.invoke<{ auto_record?: unknown }>("local/preferences/get", {});
+      const prefs = await window.dbxPlugin?.invoke<{ x11_forwarding?: unknown; rdp_experimental_enabled?: unknown; auto_record?: unknown }>("local/preferences/get", {});
+      x11Enabled.value = prefs?.x11_forwarding === true;
+      rdpExperimentalEnabled.value = parseRdpExperimentalEnabled(prefs?.rdp_experimental_enabled);
       autoRecordEnabled.value = prefs?.auto_record === true;
     } catch {
+      x11Enabled.value = false;
+      rdpExperimentalEnabled.value = false;
       autoRecordEnabled.value = false;
     }
   }
@@ -199,10 +187,7 @@ export function useSettingsDialogModel(options: {
     }
   }
 
-  void loadAutoRecordPreference();
-  void loadRdpExperimentalPreference();
-
-  void loadX11Preference();
+  void loadLocalTogglePreferences();
 
   async function reloadSettings() {
     transferDrafts.downloadDir = props.downloadPrefs.loadDir();

@@ -85,7 +85,7 @@ stdio 分发循环对敌意输入保持"进程不崩、连接不挂、后续请�
 
 按以下顺序发现，凭据暴露面逐级增大：
 
-1. **`ssh_list_connections`**（首选，无参数）：列出已保存连接元数据（id / name / host / port / username / authentication / readOnly），**只出元数据、任何密钥只出布尔标志位，绝不出值**；`source` 字段标明数据来源（`dbx-app-bridge` 应用桥 / `session-registry` 本会话注册表），降级时附 `note` 说明。
+1. **`ssh_list_connections`**（首选，无参数）：列出已保存连接元数据（id / name / host / port / username / authentication / readOnly），**只出元数据、任何密钥只出布尔标志位，绝不出值**；当 AI 当前上下文是数据库连接时，应利用 host/name 找到承载该数据库的 SSH 连接，而不是对列表里的每台机器都执行；`source` 字段标明数据来源（`dbx-app-bridge` 应用桥 / `session-registry` 本会话注册表），降级时附 `note` 说明。
 2. **`connectionName` 或 endpoint**：连接类工具可用连接名代替 `connectionId`；若名称重复，同时传 `host`、`port`、`username` 可缩小到唯一连接。也可以不传 id/name，直接用完整 endpoint（`host` + `username`，`port` 默认 22）唯一复用已注册连接。只匹配到多个候选时拒绝执行并列出候选，绝不猜选；stdio 下相同规则先从 DBX bridge 列表解析出 id 后再转发。
 3. **内联凭据（最后兜底）**：桥不可用时才考虑。凭据所在位置为 DBX 应用数据 `com.dbx.app/dbx.db` 的 `connections` 与 `connection_secrets` 表——凭据会进工具参数与 LLM 上下文（暴露面），仅限本机可信会话使用。
 
@@ -154,7 +154,7 @@ MCP 调用方是 LLM，`sftp_upload`（本地读）与 `sftp_download`（本地�
 | `ssh_list_connections` | 列出已保存连接的元数据（id / name / host / port / username / authentication / readOnly），参数无；**仅元数据，任何密钥只出布尔标志位，绝不出值**。数据源为 DBX 应用本地桥（`source: "dbx-app-bridge"`）；桥不可用或应用版本过旧时降级为"仅本会话注册表"（`source: "session-registry"`）并附 `note` 字段说明（详见「方式二」的「connectionId 从哪来」） |
 | `ssh_exec` / `ssh_exec_sudo` | 非交互远程命令；sudo 版注入密码并自动应答 2FA/TOTP。TOTP 支持多密钥（换行/分号分隔）：跨调用自动轮换，优先未过期且未使用过的验证码，重放窗口内已提交的码不再注入。两者均受危险命令确认门约束（见下节），只读连接上 `ssh_exec` 仅放行白名单巡检命令，配置了连接 sudo 白名单时特权命令还须命中白名单条目（见下节）。两者均支持可选 `runInTerminal`（见「AI 终端同步执行」）；stdio 模式传 `true` 且带 `connectionId` 时自动转发到运行中的 DBX app（未运行则唤起），由 app 侧 sidecar 按连接级 `agentTerminalMode` 决定可见终端或隐藏通道（`off` 下保持隐藏）。**超过 ~10 秒的命令请改用 `ssh_run_bg`**（宿主等待上限与防重复执行见「长任务与断线恢复」） |
 | `ssh_run_bg` | 把长命令以 nohup 方式脱离会话启动，立即返回 `taskId`/`pid`/`logPath`；输出落在服务器 `/tmp/.dbx-ssh-tasks/<taskId>.log`，断线、超时、换会话均不丢。与 `ssh_exec` 同受危险命令确认门与只读写门约束 |
-| `ssh_multi_exec` | 一条命令在多个**已保存连接**上聚合执行并逐目标回结果（隐藏通道语义，不经可见终端/agentTerminalMode）。`targets`：1–10 个连接引用（connectionId/connectionName），保序去重，任一未解析整体拒绝；`mode` parallel（默认，并发）/ sequential（顺序）；`stopOnError` 仅 sequential 生效（首败即停）；`confirmDestructive` 一次覆盖全部目标的灾难门；**不提供 sudo**（提权走单目标 `ssh_exec_sudo`）。逐目标独立过只读白名单门（连接只读时仅放行巡检命令）。stdio 独立模式无注册表，targets 解析即报引导 |
+| `ssh_multi_exec` | 一条命令在多个**已保存连接**上聚合执行并逐目标回结果（隐藏通道语义，不经可见终端/agentTerminalMode）。`targets`：1–10 个连接引用（connectionId/connectionName），保序去重，任一未解析整体拒绝；`mode` parallel（默认，并发）/ sequential（顺序）；`stopOnError` 仅 sequential 生效（首败即停）；`confirmDestructive` 一次覆盖全部目标的灾难门；**不提供 sudo**（提权走单目标 `ssh_exec_sudo`）。逐目标独立过只读白名单门（连接只读时仅放行巡检命令）。**当问题针对当前数据库所在服务器时，应只传 host 匹配的那条 SSH 连接；用户没有明确要求巡检多台机器时，不要默认把全部连接作为 targets。** stdio 独立模式无注册表，targets 解析即报引导 |
 | `ssh_terminal_input` | 向连接的**存活 DBX 终端**注入原始输入（交互应答 / Ctrl+C / 方向键语义；终端必须已打开）。`\n`/`\r\n` 折叠为 Enter，NUL 剥离，8 KiB 截断；`appendNewline` 默认 false（交互应答自带 `\r`，要执行键入命令置 true）。**输出不收集**——终端本身可见，要收集输出用 `ssh_exec{runInTerminal:true}`。门禁：只读连接仅放行纯控制序列；灾难行需 `confirmDestructive: true`（只读上一律拒绝）；sudo 行受连接 sudo 白名单约束。stdio 模式无工作台 PTY，调用报引导错误 |
 | `ssh_task_status` | 轮询 `ssh_run_bg` 任务：`state`（running/done/missing）、完成后的 `exitCode`、pid 存活状态与输出尾部（`tailBytes`，200–16000）。通过服务器侧日志文件查询，天然跨连接/跨会话 |
 | `ssh_list_known_hosts` / `ssh_remove_known_host` | 管理插件 known_hosts（不改系统 `~/.ssh/known_hosts`） |

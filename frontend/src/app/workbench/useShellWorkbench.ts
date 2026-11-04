@@ -48,6 +48,7 @@ const SHELL_KEYS = [
   "openAuditLog", "openBatchBarSave", "openCommandSessionTab", "openCopiedSessionTab",
   "openHistoryPanel", "openImagePreview", "openLocalShellSurface", "openLocalShellSurfaceMenu", "openLocalTerminalTab",
   "openNewFileDialog", "openNewSessionTab", "openQuickSelect", "openSettings", "openTerminalSplit",
+  "openRemoteFileTransfer", "pasteVncWithFileClipboard", "probeVncRemoteClipboard", "remoteFileTransfer", "remoteFileTransferOpen",
   "openTransferPanel", "openWithCustomEntry", "openWithSystemEntry", "operationDraft", "orderedPaneClass",
   "otpPanelOpen", "paneDirection", "panelMemPercent", "panelMetricsErrorTitle", "panelMetricsVisible",
   "panelToolbarHidden", "pasteBusy", "pathBarInputEl", "pausedTaskIds",
