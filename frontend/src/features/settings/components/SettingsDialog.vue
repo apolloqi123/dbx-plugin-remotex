@@ -12,25 +12,11 @@
 // 自动录制/RDP 开关、主保存链与 Esc 分层退出）拆到
 // composables/useSettingsDialogModel，各分类面板拆到 components/Settings*Pane.vue，
 // props 契约下沉到 lib/settingsDialogProps。
-import { computed, ref, type Component } from "vue";
-import {
-  Bot,
-  Download,
-  Highlighter,
-  Keyboard,
-  Loader2,
-  Lock,
-  Monitor,
-  Paintbrush,
-  Palette,
-  Plug,
-  ShieldCheck,
-  Sparkles,
-  Terminal as TerminalIcon,
-  Trash2,
-  X,
-  Zap,
-} from "@lucide/vue";
+import { computed } from "vue";
+import { Loader2, Search, Trash2, X } from "@lucide/vue";
+import { CATEGORY_ICONS } from "../lib/settingsNavIcons";
+import { SETTINGS_CATEGORIES } from "../lib/settingsNavCategories";
+import { useSettingsNav } from "../composables/useSettingsNav";
 import { Dialog, DialogContent, DialogTitle } from "../../../shared/ui/dialog/index";
 import { Tabs, TabsList, TabsTrigger } from "../../../shared/ui/tabs/index";
 import TerminalHotkeyEditor from "../../terminal/components/TerminalHotkeyEditor.vue";
@@ -177,60 +163,26 @@ const {
   emitHotkeys: (bindings) => emit("update-hotkeys", bindings),
 });
 
-// 分类顺序对齐 Tabby 的设置页优先级：外观 / 配色方案 / 终端 / 快捷键 四个
-// 终端相关分类排在最前（Tabby 把 Appearance 与 Color scheme 标为 prioritized），
-// 之后才是本插件特有的 sudo / 智能体 / 传输 / 安全 / MCP。
-const SETTINGS_CATEGORIES = [
-  { id: "appearance", labelKey: "settingsNav.appearance" },
-  { id: "scheme", labelKey: "settingsNav.scheme" },
-  { id: "terminal", labelKey: "settingsNav.terminal" },
-  // 从 Terminal 分栏拆出（#138 反馈：建议/补全/ghost 配置挤在终端页难找）：
-  // 历史建议 + 结构化补全引擎 + 行内 ghost + 忽略列表 + 接受键换绑集中在此。
-  { id: "suggestions", labelKey: "settingsNav.suggestions" },
-  // 从 Terminal 分栏拆出（内容过大且与终端行为关联性弱）：高亮规则是规则
-  // 管理器、快速命令是片段管理器，各自独立成栏，导航标签复用现有键。
-  { id: "highlight", labelKey: "highlightRules.title" },
-  { id: "commands", labelKey: "quickCommands" },
-  // AI 助手（Warp AI 对齐批）：# 命令搜索 / 失败修复 / 唤起助手三开关 +
-  // 能力缺失横幅 + 「不再询问」重置；权威态在 App（pluginStore 单键 JSON）。
-  { id: "ai", labelKey: "settingsNav.ai" },
-  { id: "hotkeys", labelKey: "settingsNav.hotkeys" },
-  { id: "sudo", labelKey: "settingsNav.sudo" },
-  { id: "agent", labelKey: "agentTerminalSection" },
-  { id: "transfer", labelKey: "downloadSettings.title" },
-  { id: "security", labelKey: "settingsNav.security" },
-  { id: "mcp", labelKey: "mcpLimits.title" },
-] as const;
-type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]["id"];
-/** 分类图标只做识别与亮色点缀；颜色由 cards.css 的分类规则统一给出。 */
-const CATEGORY_ICONS: Record<string, Component> = {
-  appearance: Palette,
-  scheme: Paintbrush,
-  terminal: TerminalIcon,
-  suggestions: Sparkles,
-  highlight: Highlighter,
-  commands: Zap,
-  ai: Bot,
-  hotkeys: Keyboard,
-  sudo: ShieldCheck,
-  agent: Monitor,
-  transfer: Download,
-  security: Lock,
-  mcp: Plug,
-};
-const settingsCategory = ref<SettingsCategory>("appearance");
-// 会话级分类（sudo / 智能体）只对 SSH 会话有意义：本地终端没有 sessionId，
-// 面板沦为可编辑却永不可保存的死 UI，直接从导航隐藏。isLocalSession 由模型
-// 提供（门控说明与其保持单点，别再手写 `!props.sessionId`）。
-const visibleSettingsCategories = computed(() =>
-  SETTINGS_CATEGORIES.filter(
-    (cat) => !isLocalSession.value || (cat.id !== "sudo" && cat.id !== "agent"),
-  ),
-);
-
-function onSettingsCategoryChange(value: string | number) {
-  settingsCategory.value = value as SettingsCategory;
-}
+// 导航（分类选择、分类搜索、面板滚动复位、Tabs a11y）全部下沉到 composables/
+// useSettingsNav：本组件只负责 props/emits、13 个 pane 的模板与保存编排。
+const {
+  activeCategory,
+  activeCategoryCounter,
+  categorySearchInput,
+  filteredSettingsCategories,
+  focusCategorySearch,
+  navEl,
+  onDialogKeydown,
+  onSearchEscape,
+  onSettingsCategoryChange,
+  panesEl,
+  settingsCategory,
+  settingsCategoryQuery,
+  settingsPanelId,
+} = useSettingsNav({
+  isLocalSession: () => isLocalSession.value,
+  t,
+});
 
 defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft });
 </script>
@@ -238,8 +190,31 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 <template>
     <!-- 设置主弹窗 -->
     <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
-      <DialogContent class="modal settings-modal settings-nav-modal" @escape-key-down.prevent>
-        <header><DialogTitle>{{ t("settings") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:open', false)"><X /></button></header>
+      <DialogContent class="modal settings-modal settings-nav-modal" @escape-key-down.prevent @keydown="onDialogKeydown">
+        <header class="settings-header">
+          <div class="settings-heading">
+            <span class="settings-eyebrow" aria-hidden="true">{{ t("pluginName") }}</span>
+            <DialogTitle class="settings-title">{{ t("settings") }}</DialogTitle>
+          </div>
+          <div class="settings-header-tools">
+            <label class="settings-search">
+              <Search class="settings-search-icon" aria-hidden="true" />
+              <input
+                ref="categorySearchInput"
+                v-model="settingsCategoryQuery"
+                class="settings-search-input"
+                type="search"
+                autocomplete="off"
+                spellcheck="false"
+                :placeholder="t('settingsSearchPlaceholder')"
+                :aria-label="t('settingsSearchPlaceholder')"
+                @keydown.esc="onSearchEscape"
+              />
+              <kbd class="settings-search-kbd" aria-hidden="true">/</kbd>
+            </label>
+            <button :title="t('close')" :aria-label="t('close')" class="icon-button settings-close" @click="emit('update:open', false)"><X /></button>
+          </div>
+        </header>
         <div class="settings-body">
           <div v-if="connection.state.loading" class="empty compact"><Loader2 class="spinning" />{{ t("loading") }}</div>
           <div v-else-if="connection.state.loadFailed" class="task-error" role="alert">
@@ -248,21 +223,32 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
           </div>
           <template v-else>
           <div class="settings-layout">
-            <nav class="settings-nav" aria-label="settings categories">
+            <nav ref="navEl" class="settings-nav" aria-label="settings categories">
               <Tabs :model-value="settingsCategory" orientation="vertical" class="settings-nav-tabs" @update:model-value="onSettingsCategoryChange">
                 <TabsList class="settings-nav-list">
-                  <TabsTrigger v-for="cat in visibleSettingsCategories" :key="cat.id" :value="cat.id" class="settings-nav-item">
+                  <TabsTrigger v-for="cat in filteredSettingsCategories" :key="cat.id" :value="cat.id" :title="t(cat.labelKey)" :data-category="cat.id" :data-index="String(SETTINGS_CATEGORIES.findIndex((entry) => entry.id === cat.id) + 1).padStart(2, '0')" class="settings-nav-item">
                     <component :is="CATEGORY_ICONS[cat.id]" class="settings-nav-icon" />
-                    <span>{{ t(cat.labelKey) }}</span>
+                    <span class="settings-nav-label">{{ t(cat.labelKey) }}</span>
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
+              <p v-if="!filteredSettingsCategories.length" class="settings-nav-empty">{{ t("settingsSearchEmpty") }}</p>
             </nav>
             <div class="settings-content">
+              <div class="settings-pane-hero" :data-category="settingsCategory">
+                <span class="settings-hero-icon" aria-hidden="true"><component :is="CATEGORY_ICONS[settingsCategory]" /></span>
+                <div class="settings-hero-text">
+                  <span class="settings-hero-kicker">{{ activeCategoryCounter }}</span>
+                  <h2 :key="settingsCategory" class="settings-hero-title">{{ t(activeCategory.labelKey) }}</h2>
+                </div>
+              </div>
+              <div ref="panesEl" class="settings-panes">
             <!-- 配色方案（对标 Tabby「Color scheme」页，从原「外观」里拆出）：主题
                  快照、实时预览、深浅两槽配色方案、终端背景来源、自定义方案导入。 -->
             <SettingsSchemePane
               v-show="settingsCategory === 'scheme'"
+              role="tabpanel"
+              :id="settingsPanelId('scheme')"
               :appearance="appearance"
               :custom-themes="customThemes"
               :active-theme-id="activeThemeId"
@@ -283,6 +269,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
                  光标、渲染细项，末尾再放一次实时预览以便边调边看排版效果。 -->
             <SettingsAppearancePane
               v-show="settingsCategory === 'appearance'"
+              role="tabpanel"
+              :id="settingsPanelId('appearance')"
               :appearance="appearance"
               :custom-themes="customThemes"
               :host-theme="hostTheme"
@@ -304,6 +292,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
             <SettingsSudoPane
               v-show="settingsCategory === 'sudo'"
+              role="tabpanel"
+              :id="settingsPanelId('sudo')"
               :sudo="sudo"
               :draft="connection.state.draft"
               :meta="connection.state.meta"
@@ -312,12 +302,16 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
             <SettingsAgentPane
               v-show="settingsCategory === 'agent'"
+              role="tabpanel"
+              :id="settingsPanelId('agent')"
               :draft="connection.state.draft"
               :t="t"
             />
 
             <SettingsTransferPane
               v-show="settingsCategory === 'transfer'"
+              role="tabpanel"
+              :id="settingsPanelId('transfer')"
               :drafts="transferDrafts"
               :local-download-dir="localDownloadDir"
               :local-can-save="localCanSave"
@@ -329,6 +323,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
                  只上抛增量，归一化与落地在 App；每项默认值都复现改动前的行为。 -->
             <SettingsTerminalPane
               v-show="settingsCategory === 'terminal'"
+              role="tabpanel"
+              :id="settingsPanelId('terminal')"
               :connection-id="connectionId"
               :startup="connection"
               :pane-direction="paneDirection"
@@ -360,6 +356,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
                  配置与忽略列表、接受键换绑在此集中管理。 -->
             <SettingsSuggestionsPane
               v-show="settingsCategory === 'suggestions'"
+              role="tabpanel"
+              :id="settingsPanelId('suggestions')"
               v-model:command-history-limit-draft="commandHistoryLimitDraft"
               :drafts="suggestionDrafts"
               :ghost-tab-accept="ghostTabAccept"
@@ -377,6 +375,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
                  本组件只读 + 上抛增量；能力位来自宿主桥 capabilities.ai。 -->
             <SettingsAiPane
               v-show="settingsCategory === 'ai'"
+              role="tabpanel"
+              :id="settingsPanelId('ai')"
               :ai-settings="aiSettings"
               :ai-bridge-ready="aiBridgeReady"
               :t="t"
@@ -388,7 +388,9 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
             <!-- 关键词高亮独立分栏：从 Terminal 分栏拆出（规则管理器与终端行为
                  设置关联性弱），规则增删改/启停在此管理，终端渲染效果实时生效
                  （数据面 RPC 与权威态在 App）。 -->
-            <div v-show="settingsCategory === 'highlight'" class="settings-pane">
+            <div v-show="settingsCategory === 'highlight'"
+              role="tabpanel"
+              :id="settingsPanelId('highlight')" class="settings-pane">
             <HighlightRulesSection
               :rules="highlightRules"
               :saving="highlightSaving"
@@ -404,7 +406,9 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
             <!-- 快速命令独立分栏：从 Terminal 分栏拆出（片段管理器）。执行仍留在
                  工具条弹层（高频），新建/编辑/导入在此管理。 -->
-            <div v-show="settingsCategory === 'commands'" class="settings-pane">
+            <div v-show="settingsCategory === 'commands'"
+              role="tabpanel"
+              :id="settingsPanelId('commands')" class="settings-pane">
             <QuickCommandsSection
               :commands="quickCommands"
               :groups="quickGroups"
@@ -427,7 +431,9 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
             </div>
 
             <!-- 快捷键（对标 Tabby「Hotkeys」页）：注册表编辑器，逐动作增删改 + 冲突提示 + 单项/整体复位。 -->
-            <div v-show="settingsCategory === 'hotkeys'" class="settings-pane">
+            <div v-show="settingsCategory === 'hotkeys'"
+              role="tabpanel"
+              :id="settingsPanelId('hotkeys')" class="settings-pane">
             <h3 class="settings-section-title">{{ t("terminalHotkeys.sectionTitle") }}</h3>
             <p class="muted settings-note">{{ t("terminalHotkeys.hint") }}</p>
             <TerminalHotkeyEditor :bindings="terminalHotkeys" :apple-platform="applePlatform" :t="t" @update="updateHotkeys" />
@@ -435,6 +441,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
           <SettingsSecurityPane
             v-show="settingsCategory === 'security'"
+              role="tabpanel"
+              :id="settingsPanelId('security')"
             :known-hosts="knownHosts"
             :known-hosts-loading="knownHostsLoading"
             :known-hosts-error="knownHostsError"
@@ -449,6 +457,8 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
 
           <SettingsMcpPane
             v-show="settingsCategory === 'mcp'"
+              role="tabpanel"
+              :id="settingsPanelId('mcp')"
             :draft="mcpDraft"
             :loading="mcpLoading"
             :error="mcpError"
@@ -456,6 +466,7 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
             :t="t"
             @refresh="loadMcpSettings"
           />
+              </div>
             </div>
           </div>
           </template>
@@ -464,7 +475,7 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
         <!-- 存储迁移（IMPL_PLAN_STORAGE_SYNC）：可同步配置经宿主 host.storage 进
              DBX secrets 加密同步；说明与操作放在同一行 footer，压缩底部留白。 -->
         <footer class="settings-footer">
-          <p class="settings-footer-note">{{ t("settingsSyncNote") }}</p>
+          <p class="settings-footer-note"><span class="settings-footer-pulse" aria-hidden="true"></span><span class="settings-footer-text">{{ t("settingsSyncNote") }}</span></p>
           <div class="settings-footer-actions">
             <button :disabled="connection.state.loading || connection.state.loadFailed || settingsSaving || (!connection.state.meta?.sudoPasswordSet && !connection.state.meta?.totpConfigured)" @click="clearStoredSecrets"><Trash2 />{{ t("settingsClearSecrets") }}</button>
             <button @click="emit('update:open', false)">{{ t("close") }}</button>

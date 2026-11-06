@@ -1,6 +1,4 @@
-export const RDP_EXPERIMENTAL_PREFERENCE = "rdp_experimental_enabled";
-
-/** RDP remains opt-in until the real-server validation matrix is complete. */
+/** RDP gate: the persisted preference must be exactly `true` to enable it. */
 export function rdpExperimentalEnabled(value: unknown): boolean {
   return value === true;
 }

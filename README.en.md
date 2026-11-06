@@ -66,7 +66,7 @@ See the [feature and competitor comparison](docs/architecture/COMPARISON.en.md) 
 covering OpenSSH + sftp, Tabby, Termius, FinalShell, electerm, and iSHell Pro.
 
 > **Protocol roadmap:** the DBX plugin picker now exposes a single **RemoteX** entry. Choose
-> SSH, Telnet, VNC, RDP (experimental), serial, or local shell inside the connection form;
+> SSH, Telnet, VNC, RDP, serial, or local shell inside the connection form;
 > host, port, credentials and protocol-specific fields follow the selected type. More
 > remote-access scenarios are on the way — check the release notes for each version.
 

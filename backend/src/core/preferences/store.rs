@@ -232,7 +232,7 @@ pub fn load_preferences(data_dir: &Path) -> Value {
     Value::Object(prefs)
 }
 
-/// RDP is intentionally opt-in until the real-server validation matrix is complete.
+/// RDP is opt-in per workspace: the switch in Settings → Terminal stores the gate.
 /// Missing, malformed, or false values fail closed.
 pub fn rdp_experimental_enabled(data_dir: &Path) -> bool {
     load_preferences(data_dir)
@@ -495,7 +495,7 @@ pub fn save_preferences(data_dir: &Path, params: &Value) -> Result<Value, String
     // RDP 安全设置（RDP-2）：布尔直存；证书策略走白名单（白名单外报错，
     // 不落盘污染），缺省语义由 rdp::security::resolve_security 兜底
     // （use_nla=true、certificate_policy=prompt）。
-    // RDP 仍处实验阶段：仅显式 true 才显示/允许入口，普通用户默认不可用。
+    // RDP 默认关闭：仅显式 true 才显示/允许入口，用户需在设置里主动启用。
     if let Some(value) = params.get("rdp_experimental_enabled") {
         let enabled = value
             .as_bool()

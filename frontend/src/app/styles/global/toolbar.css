@@ -218,6 +218,31 @@
 .identity strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .connection-color { width: 4px; height: 16px; flex: 0 0 4px; border-radius: 999px; }
 .read-only-badge { border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; color: var(--muted-foreground); font-size: 10px; }
+/* 协议标识（2026-11-06）：RDP/VNC 连接在身份区显示对应图标与缩写，
+   与宿主侧连接卡片共用一套隐喻；单卡片下由插件 UI 补齐协议区分。 */
+.protocol-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px 0 5px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 5px;
+  color: color-mix(in srgb, var(--foreground) 78%, var(--tone-cyan));
+  background: color-mix(in srgb, var(--tone-cyan) 12%, transparent);
+  font-family: var(--terminal-font-family);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+.protocol-badge-rdp {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--tone-blue));
+  background: color-mix(in srgb, var(--tone-blue) 14%, transparent);
+}
+.protocol-badge .workbench-glyph { width: 12px; height: 12px; }
+.protocol-badge-label { transform: translateY(0.5px); }
+
 /* 窄窗口下工具栏按钮一律保持固有宽度（flex 不收缩）：收缩会把 24px 按钮压到
    比 14px 图标还窄，相邻按钮互相叠印（"堆叠错乱"）。空间不够时优先压缩左侧
    .identity 的 strong（省略号截断），仍不够则右侧溢出而非重叠。 */

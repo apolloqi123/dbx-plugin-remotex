@@ -55,7 +55,7 @@ RDP、串口与本地 Shell，并完成终端操作、文件传输、跳板访�
 完整的能力矩阵和与 OpenSSH、Tabby、Termius、FinalShell 等方案的定位对比见
 [特性与竞品对比](docs/architecture/COMPARISON.zh-CN.md)。
 
-> **协议路线**：DBX 新建连接的插件分类现在只有一个 **RemoteX** 入口；在连接表单内选择 SSH、Telnet、VNC、RDP（实验性）、串口或本地 Shell，主机、端口、凭据与协议专属字段会随类型切换。更多远程访问场景会持续补齐，请以对应版本发布说明为准。
+> **协议路线**：DBX 新建连接的插件分类现在只有一个 **RemoteX** 入口；在连接表单内选择 SSH、Telnet、VNC、RDP、串口或本地 Shell，主机、端口、凭据与协议专属字段会随类型切换。更多远程访问场景会持续补齐，请以对应版本发布说明为准。
 
 更多截图见[产品宣传页](docs/guides/MEDIA.zh-CN.md)。
 

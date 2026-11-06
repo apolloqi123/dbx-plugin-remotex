@@ -196,6 +196,21 @@ export const WORKBENCH_GLYPHS = {
     p("M12.6 9.2h4.2v4.2"),
     p("M16.8 9.2 11.8 14.2"),
   ],
+  // 协议标识（2026-11-06）：RDP 用 Windows 四格标志、VNC 用「显示器 + 播放」
+  // 隐喻，与 assets/icons/rdp-windows.svg、vnc-desktop.svg 同构，但按工具条
+  // 的 24 格 / 1.7 描边语言重绘，14px 下仍可辨识。
+  "protocol-rdp": [
+    p("M4.4 5h6.2v6.2H4.4Z"),
+    p("M13.4 5h6.2v6.2h-6.2Z"),
+    p("M4.4 12.8h6.2V19H4.4Z"),
+    p("M13.4 12.8h6.2V19h-6.2Z"),
+  ],
+  "protocol-vnc": [
+    p("M3.4 5.4h17.2v10.8H3.4Z"),
+    p("M9.4 20.4h5.2"),
+    p("M12 16.2v4.2"),
+    p("M10.6 8.6v4l3.4-2Z"),
+  ],
   power: [p("M12 3.2v8.2"), p("M7 5.6a7.6 7.6 0 1 0 10 0")],
 } as const satisfies Record<string, readonly GlyphShape[]>;
 

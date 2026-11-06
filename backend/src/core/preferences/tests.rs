@@ -234,13 +234,13 @@ fn rdp_experimental_gate_defaults_closed_and_only_accepts_true() {
         data_dir.path(),
         &json!({ "rdp_experimental_enabled": true }),
     )
-    .expect("enable experimental RDP");
+    .expect("enable RDP");
     assert!(rdp_experimental_enabled(data_dir.path()));
     save_preferences(
         data_dir.path(),
         &json!({ "rdp_experimental_enabled": false }),
     )
-    .expect("disable experimental RDP");
+    .expect("disable RDP");
     assert!(!rdp_experimental_enabled(data_dir.path()));
 }
 

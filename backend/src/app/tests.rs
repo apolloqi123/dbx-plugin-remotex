@@ -6,14 +6,14 @@ use super::*;
 use crate::platform::paths::rdp_start_gate;
 
 #[test]
-fn rdp_start_gate_refuses_by_default_and_allows_explicit_experimental_opt_in() {
+fn rdp_start_gate_refuses_by_default_and_allows_explicit_opt_in() {
     let data_dir = tempfile::tempdir().expect("tempdir");
     assert!(rdp_start_gate(data_dir.path()).is_err());
     crate::core::preferences::save_preferences(
         data_dir.path(),
         &json!({ "rdp_experimental_enabled": true }),
     )
-    .expect("enable experimental RDP");
+    .expect("enable RDP");
     assert!(rdp_start_gate(data_dir.path()).is_ok());
 }
 

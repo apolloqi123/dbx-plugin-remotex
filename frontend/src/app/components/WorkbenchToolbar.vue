@@ -248,6 +248,10 @@ function openForwardManager(mode: "add" | "manage") {
         <!-- 主标题跟随 ConnectingCard 的口径：连接名优先，未命名回退 user@host:port；
              hover 仍可看到技术标识（UUID 只在名称与 host 全缺失时兜底出现）。 -->
         <strong :title="connectionIdentity">{{ connection.name || connectionIdentity }}</strong>
+        <span v-if="isRdpConnection || isVncConnection" class="protocol-badge" :class="isRdpConnection ? 'protocol-badge-rdp' : 'protocol-badge-vnc'">
+          <WorkbenchGlyph :name="isRdpConnection ? 'protocol-rdp' : 'protocol-vnc'" :size="12" />
+          <span class="protocol-badge-label">{{ isRdpConnection ? "RDP" : "VNC" }}</span>
+        </span>
         <span v-if="connection.readOnly || connectionReadOnly" class="read-only-badge">{{ t("readOnly") }}</span>
         <span class="session-pill" :class="`session-${sessionStatus}`"><span class="session-dot" aria-hidden="true" />{{ sessionPillText }}<span v-if="sessionStatus === 'reconnecting' && reconnectCountdown" class="session-pill-countdown mono">{{ t("sessionStatus.reconnectCountdown", { seconds: reconnectCountdown.seconds, attempt: reconnectCountdown.attempt }) }}</span></span>
       </div>

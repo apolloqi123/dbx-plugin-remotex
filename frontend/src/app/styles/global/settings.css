@@ -1,216 +1,1813 @@
-/* SSH settings dialog */
-.settings-modal { width: min(680px, 100%); height: min(620px, calc(100vh - 48px)); }
-/* overflow-y:auto 会让 overflow-x 也算成 auto，本元素因此成为水平裁剪盒；
-   .settings-layout 的 margin:0 -16px 若冲不出裁剪盒，左栏左边 16px 会被切掉
-   （选中药丸左角变直角、视觉贴边的根因）。负 margin 移到本层、用等量 padding
-   保持子内容原位：裁剪盒扩到 modal 边缘，layout 的负 margin 在盒内成立。 */
-.settings-body { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; gap: 14px; overflow-y: auto; margin: 0 -16px; padding: 0 20px 0 16px; }
-/* 分类导航布局（对齐宿主设置页）：左栏分类 + 右栏内容；右栏滚动，左栏不滚。
-   弹窗高度固定，切分类时不再随内容多少跳动。 */
-.settings-nav-modal { height: min(600px, calc(100vh - 40px)); }
-.settings-layout { display: flex; min-height: 0; flex: 1 1 auto; margin: 0 -16px; border-top: 1px solid var(--border); }
-/* 左栏水平留白对齐宿主设置侧栏：药丸距内容边缘 12px（.settings-layout 负 margin
-   把左栏拉到弹窗 padding 边缘，这里 8px 会让选中药丸视觉贴边）。 */
-.settings-nav { display: flex; flex: 0 0 168px; flex-direction: column; gap: 1px; overflow-y: auto; border-right: 1px solid var(--border); padding: 8px 12px; }
-/* reka Tabs 包装：unlayered 规则压过 wrapper 分层工具类；.modal 按钮复位选择器
-   已排除 data-slot="tabs-trigger"（:not 按参数计特异性，复位实际是 (0,3,1)，
-   不排除会压过本组 (0,3,0) 规则、把背景抹成透明）。 */
-.settings-nav-tabs { width: 100%; }
-.settings-nav-list { display: flex; flex-direction: column; gap: 1px; width: 100%; height: auto; padding: 0; background: transparent; }
-.settings-nav .settings-nav-item { height: 28px; overflow: hidden; border: 0; border-radius: var(--radius); padding: 0 8px; background: transparent; color: var(--muted-foreground); font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; flex: 0 0 auto; justify-content: flex-start; box-shadow: none; }
-/* hover 不用 --accent：亮色（pearl）主题下它是 #f5f5f5，落在白底上等于没颜色；
-   改用前景色 8% 混合，明暗两态都可见。 */
-.settings-nav .settings-nav-item:hover { background: color-mix(in srgb, var(--foreground) 8%, transparent); }
-/* 选中态对齐宿主设置侧栏（截图「隧道维护」）：前景色实心药丸 + 反色文字，
-   暗色主题下令牌自动反转。active 优先于 hover。
-   选择器同时覆盖 data-state 与 data-active：reka 的 RovingFocusItem 会把
-   data-active="" 合并到 trigger 上，shadcn 包装类的 data-active:bg-background/
-   text-foreground（白底）只认这个属性，漏盖会出现选中项白底白字。 */
-.settings-nav .settings-nav-item[data-state="active"],
-.settings-nav .settings-nav-item[data-active],
-.settings-nav .settings-nav-item[data-state="active"]:hover,
-.settings-nav .settings-nav-item[data-active]:hover { background: var(--foreground); color: var(--background); font-weight: 500; }
-.settings-content { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 14px; overflow-y: auto; padding: 12px 16px; }
-.settings-pane { display: flex; flex-direction: column; gap: 10px; }
-.settings-pane .settings-section-title:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
-/* 窄弹窗：左栏变顶部横向分类条。 */
-@media (max-width: 560px) {
-  .settings-layout { flex-direction: column; }
-  .settings-nav { flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--border); }
-  .settings-nav-list { flex-direction: row; }
-  .settings-nav .settings-nav-item { flex: 0 0 auto; }
-}
-.settings-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted-foreground); }
-/* 开关行恢复横向布局：.settings-field 的 column 会让开关与文字掉到两行，
-   行内 flex 保持"开关 + 标签"同行（WebGL / 下载目录开关）。 */
-.settings-switch-row { flex-direction: row; align-items: center; gap: 8px; }
-.settings-radio-row { flex-direction: row; align-items: center; gap: 8px; }
-.settings-radio-row input { margin: 0; }
-.settings-field input, .settings-field textarea { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-/* 设置表单里的 reka Select：触发钮吃满整行（原生 select 的 stretch 语义）。 */
-.settings-field [data-slot="select-trigger"] { width: 100%; min-width: 0; }
-/* 目录输入 + 浏览按钮同行：输入框吃满剩余宽度，图标按钮与输入框等高。 */
-.settings-dir-row { display: flex; align-items: center; gap: 6px; }
-.settings-dir-row input { min-width: 0; flex: 1 1 auto; }
-.browse-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); cursor: pointer; }
-.browse-button:hover { background: var(--accent); }
-.browse-button svg { width: 16px; height: 16px; flex: 0 0 16px; }
+/* ---------------------------------------------------------------------------
+   设置体系视觉（2026-11 重设计：precision instrument / editorial console）
 
-/* ---- 应用内目录选择器（local/fs/browse，沙箱 iframe 无原生目录选择 API）---- */
-.folder-picker-modal { width: min(520px, 100%); height: min(460px, calc(100vh - 64px)); gap: 10px; }
-.folder-picker-path input { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.folder-picker-list { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 1px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; }
-.folder-picker-row { display: flex; align-items: center; gap: 8px; border: 0; border-radius: var(--radius); padding: 6px 8px; background: transparent; color: var(--foreground); font-size: 12px; text-align: left; cursor: pointer; }
-.folder-picker-row:hover { background: var(--accent); }
-.folder-picker-row svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--primary); }
-.folder-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.folder-picker-hint { display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px; color: var(--muted-foreground); font-size: 11px; }
-.folder-picker-hint svg { width: 12px; height: 12px; }
-.folder-picker-current { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.settings-field textarea { resize: vertical; font-family: var(--terminal-font-family); }
-.settings-note { margin: 0; font-size: 10px; }
-.settings-section-title { margin: 6px 0 0; border-top: 1px solid var(--border); padding-top: 12px; font-size: 12px; }
-.settings-list { display: flex; margin: 0; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; padding: 0; list-style: none; }
-.settings-list li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); padding: 6px 8px; font-size: 11px; }
-.settings-list li:last-child { border-bottom: 0; }
-.settings-list-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.settings-list-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 12px; }
-.settings-list-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settings-key-icon { width: 14px; height: 14px; flex: 0 0 14px; color: var(--muted-foreground); }
-/* 全局 quick sudo 配置：来源选择行、列表操作列、内联表单操作列。 */
-.credential-source-row { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
-.credential-source-row .credential-source-select { flex: 1; min-width: 0; }
-/* 「管理全局配置」入口：裸文字链接放表单行里太像半成品，升级为紧凑描边按钮。 */
-.credential-source-row .link-button { flex: 0 0 auto; align-self: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 10px; background: var(--background); color: var(--foreground); font-size: 11px; white-space: nowrap; }
-.credential-source-row .link-button:hover { background: var(--accent); }
-.settings-list-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-.profiles-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 0; }
-/* 独立 profiles 弹窗：高度随内容（空态不再撑满 620px），宽度收窄，上限同设置弹窗。 */
-.profiles-modal { width: min(560px, 100%); height: auto; max-height: min(620px, calc(100vh - 48px)); }
-/* 工具行：左侧计数（muted 小字），右侧主按钮「新建配置」。 */
-.profiles-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.profiles-count { font-size: 11px; }
-.profiles-add { min-height: 26px; padding: 2px 10px; font-size: 11px; }
-/* 列表区保底高度：空态垂直居中不塌陷；有列表时随内容撑开。 */
-.profiles-content { display: flex; min-height: 240px; flex: 1 1 auto; flex-direction: column; }
-.profiles-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: 12px; text-align: center; }
-.profiles-empty svg { width: 28px; height: 28px; opacity: .55; }
-.profiles-empty p { margin: 0; }
-/* 行 hover 与录制记录列表同一视觉语言。 */
-.profiles-list li:hover { background: var(--accent); }
-.profiles-list li:first-child { border-radius: 5px 5px 0 0; }
-.profiles-list li:last-child { border-radius: 0 0 5px 5px; }
-.mcp-limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.mcp-limits input { width: 100%; }
-.settings-body .link-button { display: inline-flex; align-items: center; gap: 5px; }
-.settings-body .link-button svg { width: 12px; height: 12px; flex: 0 0 12px; }
+   设计语言：
+   - 一块“仪表盘”而不是一列表单：960×700 固定画布 + 双行 header（mono 眉标 +
+     分类搜索）+ 232px 导航（tone 图标、mono 序号、accent 竖条）+ 右侧 sticky
+     pane hero（序号计数 + 分类标题）+ 可滚动的 pane 卡片。
+   - 排版分两层：UI 层（Inter/PingFang，11–17px，中等字重）与 mono 层
+     （JetBrains Mono，8.5–10px，大写 + 宽字距）只用于序号/眉标这类“仪器读数”，
+     不用于正文，避免整页变成代码风。
+   - 颜色全部由 tokens 混色派生（card-surface、tone 系列、primary），violet 作为
+     交互 accent（导航选中、focus ring），primary 蓝只保留给主按钮 Save。
+   - 本文件在 cards.css 之后导入（见 app/style.css），每条规则带 .settings-modal
+     前缀以压过 cards.css 的 .modal/.settings-* 基线；不要在这里写全局裸选择器。
+   --------------------------------------------------------------------------- */
 
-
-/* ---- 分类设置弹窗：紧凑头部 / 单行 footer / 更紧凑的内容密度 ---- */
-.settings-modal.settings-nav-modal {
+/* —— 外壳 —— */
+.settings-modal {
+  --settings-ink: color-mix(in srgb, var(--foreground) 90%, transparent);
+  --settings-ink-dim: color-mix(in srgb, var(--muted-foreground) 96%, transparent);
+  --settings-hairline: color-mix(in srgb, var(--card-border) 86%, transparent);
+  --settings-control-border: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --settings-accent: var(--tone-violet);
+  position: relative;
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  padding: 10px 14px 0;
+  overflow: hidden;
+  border: 1px solid var(--card-border-strong);
+  border-radius: var(--radius-panel);
+  padding: 0;
+  background-color: color-mix(in srgb, var(--popover) 97%, var(--background));
+  background-image:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--foreground) 5%, transparent) 0%,
+      transparent 34%,
+      color-mix(in srgb, var(--background) 42%, transparent) 100%
+    );
+  box-shadow:
+    0 48px 120px -48px rgb(0 0 0 / 82%),
+    0 18px 40px -28px rgb(0 0 0 / 55%),
+    0 0 0 1px color-mix(in srgb, var(--foreground) 6%, transparent),
+    var(--card-glow);
+  isolation: isolate;
 }
-.settings-modal.settings-nav-modal > header {
-  min-height: 22px;
-  margin: 0 -14px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 14px 8px;
+
+.settings-modal.settings-nav-modal {
+  width: min(960px, calc(100vw - 40px));
+  height: min(700px, calc(100vh - 48px));
 }
-.settings-modal.settings-nav-modal > header > .icon-button {
-  top: 6px;
-  right: 10px;
+
+/* 顶部与底部的环境光：violet + cyan 两团柔光，模拟仪表盘背光。 */
+.settings-modal.settings-nav-modal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 42% at 4% -6%, color-mix(in srgb, var(--tone-violet) 16%, transparent), transparent 72%),
+    radial-gradient(46% 36% at 98% -2%, color-mix(in srgb, var(--tone-cyan) 12%, transparent), transparent 74%),
+    radial-gradient(84% 52% at 50% 120%, color-mix(in srgb, var(--background) 52%, transparent), transparent 72%);
 }
-.settings-modal.settings-nav-modal > header h2 {
+
+/* —— 头部：mono 眉标 + 标题 + 分类搜索 + 关闭 —— */
+.settings-modal > header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 66px;
+  margin: 0;
+  padding: 13px 16px 13px 24px;
+  border: 0;
+  border-bottom: 1px solid var(--settings-hairline);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card-surface) 62%, transparent), transparent);
+}
+
+.settings-modal .settings-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-modal .settings-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--terminal-font-family);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--settings-accent) 62%, var(--foreground));
+}
+
+.settings-modal .settings-eyebrow::before {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--settings-accent) 82%, transparent));
+}
+
+.settings-modal .settings-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.settings-modal .settings-header-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 分类搜索：低饱和内嵌输入框 + “/” 键提示，聚焦时换成 violet 光环。 */
+.settings-modal .settings-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 222px;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card-surface-inset) 82%, transparent);
+  cursor: text;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.settings-modal .settings-search:hover {
+  border-color: var(--card-border-strong);
+}
+
+.settings-modal .settings-search:focus-within {
+  border-color: color-mix(in srgb, var(--settings-accent) 58%, var(--card-border));
+  background: color-mix(in srgb, var(--card-surface-inset) 94%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--settings-accent) 13%, transparent),
+    inset 0 1px 0 rgb(255 255 255/5%);
+}
+
+.settings-modal .settings-search-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  color: var(--muted-foreground);
+}
+
+.settings-modal .settings-search-input:focus,
+.settings-modal .settings-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.settings-modal .settings-search-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--foreground);
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+.settings-modal .settings-search-input:focus {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.settings-modal .settings-search-input::placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+}
+
+.settings-modal .settings-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-modal .settings-search-kbd {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  min-width: 16px;
+  height: 17px;
+  padding: 0 4px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--card-surface) 70%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+  font-family: var(--terminal-font-family);
+  font-size: 9.5px;
+  line-height: 1;
+}
+
+.settings-modal .settings-header-tools .settings-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.settings-modal .settings-header-tools .settings-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+/* —— 主体 / 布局 —— */
+.settings-modal .settings-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-modal .settings-body > :is(.empty, .task-error) {
+  margin: 22px 24px;
+}
+
+.settings-modal .settings-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* —— 左侧导航：安静一列，靠 accent 竖条与 mono 序号建立层级 —— */
+.settings-modal .settings-nav {
+  display: flex;
+  flex: 0 0 244px;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid var(--settings-hairline);
+  border-radius: 0;
+  padding: 14px 10px 16px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-surface-inset) 62%, transparent),
+    color-mix(in srgb, var(--background) 34%, transparent)
+  );
+}
+
+.settings-modal .settings-nav-tabs {
+  width: 100%;
+}
+
+.settings-modal .settings-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  background: transparent;
+}
+
+.settings-modal .settings-nav .settings-nav-item {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0 8px;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 70%, var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+/* 分类序号（01…）：纯装饰，用全局分类序号，过滤时不重排。 */
+.settings-modal .settings-nav .settings-nav-item::after {
+  content: attr(data-index);
+  position: static;
+  inset: auto;
+  width: auto;
+  height: auto;
+  margin-left: auto;
+  padding-left: 6px;
+  background: none;
+  opacity: 1;
+  color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  font-family: var(--terminal-font-family);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  transition: color var(--transition-fast);
+}
+
+.settings-modal .settings-nav .settings-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 图标：中性 tile；只有选中态才染 violet（分类色相留给下方内容本身）。 */
+.settings-modal .settings-nav .settings-nav-icon {
+  box-sizing: content-box;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  padding: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-surface-raised) 90%, transparent);
+  color: color-mix(in srgb, var(--foreground) 52%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.settings-modal .settings-nav .settings-nav-item:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.settings-modal .settings-nav .settings-nav-item[data-state="active"],
+.settings-modal .settings-nav .settings-nav-item[data-active],
+.settings-modal .settings-nav .settings-nav-item[data-state="active"]:hover,
+.settings-modal .settings-nav .settings-nav-item[data-active]:hover {
+  border-color: color-mix(in srgb, var(--settings-accent) 26%, transparent);
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--settings-accent) 14%, transparent),
+      color-mix(in srgb, var(--settings-accent) 4%, transparent) 62%,
+      transparent
+    ),
+    color-mix(in srgb, var(--card-surface-raised) 78%, transparent);
+  color: var(--foreground);
+  font-weight: 600;
+  box-shadow:
+    inset 3px 0 0 var(--settings-accent),
+    0 10px 24px -18px rgb(0 0 0 / 70%),
+    inset 0 1px 0 color-mix(in srgb, var(--settings-accent) 12%, transparent);
+}
+
+.settings-modal .settings-nav .settings-nav-item[data-state="active"]::after,
+.settings-modal .settings-nav .settings-nav-item[data-active]::after {
+  color: color-mix(in srgb, var(--settings-accent) 78%, transparent);
+}
+
+.settings-modal .settings-nav .settings-nav-item[data-state="active"] .settings-nav-icon,
+.settings-modal .settings-nav .settings-nav-item[data-active] .settings-nav-icon {
+  background: color-mix(in srgb, var(--settings-accent) 15%, transparent);
+  color: var(--settings-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-accent) 26%, transparent);
+}
+
+.settings-modal .settings-nav .settings-nav-item[data-state="active"] .settings-nav-label,
+.settings-modal .settings-nav .settings-nav-item[data-active] .settings-nav-label {
+  font-weight: 600;
+}
+
+.settings-modal .settings-nav-empty {
+  margin: 18px 6px 0;
+  padding-top: 14px;
+  border-top: 1px dashed var(--settings-hairline);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* —— 右侧内容：sticky hero + 滚动 pane 区 —— */
+.settings-modal .settings-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-modal .settings-pane-hero {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 26px 15px;
+  border-bottom: 1px solid var(--settings-hairline);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card-surface) 50%, transparent), transparent);
+}
+
+/* 每个分类一盏灯：只染 hero 图标，不污染正文。 */
+.settings-modal .settings-pane-hero[data-category="appearance"] { --hero-tone: var(--tone-violet); }
+.settings-modal .settings-pane-hero[data-category="scheme"] { --hero-tone: var(--tone-cyan); }
+.settings-modal .settings-pane-hero[data-category="terminal"] { --hero-tone: var(--tone-emerald); }
+.settings-modal .settings-pane-hero[data-category="suggestions"] { --hero-tone: var(--tone-amber); }
+.settings-modal .settings-pane-hero[data-category="highlight"] { --hero-tone: var(--tone-rose); }
+.settings-modal .settings-pane-hero[data-category="commands"] { --hero-tone: var(--tone-amber); }
+.settings-modal .settings-pane-hero[data-category="ai"] { --hero-tone: var(--tone-violet); }
+.settings-modal .settings-pane-hero[data-category="hotkeys"] { --hero-tone: var(--tone-blue); }
+.settings-modal .settings-pane-hero[data-category="sudo"] { --hero-tone: var(--tone-emerald); }
+.settings-modal .settings-pane-hero[data-category="agent"] { --hero-tone: var(--tone-blue); }
+.settings-modal .settings-pane-hero[data-category="transfer"] { --hero-tone: var(--tone-cyan); }
+.settings-modal .settings-pane-hero[data-category="security"] { --hero-tone: var(--tone-rose); }
+.settings-modal .settings-pane-hero[data-category="mcp"] { --hero-tone: var(--tone-violet); }
+
+.settings-modal .settings-hero-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--hero-tone, var(--settings-accent)) 26%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--hero-tone, var(--settings-accent)) 13%, transparent);
+  color: var(--hero-tone, var(--settings-accent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255/7%);
+}
+
+.settings-modal .settings-hero-icon svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  stroke-width: 1.6;
+}
+
+.settings-modal .settings-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-modal .settings-hero-kicker {
+  color: color-mix(in srgb, var(--settings-accent) 58%, var(--muted-foreground));
+  font-family: var(--terminal-font-family);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+}
+
+.settings-modal .settings-hero-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  line-height: 1.2;
+  animation: settings-hero-in 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.settings-modal .settings-panes {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* pane 是整块卡片（不是一列裸表单），内部节奏由 section 标题的 hairline 分隔。 */
+.settings-modal .settings-pane {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0;
+  /* 让稀疏的 pane 也铺满滚动区，避免卡片下缘悬空留下突兀空白。 */
+  min-height: 100%;
+  border: 1px solid var(--settings-hairline);
+  border-radius: var(--radius-lg);
+  padding: 6px 18px 16px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-surface-raised) 66%, transparent),
+    color-mix(in srgb, var(--card-surface) 46%, transparent)
+  );
+  box-shadow:
+    var(--card-shadow),
+    inset 0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent);
+  animation: settings-pane-in 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.settings-modal .settings-pane > section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* —— 分区标题：mono 大写 + hairline，代替旧版 3px 渐变竖条 —— */
+.settings-modal .settings-section-title {
+  position: relative;
+  margin: 20px 0 4px;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--card-border) 74%, transparent);
+  color: color-mix(in srgb, var(--foreground) 70%, var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.settings-modal .settings-section-title::before {
+  content: none;
+}
+
+.settings-modal .settings-pane > .settings-section-title:first-child,
+.settings-modal .settings-pane > section:first-child > .settings-section-title:first-child {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* —— 设置行：默认堆叠；能横排的控件（数字/滑杆/下拉）走“标签左、控件右” —— */
+.settings-modal .settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  margin: 0;
+  border: 0;
+  padding: 8px 0;
+  color: var(--settings-ink-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settings-modal .settings-field > span {
+  color: var(--settings-ink-dim);
+}
+
+.settings-modal .settings-field:has(> input[type="number"]),
+.settings-modal .settings-field:has(> input[type="range"]),
+.settings-modal .settings-field:has(> [data-slot="select-trigger"]) {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 46%);
+  align-items: center;
+  column-gap: 18px;
+}
+
+/* 纯标签行（如「记住的命令」小标题 / 上传策略标题）：降级为说明文字。 */
+.settings-modal .settings-field:has(> span:only-child) {
+  display: block;
+  padding: 2px 0 4px;
+  color: var(--settings-ink-dim);
+  font-size: 10.5px;
+}
+
+.settings-modal .settings-field:has(> span:only-child) > span {
+  letter-spacing: 0.02em;
+}
+
+/* 开关行：DOM 顺序是 Switch 在前，用 row-reverse 把控件推到右端。 */
+.settings-modal .settings-field.settings-switch-row {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 9px 0;
+  cursor: pointer;
+}
+
+.settings-modal .settings-field.settings-switch-row > span {
+  color: var(--settings-ink);
+  font-size: 12px;
+}
+
+.settings-modal .quick-sudo-control {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 9px 0;
+  color: var(--settings-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 单选行：整行做成可点卡片 + 自绘圆点，替代原生 radio 的“小圆 + 长文本”。 */
+.settings-modal .settings-field.settings-radio-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 3px 0;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--card-surface-inset) 56%, transparent);
+  color: var(--settings-ink);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.settings-modal .settings-field.settings-radio-row:hover {
+  border-color: var(--card-border-strong);
+  background: color-mix(in srgb, var(--card-surface-raised) 62%, transparent);
+}
+
+.settings-modal .settings-field.settings-radio-row:has(input:checked) {
+  border-color: color-mix(in srgb, var(--settings-accent) 46%, var(--card-border));
+  background: color-mix(in srgb, var(--settings-accent) 9%, transparent);
+}
+
+.settings-modal .settings-field.settings-radio-row:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--settings-accent) 14%, transparent);
+}
+
+.settings-modal .settings-field.settings-radio-row input[type="radio"] {
+  display: grid;
+  flex: 0 0 auto;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid var(--card-border-strong);
+  border-radius: 50%;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.settings-modal .settings-field.settings-radio-row input[type="radio"]:checked {
+  border-color: var(--settings-accent);
+}
+
+.settings-modal .settings-field.settings-radio-row input[type="radio"]:checked::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--settings-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--settings-accent) 60%, transparent);
+}
+
+/* —— 输入控件：内嵌底色 + 细边框，聚焦统一 violet 光环 —— */
+.settings-modal .settings-field input:not([type="radio"]):not([type="checkbox"]):not([type="range"]):not([type="file"]),
+.settings-modal .settings-field textarea,
+.settings-modal .theme-save-row input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 9px;
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--card-surface-inset) 86%, transparent);
+  box-shadow: none;
+  color: var(--foreground);
+  font-size: 11.5px;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.settings-modal .settings-field textarea {
+  height: auto;
+  min-height: 62px;
+  padding: 8px 10px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.settings-modal .settings-field input:hover:not(:disabled),
+.settings-modal .settings-field textarea:hover:not(:disabled),
+.settings-modal .theme-save-row input:hover:not(:disabled) {
+  border-color: var(--card-border-strong);
+}
+
+.settings-modal .settings-field input:focus,
+.settings-modal .settings-field textarea:focus,
+.settings-modal .theme-save-row input:focus {
+  border-color: color-mix(in srgb, var(--settings-accent) 55%, var(--card-border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--settings-accent) 13%, transparent);
+}
+
+/* 数字/滑杆行：控件宽度收窄，避免右端拉成一条长条。 */
+.settings-modal .settings-field > input[type="number"] {
+  max-width: 132px;
+  justify-self: end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-modal .settings-field > input[type="range"] {
+  width: 100%;
+  max-width: none;
+  accent-color: var(--settings-accent);
+}
+
+.settings-modal .settings-field [data-slot="select-trigger"] {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 9px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--card-surface-inset) 86%, transparent);
+  box-shadow: none;
+  color: var(--foreground);
+  font-size: 11.5px;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.settings-modal .settings-field [data-slot="select-trigger"][data-size="xs"] {
+  height: 27px;
+  font-size: 10.5px;
+}
+
+.settings-modal .settings-field [data-slot="select-trigger"]:hover:not(:disabled) {
+  border-color: var(--card-border-strong);
+}
+
+.settings-modal .settings-field [data-slot="select-trigger"]:focus-visible,
+.settings-modal .settings-field [data-slot="select-trigger"][data-state="open"] {
+  border-color: color-mix(in srgb, var(--settings-accent) 55%, var(--card-border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--settings-accent) 13%, transparent);
+}
+
+.settings-modal .settings-field [data-slot="select-trigger"] svg {
+  color: var(--muted-foreground);
+}
+
+/* PasswordField 的 eye 按钮叠在输入框右侧，必须保留内边距。 */
+.settings-modal .pw-field {
+  display: flex;
+  align-items: center;
+}
+
+.settings-modal .pw-field input {
+  padding-right: 26px;
+}
+
+/* —— 说明文字 —— */
+.settings-modal .settings-note,
+.settings-modal .settings-pane > p.muted {
+  margin: -1px 0 6px;
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+  font-size: 11.5px;
+  line-height: 1.6;
+  max-width: 74ch;
+}
+
+.settings-modal .settings-pane > p.muted:last-child {
+  margin-bottom: 2px;
+}
+
+/* —— 行内动作控件 —— */
+.settings-modal .link-button {
+  align-self: flex-start;
+  padding: 1px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--settings-accent) 82%, var(--foreground));
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.settings-modal .link-button:hover {
+  color: color-mix(in srgb, var(--settings-accent) 92%, #fff 8%);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.settings-modal .link-button svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.settings-modal .settings-body .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.settings-modal .browse-button,
+.settings-modal .appearance-actions button,
+.settings-modal .theme-save-row button,
+.settings-modal .profiles-form-actions button,
+.settings-modal .connect-card-ghost-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 29px;
+  padding: 0 12px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card-surface-raised) 56%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.settings-modal .browse-button:hover:not(:disabled),
+.settings-modal .appearance-actions button:hover:not(:disabled),
+.settings-modal .theme-save-row button:hover:not(:disabled),
+.settings-modal .profiles-form-actions button:hover:not(:disabled),
+.settings-modal .connect-card-ghost-button:hover:not(:disabled) {
+  border-color: var(--card-border-strong);
+  background: color-mix(in srgb, var(--card-surface-raised) 88%, transparent);
+  color: var(--foreground);
+}
+
+.settings-modal .browse-button {
+  width: 30px;
+  padding: 0;
+}
+
+.settings-modal .browse-button svg,
+.settings-modal .appearance-actions button svg,
+.settings-modal .theme-save-row button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+
+/* —— 目录行：输入框 + 浏览按钮 —— */
+.settings-modal .settings-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-modal .settings-dir-row input {
+  flex: 1 1 auto;
+}
+
+.settings-modal .settings-dir-row .browse-button,
+.settings-modal .settings-dir-row [data-slot="select-trigger"] {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.settings-modal .credential-source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-modal .credential-source-row .credential-source-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.settings-modal .credential-source-row .link-button {
+  flex: 0 0 auto;
+  align-self: center;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: var(--settings-ink);
+  font-size: 10.5px;
+}
+
+.settings-modal .credential-source-row .link-button:hover {
+  border-color: var(--card-border-strong);
+  background: color-mix(in srgb, var(--card-surface-raised) 70%, transparent);
+  text-decoration: none;
+}
+
+/* —— 列表（已知主机 / 密钥 / 自定义方案 / 配置档） —— */
+.settings-modal .settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 8px 0 6px;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--settings-hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card-surface-inset) 72%, transparent);
+}
+
+.settings-modal .settings-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-border) 52%, transparent);
+  padding: 9px 12px;
+  font-size: 11px;
+  transition: background var(--transition-fast);
+}
+
+.settings-modal .settings-list li:last-child {
+  border-bottom: 0;
+}
+
+.settings-modal .settings-list li:hover {
+  background: color-mix(in srgb, var(--card-surface-raised) 72%, transparent);
+}
+
+.settings-modal .settings-list-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-modal .settings-list-main strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-modal .settings-list-main span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-modal .settings-key-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+
+.settings-modal .settings-list-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+/* —— 外观分栏专用 —— */
+.settings-modal .appearance-number-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin: 2px 0 6px;
+}
+
+.settings-modal .settings-pane .appearance-number-grid .settings-field,
+.settings-modal .settings-pane .appearance-number-grid .settings-field:has(> input[type="number"]),
+.settings-modal .settings-pane .appearance-number-grid .settings-field:has(> [data-slot="select-trigger"]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 4px 0;
+}
+
+.settings-modal .appearance-number-grid .settings-field > input[type="number"] {
+  max-width: none;
+  justify-self: stretch;
+  text-align: left;
+}
+
+.settings-modal .appearance-number-grid .settings-field [data-slot="select-trigger"] {
+  width: 100%;
+}
+
+.settings-modal .appearance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.settings-modal .hidden-file-input {
+  display: none;
+}
+
+/* —— 配色方案：主题 chip —— */
+.settings-modal .theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 4px;
+}
+
+.settings-modal .theme-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 1px solid var(--settings-hairline);
+  border-radius: var(--radius-pill);
+  padding: 5px 11px;
+  background: color-mix(in srgb, var(--card-surface-inset) 72%, transparent);
+  color: var(--settings-ink);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.settings-modal .theme-chip:hover {
+  border-color: var(--card-border-strong);
+  background: color-mix(in srgb, var(--card-surface-raised) 78%, transparent);
+}
+
+.settings-modal .theme-chip.active {
+  border-color: color-mix(in srgb, var(--settings-accent) 48%, var(--card-border));
+  background: color-mix(in srgb, var(--settings-accent) 11%, transparent);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.settings-modal .theme-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-modal .theme-chip-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  color: var(--settings-accent);
+}
+
+.settings-modal .theme-chip-delete {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+}
+
+.settings-modal .theme-chip-delete:hover {
+  color: var(--destructive);
+}
+
+.settings-modal .theme-chip-delete svg {
+  width: 11px;
+  height: 11px;
+}
+
+.settings-modal .theme-chip--dirty {
+  border-style: dashed;
+  color: var(--muted-foreground);
+  cursor: default;
+}
+
+.settings-modal .theme-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin: 4px 0 8px;
+}
+
+.settings-modal .theme-save-row input {
+  flex: 1 1 180px;
+}
+
+.settings-modal .scheme-mini-swatch {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.settings-modal .scheme-mini-swatch i {
+  display: block;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+}
+
+/* —— MCP 限额三列 / 建议黑名单 / 记住的命令 —— */
+.settings-modal .mcp-limits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin: 6px 0 4px;
+}
+
+.settings-modal .mcp-limits .settings-field,
+.settings-modal .mcp-limits .settings-field:has(> input[type="number"]),
+.settings-modal .mcp-limits .settings-field:has(> [data-slot="select-trigger"]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 4px 0;
+}
+
+.settings-modal .mcp-limits .settings-field input {
+  width: 100%;
+}
+
+.settings-modal .settings-field.suggestion-blocklist-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.settings-modal .settings-field.suggestion-blocklist-row .settings-note {
+  margin: 0;
+}
+
+.settings-modal .settings-remembered {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.settings-modal .remembered-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-modal .remembered-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--card-surface-inset) 70%, transparent);
+}
+
+.settings-modal .remembered-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--settings-ink);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-modal .remembered-row .link-button {
+  flex: 0 0 auto;
+}
+
+/* —— sudo 内联配置档 —— */
+.settings-modal .profiles-inline {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-modal .profiles-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin: 10px 0 2px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-modal .task-error {
+  margin: 6px 0;
+  color: var(--destructive);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.settings-modal .empty.compact {
+  border: 1px dashed var(--settings-hairline);
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
+  background: color-mix(in srgb, var(--card-surface-inset) 46%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* 控件描边：比分隔线更实，保证输入框/下拉/卡片在深色底上可辨识。 */
+.settings-modal .settings-search,
+.settings-modal .settings-field input:not([type="radio"]):not([type="checkbox"]):not([type="range"]):not([type="file"]),
+.settings-modal .settings-field textarea,
+.settings-modal .theme-save-row input,
+.settings-modal .settings-field [data-slot="select-trigger"],
+.settings-modal .settings-field.settings-radio-row,
+.settings-modal .settings-list,
+.settings-modal .theme-chip,
+.settings-modal .remembered-row,
+.settings-modal .settings-footer-actions button,
+.settings-modal .browse-button,
+.settings-modal .appearance-actions button,
+.settings-modal .theme-save-row button {
+  border-color: var(--settings-control-border);
+}
+
+/* —— 底部状态条 —— */
+.settings-modal > footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 56px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--settings-hairline);
+  border-radius: 0;
+  padding: 10px 16px 10px 24px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-surface) 42%, transparent),
+    color-mix(in srgb, var(--card-surface-inset) 58%, transparent)
+  );
+}
+
+.settings-modal .settings-footer-note {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.settings-modal .settings-footer-pulse {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone-emerald);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone-emerald) 15%, transparent);
+}
+
+.settings-modal .settings-footer-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.settings-modal .settings-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.settings-modal .settings-footer-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 31px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 9px;
+  padding: 0 13px;
+  background: color-mix(in srgb, var(--card-surface-raised) 58%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.settings-modal .settings-footer-actions button:hover:not(:disabled) {
+  border-color: var(--card-border-strong);
+  background: color-mix(in srgb, var(--card-surface-raised) 88%, transparent);
+  color: var(--foreground);
+}
+
+.settings-modal .settings-footer-actions button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+
+.settings-modal .settings-footer-actions .primary-button {
+  height: 32px;
+  border-color: transparent;
+  padding: 0 20px;
+  color: var(--primary-foreground);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.settings-modal .settings-footer-actions .primary-button:hover:not(:disabled) {
+  border-color: transparent;
+  filter: brightness(1.06);
+}
+
+/* —— 配置档弹窗（ProfilesManagerDialog）：同一套外壳，无左侧导航 —— */
+.settings-modal.profiles-modal {
+  width: min(580px, calc(100vw - 40px));
+  height: auto;
+  max-height: min(640px, calc(100vh - 48px));
+}
+
+.settings-modal.profiles-modal > header {
+  min-height: 58px;
+}
+
+.settings-modal.profiles-modal > .settings-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 12px;
+  padding: 16px 20px 18px;
+  overflow-y: auto;
+}
+
+.settings-modal.profiles-modal > .settings-body > p.muted {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.settings-modal.profiles-modal > footer {
+  justify-content: flex-end;
+  min-height: 52px;
+  padding: 9px 16px;
+}
+
+.settings-modal .profiles-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-modal .profiles-count {
+  color: var(--muted-foreground);
+  font-family: var(--terminal-font-family);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.settings-modal .profiles-add {
+  height: 30px;
+  border-radius: 9px;
+  padding: 0 14px;
+  font-size: 11.5px;
+}
+
+.settings-modal .profiles-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 240px;
+}
+
+.settings-modal .profiles-empty {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--settings-hairline);
+  border-radius: var(--radius-md);
+  padding: 32px 16px;
+  background: color-mix(in srgb, var(--card-surface-inset) 46%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.settings-modal .profiles-list {
+  margin: 0;
+}
+
+/* —— 应用内目录选择弹窗：与设置同一套材质，但无导航/hero —— */
+.folder-picker-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(540px, calc(100vw - 40px));
+  height: min(480px, calc(100vh - 64px));
+  padding: 16px 18px 14px;
+  border: 1px solid var(--card-border-strong);
+  border-radius: var(--radius-panel);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-surface-raised) 74%, transparent),
+    color-mix(in srgb, var(--card-surface) 92%, transparent)
+  );
+  box-shadow: var(--shadow-modal), var(--card-glow);
+  isolation: isolate;
+}
+
+.folder-picker-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin: 0;
+  border: 0;
+}
+
+.folder-picker-modal > header h2 {
+  margin: 0;
+  color: var(--foreground);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
-.settings-modal.settings-nav-modal .settings-body {
-  gap: 0;
-  margin: 0 -14px;
-  padding: 0;
+
+.folder-picker-modal > header > .icon-button {
+  position: static;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
 }
-.settings-modal.settings-nav-modal .settings-layout {
-  margin: 0;
-  border-top: 0;
+
+.folder-picker-modal > header > .icon-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
 }
-.settings-modal.settings-nav-modal .settings-nav {
-  flex-basis: 158px;
-  gap: 1px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--card-surface-inset) 42%, transparent);
-}
-.settings-modal.settings-nav-modal .settings-nav .settings-nav-item {
-  height: 27px;
-  border-radius: 7px;
-  padding: 0 7px;
-  font-size: 11.5px;
-}
-.settings-modal.settings-nav-modal .settings-content {
-  gap: 12px;
-  padding: 10px 14px;
-}
-.settings-modal.settings-nav-modal .settings-pane {
-  gap: 8px;
-  border-radius: 10px;
-  padding: 12px;
-}
-.settings-modal.settings-nav-modal .settings-section-title {
-  margin: 2px 0 0;
-  padding-top: 10px;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-.settings-modal.settings-nav-modal .settings-field {
-  gap: 3px;
-  font-size: 10.5px;
-}
-.settings-modal.settings-nav-modal .settings-field input,
-.settings-modal.settings-nav-modal .settings-field textarea,
-.settings-modal.settings-nav-modal .settings-field [data-slot="select-trigger"] {
-  border-radius: 7px;
-  padding: 5px 8px;
-  font-size: 11.5px;
-}
-.settings-modal.settings-nav-modal .settings-field input:focus,
-.settings-modal.settings-nav-modal .settings-field textarea:focus,
-.settings-modal.settings-nav-modal .settings-field [data-slot="select-trigger"]:focus-visible {
-  border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 12%, transparent);
-  outline: none;
-}
-.settings-modal.settings-nav-modal .settings-list {
-  border-color: var(--card-border);
+
+.folder-picker-path input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--card-border);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--card-surface-inset) 34%, transparent);
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--card-surface-inset) 84%, transparent);
+  color: var(--foreground);
+  font-size: 11.5px;
 }
-.settings-modal.settings-nav-modal > footer {
-  min-height: 42px;
+
+.folder-picker-path input:focus {
+  border-color: color-mix(in srgb, var(--tone-violet) 55%, var(--card-border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone-violet) 13%, transparent);
+}
+
+.folder-picker-list {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  background: color-mix(in srgb, var(--card-surface-inset) 62%, transparent);
+}
+
+.folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.folder-picker-row:hover {
+  background: color-mix(in srgb, var(--card-surface-raised) 80%, transparent);
+}
+
+.folder-picker-row svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--muted-foreground);
+}
+
+.folder-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.folder-picker-modal > footer {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 -14px;
-  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  padding: 8px 14px;
-}
-.settings-footer-note {
-  min-width: 0;
-  flex: 1;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.folder-picker-current {
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 9.5px;
-  line-height: 1.35;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.settings-footer-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
+
+/* —— 动效 —— */
+@keyframes settings-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-@media (max-width: 560px) {
-  .settings-modal.settings-nav-modal { padding: 10px 12px 0; }
-  .settings-modal.settings-nav-modal > header { margin: 0 -12px; padding: 0 12px 8px; }
-  .settings-modal.settings-nav-modal .settings-body { margin: 0 -12px; }
-  .settings-modal.settings-nav-modal > footer { margin: 0 -12px; padding: 8px 12px; }
-  .settings-footer-note { display: none; }
+
+@keyframes settings-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* —— 窄屏：导航折到顶部并可横向滚动；hero/footer 收紧 —— */
+@media (max-width: 900px) {
+  .settings-modal.settings-nav-modal {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+  }
+
+  .settings-modal .settings-nav {
+    flex-basis: 204px;
+  }
+
+  .settings-modal .settings-search {
+    width: 188px;
+  }
+
+  .settings-modal .settings-panes {
+    padding: 16px 18px 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-modal .settings-layout {
+    flex-direction: column;
+  }
+
+  .settings-modal .settings-nav {
+    flex: 0 0 auto;
+    flex-direction: column;
+    max-height: none;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--settings-hairline);
+    border-radius: 0;
+    padding: 10px 12px 8px;
+    background: transparent;
+  }
+
+  .settings-modal .settings-nav-tabs {
+    width: 100%;
+    max-width: none;
+  }
+
+  .settings-modal .settings-nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .settings-modal .settings-nav .settings-nav-label {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .settings-modal .settings-nav .settings-nav-item {
+    width: auto;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    padding: 0 9px;
+  }
+
+  .settings-modal .settings-nav .settings-nav-item::before,
+  .settings-modal .settings-nav .settings-nav-item::after {
+    display: none;
+  }
+
+  .settings-modal .settings-nav .settings-nav-icon {
+    padding: 3px;
+    border-radius: 7px;
+  }
+
+  .settings-modal .settings-pane-hero {
+    padding: 12px 16px;
+  }
+
+  .settings-modal .settings-panes {
+    padding: 14px;
+  }
+
+  .settings-modal .settings-pane {
+    padding: 4px 14px 14px;
+  }
+
+  .settings-modal > header {
+    padding: 11px 14px;
+    min-height: 60px;
+  }
+
+  .settings-modal .settings-search {
+    width: 150px;
+  }
+
+  .settings-modal .settings-search-kbd {
+    display: none;
+  }
+
+  .settings-modal .settings-footer-text,
+  .settings-modal .settings-footer-pulse {
+    display: none;
+  }
+
+  .settings-modal > footer {
+    padding: 9px 14px;
+  }
+
+  .settings-modal .settings-field:has(> input[type="number"]),
+  .settings-modal .settings-field:has(> input[type="range"]),
+  .settings-modal .settings-field:has(> [data-slot="select-trigger"]) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 5px;
+  }
+
+  .settings-modal .settings-field > input[type="number"] {
+    max-width: none;
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .settings-modal .appearance-number-grid,
+  .settings-modal .mcp-limits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-modal .settings-pane .appearance-number-grid .settings-field:has(> input[type="number"]),
+  .settings-modal .settings-pane .appearance-number-grid .settings-field:has(> [data-slot="select-trigger"]),
+  .settings-modal .mcp-limits .settings-field:has(> input[type="number"]),
+  .settings-modal .mcp-limits .settings-field:has(> [data-slot="select-trigger"]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-modal .settings-hero-title,
+  .settings-modal .settings-pane {
+    animation: none;
+  }
+
+  .settings-modal .settings-nav .settings-nav-item,
+  .settings-modal .settings-nav .settings-nav-item::before {
+    transition: none;
+  }
+}
+
+/* —— 键盘可达：导航项与面板获得明确焦点环（此前只有 hover/active，Tab 走查会丢失位置） —— */
+.settings-modal .settings-nav .settings-nav-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--settings-accent) 78%, transparent);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--settings-accent) 40%, transparent);
+  color: var(--foreground);
+}
+
+.settings-modal .settings-pane:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--settings-accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* —— 高对比/强制颜色模式：渐变、color-mix 与阴影全部失真，退回实色边框与系统色 —— */
+@media (prefers-contrast: more) {
+  .settings-modal .settings-nav .settings-nav-item {
+    border-color: var(--foreground);
+  }
+
+  .settings-modal .settings-nav .settings-nav-item[data-state="active"],
+  .settings-modal .settings-nav .settings-nav-item[data-active] {
+    border-color: var(--settings-accent);
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  .settings-modal .settings-hero-kicker,
+  .settings-modal .settings-eyebrow,
+  .settings-modal .settings-section-title {
+    color: var(--foreground);
+  }
+
+  .settings-modal .settings-pane {
+    border-color: var(--foreground);
+  }
+}
+
+@media (forced-colors: active) {
+  .settings-modal .settings-nav .settings-nav-item,
+  .settings-modal .settings-pane,
+  .settings-modal .settings-pane-hero {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .settings-modal .settings-nav .settings-nav-item[data-state="active"],
+  .settings-modal .settings-nav .settings-nav-item[data-active] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .settings-modal .settings-nav .settings-nav-item:focus-visible,
+  .settings-modal .settings-pane:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .settings-modal .settings-footer-pulse {
+    background: CanvasText;
+    box-shadow: none;
+  }
 }

@@ -3,9 +3,9 @@
   "manifest_version": 1,
   "id": "io.dbx.sshx",
   "name": "RemoteX",
-  "version": "0.7.9-beta.140",
+  "version": "0.7.9-beta.142",
   "publisher": "apolloqi",
-  "description": "One DBX workbench for SSH, Telnet, VNC, RDP (experimental), serial and local shell connections.",
+  "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
   "source": "https://github.com/jinpy666/dbx-plugin-sshx",
   "homepage": "https://github.com/jinpy666/dbx-plugin-sshx",
   "icon": "assets/plugin.svg",
@@ -38,7 +38,7 @@
       "label": "RemoteX",
       "icon": "assets/plugin.svg",
       "database_type": "ssh",
-      "description": "One connection entry for SSH, Telnet, VNC, RDP (experimental), serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
+      "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
       "fields": [
         {
           "key": "display_name",
@@ -60,7 +60,7 @@
               "value": "ssh"
             },
             {
-              "label": "RDP (experimental)",
+              "label": "RDP",
               "value": "rdp"
             },
             {
@@ -80,7 +80,7 @@
               "value": "local"
             }
           ],
-          "description": "Session protocol carried by this connection. Choose SSH, Telnet, VNC, RDP (experimental), serial, or local shell; the visible host, port, credential and protocol-specific fields follow this choice. RDP is experimental."
+          "description": "Session protocol carried by this connection. Choose SSH, Telnet, VNC, RDP, serial, or local shell; the visible host, port, credential and protocol-specific fields follow this choice."
         },
         {
           "key": "host",
@@ -1336,10 +1336,10 @@
   "localizations": {
     "en": {
       "name": "RemoteX",
-      "description": "One DBX workbench for SSH, Telnet, VNC, RDP (experimental), serial and local shell connections.",
+      "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
       "contributions": {
         "io.dbx.sshx.connection": {
-          "description": "One connection entry for SSH, Telnet, VNC, RDP (experimental), serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
+          "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
           "label": "RemoteX"
         },
         "io.dbx.sshx.workbench": {},
@@ -1363,11 +1363,11 @@
     },
     "es": {
       "name": "RemoteX",
-      "description": "Un único espacio de trabajo DBX para SSH, Telnet, VNC, RDP (experimental), puerto serie y shell local.",
+      "description": "Un único espacio de trabajo DBX para SSH, Telnet, VNC, RDP, puerto serie y shell local.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Una sola entrada para SSH, Telnet, VNC, RDP (experimental), puerto serie y shell local. Elige el protocolo en el formulario; el host, el puerto y las credenciales se adaptan a esa elección.",
+          "description": "Una sola entrada para SSH, Telnet, VNC, RDP, puerto serie y shell local. Elige el protocolo en el formulario; el host, el puerto y las credenciales se adaptan a esa elección.",
           "fields": {
             "display_name": {
               "label": "Nombre de conexión"
@@ -1379,10 +1379,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "Serie",
-                "rdp": "RDP (experimental)",
+                "rdp": "RDP",
                 "local": "Shell local"
               },
-              "description": "Protocolo de sesión de esta conexión. Elige SSH, Telnet, VNC, RDP (experimental), puerto serie o shell local; los campos de host, puerto, credenciales y específicos del protocolo cambian según la elección. RDP es experimental."
+              "description": "Protocolo de sesión de esta conexión. Elige SSH, Telnet, VNC, RDP, puerto serie o shell local; los campos de host, puerto, credenciales y específicos del protocolo cambian según la elección."
             },
             "serial_port": {
               "label": "Dispositivo serie",
@@ -1657,11 +1657,11 @@
     },
     "it": {
       "name": "RemoteX",
-      "description": "Un'unica area di lavoro DBX per SSH, Telnet, VNC, RDP (sperimentale), seriale e shell locale.",
+      "description": "Un'unica area di lavoro DBX per SSH, Telnet, VNC, RDP, seriale e shell locale.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Una sola voce per SSH, Telnet, VNC, RDP (sperimentale), seriale e shell locale. Scegli il protocollo nel modulo; host, porta e credenziali seguono la scelta.",
+          "description": "Una sola voce per SSH, Telnet, VNC, RDP, seriale e shell locale. Scegli il protocollo nel modulo; host, porta e credenziali seguono la scelta.",
           "fields": {
             "display_name": {
               "label": "Nome connessione"
@@ -1673,10 +1673,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "Seriale",
-                "rdp": "RDP (sperimentale)",
+                "rdp": "RDP",
                 "local": "Shell locale"
               },
-              "description": "Protocollo di sessione di questa connessione. Scegli SSH, Telnet, VNC, RDP (sperimentale), seriale o shell locale; i campi host, porta, credenziali e specifici del protocollo cambiano di conseguenza. RDP è sperimentale."
+              "description": "Protocollo di sessione di questa connessione. Scegli SSH, Telnet, VNC, RDP, seriale o shell locale; i campi host, porta, credenziali e specifici del protocollo cambiano di conseguenza."
             },
             "serial_port": {
               "label": "Dispositivo seriale",
@@ -1951,11 +1951,11 @@
     },
     "ja": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP（実験的）、シリアル、ローカルシェルを1つの DBX ワークベンチに統合。",
+      "description": "SSH、Telnet、VNC、RDP、シリアル、ローカルシェルを1つの DBX ワークベンチに統合。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP（実験的）、シリアル、ローカルシェルを1つの接続エントリに統合。フォーム内でプロトコルを選ぶと、ホスト・ポート・認証情報がそれに合わせて切り替わります。",
+          "description": "SSH、Telnet、VNC、RDP、シリアル、ローカルシェルを1つの接続エントリに統合。フォーム内でプロトコルを選ぶと、ホスト・ポート・認証情報がそれに合わせて切り替わります。",
           "fields": {
             "display_name": {
               "label": "接続名"
@@ -1967,10 +1967,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "シリアル",
-                "rdp": "RDP（実験的）",
+                "rdp": "RDP",
                 "local": "ローカルシェル"
               },
-              "description": "この接続で使用するセッションプロトコル。SSH、Telnet、VNC、RDP（実験的）、シリアル、ローカルシェルから選択でき、表示されるホスト・ポート・認証情報・プロトコル固有の項目が切り替わります。RDP は実験的機能です。"
+              "description": "この接続で使用するセッションプロトコル。SSH、Telnet、VNC、RDP、シリアル、ローカルシェルから選択でき、表示されるホスト・ポート・認証情報・プロトコル固有の項目が切り替わります。"
             },
             "serial_port": {
               "label": "シリアルデバイス",
@@ -2245,11 +2245,11 @@
     },
     "pt-BR": {
       "name": "RemoteX",
-      "description": "Um único espaço de trabalho DBX para SSH, Telnet, VNC, RDP (experimental), serial e shell local.",
+      "description": "Um único espaço de trabalho DBX para SSH, Telnet, VNC, RDP, serial e shell local.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Uma única entrada para SSH, Telnet, VNC, RDP (experimental), serial e shell local. Escolha o protocolo no formulário; host, porta e credenciais acompanham a escolha.",
+          "description": "Uma única entrada para SSH, Telnet, VNC, RDP, serial e shell local. Escolha o protocolo no formulário; host, porta e credenciais acompanham a escolha.",
           "fields": {
             "display_name": {
               "label": "Nome da conexão"
@@ -2261,10 +2261,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "Serial",
-                "rdp": "RDP (experimental)",
+                "rdp": "RDP",
                 "local": "Shell local"
               },
-              "description": "Protocolo de sessão desta conexão. Escolha SSH, Telnet, VNC, RDP (experimental), serial ou shell local; os campos de host, porta, credenciais e específicos do protocolo mudam conforme a escolha. RDP é experimental."
+              "description": "Protocolo de sessão desta conexão. Escolha SSH, Telnet, VNC, RDP, serial ou shell local; os campos de host, porta, credenciais e específicos do protocolo mudam conforme a escolha."
             },
             "serial_port": {
               "label": "Dispositivo serial",
@@ -2539,11 +2539,11 @@
     },
     "zh-CN": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP（实验性）、串口与本地 Shell 的统一 DBX 终端与远程桌面工作台。",
+      "description": "SSH、Telnet、VNC、RDP、串口与本地 Shell 的统一 DBX 终端与远程桌面工作台。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP（实验性）、串口与本地 Shell 共用一个连接入口。在表单内选择协议，主机、端口与凭据会随协议切换。",
+          "description": "SSH、Telnet、VNC、RDP、串口与本地 Shell 共用一个连接入口。在表单内选择协议，主机、端口与凭据会随协议切换。",
           "fields": {
             "display_name": {
               "label": "连接名称"
@@ -2555,10 +2555,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "串口",
-                "rdp": "RDP（实验性）",
+                "rdp": "RDP",
                 "local": "本地 Shell"
               },
-              "description": "此连接承载的会话协议。选择 SSH、Telnet、VNC、RDP（实验性）、串口或本地 Shell；可见的主机、端口、凭据与协议专属字段会随选择切换。RDP 为实验能力。"
+              "description": "此连接承载的会话协议。选择 SSH、Telnet、VNC、RDP、串口或本地 Shell；可见的主机、端口、凭据与协议专属字段会随选择切换。"
             },
             "serial_port": {
               "label": "串口设备",
@@ -2833,11 +2833,11 @@
     },
     "zh-TW": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP（實驗性）、序列埠與本機 Shell 的統一 DBX 終端與遠端桌面工作台。",
+      "description": "SSH、Telnet、VNC、RDP、序列埠與本機 Shell 的統一 DBX 終端與遠端桌面工作台。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP（實驗性）、序列埠與本機 Shell 共用一個連線入口。在表單內選擇協定，主機、連接埠與憑證會隨協定切換。",
+          "description": "SSH、Telnet、VNC、RDP、序列埠與本機 Shell 共用一個連線入口。在表單內選擇協定，主機、連接埠與憑證會隨協定切換。",
           "fields": {
             "display_name": {
               "label": "連線名稱"
@@ -2849,10 +2849,10 @@
                 "telnet": "Telnet",
                 "vnc": "VNC",
                 "serial": "串列埠",
-                "rdp": "RDP（實驗性）",
+                "rdp": "RDP",
                 "local": "本地 Shell"
               },
-              "description": "此連線承載的工作階段協定。選擇 SSH、Telnet、VNC、RDP（實驗性）、序列埠或本機 Shell；可見的主機、連接埠、憑證與協定專屬欄位會隨選擇切換。RDP 為實驗能力。"
+              "description": "此連線承載的工作階段協定。選擇 SSH、Telnet、VNC、RDP、序列埠或本機 Shell；可見的主機、連接埠、憑證與協定專屬欄位會隨選擇切換。"
             },
             "serial_port": {
               "label": "串列埠裝置",

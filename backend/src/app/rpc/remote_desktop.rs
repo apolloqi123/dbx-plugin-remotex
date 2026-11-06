@@ -101,7 +101,7 @@ impl Plugin {
                 let mut request: crate::sessions::rdp::RdpStartRequest = parse(params)?;
                 // A saved RDP connection is explicit opt-in: the user created an
                 // RDP card/profile, so its staged protocol lets `rdp/start`
-                // bypass the experimental dialog gate. Ad-hoc dialog sessions
+                // bypass the dialog-only enable gate. Ad-hoc dialog sessions
                 // still require the setting.
                 let saved_rdp = request
                     .connection_id

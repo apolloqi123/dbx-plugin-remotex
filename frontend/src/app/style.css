@@ -6,7 +6,6 @@
 @import "./styles/global/modals.css";
 @import "./styles/global/layout.css";
 @import "./styles/global/metrics.css";
-@import "./styles/global/settings.css";
 @import "./styles/global/preview.css";
 @import "./styles/global/local-shell.css";
 @import "./styles/global/startup.css";
@@ -17,4 +16,6 @@
 @import "./styles/global/appearance.css";
 @import "./styles/global/ai-search.css";
 @import "./styles/global/cards.css";
+/* 设置在 cards.css 之后：新版设置视觉需覆盖 cards.css 的 .modal/.settings-* 基线。 */
+@import "./styles/global/settings.css";
 @import "./styles/global/log.css";

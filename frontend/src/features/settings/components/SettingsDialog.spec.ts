@@ -178,6 +178,70 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("SettingsDialog 导航搜索与面板可访问性", () => {
+  const searchInput = () => document.body.querySelector<HTMLInputElement>(".settings-search-input")!;
+  const visibleNavLabels = () =>
+    [...document.body.querySelectorAll<HTMLElement>(".settings-nav-item")]
+      .filter((el) => el.offsetParent !== null || el.getAttribute("data-state") !== null)
+      .map((el) => (el.textContent ?? "").trim());
+
+  it("搜索匹配面板内设置项关键词，而不只是分类名", async () => {
+    installInvoke(SSH_SETTINGS_META);
+    const wrapper = mountSettings("sess-1");
+    await openDialog(wrapper);
+
+    // “font” 不是任何分类名，但出现在外观面板的字体设置里，必须能命中外观分类。
+    searchInput().value = "font";
+    searchInput().dispatchEvent(new Event("input"));
+    await flushPromises();
+    const appearanceLabel = workbenchMessage("zh-CN", "settingsNav.appearance");
+    expect(visibleNavLabels(), "font 应命中外观分类").toEqual([appearanceLabel]);
+
+    // 中文关键词同样可用（搜索框不该要求用户切英文）。
+    searchInput().value = "字号";
+    searchInput().dispatchEvent(new Event("input"));
+    await flushPromises();
+    expect(visibleNavLabels(), "「字号」也应命中外观分类").toEqual([appearanceLabel]);
+
+    wrapper.unmount();
+  });
+
+  it("搜索无命中时给出空态提示", async () => {
+    installInvoke(SSH_SETTINGS_META);
+    const wrapper = mountSettings("sess-1");
+    await openDialog(wrapper);
+
+    searchInput().value = "zzzz-no-such-setting";
+    searchInput().dispatchEvent(new Event("input"));
+    await flushPromises();
+    expect(document.body.querySelectorAll(".settings-nav-item")).toHaveLength(0);
+    expect(document.body.querySelector(".settings-nav-empty")?.textContent).toBe(
+      workbenchMessage("zh-CN", "settingsSearchEmpty"),
+    );
+
+    wrapper.unmount();
+  });
+
+  it("每条 tab 有 aria-controls，对应面板有 role=tabpanel 与 aria-labelledby", async () => {
+    installInvoke(SSH_SETTINGS_META);
+    const wrapper = mountSettings("sess-1");
+    await openDialog(wrapper);
+
+    const tabs = [...document.body.querySelectorAll<HTMLElement>('.settings-nav-item[role="tab"]')];
+    expect(tabs.length).toBeGreaterThan(0);
+    for (const tab of tabs) {
+      const controls = tab.getAttribute("aria-controls");
+      expect(controls, `${tab.textContent} 缺 aria-controls`).toBeTruthy();
+      const panel = document.body.querySelector<HTMLElement>(`#${controls}`);
+      expect(panel, `aria-controls 指向的 ${controls} 不存在`).not.toBeNull();
+      expect(panel!.getAttribute("role")).toBe("tabpanel");
+      expect(panel!.getAttribute("aria-labelledby")).toBe(tab.id);
+    }
+
+    wrapper.unmount();
+  });
+});
+
 describe("SettingsDialog 会话级门控", () => {
   it("本地终端：跳过 ssh/settings/get、不出失败横幅、sudo/智能体分类隐藏", async () => {
     const invoke = installInvoke(null);

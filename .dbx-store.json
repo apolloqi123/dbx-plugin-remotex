@@ -1,6 +1,6 @@
 {
   "name": "RemoteX",
-  "description": "One DBX workbench for SSH, Telnet, VNC, RDP (experimental), serial and local shell connections.",
+  "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
   "icon": "assets/plugin.svg",
   "tags": [
     "ssh",
@@ -24,11 +24,11 @@
   "localizations": {
     "zh-CN": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP（实验性）、串口与本地 Shell 的统一 DBX 终端与远程桌面工作台。"
+      "description": "SSH、Telnet、VNC、RDP、串口与本地 Shell 的统一 DBX 终端与远程桌面工作台。"
     },
     "zh-TW": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP（實驗性）、序列埠與本機 Shell 的統一 DBX 終端與遠端桌面工作台。"
+      "description": "SSH、Telnet、VNC、RDP、序列埠與本機 Shell 的統一 DBX 終端與遠端桌面工作台。"
     }
   }
 }

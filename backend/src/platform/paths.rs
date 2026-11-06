@@ -54,14 +54,14 @@ fn resolve_plugin_data_dir(lookup: impl Fn(&str) -> Option<OsString>) -> PathBuf
         })
 }
 
-/// RDP is experimental and must be explicitly enabled in persisted preferences;
+/// RDP must be explicitly enabled in persisted preferences;
 /// keep this backend gate independent of UI visibility so direct RPC cannot
 /// bypass the release posture.
 pub(crate) fn rdp_start_gate(data_dir: &std::path::Path) -> Result<(), String> {
     if crate::core::preferences::rdp_experimental_enabled(data_dir) {
         Ok(())
     } else {
-        Err("rdp/start is disabled until experimental RDP is explicitly enabled".to_string())
+        Err("rdp/start is disabled until RDP is enabled in settings".to_string())
     }
 }
 

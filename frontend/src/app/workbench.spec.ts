@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appVueSource from "./App.vue?raw";
+import toolbarSource from "./components/WorkbenchToolbar.vue?raw";
 import sidePanelSource from "./components/WorkbenchSidePanel.vue?raw";
 import sftpWorkspaceSource from "../features/sftp/composables/listing/useSftpWorkspace?raw";
 import sftpErrorsSource from "../features/sftp/lib/entries/sftpErrors?raw";
@@ -676,6 +677,18 @@ describe("command history ring buffer (batch bar / history panel)", () => {
     expect(sanitizeCommandHistory(raw, 1)).toEqual(["ok cmd"]);
     expect(sanitizeCommandHistory(null)).toEqual([]);
     expect(sanitizeCommandHistory("not an array")).toEqual([]);
+  });
+});
+
+describe("protocol badge (single RemoteX card, per-protocol icon inside plugin UI)", () => {
+  it("renders an RDP/VNC badge in the toolbar identity for those connection protocols", () => {
+    // 宿主 connection-provider 只有一个 icon 字段（单卡片契约），因此 RDP/VNC
+    // 的协议区分只能由插件自己的工具条承担：身份区按 isRdpConnection /
+    // isVncConnection 显示 protocol-badge 与对应 glyph。
+    expect(toolbarSource).toContain('class="protocol-badge"');
+    expect(toolbarSource).toContain('isRdpConnection || isVncConnection');
+    expect(toolbarSource).toContain("protocol-rdp");
+    expect(toolbarSource).toContain("protocol-vnc");
   });
 });
 
