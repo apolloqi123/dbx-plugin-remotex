@@ -155,6 +155,12 @@ function restartFromEnd(): void {
 }
 
 const endedBanner = (value: DockerLogStreamStatus): boolean => value === "ended" || value === "error";
+/** 结束横幅的语义分档：正常退出（exit 0）只是“流结束”，不是错误。
+    红色底只留给真实失败（流错误 / 非零退出 / 错误文案），否则整块红色会
+    把一条普通的容器重启读成告警。 */
+const streamEndedWithError = computed(
+  () => status.value === "error" || Boolean(error.value) || (exitCode.value != null && exitCode.value !== 0),
+);
 /** 启动中还没有任何输出是正常的：不要显示“无输出”空态。 */
 const showEmptyState = computed(() => !hasOutput.value && status.value !== "starting");
 
@@ -246,9 +252,9 @@ watch(
         {{ t("docker.logsClear") }}
       </button>
     </div>
-    <div v-if="endedBanner(status) || needsSudo" class="docker-log-banner" data-role="stream-end">
+    <div v-if="endedBanner(status) || needsSudo" class="docker-log-banner" :class="{ 'is-error': streamEndedWithError, 'is-warning': !streamEndedWithError && needsSudo }" data-role="stream-end">
       <span class="docker-log-ended">{{ t("docker.streamEnded") }}</span>
-      <span v-if="exitCode !== null" class="docker-log-exit">exit {{ exitCode }}</span>
+      <span v-if="exitCode !== null" class="docker-log-exit" :class="{ 'is-failed': exitCode !== 0 }">exit {{ exitCode }}</span>
       <span v-if="error" class="docker-log-error">{{ error }}</span>
       <span class="docker-log-spacer" />
       <button
@@ -286,22 +292,29 @@ watch(
 .docker-log-toolbar {
   display: flex;
   flex: 0 0 auto;
+  min-height: 30px;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
-  font-size: 11px;
+  gap: 7px;
+  padding: 3px 8px;
+  font-size: var(--text-xs);
 }
 
 .docker-log-tail {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
+  color: var(--muted-foreground);
 }
 
 .docker-log-tail select {
-  font-size: 11px;
-  padding: 0 2px;
+  height: 22px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+  background: var(--card-surface-inset);
+  color: var(--foreground);
+  font-size: var(--text-xs);
 }
 
 .docker-log-follow,
@@ -309,24 +322,37 @@ watch(
 .docker-log-older,
 .docker-log-sudo,
 .docker-log-restart {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  padding: 1px 8px;
-  font-size: 11px;
+  height: 22px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 0 9px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.docker-log-follow:hover,
+.docker-log-clear:hover,
+.docker-log-older:hover,
+.docker-log-restart:hover {
+  border-color: color-mix(in srgb, var(--foreground) 24%, transparent);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--foreground);
 }
 
 .docker-log-follow.is-active {
-  border-color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
   color: var(--primary);
+  font-weight: 600;
 }
 
 .docker-log-follow:disabled,
 .docker-log-sudo:disabled {
-  cursor: not-allowed;
+  cursor: default;
   opacity: 0.5;
 }
 
@@ -344,20 +370,47 @@ watch(
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
-  font-size: 11px;
-  background: rgba(214, 69, 69, 0.14);
+  gap: 7px;
+  border-top: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
 }
-
-.docker-log-ended {
-  font-weight: 600;
+/* 状态点：正常结束（exit 0）= 中性灰点；失败/非零退出 = 红点；需要 sudo =
+   琥珀点。颜色只在点与退出码上，整条背景保持安静。 */
+.docker-log-banner::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+}
+.docker-log-banner.is-warning { background: color-mix(in srgb, var(--warning) 10%, transparent); color: color-mix(in srgb, var(--foreground) 82%, transparent); }
+.docker-log-banner.is-warning::before { background: var(--warning); }
+.docker-log-banner.is-error { background: color-mix(in srgb, var(--destructive) 11%, transparent); color: color-mix(in srgb, var(--foreground) 88%, transparent); }
+.docker-log-banner.is-error::before { background: var(--destructive); }
+.docker-log-ended { font-weight: 600; color: var(--foreground); }
+.docker-log-exit {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-xs);
+  padding: 0 5px;
+  font-family: var(--terminal-font-family);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+.docker-log-exit.is-failed {
+  border-color: color-mix(in srgb, var(--destructive) 42%, transparent);
+  color: var(--destructive);
 }
 
 .docker-log-error {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--destructive);
 }
 
 /* 固定高度滚动区：只有日志自身滚动，整页不滚（spec §3.2）。 */

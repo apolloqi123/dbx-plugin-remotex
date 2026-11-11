@@ -339,7 +339,7 @@ onBeforeUnmount(() => window.clearTimeout(copiedTimer));
   border-radius: 999px;
   padding: 0 5px;
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: 9.5px;
   letter-spacing: 0.02em;
 }
 

@@ -62,6 +62,11 @@ let trzszDetectionTimer = 0;
 let trzszWatchdogTimer = 0;
 let trzszOverlayTimer = 0;
 let trzszPickResolver: ((files: File[] | undefined) => void) | undefined;
+// 选文件兜底路径（WKWebView/旧内核不派发 cancel）挂的 focus 监听与其内层
+// 800ms 定时器：结算/重开/卸载时必须成对摘除，否则残留监听会把之后某次
+// 窗口聚焦误判成"本次未取消的上传被取消"。
+let trzszPickFocusHandler: (() => void) | undefined;
+let trzszPickFocusTimer = 0;
 
 const trzszBusy = computed(() => trzszPhase.value === "waiting" || trzszPhase.value === "transferring");
 const trzszOverlayVisible = computed(() => trzszPhase.value !== "idle");
@@ -170,6 +175,8 @@ function teardownTrzsz() {
   trzszWatchdogTimer = 0;
   window.clearTimeout(trzszOverlayTimer);
   trzszOverlayTimer = 0;
+  // 会话切换/关闭：在途选文件按取消结算，兜底监听与定时器一并摘除。
+  finishTrzszPick(undefined);
   trzszFilter?.stopTransferringFiles();
   trzszProgress = initialTrzszProgressState();
   trzszSpeedSample = undefined;
@@ -212,6 +219,16 @@ function chooseTrzszUpload() {
   terminalGet()?.focus();
 }
 
+/** 摘除选文件兜底路径的 focus 监听与内层定时器（结算/重开/卸载共用）。 */
+function clearTrzszPickFocusGuard() {
+  if (trzszPickFocusHandler) {
+    window.removeEventListener("focus", trzszPickFocusHandler);
+    trzszPickFocusHandler = undefined;
+  }
+  window.clearTimeout(trzszPickFocusTimer);
+  trzszPickFocusTimer = 0;
+}
+
 /** filter 回调：浏览器 File API 多选（宿主沙箱内不可用 File System Access API）。 */
 function pickTrzszUploadFiles(_directory: boolean): Promise<File[] | undefined> {
   // filter 已接管（走到选文件这一步），等待态看门狗使命完成。
@@ -220,17 +237,22 @@ function pickTrzszUploadFiles(_directory: boolean): Promise<File[] | undefined> 
   // 上一次未完成的选文件请求按取消处理，避免悬挂的 resolver。
   const previous = trzszPickResolver;
   trzszPickResolver = undefined;
+  clearTrzszPickFocusGuard();
   previous?.(undefined);
-  // WKWebView/旧内核不派发 input 的 cancel 事件：窗口重新拿到焦点后一小段
-  // 时间内 change 仍未触发（resolver 还挂着）即视为用户取消。
-  const onFocus = () => {
-    window.setTimeout(() => {
-      if (trzszPickResolver) onTrzszPickCancel();
-    }, 800);
-  };
-  window.addEventListener("focus", onFocus, { once: true });
   return new Promise((resolve) => {
     trzszPickResolver = resolve;
+    // WKWebView/旧内核不派发 input 的 cancel 事件：窗口重新拿到焦点后一小段
+    // 时间内 change 仍未触发（本次 resolver 还挂着）即视为用户取消。定时器
+    // 只取消唤起它的那一次请求，不读全局 resolver——残留监听可能晚于新上传
+    // 才触发，读全局会把新上传误判为取消。
+    const onFocus = () => {
+      trzszPickFocusTimer = window.setTimeout(() => {
+        trzszPickFocusTimer = 0;
+        if (trzszPickResolver === resolve) onTrzszPickCancel();
+      }, 800);
+    };
+    trzszPickFocusHandler = onFocus;
+    window.addEventListener("focus", onFocus, { once: true });
     trzszInput.value?.click();
   });
 }
@@ -239,15 +261,19 @@ function onTrzszPickInput(event: Event) {
   const input = event.target as HTMLInputElement;
   const files = Array.from(input.files || []);
   input.value = "";
-  const resolve = trzszPickResolver;
-  trzszPickResolver = undefined;
-  resolve?.(files.length ? files : undefined);
+  finishTrzszPick(files.length ? files : undefined);
 }
 
 function onTrzszPickCancel() {
+  finishTrzszPick(undefined);
+}
+
+/** 结算本次选文件：清 resolver 与兜底监听/定时器，再 resolve 发起时捕获的 Promise。 */
+function finishTrzszPick(files: File[] | undefined) {
   const resolve = trzszPickResolver;
   trzszPickResolver = undefined;
-  resolve?.(undefined);
+  clearTrzszPickFocusGuard();
+  resolve?.(files);
 }
 
 /**
@@ -343,6 +369,9 @@ onBeforeUnmount(() => {
   window.clearTimeout(trzszDetectionTimer);
   window.clearTimeout(trzszWatchdogTimer);
   window.clearTimeout(trzszOverlayTimer);
+  // 卸载兜底：在途选文件结算 + 摘除 focus 监听与内层定时器（否则回调会
+  // post-teardown 打到已销毁的 composable）。
+  finishTrzszPick(undefined);
   trzszFilter?.stopTransferringFiles();
   trzszFilter = null;
 });
@@ -365,6 +394,7 @@ onBeforeUnmount(() => {
     cancelTrzszTransfer,
     teardownTrzsz,
     chooseTrzszUpload,
+    pickTrzszUploadFiles,
     onTrzszPickInput,
     onTrzszPickCancel,
     feedTrzszTerminalInput,

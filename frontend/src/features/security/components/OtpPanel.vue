@@ -7,7 +7,7 @@
 // 纯逻辑（协议解析 / 倒计时 / 草稿映射）在 lib/otpPanel.ts；数据与取码在
 // useOtpCodes，对话框与绑定区分别下沉到 OtpEditorDialog / OtpBindSection。
 import { onMounted, reactive, ref } from "vue";
-import { Check, Copy, Link2, Loader2, Pencil, Plus, QrCode, RefreshCw, Send, Trash2 } from "@lucide/vue";
+import { Check, Copy, KeyRound, Link2, Loader2, Pencil, Plus, QrCode, RefreshCw, Send, Trash2 } from "@lucide/vue";
 import { bytesToBase64, countdownPercent, entryLabel, formatCountdown, qrResponseToDraft, type OtpEntryView } from "../lib/otpPanel";
 import { useOtpCodes } from "../composables/useOtpCodes";
 import OtpBindSection from "./OtpBindSection.vue";
@@ -133,7 +133,7 @@ onMounted(() => {
     </div>
 
     <p v-if="loading" class="otp-empty"><Loader2 class="spinning" />{{ t("otpPanel.loading") }}</p>
-    <p v-else-if="!entries.length" class="otp-empty">{{ t("otpPanel.empty") }}</p>
+    <p v-else-if="!entries.length" class="otp-empty"><KeyRound />{{ t("otpPanel.empty") }}</p>
     <ul v-else class="otp-list">
       <li v-for="entry in entries" :key="entry.id" class="otp-entry">
         <div class="otp-entry-head">
@@ -235,13 +235,20 @@ onMounted(() => {
 .otp-file-input { display: none; }
 .otp-empty {
   display: flex;
+  min-height: 132px;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 8px;
   margin: 0;
-  padding: 8px 4px;
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 18px 12px;
+  background: color-mix(in srgb, var(--card-surface-inset) 45%, transparent);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
+.otp-empty > svg { width: 22px; height: 22px; opacity: 0.55; stroke-width: 1.7; }
 .otp-list {
   display: flex;
   flex-direction: column;

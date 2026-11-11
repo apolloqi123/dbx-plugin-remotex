@@ -39,6 +39,36 @@ pub(super) struct ResidentEntry {
     pub(super) cancel: watch::Sender<bool>,
 }
 
+/// Terminal snapshot of a resident session, retained after the live entry is
+/// dropped from `TaskProvider::residents`.
+///
+/// Without it, `task/status` for a finished session fell through to the
+/// "unknown id" branch and always claimed `stopped` — so a session that ended
+/// `degraded` (restart budget exhausted) reported success, and the registry
+/// both leaked and lied. Keeping a bounded tail of real final states fixes the
+/// reporting while the live map stays small.
+#[derive(Debug, Clone)]
+pub(super) struct ResidentSummary {
+    pub(super) session_id: String,
+    pub(super) task_id: String,
+    pub(super) state: ResidentState,
+    pub(super) heartbeat_at: Option<SystemTime>,
+    pub(super) restart_count: u32,
+}
+
+impl ResidentState {
+    /// Terminal states retire the live registry entry.
+    ///
+    /// `Crashed` is deliberately *not* terminal: `resident_crash_step` records
+    /// the crash and then either restarts the session (which reuses the same
+    /// session id) or degrades it. Retiring on `Crashed` would delete the entry
+    /// the restart path still needs and turn every bounded restart into a
+    /// no-op state write.
+    pub(super) fn is_terminal(&self) -> bool {
+        matches!(self, Self::Stopped | Self::Degraded)
+    }
+}
+
 impl TaskProvider {
     // -- task/start (resident) ----------------------------------------------
 
@@ -444,13 +474,76 @@ impl TaskProvider {
     }
 
     pub(super) fn resident_set_state(&self, session_id: &str, state: ResidentState) {
-        let mut residents = self.residents_lock();
-        if let Some(entry) = residents.get_mut(session_id) {
+        let retired = {
+            let mut residents = self.residents_lock();
+            let Some(entry) = residents.get_mut(session_id) else {
+                return;
+            };
             entry.state = state;
             if state == ResidentState::Running || state == ResidentState::Stopped {
                 entry.heartbeat_at = Some(SystemTime::now());
             }
+            if state.is_terminal() {
+                // Keep the final snapshot for `task/status`, then drop the live
+                // entry: the supervisor has already left its loop, the cancel
+                // channel is dead, and nothing else reads the record.
+                let summary = ResidentSummary {
+                    session_id: session_id.to_string(),
+                    task_id: entry.task_id.clone(),
+                    state: entry.state,
+                    heartbeat_at: entry.heartbeat_at,
+                    restart_count: entry.restart_count,
+                };
+                residents.remove(session_id);
+                Some(summary)
+            } else {
+                None
+            }
+        };
+        if let Some(summary) = retired {
+            self.remember_resident_summary(summary);
         }
+    }
+
+    /// Appends a terminal summary to the bounded history, evicting the oldest
+    /// entry once [`RESIDENT_HISTORY_CAP`] is reached.
+    pub(super) fn remember_resident_summary(&self, summary: ResidentSummary) {
+        let mut history = self
+            .resident_history
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(position) = history
+            .iter()
+            .position(|existing| existing.session_id == summary.session_id)
+        {
+            history.remove(position);
+        }
+        history.push_back(summary);
+        while history.len() > RESIDENT_HISTORY_CAP {
+            history.pop_front();
+        }
+    }
+
+    /// Looks up a retired session's final state (newest first), either by its
+    /// session id or by the task it belonged to.
+    pub(super) fn resident_summary(
+        &self,
+        session_id: Option<&str>,
+        task_id: Option<&str>,
+    ) -> Option<ResidentSummary> {
+        let history = self
+            .resident_history
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        history
+            .iter()
+            .rev()
+            .find(|summary| match (session_id, task_id) {
+                (Some(session_id), _) => summary.session_id == session_id,
+                (None, Some(task_id)) => summary.task_id == task_id,
+                (None, None) => false,
+            })
+            .cloned()
     }
 
     pub(super) fn resident_heartbeat(&self, session_id: &str) {

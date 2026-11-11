@@ -104,11 +104,11 @@ const usedPercent = computed(() => {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.metric-memory-unit { fill: var(--muted-foreground); font-size: 9px; font-weight: 500; }
+.metric-memory-unit { fill: var(--muted-foreground); font-size: 9.5px; font-weight: 500; }
 .metric-memory-caption {
   fill: var(--muted-foreground);
   font-family: var(--ui-font-family);
-  font-size: 8px;
+  font-size: 9px;
 }
 .metric-memory-legend {
   display: flex;

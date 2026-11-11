@@ -1,18 +1,19 @@
 /* ---- 审计日志（IMPL_PLAN_NETCATTY_PARITY §3-B4，独立弹窗）---- */
-.audit-modal { width: min(680px, 100%); height: min(560px, calc(100vh - 48px)); }
+/* 对话框高度随内容走（少量记录时不再留一大片空白），超过上限才内部滚动。 */
+.audit-modal { width: min(680px, 100%); height: auto; max-height: min(560px, calc(100vh - 48px)); }
 .audit-toolbar { display: flex; align-items: center; gap: 8px; }
 .audit-toolbar .audit-kind-select { min-width: 150px; }
 .audit-toolbar .audit-actions { display: flex; gap: 4px; margin-left: auto; }
-.audit-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: 12px; }
+.audit-empty { display: flex; flex: 1 1 auto; min-height: 168px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); font-size: var(--text-sm); }
 .audit-empty > svg { width: 28px; height: 28px; opacity: 0.5; }
-.audit-truncated { font-size: 10px; }
+.audit-truncated { font-size: var(--text-2xs); }
 /* 标准列表项（同录制记录）：行间单条发丝分隔线、行 hover 底色。 */
 .audit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; overflow-y: auto; }
-.audit-row { display: flex; align-items: baseline; gap: 8px; border-radius: var(--radius); padding: 7px 8px; font-size: 12px; }
+.audit-row { display: flex; align-items: baseline; gap: 9px; border-radius: var(--radius); padding: 8px 9px; font-size: var(--text-sm); }
 .audit-row + .audit-row { border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
 .audit-row:hover { background: var(--accent); }
 .audit-time { flex: 0 0 auto; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-.audit-kind-badge { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 600; color: var(--muted-foreground); }
+.audit-kind-badge { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; font-size: var(--text-2xs); font-weight: 600; line-height: 16px; color: var(--muted-foreground); }
 .audit-kind-badge.k-exec { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
 .audit-kind-badge.k-agent-challenge { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
 .audit-kind-badge.k-terminal-auto_sudo { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }

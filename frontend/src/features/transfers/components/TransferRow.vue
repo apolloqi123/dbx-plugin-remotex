@@ -204,37 +204,37 @@ const detailTitle = computed(() =>
 .transfer-row-name {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: -0.005em;
-  line-height: 1.15;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.transfer-row-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.transfer-row-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .transfer-dir {
   display: inline-flex;
-  height: 14px;
+  height: 15px;
   align-items: center;
   gap: 2px;
   border: 1px solid;
   border-radius: var(--radius-pill);
-  padding: 0 4px;
-  font-size: 8.5px;
+  padding: 0 5px;
+  font-size: 9.5px;
   font-weight: 600;
 }
-.transfer-dir > svg { width: 8px; height: 8px; }
+.transfer-dir > svg { width: 9px; height: 9px; }
 .transfer-dir.is-upload { border-color: color-mix(in srgb, var(--tone-emerald) 45%, transparent); background: var(--tone-emerald-soft); color: var(--tone-emerald); }
 .transfer-dir.is-download { border-color: color-mix(in srgb, var(--tone-blue) 45%, transparent); background: var(--tone-blue-soft); color: var(--tone-blue); }
 .transfer-proto {
   display: inline-flex;
-  height: 14px;
+  height: 15px;
   align-items: center;
   border: 1px solid var(--card-border);
   border-radius: 4px;
-  padding: 0 4px;
+  padding: 0 5px;
   color: var(--muted-foreground);
-  font-size: 8px;
+  font-size: 9.5px;
   letter-spacing: 0.02em;
 }
 .transfer-proto.is-compressed { border-color: color-mix(in srgb, var(--tone-violet) 40%, transparent); color: var(--tone-violet); }
@@ -243,13 +243,13 @@ const detailTitle = computed(() =>
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1px 5px;
+  gap: 2px 6px;
   color: var(--muted-foreground);
-  font-size: 8.5px;
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
 }
-.transfer-row-status { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
-.transfer-row-dot { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: var(--muted-foreground); }
+.transfer-row-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.transfer-row-dot { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--muted-foreground); }
 .transfer-row.is-running .transfer-row-dot { background: var(--tone-blue); animation: transfer-pulse 1.9s ease-out infinite; }
 .transfer-row.is-staging .transfer-row-dot { background: var(--tone-violet); }
 .transfer-row.is-completed .transfer-row-dot { background: var(--tone-emerald); }
@@ -291,9 +291,14 @@ const detailTitle = computed(() =>
   background: var(--tone-blue);
   transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.transfer-row-line.is-completed { background: var(--tone-emerald); }
+/* 已完成的行只需要一个“收尾”提示：细线 + 低饱和，避免整列 100% 绿条抢走
+   进行中任务的注意力（进度线的主语是运行中的传输）。 */
+.transfer-row-line.is-completed {
+  height: 1px;
+  background: color-mix(in srgb, var(--tone-emerald) 42%, transparent);
+}
 .transfer-row-line.is-failed { background: var(--tone-rose); }
-.transfer-row-line.is-cancelled { background: color-mix(in srgb, var(--muted-foreground) 45%, transparent); }
+.transfer-row-line.is-cancelled { background: color-mix(in srgb, var(--muted-foreground) 40%, transparent); }
 .transfer-row-line.is-paused,
 .transfer-row-line.is-resumable { background: var(--tone-amber); }
 .transfer-row-line.is-staging { background: var(--tone-violet); }
@@ -309,14 +314,14 @@ const detailTitle = computed(() =>
   background: var(--card-surface-inset);
 }
 .transfer-detail-head { display: flex; min-width: 0; align-items: center; gap: 7px; }
-.transfer-detail-name { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 10.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-detail-name { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: var(--text-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .transfer-detail-state {
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
-  padding: 1px 5px;
+  padding: 1px 6px;
   background: var(--tone-blue-soft);
   color: var(--tone-blue);
-  font-size: 8px;
+  font-size: 9.5px;
   font-variant-numeric: tabular-nums;
 }
 .transfer-detail-state.is-completed { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
@@ -324,7 +329,7 @@ const detailTitle = computed(() =>
 .transfer-detail-state.is-cancelled { background: color-mix(in srgb, var(--muted-foreground) 14%, transparent); color: var(--muted-foreground); }
 .transfer-detail-state.is-paused,
 .transfer-detail-state.is-resumable { background: var(--tone-amber-soft); color: var(--tone-amber); }
-.transfer-detail-meta { color: var(--muted-foreground); font-size: 8.5px; font-variant-numeric: tabular-nums; }
+.transfer-detail-meta { color: var(--muted-foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .transfer-detail-path {
   display: flex;
   flex-direction: column;
@@ -334,9 +339,9 @@ const detailTitle = computed(() =>
   padding: 5px 7px;
   background: var(--card-surface);
 }
-.transfer-detail-path-label { color: var(--muted-foreground); font-size: 7.5px; letter-spacing: 0.04em; text-transform: uppercase; }
-.transfer-detail-path-value { color: var(--foreground); font-size: 9px; overflow-wrap: anywhere; }
-.transfer-detail-error { margin: 0; color: var(--tone-rose); font-size: 9px; overflow-wrap: anywhere; }
+.transfer-detail-path-label { color: var(--muted-foreground); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.transfer-detail-path-value { color: var(--foreground); font-size: var(--text-2xs); overflow-wrap: anywhere; }
+.transfer-detail-error { margin: 0; color: var(--tone-rose); font-size: var(--text-2xs); overflow-wrap: anywhere; }
 
 @keyframes transfer-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone-blue) 35%, transparent); }

@@ -189,6 +189,7 @@
    整宽行菜单项，形态对齐 shell-surface-item。popover 作用域没有 .modal button
    的扁平化兜底，需自带去边框/去背景。 */
 .session-menu-popover { min-width: 210px; }
+.session-menu-popover { min-width: 268px; }
 .session-menu-item {
   display: flex;
   width: 100%;
@@ -200,6 +201,7 @@
   background: transparent;
   font-size: 12px;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .session-menu-item svg { width: 14px; height: 14px; flex: 0 0 14px; }
@@ -261,7 +263,7 @@
    轨道/边框/选中样式，必须排除——:not() 按参数计特异性（每条 (0,1,0)），
    该选择器实际特异性 (0,3,1)，会把这些控件的背景抹成透明
    （设置侧栏选中项白字无药丸、弹窗内控件隐形而工具栏正常的根因）。 */
-.modal button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]), .path-toolbar button:not(.sudo-toggle):not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]) {
+.modal button:not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]):not(.hotkey-chip), .path-toolbar button:not(.sudo-toggle):not([data-slot="switch"]):not([data-slot="select-trigger"]):not([data-slot="tabs-trigger"]) {
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -302,7 +304,19 @@
 .sudo-toggle:hover:not(:disabled):not(.is-on) { background: var(--accent); }
 .sudo-toggle.is-on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--foreground); font-weight: 600; }
 .sudo-toggle:disabled { cursor: default; }
-.toolbar-separator { width: 1px; height: 16px; flex: 0 0 1px; margin: 0 3px; background: var(--border); }
+.toolbar-separator {
+  width: 1px;
+  height: 14px;
+  flex: 0 0 1px;
+  margin: 0 4px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 20%, transparent) 30%,
+    color-mix(in srgb, var(--foreground) 20%, transparent) 70%,
+    transparent
+  );
+}
 .icon-button.is-active { background: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
 .remember input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); }
 /* 复选/单选全局对齐主色（UA 默认蓝色与宿主主题脱节）。 */

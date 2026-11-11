@@ -77,42 +77,72 @@ pub fn append(data_dir: &Path, entry: &AuditEntry) -> Result<(), String> {
 }
 
 /// Reads the newest entries in file order (oldest → newest). Malformed lines
-/// are skipped; a missing file yields an empty list. `before_ts_ms` keeps
+/// are skipped; missing files yield an empty list. `before_ts_ms` keeps
 /// strictly older entries (`ts_ms < before_ts_ms`); `limit` is clamped to
 /// [`TAIL_LIMIT_CAP`] (the caller owns the protocol [1, 500] validation).
+///
+/// Both generations are read: the rotated `audit-log.jsonl.1` holds the older
+/// half of the retained window, so reading only the active file would make the
+/// previous generation vanish from the audit viewer the moment a rotation
+/// happens (the entries still exist on disk — they were just unreachable).
+///
+/// Lines are scanned newest-file-first and back-to-front, stopping as soon as
+/// `limit` matches are collected: a 5 MiB ledger is ~13k lines, and the viewer
+/// only ever asks for its newest few hundred. Full-file `serde_json` parsing
+/// per request is wasted work on a file that is append-only.
 pub fn tail(
     data_dir: &Path,
     limit: usize,
     before_ts_ms: Option<u64>,
 ) -> Result<Vec<AuditEntry>, String> {
-    let path = audit_path(data_dir);
-    let text = match std::fs::read_to_string(&path) {
+    let limit = limit.min(TAIL_LIMIT_CAP);
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    // Newest generation first; the rotated predecessor is strictly older.
+    let mut newest_first: Vec<AuditEntry> = Vec::new();
+    for path in [audit_path(data_dir), rotated_path(data_dir)] {
+        read_newest_first(&path, limit, before_ts_ms, &mut newest_first)?;
+        if newest_first.len() >= limit {
+            break;
+        }
+    }
+    newest_first.truncate(limit);
+    // Caller contract is oldest → newest.
+    newest_first.reverse();
+    Ok(newest_first)
+}
+
+/// Appends up to `limit` entries from one ledger file to `out`, newest first.
+/// Stops early once `out` is full so a large ledger never pays a full parse.
+fn read_newest_first(
+    path: &Path,
+    limit: usize,
+    before_ts_ms: Option<u64>,
+    out: &mut Vec<AuditEntry>,
+) -> Result<(), String> {
+    let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        // A missing generation is normal (never rotated / cleared).
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(format!("Failed to read {}: {error}", path.display())),
     };
-    let limit = limit.min(TAIL_LIMIT_CAP);
-    let mut entries: Vec<AuditEntry> = Vec::new();
-    for line in text.lines() {
+    for line in text.lines().rev() {
+        if out.len() >= limit {
+            return Ok(());
+        }
         if line.trim().is_empty() {
             continue;
         }
-        match serde_json::from_str::<AuditEntry>(line) {
-            Ok(entry) => {
-                if before_ts_ms.is_some_and(|before| entry.ts_ms >= before) {
-                    continue;
-                }
-                entries.push(entry);
+        // Bad lines (torn writes, older shapes) never break replay.
+        if let Ok(entry) = serde_json::from_str::<AuditEntry>(line) {
+            if before_ts_ms.is_some_and(|before| entry.ts_ms >= before) {
+                continue;
             }
-            // Bad lines (torn writes, older shapes) never break replay.
-            Err(_) => continue,
+            out.push(entry);
         }
     }
-    if entries.len() > limit {
-        let drop = entries.len() - limit;
-        entries.drain(..drop);
-    }
-    Ok(entries)
+    Ok(())
 }
 
 /// Clears the audit ledger: truncates the active JSONL to empty and drops
@@ -120,13 +150,34 @@ pub fn tail(
 /// concurrent O_APPEND appender never sees a missing file; entries appended
 /// after the clear naturally start the new generation. Used by the
 /// workbench settings「审计日志」清空按钮 via `ssh/audit/clear`.
+///
+/// The truncating open reuses `append`'s 0600 creation mode: a plain
+/// `std::fs::write` would create a missing ledger as 0644 (0666 & ~umask), and
+/// because `.mode()` only applies at creation, the file would stay
+/// world-readable for every later append — leaking command text and output
+/// tails that the append path deliberately creates owner-only.
 pub fn clear(data_dir: &Path) -> Result<(), String> {
     let _guard = append_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = audit_path(data_dir);
-    std::fs::write(&path, b"")
-        .map_err(|error| format!("Failed to clear {}: {error}", path.display()))?;
+    #[cfg(unix)]
+    let cleared = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+    };
+    #[cfg(not(unix))]
+    let cleared = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path);
+    cleared.map_err(|error| format!("Failed to clear {}: {error}", path.display()))?;
     let _ = std::fs::remove_file(rotated_path(data_dir));
     Ok(())
 }

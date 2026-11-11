@@ -191,6 +191,9 @@ fn base32_decode_is_tolerant_and_validating() {
     assert_eq!(decode_base32("gezd gnbv-gy3t qojq").unwrap(), b"1234567890");
     assert!(decode_base32("").is_err());
     assert!(decode_base32("!!").is_err());
+    // 密钥原文绝不能出现在错误串里：该文案会经 RPC 直达前端横幅与审计日志。
+    let leaked = decode_base32("SECRET1SECRET").expect_err("invalid alphabet");
+    assert!(!leaked.contains("SECRET1SECRET"), "{leaked}");
 }
 
 #[test]

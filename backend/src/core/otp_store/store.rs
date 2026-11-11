@@ -328,6 +328,15 @@ pub fn save_entry(
             None => return Err("Missing secret".to_string()),
         }
     } else {
+        // A degraded vault seals to "" — that would create an entry with
+        // hasSecret=false and silently disable OTP auto-answer. Refuse the
+        // write instead of reporting a save that stored no usable secret.
+        if !vault.can_seal() {
+            return Err(
+                "Encrypted credential storage is unavailable; the OTP secret was not saved"
+                    .to_string(),
+            );
+        }
         let key = otp::decode_base32(&secret_input)?;
         if key.len() > MAX_SECRET_BYTES {
             return Err(format!(

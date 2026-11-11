@@ -71,12 +71,20 @@ export interface WebglRecoveryOptions<T extends WebglRendererLike> {
   retries?: number;
   /** 重建尝试前的延迟毫秒（默认 1000，给 GPU 重置留出恢复时间）。 */
   delayMs?: number;
-  /** 替代 setTimeout 的延迟调度（单测注入手动调度器）；重建单次触发，无需取消句柄，偏好关闭走 enabled 谓词。 */
+  /** 替代 setTimeout 的延迟调度（单测注入手动调度器）。 */
   schedule?: (callback: () => void) => unknown;
+  /** 取消 `schedule` 返回的挂起重建（与 schedule 配套；终端销毁时调用）。 */
+  cancel?: (handle: unknown) => void;
   /** 重建成功回调：调用方同步其持有的 renderer 引用（如 webglRenderer.value）。 */
   onRecovered?: (addon: T) => void;
   /** 返回 false 时放弃重建（偏好已被用户关闭）。 */
   enabled?: () => boolean;
+  /** 返回 false 时放弃重建/监听（终端已销毁）：防止延迟回调打到已 dispose 的
+   * Terminal 上新建并 loadAddon 一个 WebGL context（每页 context 总数有限）。 */
+  alive?: () => boolean;
+  /** 交出销毁钩子：调用方在终端 dispose 时执行，取消挂起重建并释放
+   * onContextLoss 订阅（否则监听随重建次数叠加、回调在销毁后仍会触发）。 */
+  onCleanup?: (cleanup: () => void) => void;
 }
 
 /**
@@ -93,13 +101,33 @@ export function attachWebglRenderer<T extends WebglRendererLike>(
 ): T | null {
   const retries = options?.retries ?? 2;
   const delayMs = options?.delayMs ?? 1000;
-  const schedule =
-    options?.schedule ?? ((callback: () => void) => setTimeout(callback, delayMs));
+  const schedule = options?.schedule ?? ((callback: () => void) => setTimeout(callback, delayMs));
+  const cancel = options?.cancel ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+  // 销毁态与订阅收集：重建排程被取消、onContextLoss 订阅被释放后，回调
+  // 不得再对已 dispose 的 Terminal 建 context。
+  let cleaned = false;
+  let pendingHandle: unknown = null;
+  const subscriptions: Array<{ dispose(): void }> = [];
+
+  function abandoned(): boolean {
+    return cleaned || options?.alive?.() === false || options?.enabled?.() === false;
+  }
+
+  function disposeSubscriptions() {
+    for (const subscription of subscriptions.splice(0)) {
+      try {
+        subscription.dispose();
+      } catch {
+        /* noop */
+      }
+    }
+  }
 
   function scheduleRecovery(remaining: number) {
-    if (remaining <= 0 || options?.enabled?.() === false) return;
-    schedule(() => {
-      if (options?.enabled?.() === false) return;
+    if (remaining <= 0 || abandoned()) return;
+    pendingHandle = schedule(() => {
+      pendingHandle = null;
+      if (abandoned()) return;
       let created: T | null = null;
       try {
         created = createAddon();
@@ -123,15 +151,28 @@ export function attachWebglRenderer<T extends WebglRendererLike>(
   }
 
   function wireRecovery(addon: T, remaining: number) {
-    addon.onContextLoss(() => {
+    const subscription = addon.onContextLoss(() => {
       try {
         addon.dispose();
       } catch {
         /* noop */
       }
+      if (abandoned()) return;
       scheduleRecovery(remaining);
     });
+    subscriptions.push(subscription);
   }
+
+  // 销毁钩子：取消挂起重建 + 释放全部 onContextLoss 订阅。executed 幂等。
+  options?.onCleanup?.(() => {
+    if (cleaned) return;
+    cleaned = true;
+    if (pendingHandle !== null) {
+      cancel(pendingHandle);
+      pendingHandle = null;
+    }
+    disposeSubscriptions();
+  });
 
   let created: T | null = null;
   try {

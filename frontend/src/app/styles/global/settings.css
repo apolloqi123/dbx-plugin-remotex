@@ -205,9 +205,9 @@
   border: 1px solid var(--settings-hairline);
   border-radius: 4px;
   background: color-mix(in srgb, var(--card-surface) 70%, transparent);
-  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
   font-family: var(--terminal-font-family);
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   line-height: 1;
 }
 
@@ -1227,17 +1227,38 @@
 .settings-modal .task-error {
   margin: 6px 0;
   color: var(--destructive);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 
-.settings-modal .empty.compact {
-  border: 1px dashed var(--settings-hairline);
-  border-radius: var(--radius-md);
-  padding: 14px 12px;
-  background: color-mix(in srgb, var(--card-surface-inset) 46%, transparent);
-  color: var(--muted-foreground);
+/* 本地开关偏好快照读取失败：作为一段前置提示，与正文说明区分开
+   （普通 settings-note 是 muted 的，这里必须读起来像告警而不是说明）。 */
+.settings-modal .settings-toggle-error {
+  margin: 4px 0 14px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 42%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   font-size: 11px;
+  line-height: 1.55;
+}
+
+.settings-modal .empty.compact {
+  min-height: 46px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--card-surface-inset) 58%, transparent);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+/* 空态图标与文字同色但更轻，提供一个视觉锚点而不是一行孤立的灰字。 */
+.settings-modal .empty.compact > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  opacity: 0.75;
+  stroke-width: 1.7;
 }
 
 /* 控件描边：比分隔线更实，保证输入框/下拉/卡片在深色底上可辨识。 */

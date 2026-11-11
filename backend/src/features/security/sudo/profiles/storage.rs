@@ -130,6 +130,16 @@ pub fn save_store_with(
     provider: &dyn KeyProvider,
 ) -> Result<(), String> {
     let vault = Vault::new(provider);
+    // A degraded vault seals every secret to "". Writing the whole store in
+    // that state would overwrite the existing on-disk envelopes with blanks
+    // (even though a degraded load has already emptied the in-memory secrets),
+    // so refuse instead of reporting a save that silently destroys them.
+    if !vault.can_seal() {
+        return Err(
+            "Encrypted credential storage is unavailable; Quick Sudo secrets were not saved"
+                .to_string(),
+        );
+    }
     let path = store_path(data_dir);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

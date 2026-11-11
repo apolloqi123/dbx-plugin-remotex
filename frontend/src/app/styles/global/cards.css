@@ -275,6 +275,9 @@
 .modal h2 { font-size: 15px; letter-spacing: 0.01em; }
 .modal header { min-height: 28px; }
 .modal header > .icon-button { top: 12px; right: 12px; border-radius: var(--radius-control); }
+/* 弹层打开时焦点会先落在关闭钮上：这里收窄焦点环，避免对话框一出现就像
+   “X 被选中”。键盘 Tab 到其它按钮仍是 2px 环。 */
+.modal header > .icon-button:focus-visible { outline: 1px solid color-mix(in srgb, var(--primary) 65%, transparent); outline-offset: 0; }
 .modal footer {
   margin: 0 -18px -18px;
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
@@ -1013,6 +1016,32 @@ textarea,
   background: color-mix(in srgb, var(--card-surface-raised) 55%, transparent);
   padding: 8px;
 }
+/* “Step N of 3”是进度眉标，不是输入框：去掉容器描边，用等宽小字 + 前置圆点
+   表达步骤感，避免弹窗顶部出现一个空荡的边框盒子。 */
+.import-steps {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 0;
+  padding: 2px 2px 0;
+  background: none;
+  color: var(--muted-foreground);
+  font-family: var(--terminal-font-family);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.import-steps::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
 .import-source-line,
 .import-source {
   border: 1px solid var(--card-border);
@@ -1036,6 +1065,8 @@ textarea,
 .profiles-list li { background: color-mix(in srgb, var(--card-surface-raised) 45%, transparent); }
 .otp-panel { display: flex; flex-direction: column; gap: var(--space-sm); }
 .otp-toolbar { padding: 6px 8px; }
+/* OTP 工具栏只有 3 个动作：卡片宽度贴合内容，避免整行空盒子看起来像未填的输入框。 */
+.otp-panel .otp-toolbar { align-self: flex-start; }
 .otp-entry { padding: 8px 10px; }
 .otp-actions { gap: var(--space-2xs); }
 .otp-empty {
@@ -1081,3 +1112,138 @@ textarea,
   .container-row-item:hover { transform: none; }
   .terminal-tab-add:hover:not(:disabled) { transform: none; }
 }
+
+/* —— 表单字段：设置页与独立连接弹窗共用同一套“标签在上、控件在下”结构 ——
+   settings.css 用 .settings-modal 前缀覆盖本基线；这里保证 telnet/serial/vnc/rdp
+   这类普通弹窗里的 .settings-field 不再退化成行内 label（标签与输入框挤在一行）。 */
+.settings-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+.settings-field > span {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+}
+.settings-field > input:not([type="radio"]):not([type="checkbox"]):not([type="range"]):not([type="file"]),
+.settings-field > select,
+.settings-field > textarea {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--card-surface-inset) 82%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.settings-field > textarea {
+  height: auto;
+  min-height: 76px;
+  padding: 7px 9px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.settings-field > input:focus-visible,
+.settings-field > select:focus-visible,
+.settings-field > textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 65%, var(--card-border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.settings-field > small {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+
+/* AI 修复条（z=8）与搜索面板（z=7）/ 指标-录制浮卡（z=6）都锚在终端顶部：
+   同时出现时会把后者的第一行盖住。修复条可见时把这些浮层统一下移一条高度，
+   保持三层信息都能读，不改变修复条自己的光标锚点。 */
+.terminal-pane.ai-fix-visible .terminal-search-panel,
+.terminal-pane.ai-fix-visible .metrics-float { top: 40px; }
+
+/* 连接类弹窗（Telnet/串口/VNC/RDP）：420px 下两列输入过窄，给到 500px。 */
+.modal.connect-modal { width: min(500px, 100%); }
+.modal.connect-modal > footer { margin-top: 4px; }
+
+/* —— 滚动可见性 ——
+   全局隐藏滚动条是工作台（终端/文件列表）的既定密度策略，但弹窗与设置这类
+   长内容没有滚动条就失去“还有内容”的提示。这里只对弹窗滚动区放开一条细的
+   悬浮滑轨：track 透明、thumb 用前景混色并留 3px 内边距，不改变内容宽度观感。 */
+.modal .settings-body,
+.modal .audit-list,
+.settings-modal .settings-panes,
+.settings-modal .settings-nav,
+.docker-pane-surface .docker-log-scroll,
+.docker-pane-surface .container-rows {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 26%, transparent) transparent;
+}
+.modal .settings-body::-webkit-scrollbar,
+.modal .audit-list::-webkit-scrollbar,
+.settings-modal .settings-panes::-webkit-scrollbar,
+.settings-modal .settings-nav::-webkit-scrollbar,
+.docker-pane-surface .docker-log-scroll::-webkit-scrollbar,
+.docker-pane-surface .container-rows::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+.modal .settings-body::-webkit-scrollbar-track,
+.modal .audit-list::-webkit-scrollbar-track,
+.settings-modal .settings-panes::-webkit-scrollbar-track,
+.settings-modal .settings-nav::-webkit-scrollbar-track,
+.docker-pane-surface .docker-log-scroll::-webkit-scrollbar-track,
+.docker-pane-surface .container-rows::-webkit-scrollbar-track {
+  background: transparent;
+}
+.modal .settings-body::-webkit-scrollbar-thumb,
+.modal .audit-list::-webkit-scrollbar-thumb,
+.settings-modal .settings-panes::-webkit-scrollbar-thumb,
+.settings-modal .settings-nav::-webkit-scrollbar-thumb,
+.docker-pane-surface .docker-log-scroll::-webkit-scrollbar-thumb,
+.docker-pane-surface .container-rows::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--foreground) 24%, transparent) content-box;
+}
+.modal .settings-body::-webkit-scrollbar-thumb:hover,
+.modal .audit-list::-webkit-scrollbar-thumb:hover,
+.settings-modal .settings-panes::-webkit-scrollbar-thumb:hover,
+.settings-modal .settings-nav::-webkit-scrollbar-thumb:hover,
+.docker-pane-surface .docker-log-scroll::-webkit-scrollbar-thumb:hover,
+.docker-pane-surface .container-rows::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 38%, transparent) content-box;
+}
+
+/* —— 弹窗/弹层标题：同一套字重、字号与行高，避免每个弹层各写一档 —— */
+.modal h2,
+[data-slot="dialog-content"] h2,
+[data-slot="popover-content"] h3 { font-weight: 600; letter-spacing: 0.005em; }
+[data-slot="popover-content"] h3 { margin: 0 0 2px; font-size: var(--text-sm); line-height: 1.3; }
+
+/* —— 弹窗按钮层级 ——
+   次按钮去底色（只留描边），hover 才浮起；主按钮保留渐变。三个按钮并排时
+   层级一眼可分，不再出现“两个一样重的按钮”。 */
+.modal footer button:not(.primary-button):not(.danger-button) {
+  background: transparent;
+  border-color: var(--card-border);
+}
+.modal footer button:not(.primary-button):not(.danger-button):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.modal footer button:active:not(:disabled) { transform: translateY(1px); }
+.modal footer button:disabled { cursor: default; opacity: 0.45; }
+/* 主按钮在 footer 里略高一档，形成明确的主次节奏。 */
+.modal footer .primary-button { min-height: 30px; padding-inline: 14px; }

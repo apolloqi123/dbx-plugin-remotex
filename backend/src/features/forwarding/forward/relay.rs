@@ -358,7 +358,17 @@ pub(crate) fn track_relay(entry: &Arc<ForwardEntry>, relay: tokio::task::JoinHan
 }
 
 pub(crate) fn note_relay_end(entry: &ForwardEntry) {
-    entry.connections_active.fetch_sub(1, Ordering::Relaxed);
+    // Saturating decrement: `abort_tasks` drains and aborts tracked relays
+    // while their futures are suspended, so those relays never reach their own
+    // `note_relay_end`. If a relay happened to finish just as the drain ran,
+    // its own decrement and the drain's can both land. A plain `fetch_sub`
+    // would then push the counter negative (and wrap on the next relay),
+    // making `connectionsActive` nonsense. Clamp at zero instead.
+    let _ = entry.connections_active.fetch_update(
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+        |active| (active > 0).then_some(active - 1),
+    );
     retain_live_relays(entry);
 }
 

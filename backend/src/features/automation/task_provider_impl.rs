@@ -8,6 +8,7 @@ impl TaskProvider {
             runs: Mutex::new(HashMap::new()),
             seqs: Mutex::new(HashMap::new()),
             residents: Mutex::new(HashMap::new()),
+            resident_history: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -480,24 +481,41 @@ impl TaskProvider {
             .get("taskId")
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty());
-        let residents = self.residents_lock();
-        let entry = match (session_id, task_id) {
-            (Some(session_id), _) => residents.get(session_id),
-            (None, Some(task_id)) => residents.values().find(|entry| entry.task_id == task_id),
-            (None, None) => {
-                return Err(task_error(
-                    CODE_INVALID_CONFIG,
-                    "sessionId or taskId is required",
-                ))
+        // Snapshot under the lock, then release it: retired-session lookup
+        // takes the history lock and we never hold both at once.
+        let live = {
+            let residents = self.residents_lock();
+            match (session_id, task_id) {
+                (Some(session_id), _) => residents
+                    .get(session_id)
+                    .map(|entry| (entry.state, entry.heartbeat_at, entry.restart_count)),
+                (None, Some(task_id)) => residents
+                    .values()
+                    .find(|entry| entry.task_id == task_id)
+                    .map(|entry| (entry.state, entry.heartbeat_at, entry.restart_count)),
+                (None, None) => {
+                    return Err(task_error(
+                        CODE_INVALID_CONFIG,
+                        "sessionId or taskId is required",
+                    ))
+                }
             }
         };
-        Ok(match entry {
-            Some(entry) => json!({
-                "state": entry.state.as_str(),
-                "heartbeatAt": entry.heartbeat_at.map(|at| {
+        // A session that reached a terminal state is no longer live, but its
+        // final state (`degraded` — restart budget exhausted, `stopped`) is
+        // exactly what the host reconciles against. Reporting the blanket
+        // "unknown id" answer here would claim success for failed sessions.
+        let status = live.or_else(|| {
+            self.resident_summary(session_id, task_id)
+                .map(|summary| (summary.state, summary.heartbeat_at, summary.restart_count))
+        });
+        Ok(match status {
+            Some((state, heartbeat_at, restart_count)) => json!({
+                "state": state.as_str(),
+                "heartbeatAt": heartbeat_at.map(|at| {
                     rfc3339(at.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0))
                 }),
-                "restartCount": entry.restart_count,
+                "restartCount": restart_count,
             }),
             None => json!({
                 "state": "stopped",

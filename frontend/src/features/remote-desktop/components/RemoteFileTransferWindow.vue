@@ -378,7 +378,7 @@ function download() {
 }
 .rft-arrow span {
   margin-left: 1px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--foreground);
 }

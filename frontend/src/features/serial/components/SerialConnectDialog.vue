@@ -101,7 +101,7 @@ function submit() {
 
 <template>
   <Dialog :open="open" @update:open="(open) => emit('update:open', open)">
-    <DialogContent class="modal small-modal" @escape-key-down.prevent>
+    <DialogContent class="modal small-modal connect-modal" @escape-key-down.prevent>
       <header>
         <DialogTitle>{{ t("serial.dialogTitle") }}</DialogTitle>
         <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:open', false)"><X /></button>
@@ -163,24 +163,16 @@ function submit() {
 <style scoped>
 .serial-form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 10px;
-  margin-bottom: 8px;
-}
-.serial-form-grid select {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 6px 8px;
-  background: var(--background);
-  color: var(--foreground);
-  font-size: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 12px;
+  margin-bottom: 4px;
 }
 .serial-port-field {
   grid-column: 1 / -1;
 }
 .serial-ports-empty {
   display: block;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--text-2xs);
+  line-height: 1.45;
 }
 </style>

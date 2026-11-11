@@ -1,6 +1,13 @@
 /* SFTP 工具栏工具弹窗（OTP / 导入会话）：内容组件自带 100% 高度与
    overflow-y；弹窗壳给固定高度，避免内容把模态撑出视口。 */
 .sftp-tool-modal { width: min(680px, 100%); height: min(640px, calc(100vh - 48px)); overflow: hidden; }
+/* OTP 是一张短列表：固定 640px 会在条目少时留下整屏空白，高度随内容走，
+   条目多时再由内部列表滚动到上限。 */
+.sftp-tool-modal.otp-tool-modal {
+  height: auto;
+  min-height: 260px;
+  max-height: min(640px, calc(100vh - 48px));
+}
 .sftp-tool-modal > header { flex: 0 0 auto; }
 .sftp-tool-modal > .otp-panel,
 .sftp-tool-modal > .import-wizard { min-height: 0; flex: 1 1 auto; }

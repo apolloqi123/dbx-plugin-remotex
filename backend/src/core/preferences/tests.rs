@@ -682,3 +682,27 @@ fn terminal_feature_prefs_roundtrip_with_defaults() {
         64
     );
 }
+
+#[test]
+fn process_flags_roundtrip_through_the_allowlisted_view() {
+    // Regression: `x11_forwarding` and `auto_record` were accepted by the save
+    // allowlist but never surfaced by `load_preferences`, so the two process-wide
+    // fast-path flags (X11 forwarding, auto recording) could never turn on.
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    save_preferences(
+        data_dir.path(),
+        &json!({ "x11_forwarding": true, "auto_record": true }),
+    )
+    .unwrap();
+    let prefs = load_preferences(data_dir.path());
+    assert_eq!(prefs.get("x11_forwarding"), Some(&json!(true)));
+    assert_eq!(prefs.get("auto_record"), Some(&json!(true)));
+    save_preferences(
+        data_dir.path(),
+        &json!({ "x11_forwarding": false, "auto_record": false }),
+    )
+    .unwrap();
+    let prefs = load_preferences(data_dir.path());
+    assert_eq!(prefs.get("x11_forwarding"), Some(&json!(false)));
+    assert_eq!(prefs.get("auto_record"), Some(&json!(false)));
+}

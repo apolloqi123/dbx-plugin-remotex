@@ -389,3 +389,25 @@ fn pad4_matches_x_protocol_alignment() {
     assert_eq!(pad4(4), 4);
     assert_eq!(pad4(18), 20);
 }
+
+#[test]
+fn enabled_from_reads_the_nested_prefs_object() {
+    // Regression: the on-disk shape is `{"version": N, "prefs": {...}}`, so a
+    // top-level `x11_forwarding` lookup silently returned false and X11
+    // requests were never sent even with the switch on.
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    assert!(!enabled_from(data_dir.path()), "missing file must fail closed");
+    std::fs::create_dir_all(data_dir.path()).expect("data dir");
+    std::fs::write(
+        crate::core::preferences::store_path(data_dir.path()),
+        r#"{"version":1,"prefs":{"x11_forwarding":true}}"#,
+    )
+    .expect("write preferences");
+    assert!(enabled_from(data_dir.path()));
+    std::fs::write(
+        crate::core::preferences::store_path(data_dir.path()),
+        r#"{"version":1,"prefs":{"x11_forwarding":false}}"#,
+    )
+    .expect("write preferences");
+    assert!(!enabled_from(data_dir.path()));
+}

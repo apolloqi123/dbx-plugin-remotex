@@ -220,19 +220,66 @@ watch(recording, (value, _previous, onCleanup) => {
 </template>
 
 <style scoped>
-.hotkey-editor { display: flex; flex-direction: column; gap: 10px; }
+.hotkey-editor { display: flex; flex-direction: column; gap: 12px; }
 .hotkey-toolbar { display: flex; align-items: center; gap: 8px; }
-.hotkey-search { flex: 1 1 auto; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
-.hotkey-group { display: flex; flex-direction: column; gap: 6px; }
-.hotkey-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-.hotkey-group .hotkey-row:last-child { border-bottom: 0; padding-bottom: 0; }
-.hotkey-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.hotkey-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--settings-control-border, var(--border));
+  border-radius: var(--radius-control);
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--card-surface-inset) 78%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-sm);
+}
+.hotkey-search:focus {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.hotkey-group { display: flex; flex-direction: column; gap: 4px; }
+.hotkey-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-border) 72%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  transition: background var(--transition-fast);
+}
+.hotkey-row:hover { background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+.hotkey-group .hotkey-row:last-child { border-bottom: 0; }
+.hotkey-label { min-width: 0; overflow: hidden; color: var(--foreground); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 .hotkey-combos { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 5px; }
-.hotkey-chip { border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; background: var(--muted); color: var(--foreground); font-family: var(--terminal-font-family); font-size: 11px; cursor: pointer; }
-.hotkey-chip:hover { background: color-mix(in srgb, var(--primary) 12%, var(--muted)); }
+/* 键位胶囊：带下沿阴影的“键帽”质感，和普通按钮区分开。 */
+.hotkey-chip {
+  display: inline-flex;
+  min-width: 30px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 5px;
+  padding: 0 7px;
+  background: color-mix(in srgb, var(--card-surface-inset) 88%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--foreground) 12%, transparent);
+  color: var(--foreground);
+  font-family: var(--terminal-font-family);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.hotkey-chip:hover { border-color: color-mix(in srgb, var(--primary) 45%, transparent); background: color-mix(in srgb, var(--primary) 10%, var(--card-surface-inset)); }
 .hotkey-chip.recording { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
 .hotkey-chip.conflict { border-color: var(--destructive); color: var(--destructive); }
-.hotkey-unbound { font-size: 11px; }
-.hotkey-remove { width: 20px; height: 20px; }
+.hotkey-unbound { font-size: var(--text-2xs); }
+.hotkey-remove { width: 20px; height: 20px; color: var(--muted-foreground); }
+.hotkey-remove:hover:not(:disabled) { background: var(--tone-rose-soft); color: var(--tone-rose); }
+/* “添加/复位”是行内次级动作：Add 用主色，Reset 用中性色，避免每行两个蓝字。 */
+.hotkey-add { color: var(--primary); }
+.hotkey-reset { color: var(--muted-foreground); }
+.hotkey-reset:hover { color: var(--foreground); }
 .hotkey-add.recording { color: var(--primary); }
 </style>

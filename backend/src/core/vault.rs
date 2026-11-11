@@ -286,6 +286,14 @@ impl Vault {
         self.storage
     }
 
+    /// Whether this vault can actually encrypt secrets. A degraded vault
+    /// (DEK unavailable) returns "" from every `seal`, so callers that persist
+    /// whole stores must refuse to write instead of silently replacing the
+    /// on-disk envelopes with blanks.
+    pub fn can_seal(&self) -> bool {
+        self.dek.is_some()
+    }
+
     /// Seals `plaintext` into `base64(nonce‖ct)` bound to
     /// `"<field>|<profileId>"`. Empty plaintext stays an empty string
     /// (unencrypted), and failures degrade to "".
@@ -388,6 +396,22 @@ fn decode_dek(value: &str) -> Option<Zeroizing<[u8; DEK_LEN]>> {
     Some(Zeroizing::new(bytes))
 }
 
+/// Test-only provider whose DEK resolution always fails, used to exercise
+/// the degraded-vault guards in the Quick Sudo and OTP stores.
+#[cfg(test)]
+pub struct BrokenKeyProvider;
+
+#[cfg(test)]
+impl KeyProvider for BrokenKeyProvider {
+    fn storage(&self) -> KeyStorage {
+        KeyStorage::Keyfile
+    }
+
+    fn dek(&self) -> Result<Zeroizing<[u8; DEK_LEN]>, String> {
+        Err("test: DEK resolution refused".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,6 +511,15 @@ mod tests {
         assert_eq!(vault.seal(FIELD_SUDO_PASSWORD, "p1", ""), "");
         assert_eq!(vault.open(FIELD_SUDO_PASSWORD, "p1", ""), "");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn degraded_vault_reports_it_cannot_seal() {
+        let healthy = Vault::new(&KeyfileProvider::new(keyfile_path(&temp_dir())));
+        assert!(healthy.can_seal());
+        let degraded = Vault::new(&BrokenKeyProvider);
+        assert!(!degraded.can_seal());
+        assert_eq!(degraded.seal(FIELD_SUDO_PASSWORD, "p1", "s3cret"), "");
     }
 
     #[test]

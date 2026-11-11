@@ -1026,3 +1026,52 @@ async fn terminal_input_combo_gates_stack_in_order() {
         "allowed sudo line must pass both gates, got: {error}"
     );
 }
+
+#[tokio::test]
+async fn task_status_refuses_log_paths_outside_the_task_directory() {
+    // `ssh_task_status` returns the trailing bytes of whatever path it is
+    // given; without a containment check it is a remote arbitrary-file-read
+    // primitive on every writable connection.
+    let state = state();
+    for bad in [
+        "/etc/shadow",
+        "~/.ssh/id_rsa",
+        "/var/log/auth.log",
+        "~/.dbx-ssh-tasks/../../etc/shadow",
+        "~/.dbx-ssh-tasks/notes.txt",
+    ] {
+        let error = state
+            .call_tool(
+                "ssh_task_status",
+                &json!({ "host": "example.test", "username": "op", "logPath": bad }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error.contains(".dbx-ssh-tasks"),
+            "logPath {bad} should be refused, got: {error}"
+        );
+    }
+}
+
+#[test]
+fn task_log_path_accepts_the_paths_run_bg_reports() {
+    for good in [
+        "~/.dbx-ssh-tasks/bg-1762345678901-1234-abcdef.log",
+        "$HOME/.dbx-ssh-tasks/bg-1-2-3.log",
+        "/home/op/.dbx-ssh-tasks/bg-9-8-7.log",
+    ] {
+        assert!(validate_task_log_path(good).is_ok(), "{good} should pass");
+    }
+}
+
+#[test]
+fn background_task_ids_do_not_collide_within_one_millisecond() {
+    // Same millisecond, same process: the old `bg-{ms}-{pid}` id was identical
+    // for both calls, and the remote staging line truncates the colliding log.
+    let stamp = 1_762_345_678_901;
+    let ids: std::collections::HashSet<String> =
+        (0..64).map(|_| background_task_id(stamp)).collect();
+    assert_eq!(ids.len(), 64, "task ids must be unique per call");
+}

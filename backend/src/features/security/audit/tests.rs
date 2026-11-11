@@ -368,3 +368,132 @@ fn concurrent_appends_within_one_process_all_land() {
     assert_eq!(names.len(), 80, "no line torn into another");
     let _ = std::fs::remove_dir_all(&*dir);
 }
+
+/// Writes `entries` to `path` as JSONL (one line per entry), bypassing
+/// `append`'s rotation check so a generation can be staged directly.
+fn write_generation(path: &Path, entries: &[AuditEntry]) {
+    let mut text = String::new();
+    for entry in entries {
+        text.push_str(&serde_json::to_string(entry).unwrap());
+        text.push('\n');
+    }
+    std::fs::write(path, text).unwrap();
+}
+
+fn timestamps(entries: &[AuditEntry]) -> Vec<u64> {
+    entries.iter().map(|entry| entry.ts_ms).collect()
+}
+
+#[test]
+fn tail_keeps_the_rotated_generation_visible() {
+    let dir = temp_dir("tail-rotated");
+    // The rotated predecessor holds the older half of the retained window.
+    write_generation(
+        &rotated_path(&dir),
+        &[sample_entry(1_000), sample_entry(2_000)],
+    );
+    write_generation(
+        &audit_path(&dir),
+        &[sample_entry(3_000), sample_entry(4_000)],
+    );
+
+    let entries = tail(&dir, 500, None).unwrap();
+    assert_eq!(
+        timestamps(&entries),
+        vec![1_000, 2_000, 3_000, 4_000],
+        "oldest → newest across both generations"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tail_backfills_from_the_rotated_generation_only_when_needed() {
+    let dir = temp_dir("tail-backfill");
+    write_generation(
+        &rotated_path(&dir),
+        &[sample_entry(1_000), sample_entry(2_000)],
+    );
+    write_generation(
+        &audit_path(&dir),
+        &[sample_entry(3_000), sample_entry(4_000)],
+    );
+
+    // limit 2 is satisfied by the active generation alone.
+    assert_eq!(timestamps(&tail(&dir, 2, None).unwrap()), vec![3_000, 4_000]);
+    // limit 3 must backfill exactly one entry from the rotated generation.
+    assert_eq!(
+        timestamps(&tail(&dir, 3, None).unwrap()),
+        vec![2_000, 3_000, 4_000]
+    );
+    // The before_ts_ms window applies across generations too.
+    assert_eq!(
+        timestamps(&tail(&dir, 500, Some(3_000)).unwrap()),
+        vec![1_000, 2_000]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tail_after_a_real_rotation_still_sees_the_previous_generation() {
+    let dir = temp_dir("tail-real-rotation");
+    let path = audit_path(&dir);
+    // Preload the active file past ROTATE_BYTES with a valid line, so the next
+    // append() renames it into the rotated generation.
+    let mut preloaded = sample_entry(1_000);
+    preloaded.output = Some("x".repeat(ROTATE_BYTES as usize + 1_024));
+    write_generation(&path, &[preloaded]);
+    assert!(
+        std::fs::metadata(&path).unwrap().len() > ROTATE_BYTES,
+        "preloaded file must cross the rotation threshold"
+    );
+
+    append(&dir, &sample_entry(9_000)).unwrap();
+    assert!(rotated_path(&dir).exists(), "rotation happened");
+
+    let entries = tail(&dir, 500, None).unwrap();
+    assert_eq!(
+        timestamps(&entries),
+        vec![1_000, 9_000],
+        "the rotated generation must stay readable after rotation"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tail_allows_the_one_entry_truncation_probe_at_the_protocol_limit() {
+    let dir = temp_dir("tail-probe");
+    // 600 entries: `ssh/audit/list` asks for limit + 1 = 501 to detect that a
+    // full 500-entry page still has older entries behind it.
+    let entries: Vec<AuditEntry> = (0..600u64).map(sample_entry).collect();
+    write_generation(&audit_path(&dir), &entries);
+
+    let page = tail(&dir, 501, None).unwrap();
+    assert_eq!(page.len(), 501, "the probe slot must survive the cap");
+    assert_eq!(page[0].ts_ms, 99, "oldest entry of the 501-entry window");
+    assert_eq!(page[500].ts_ms, 599, "newest entry last");
+    // The cap itself still holds for anything above the probe slot.
+    assert_eq!(tail(&dir, 10_000, None).unwrap().len(), 501);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The ledger records executed command text and output tails, so both the
+/// append path and the clear path must create it owner-only (0600). `clear`
+/// used to go through `std::fs::write`, which creates a missing file as 0644
+/// because `.mode()` only applies at creation time.
+#[cfg(unix)]
+#[test]
+fn clear_keeps_the_ledger_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_dir("clear-mode");
+    // No pre-existing ledger: clear creates it, so this is the creation mode.
+    clear(&dir).unwrap();
+    let mode = std::fs::metadata(audit_path(&dir)).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600, "clear must create the ledger owner-only");
+
+    // A later append must not widen it either.
+    append(&dir, &sample_entry(1)).unwrap();
+    let mode = std::fs::metadata(audit_path(&dir)).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600, "append keeps the owner-only mode");
+    let _ = std::fs::remove_dir_all(&dir);
+}

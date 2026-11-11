@@ -404,15 +404,15 @@ const uptimeText = computed(() =>
 .metrics-facts > div { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
 .metrics-facts dt {
   color: var(--muted-foreground);
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .metrics-facts dd {
   margin: 0;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 10.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -428,9 +428,9 @@ const uptimeText = computed(() =>
   font-variant-numeric: tabular-nums;
 }
 .metrics-hero-value > span { margin-left: 2px; color: var(--muted-foreground); font-size: 13px; font-weight: 500; }
-.metrics-hero-note { color: var(--muted-foreground); font-size: 9.5px; text-align: right; }
-.metrics-hero-note b { display: block; color: var(--foreground); font-family: var(--terminal-font-family); font-size: 10px; font-variant-numeric: tabular-nums; }
-.metrics-chart-hint { margin: -4px 0 0; color: var(--muted-foreground); font-size: 9.5px; }
+.metrics-hero-note { color: var(--muted-foreground); font-size: var(--text-2xs); text-align: right; }
+.metrics-hero-note b { display: block; color: var(--foreground); font-family: var(--terminal-font-family); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.metrics-chart-hint { margin: -4px 0 0; color: var(--muted-foreground); font-size: var(--text-2xs); }
 
 .metrics-subhead {
   display: flex;
@@ -440,8 +440,8 @@ const uptimeText = computed(() =>
   border-top: 1px solid color-mix(in srgb, var(--card-border) 65%, transparent);
   padding-top: 8px;
   color: var(--muted-foreground);
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .metrics-core-section { display: flex; flex-direction: column; }
@@ -466,15 +466,15 @@ const uptimeText = computed(() =>
 
 /* —— 内存 —— */
 .metrics-swap { display: flex; flex-direction: column; gap: 5px; border-top: 1px solid color-mix(in srgb, var(--card-border) 65%, transparent); padding-top: 8px; }
-.metrics-swap-head { display: flex; justify-content: space-between; gap: 8px; color: var(--muted-foreground); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.metrics-swap-head { display: flex; justify-content: space-between; gap: 8px; color: var(--muted-foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 
 /* —— 网络 —— */
 .metrics-legend-row { display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.metrics-legend-item { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-foreground); font-size: 9.5px; }
+.metrics-legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: var(--text-2xs); }
 .metrics-legend-item > svg { width: 11px; height: 11px; stroke-width: 2; }
 .metrics-legend-item.is-down > svg { color: var(--tone-cyan); }
 .metrics-legend-item.is-up > svg { color: var(--tone-violet); }
-.metrics-legend-item b { color: var(--foreground); font-family: var(--terminal-font-family); font-size: 10px; font-variant-numeric: tabular-nums; }
+.metrics-legend-item b { color: var(--foreground); font-family: var(--terminal-font-family); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .metrics-net-list { display: flex; flex-direction: column; }
 .metrics-net-row {
   display: grid;
@@ -483,9 +483,9 @@ const uptimeText = computed(() =>
   padding: 7px 0;
 }
 .metrics-net-row + .metrics-net-row { border-top: 1px dashed color-mix(in srgb, var(--card-border) 70%, transparent); }
-.metrics-net-name { grid-column: 1; grid-row: 1; overflow: hidden; color: var(--foreground); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.metrics-net-total { grid-column: 1; grid-row: 2; color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
-.metrics-net-rate { font-family: var(--terminal-font-family); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+.metrics-net-name { grid-column: 1; grid-row: 1; overflow: hidden; color: var(--foreground); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.metrics-net-total { grid-column: 1; grid-row: 2; color: var(--muted-foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+.metrics-net-rate { font-family: var(--terminal-font-family); font-size: 10.5px; font-variant-numeric: tabular-nums; text-align: right; }
 .metrics-net-rate.is-down { grid-column: 2; grid-row: 1; color: var(--tone-cyan); }
 .metrics-net-rate.is-up { grid-column: 2; grid-row: 2; color: var(--tone-violet); }
 
@@ -497,24 +497,24 @@ const uptimeText = computed(() =>
   padding-top: 8px;
 }
 .metrics-disk-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
-.metrics-disk-mount { min-width: 0; overflow: hidden; color: var(--foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.metrics-disk-mount { min-width: 0; overflow: hidden; color: var(--foreground); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .metrics-disk-chip {
   flex: 0 0 auto;
   border-radius: var(--radius-pill);
   padding: 1px 7px;
   background: var(--tone-amber-soft);
   color: var(--tone-amber);
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
 }
 .metrics-disk-chip.is-warn { background: var(--tone-rose-soft); color: var(--tone-rose); }
-.metrics-disk-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
+.metrics-disk-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted-foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .metrics-disk-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.metrics-disk-meta.is-inode { font-size: 8.5px; opacity: 0.8; }
+.metrics-disk-meta.is-inode { font-size: 9.5px; opacity: 0.85; }
 
 /* —— 进程 —— */
 .metrics-card-action { margin-left: auto; }
-.metrics-card-action .link-button { font-size: 9.5px; white-space: nowrap; }
+.metrics-card-action .link-button { font-size: var(--text-2xs); white-space: nowrap; }
 .metrics-proc-list { display: flex; flex-direction: column; }
 .metrics-proc-row {
   display: grid;
@@ -525,11 +525,11 @@ const uptimeText = computed(() =>
 }
 .metrics-proc-row + .metrics-proc-row { border-top: 1px dashed color-mix(in srgb, var(--card-border) 70%, transparent); }
 .metrics-proc-main { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.metrics-proc-command { overflow: hidden; color: var(--foreground); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.metrics-proc-main small { overflow: hidden; color: var(--muted-foreground); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
+.metrics-proc-command { overflow: hidden; color: var(--foreground); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.metrics-proc-main small { overflow: hidden; color: var(--muted-foreground); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 .metrics-proc-stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 4px; }
-.metrics-proc-stat > span { color: var(--muted-foreground); font-size: 8.5px; letter-spacing: 0.03em; }
-.metrics-proc-stat > b { color: var(--foreground); font-family: var(--terminal-font-family); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.metrics-proc-stat > span { color: var(--muted-foreground); font-size: 9.5px; letter-spacing: 0.03em; }
+.metrics-proc-stat > b { color: var(--foreground); font-family: var(--terminal-font-family); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 .metrics-proc-stat > b.is-hot { color: var(--tone-rose); }
 .metrics-proc-bar { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--foreground) 9%, transparent); }
 .metrics-proc-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--tone-emerald), var(--tone-amber)); transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1); }
@@ -547,7 +547,7 @@ const uptimeText = computed(() =>
   border-radius: var(--radius-pill);
   padding: 3px 8px;
   color: var(--muted-foreground);
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   cursor: pointer;
 }
 .metrics-sort-chip:has(input:checked) { border-color: color-mix(in srgb, var(--primary) 45%, var(--card-border)); color: var(--foreground); }

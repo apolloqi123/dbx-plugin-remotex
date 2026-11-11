@@ -694,3 +694,129 @@ fn read_script_file_returns_exact_bytes() {
     std::fs::remove_file(&path).ok();
     assert_eq!(bytes, b"#!/bin/sh\necho hi\n");
 }
+
+// -- resident registry lifecycle --------------------------------------------
+
+/// Builds a provider with one live resident entry, mirroring `resident_start`
+/// without needing an SSH runtime or emitter.
+fn provider_with_resident(session_id: &str, task_id: &str) -> TaskProvider {
+    let provider = TaskProvider::new();
+    let (cancel, _cancel_rx) = watch::channel(false);
+    provider.residents_lock().insert(
+        session_id.to_string(),
+        ResidentEntry {
+            task_id: task_id.to_string(),
+            state: ResidentState::Running,
+            heartbeat_at: Some(SystemTime::now()),
+            restart_count: 2,
+            cancel,
+        },
+    );
+    provider
+}
+
+#[test]
+fn live_residents_are_visible_to_status_by_session_and_task() {
+    let provider = provider_with_resident("session-live", "task-42");
+    let by_session = provider
+        .status(&json!({ "sessionId": "session-live" }))
+        .expect("status by session");
+    assert_eq!(by_session["state"], "running");
+    assert_eq!(by_session["restartCount"], 2);
+    let by_task = provider
+        .status(&json!({ "taskId": "task-42" }))
+        .expect("status by task");
+    assert_eq!(by_task["state"], "running");
+}
+
+#[test]
+fn a_stopped_resident_leaves_the_live_registry_but_keeps_its_final_state() {
+    let provider = provider_with_resident("session-stop", "task-42");
+    provider.resident_set_state("session-stop", ResidentState::Stopped);
+    assert!(
+        provider.residents_lock().is_empty(),
+        "terminal sessions must not accumulate in the live registry"
+    );
+    let status = provider
+        .status(&json!({ "sessionId": "session-stop" }))
+        .expect("status");
+    assert_eq!(status["state"], "stopped");
+    assert_eq!(status["restartCount"], 2);
+    assert!(status["heartbeatAt"].is_string());
+}
+
+#[test]
+fn a_degraded_resident_is_reported_as_degraded_not_masked_as_stopped() {
+    let provider = provider_with_resident("session-degraded", "task-42");
+    provider.resident_set_state("session-degraded", ResidentState::Degraded);
+    let status = provider
+        .status(&json!({ "sessionId": "session-degraded" }))
+        .expect("status");
+    assert_eq!(status["state"], "degraded");
+    assert_eq!(status["restartCount"], 2);
+    // The host reconciles by taskId too.
+    let by_task = provider
+        .status(&json!({ "taskId": "task-42" }))
+        .expect("status by task");
+    assert_eq!(by_task["state"], "degraded");
+}
+
+#[test]
+fn crashed_residents_stay_live_so_bounded_restarts_can_reuse_the_session_id() {
+    let provider = provider_with_resident("session-crash", "task-42");
+    provider.resident_set_state("session-crash", ResidentState::Crashed);
+    assert!(
+        provider.residents_lock().contains_key("session-crash"),
+        "Crashed is transient; the supervisor restarts under the same id"
+    );
+    provider.resident_set_state("session-crash", ResidentState::Running);
+    let status = provider
+        .status(&json!({ "sessionId": "session-crash" }))
+        .expect("status");
+    assert_eq!(status["state"], "running");
+}
+
+#[test]
+fn retired_history_is_bounded_and_evicts_the_oldest_entries() {
+    let provider = TaskProvider::new();
+    for index in 0..(RESIDENT_HISTORY_CAP as u32 + 10) {
+        let session_id = format!("session-{index}");
+        let (cancel, _cancel_rx) = watch::channel(false);
+        provider.residents_lock().insert(
+            session_id.clone(),
+            ResidentEntry {
+                task_id: "task-42".to_string(),
+                state: ResidentState::Running,
+                heartbeat_at: None,
+                restart_count: index,
+                cancel,
+            },
+        );
+        provider.resident_set_state(&session_id, ResidentState::Stopped);
+    }
+    let history = provider
+        .resident_history
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    assert_eq!(history.len(), RESIDENT_HISTORY_CAP);
+    assert!(
+        !history
+            .iter()
+            .any(|summary| summary.session_id == "session-0"),
+        "oldest summaries must be evicted once the cap is reached"
+    );
+    let newest = format!("session-{}", RESIDENT_HISTORY_CAP as u32 + 9);
+    assert!(
+        history
+            .iter()
+            .any(|summary| summary.session_id == newest),
+        "the newest summary must still be retained"
+    );
+    drop(history);
+    // The live registry never grew with any of those sessions.
+    assert!(provider.residents_lock().is_empty());
+    let status = provider
+        .status(&json!({ "sessionId": newest }))
+        .expect("status");
+    assert_eq!(status["restartCount"], RESIDENT_HISTORY_CAP as u32 + 9);
+}

@@ -134,8 +134,10 @@ describe("syncWebglRenderer", () => {
 // 单测里手动 flush 保证确定性）。
 function fakeAddonFactory(options: { failAfter?: number } = {}) {
   const created: Array<WebglRendererLike & { fireContextLoss(): void }> = [];
+  const subscriptions: Array<{ disposed: boolean; dispose(): void }> = [];
   return {
     created,
+    subscriptions,
     create: () => {
       if (options.failAfter !== undefined && created.length >= options.failAfter) {
         throw new Error("no webgl context");
@@ -145,7 +147,14 @@ function fakeAddonFactory(options: { failAfter?: number } = {}) {
         dispose() {},
         onContextLoss(callback: () => void) {
           contextLossCallback = callback;
-          return { dispose() {} };
+          const subscription = {
+            disposed: false,
+            dispose() {
+              subscription.disposed = true;
+            },
+          };
+          subscriptions.push(subscription);
+          return subscription;
         },
         fireContextLoss() {
           contextLossCallback?.();
@@ -158,16 +167,24 @@ function fakeAddonFactory(options: { failAfter?: number } = {}) {
 }
 
 function manualScheduler() {
-  const pending: Array<() => void> = [];
+  const pending: Array<{ handle: number; callback: () => void }> = [];
+  const cancelled = new Set<number>();
+  let nextHandle = 0;
   return {
     pending,
+    cancelled,
     schedule: (callback: () => void) => {
-      pending.push(callback);
-      return pending.length;
+      const handle = ++nextHandle;
+      pending.push({ handle, callback });
+      return handle;
     },
-    cancel: () => {},
+    cancel: (handle: unknown) => {
+      cancelled.add(handle as number);
+    },
     flush() {
-      for (const callback of pending.splice(0)) callback();
+      for (const entry of pending.splice(0)) {
+        if (!cancelled.has(entry.handle)) entry.callback();
+      }
     },
   };
 }
@@ -258,5 +275,72 @@ describe("attachWebglRenderer context-loss recovery", () => {
 
     attached!.fireContextLoss();
     expect(timer.pending).toHaveLength(1);
+  });
+
+  it("cancels a pending rebuild and releases subscriptions when cleaned up", () => {
+    // 终端在 1s 重建窗口内被销毁：挂起回调必须被取消，不能对已 dispose 的
+    // Terminal 新建并 loadAddon 一个 WebGL context；onContextLoss 订阅也要释放。
+    const terminal = fakeTerminal();
+    const factory = fakeAddonFactory();
+    const timer = manualScheduler();
+    let cleanup: (() => void) | undefined;
+    const first = attachWebglRenderer(terminal, factory.create, {
+      schedule: timer.schedule,
+      cancel: timer.cancel,
+      onCleanup: (run) => {
+        cleanup = run;
+      },
+    });
+
+    first!.fireContextLoss();
+    expect(timer.pending).toHaveLength(1);
+
+    cleanup!();
+    timer.flush();
+
+    expect(factory.created).toEqual([first]);
+    expect(terminal.loaded).toEqual([first]);
+    expect(factory.subscriptions.every((subscription) => subscription.disposed)).toBe(true);
+    // 幂等：重复清理不重复取消/释放。
+    expect(() => cleanup!()).not.toThrow();
+  });
+
+  it("drops a pending rebuild when the terminal is no longer alive", () => {
+    const terminal = fakeTerminal();
+    const factory = fakeAddonFactory();
+    const timer = manualScheduler();
+    let alive = true;
+    const first = attachWebglRenderer(terminal, factory.create, {
+      schedule: timer.schedule,
+      alive: () => alive,
+    });
+
+    first!.fireContextLoss();
+    alive = false;
+    timer.flush();
+
+    expect(factory.created).toEqual([first]);
+    expect(terminal.loaded).toEqual([first]);
+  });
+
+  it("stops recovering once the renderer is cleaned up", () => {
+    const terminal = fakeTerminal();
+    const factory = fakeAddonFactory();
+    const timer = manualScheduler();
+    let cleanup: (() => void) | undefined;
+    const first = attachWebglRenderer(terminal, factory.create, {
+      schedule: timer.schedule,
+      cancel: timer.cancel,
+      onCleanup: (run) => {
+        cleanup = run;
+      },
+    });
+
+    cleanup!();
+    first!.fireContextLoss();
+    timer.flush();
+
+    expect(timer.pending).toHaveLength(0);
+    expect(factory.created).toEqual([first]);
   });
 });

@@ -318,3 +318,42 @@ fn remote_table_lookup_matches_exact_and_port_fallback() {
     // Unknown port misses.
     assert!(fwd::lookup_remote_target(&table, "127.0.0.1", 9999).is_none());
 }
+
+#[test]
+fn note_relay_end_saturates_at_zero() {
+    let entry = ForwardEntry {
+        id: "fwd-test".to_string(),
+        session_id: "s".to_string(),
+        connection_id: "c".to_string(),
+        kind: ForwardKind::Local,
+        listen_host: "127.0.0.1".to_string(),
+        listen_port: 8080,
+        target_host: "web".to_string(),
+        target_port: 3000,
+        transport: None,
+        bound_port: AtomicU32::new(8080),
+        state: Mutex::new(ForwardState::Active),
+        error: Mutex::new(None),
+        connections_total: AtomicU64::new(0),
+        connections_active: AtomicI64::new(0),
+        bytes_up: AtomicU64::new(0),
+        bytes_down: AtomicU64::new(0),
+        listener_task: Mutex::new(None),
+        relays: Mutex::new(Vec::new()),
+        emitter: None,
+        stopping: AtomicBool::new(false),
+    };
+    // Simulate the double-decrement race: a relay ends normally and the
+    // stop-drain path also accounted for it (or a stale counter reached zero).
+    note_relay_end(&entry);
+    assert_eq!(entry.connections_active.load(Ordering::Relaxed), 0);
+    note_relay_end(&entry);
+    assert_eq!(entry.connections_active.load(Ordering::Relaxed), 0);
+
+    // A real active relay still decrements exactly once.
+    entry.connections_active.store(2, Ordering::Relaxed);
+    note_relay_end(&entry);
+    assert_eq!(entry.connections_active.load(Ordering::Relaxed), 1);
+    note_relay_end(&entry);
+    assert_eq!(entry.connections_active.load(Ordering::Relaxed), 0);
+}

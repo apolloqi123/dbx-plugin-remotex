@@ -157,14 +157,11 @@ pub(crate) fn current_display_target() -> DisplayTarget {
 }
 
 pub(crate) fn enabled_from(data_dir: &Path) -> bool {
-    let text =
-        std::fs::read_to_string(crate::core::preferences::store_path(data_dir)).unwrap_or_default();
-    serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("x11_forwarding")
-                .and_then(serde_json::Value::as_bool)
-        })
+    // 必须走 `load_preferences`（它剥掉 `{version, prefs:{...}}` 外层后按白名单
+    // 返回）：早先这里直接读文件的顶层键，而真实结构把偏好放在 `prefs` 子对象
+    // 里，`value.get("x11_forwarding")` 因此恒为 None，X11 请求永远发不出去。
+    crate::core::preferences::load_preferences(data_dir)
+        .get("x11_forwarding")
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
 }

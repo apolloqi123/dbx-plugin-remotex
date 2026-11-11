@@ -1,5 +1,6 @@
 import { loadLastConnectParams, persistLastConnectParams } from "../../connections/lib/connectLastParams";
 import { rpc } from "../../../shared/lib/rpc";
+import type { RequestEpoch } from "../../../shared/lib/requestEpoch";
 
 export type TransferDirection = "upload" | "download";
 export type TransferStatus = "running" | "done" | "error" | "canceled";
@@ -219,4 +220,30 @@ export function mapRemoteTransferEntry(raw: Record<string, unknown>): TransferEn
     hidden: name.startsWith("."),
     symlink: kind === "symlink",
   };
+}
+
+/** Runs one list request under a monotonic epoch guard: a stale reply must not
+ *  overwrite the directory, clear the spinner, or surface its error. */
+export async function loadTransferList<T>(
+  pane: TransferPaneState,
+  epoch: RequestEpoch,
+  fetchList: () => Promise<T>,
+  apply: (result: T) => void,
+  reportError: (cause: unknown) => void,
+): Promise<void> {
+  const id = epoch.next();
+  pane.loading = true;
+  pane.error = "";
+  try {
+    const result = await fetchList();
+    if (!epoch.isCurrent(id)) return;
+    apply(result);
+    pane.selected.splice(0, pane.selected.length);
+  } catch (cause) {
+    if (!epoch.isCurrent(id)) return;
+    pane.error = transferErrorMessage(cause);
+    reportError(cause);
+  } finally {
+    if (epoch.isCurrent(id)) pane.loading = false;
+  }
 }

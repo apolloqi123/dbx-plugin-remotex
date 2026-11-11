@@ -36,6 +36,8 @@ const props = defineProps<{
   x11ReadOnlyNote: boolean;
   rdpExperimentalEnabled: boolean;
   autoRecordEnabled: boolean;
+  /** 三个本地开关的偏好快照读取失败：此时开关显示默认值而非已存值。 */
+  togglesLoadFailed?: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
 }>();
 
@@ -168,6 +170,12 @@ function textFieldValue(event: Event): string {
 
     <p class="muted settings-note">{{ t("terminalBehavior.scopeNote") }}</p>
     <p class="muted settings-note">{{ t("terminalFont.movedHint") }}</p>
+
+    <!-- 三个本地开关（X11 / RDP / 自动录制）共用一份 sidecar 偏好快照。
+         读取失败时它们回落默认值：不说明的话，用户会以为自己的开关被悄悄关掉了。 -->
+    <p v-if="togglesLoadFailed" class="task-error settings-toggle-error" role="status">
+      {{ t("settingsTogglesLoadFailed") }}
+    </p>
 
     <h3 class="settings-section-title">{{ t("x11.sectionTitle") }}</h3>
     <label class="settings-field settings-switch-row">

@@ -93,16 +93,34 @@ function submit() {
 </template>
 
 <style scoped>
+.serial-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.serial-port-field { grid-column: 1 / -1; }
 .serial-upload-file-button {
-  text-align: left;
+  width: 100%;
+  height: 30px;
   overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--card-surface-inset) 82%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-sm);
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
+.serial-upload-file-button:hover { border-color: color-mix(in srgb, var(--foreground) 26%, transparent); }
+.serial-ports-empty { display: block; font-size: var(--text-2xs); line-height: 1.45; }
 .serial-upload-hint {
-  font-size: 11px;
-  line-height: 1.5;
   margin: 0 0 8px;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
 }
 .visually-hidden {
   position: absolute;

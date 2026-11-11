@@ -244,7 +244,14 @@ pub fn decode_base32(text: &str) -> Result<Vec<u8>, String> {
     }
     data_encoding::BASE32
         .decode(padded.as_bytes())
-        .map_err(|_| format!("invalid base32 secret (expected A-Z2-7, got '{text}')"))
+        // 绝不回显 `text`：这是 TOTP 长期密钥（等同第二因素私钥），错误串会
+        // 冒泡到 RPC error → 前端横幅与审计日志。只报期望字符集与长度特征。
+        .map_err(|_| {
+            format!(
+                "invalid base32 secret (expected A-Z2-7, got {} characters)",
+                unpadded.chars().count()
+            )
+        })
 }
 
 /// 规范化 base32 密钥文本：合法性与 [`decode_base32`] 一致，返回大写无填充

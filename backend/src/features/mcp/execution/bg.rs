@@ -11,11 +11,37 @@ impl McpState {
     /// output or kill the job.
     pub(crate) async fn ssh_run_bg_tool(&self, arguments: &Value) -> Result<Value, String> {
         let command = required_str(arguments, "command")?;
+        // Sudo allowlist rebuild, identical to `ssh_exec_tool`. This path used
+        // to ship the raw text: `enforce_command_text_gates` only *matched* the
+        // allowlist with `is_allowed`, then the original characters went into
+        // the remote `sh -c '...'` wrapper. A trailing-`*` entry such as
+        // `docker restart *` accepts `x;` as an ordinary token, so
+        // `sudo docker restart x; cp /bin/sh /tmp/s` passed the gate and the
+        // second statement ran as root. The rebuild token-quotes every
+        // argument, which turns `;` back into a literal character.
+        let allowlist = self.sudo_allowlist_for(arguments).await?;
+        let command: String = if !allowlist.is_empty() && mcp_safety::runs_under_sudo(command) {
+            sudo_allowlist::allowed_rebuilt_command(&allowlist, command).ok_or_else(|| {
+                format!(
+                    "sudo command is not allowed by this connection's whitelist. \
+                     Allowed patterns: {}",
+                    sudo_allowlist::render_entries(&allowlist)
+                )
+            })?
+        } else {
+            command.to_string()
+        };
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_millis())
             .unwrap_or_default();
-        let task_id = format!("bg-{stamp}-{}", std::process::id() % 100_000);
+        // Task id must be collision-free *within one millisecond*: the remote
+        // staging line truncates the log with `: > "$f"`, so two calls sharing
+        // an id silently destroy each other's output and pid file. The pid is
+        // constant inside this process, so the old
+        // `bg-{ms}-{pid%100000}` had zero entropy per millisecond; the uuid
+        // suffix is the discriminator.
+        let task_id = background_task_id(stamp);
         // Single-quote escape for embedding inside the remote `sh -c '...'`.
         let escaped = command.replace('\'', "'\\''");
         // The task dir lives under $HOME (never a shared /tmp path another
@@ -53,6 +79,7 @@ impl McpState {
     /// session.
     pub(crate) async fn ssh_task_status_tool(&self, arguments: &Value) -> Result<Value, String> {
         let log_path = required_str(arguments, "logPath")?;
+        validate_task_log_path(log_path)?;
         let tail_bytes = arg_u64(arguments, "tailBytes")?
             .unwrap_or(4_000)
             .clamp(200, 16_000);
@@ -126,4 +153,51 @@ pub(crate) fn parse_task_status_output(output: &str) -> TaskStatusParse {
         }
     }
     (state, exit_code, pid_alive, tail)
+}
+
+/// Confines `ssh_task_status` to the log files `ssh_run_bg` itself creates.
+///
+/// The tool used to accept any path, shell-quote it, and return the trailing
+/// 16 KiB — a remote arbitrary-file-read primitive on every writable
+/// connection (`logPath: /etc/shadow`, a private key, another user's task
+/// log). The only guard was `is_sensitive_path`, which applies to read-only
+/// connections exclusively. Task logs always live in `~/.dbx-ssh-tasks/` with
+/// a `bg-` prefix, so anything else is a caller mistake or an attempt to
+/// repurpose the tool.
+pub(crate) fn validate_task_log_path(log_path: &str) -> Result<(), String> {
+    let trimmed = log_path.trim();
+    if trimmed.is_empty() {
+        return Err("logPath is required".to_string());
+    }
+    // `..` would let `~/.dbx-ssh-tasks/../../etc/shadow` pass a naive prefix
+    // test; reject it outright rather than trying to normalize remotely.
+    if trimmed.split(['/', '\\']).any(|segment| segment == "..") {
+        return Err(format!("logPath must not contain '..': {trimmed}"));
+    }
+    let in_task_dir = trimmed.starts_with("~/.dbx-ssh-tasks/")
+        || trimmed.starts_with("$HOME/.dbx-ssh-tasks/")
+        || trimmed.contains("/.dbx-ssh-tasks/");
+    let file_name = trimmed.rsplit(['/', '\\']).next().unwrap_or_default();
+    if !in_task_dir || !file_name.starts_with("bg-") {
+        return Err(format!(
+            "logPath must point at a task log under ~/.dbx-ssh-tasks/ (bg-*.log); \
+             use the logPath returned by ssh_run_bg instead of: {trimmed}"
+        ));
+    }
+    Ok(())
+}
+
+/// Server-side task id for `ssh_run_bg`.
+///
+/// `stamp` is the unix millisecond, which by itself is not a discriminator:
+/// two calls in the same millisecond inside one process produced the same id
+/// (`pid % 100_000` is constant), and the remote staging line truncates the
+/// log file with `: > "$f"` — so the second task wiped the first one's output
+/// and pid. The uuid suffix makes same-millisecond ids distinct.
+pub(crate) fn background_task_id(stamp: u128) -> String {
+    format!(
+        "bg-{stamp}-{}-{}",
+        std::process::id() % 100_000,
+        uuid::Uuid::new_v4().simple()
+    )
 }

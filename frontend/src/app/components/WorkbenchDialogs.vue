@@ -170,7 +170,7 @@ const JsonPreviewPanel = createPreviewAsyncComponent(
 <template>
   <!-- 工具弹窗：OTP 验证码 / 会话导入（导入入口在顶部「会话」菜单，组件自带内部弹窗与状态）。 -->
   <Dialog :open="otpPanelOpen" @update:open="(open) => { if (!open) otpPanelOpen = false; }">
-    <DialogContent class="modal sftp-tool-modal" @escape-key-down.prevent>
+    <DialogContent class="modal sftp-tool-modal otp-tool-modal" @escape-key-down.prevent>
       <header>
         <DialogTitle>{{ t("otpPanel.title") }}</DialogTitle>
         <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="otpPanelOpen = false"><X /></button>

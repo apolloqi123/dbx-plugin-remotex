@@ -62,8 +62,11 @@ export function useSettingsNav(options: UseSettingsNavOptions) {
       SETTINGS_CATEGORIES.find((cat) => cat.id === settingsCategory.value) ??
       SETTINGS_CATEGORIES[0],
   );
+  // 序号必须与用户**看得见的那串导航**对齐，而不是与全量表对齐：本地终端下
+  // sudo / 智能体两栏被裁掉（13 → 11），若仍按全量表取下标，切到 MCP 会显示
+  // “13 / 11”——分子大于分母。所以下标在 visibleSettingsCategories 里取。
   const activeCategoryIndex = computed(
-    () => SETTINGS_CATEGORIES.findIndex((cat) => cat.id === settingsCategory.value) + 1,
+    () => visibleSettingsCategories.value.findIndex((cat) => cat.id === settingsCategory.value) + 1,
   );
   // 仪表盘式序号（“03 / 13”），对齐右侧 hero 的 mono 计数；两位补零保证不跳动。
   const activeCategoryCounter = computed(() => {

@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, reactive, ref } from "vue";
 import { rpc } from "../../../shared/lib/rpc";
+import { createRequestEpoch } from "../../../shared/lib/requestEpoch";
 import {
   applySavedTransferForm,
   canUseDesktopCredentials,
@@ -7,6 +8,7 @@ import {
   emptyTransferPane,
   forgetSavedTransferPassword,
   isMissingStoredCredentials,
+  loadTransferList,
   mapLocalTransferEntry,
   mapRemoteTransferEntry,
   normalizeRemoteTransferPath,
@@ -70,6 +72,10 @@ export function useRemoteFileTransfer(options: RemoteFileTransferOptions) {
   let unsubscribe: (() => void) | null = null;
   let prefilledConnection = "";
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  // Only the newest list request may publish (see loadTransferList in lib).
+  const localEpoch = createRequestEpoch();
+  const remoteEpoch = createRequestEpoch();
+  const reportListError = (cause: unknown) => options.showError(cause, "terminal");
 
   const busy = computed(() => progress.value?.status === "running");
   const canUpload = computed(
@@ -119,50 +125,34 @@ export function useRemoteFileTransfer(options: RemoteFileTransferOptions) {
   }
 
   async function loadLocal(path?: string) {
-    local.loading = true;
-    local.error = "";
-    try {
-      const result = await rpc<Record<string, unknown>>(
-        "filetransfer/local/list",
-        path ? { path } : {},
-      );
-      local.path = transferText(result.path);
-      local.parent = typeof result.parent === "string" ? result.parent : null;
-      local.home = typeof result.home === "string" ? result.home : null;
-      local.draft = local.path;
-      local.entries = Array.isArray(result.entries)
-        ? (result.entries as Array<Record<string, unknown>>).map(mapLocalTransferEntry)
-        : [];
-      clearSelection(local);
-    } catch (cause) {
-      local.error = transferErrorMessage(cause);
-      options.showError(cause, "terminal");
-    } finally {
-      local.loading = false;
-    }
+    await loadTransferList(local, localEpoch,
+      () => rpc<Record<string, unknown>>("filetransfer/local/list", path ? { path } : {}),
+      (result) => {
+        local.path = transferText(result.path);
+        local.parent = typeof result.parent === "string" ? result.parent : null;
+        local.home = typeof result.home === "string" ? result.home : null;
+        local.draft = local.path;
+        local.entries = Array.isArray(result.entries)
+          ? (result.entries as Array<Record<string, unknown>>).map(mapLocalTransferEntry)
+          : [];
+      }, reportListError);
   }
 
   async function loadRemote(path?: string) {
     const current = session.value;
     if (!current) return;
     const target = normalizeRemoteTransferPath(path || remote.path || current.home);
-    remote.loading = true;
-    remote.error = "";
-    try {
-      const result = await rpc<{ entries?: Array<Record<string, unknown>> }>("sftp/list", {
+    await loadTransferList(remote, remoteEpoch,
+      () => rpc<{ entries?: Array<Record<string, unknown>> }>("sftp/list", {
         sessionId: current.sessionId,
         path: target,
-      });
-      remote.path = target;
-      remote.parent = remoteParentPath(target);
-      remote.draft = target;
-      remote.entries = (result.entries ?? []).map(mapRemoteTransferEntry);
-      clearSelection(remote);
-    } catch (cause) {
-      remote.error = transferErrorMessage(cause);
-    } finally {
-      remote.loading = false;
-    }
+      }),
+      (result) => {
+        remote.path = target;
+        remote.parent = remoteParentPath(target);
+        remote.draft = target;
+        remote.entries = (result.entries ?? []).map(mapRemoteTransferEntry);
+      }, reportListError);
   }
 
   async function refreshClipboardSupport() {

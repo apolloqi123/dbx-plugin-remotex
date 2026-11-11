@@ -140,7 +140,7 @@ function elapsedLabel(seconds: number): string {
 .recording-action.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive); }
 .recording-action:disabled { opacity: .4; cursor: default; }
 .recordings-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 6px 10px; }
-.recordings-footer > span { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.recordings-footer > span { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .recordings-start-link { flex: 0 0 auto; border: 0; border-radius: 5px; padding: 2px 6px; background: transparent; color: var(--primary); font-size: 10px; cursor: pointer; }
 .recordings-start-link:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
 .recordings-empty { display: flex; min-height: 190px; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; color: var(--muted-foreground); text-align: center; }

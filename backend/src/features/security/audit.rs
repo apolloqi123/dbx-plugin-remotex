@@ -16,10 +16,12 @@
 //!
 //! Rotation: before each append, when the file has reached [`ROTATE_BYTES`]
 //! (5 MiB) it is renamed to `audit-log.jsonl.1` (one retained generation; a
-//! failed rename is ignored so writing never blocks). Reading (`tail`) skips
-//! malformed lines, so a torn trailing line from a crash can never break
-//! replay. `error` text is clamped before writing to keep worst-case lines
-//! small (long command text is already clamped upstream).
+//! failed rename is ignored so writing never blocks). Reading (`tail`) spans
+//! both generations — newest first, backfilling from the rotated predecessor —
+//! so a rotation never hides previously visible entries. Malformed lines are
+//! skipped, so a torn trailing line from a crash can never break replay.
+//! `error` text is clamped before writing to keep worst-case lines small (long
+//! command text is already clamped upstream).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -30,8 +32,11 @@ pub const ROTATE_BYTES: u64 = 5 * 1024 * 1024;
 
 /// Hard cap applied to `tail`'s `limit` regardless of caller input (the
 /// protocol `ssh/audit/list` contract is limit ∈ [1, 500], enforced there;
-/// this clamps defensively).
-const TAIL_LIMIT_CAP: usize = 500;
+/// this clamps defensively). One slot above the protocol maximum is allowed so
+/// `ssh/audit/list` can fetch a single probe entry past the requested page and
+/// still detect truncation at `limit = 500` (without it, a page of 500 could
+/// never report that older entries remain).
+const TAIL_LIMIT_CAP: usize = 501;
 
 /// Cap of the `error` field, in characters, applied before writing.
 const MAX_ERROR_CHARS: usize = 1024;

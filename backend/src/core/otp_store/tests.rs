@@ -133,6 +133,19 @@ fn save_encrypts_new_secret_and_keeps_old_on_empty_update() {
 }
 
 #[test]
+fn degraded_vault_refuses_new_secret_without_mutating_store() {
+    let degraded = Vault::new(&crate::core::vault::BrokenKeyProvider);
+    let mut store = OtpStore::default();
+    let err = save_entry(&mut store, &totp_params(json!({})), &degraded);
+    let message = err.expect_err("degraded vault save must fail");
+    assert!(message.contains("unavailable"), "error was: {message}");
+    assert!(
+        store.entries.is_empty(),
+        "a refused save must not leave a half-saved entry"
+    );
+}
+
+#[test]
 fn save_rejects_bad_input_shapes() {
     let dir = temp_dir();
     let vault = keyfile_vault(&dir);

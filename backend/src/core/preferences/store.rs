@@ -211,6 +211,17 @@ pub fn load_preferences(data_dir: &Path) -> Value {
     {
         prefs.insert("startup_commands".to_string(), store);
     }
+    // 两个进程级快速标志的磁盘真值来源：X11 转发（`bootstrap`/`local/preferences/set`
+    // 用它同步 `forwarding::x11::set_enabled`）与会话自动录制（同步 `recording::set_auto_record`）。
+    // 这两个键必须在这里出口：save 白名单早就收下了它们，load 却从未返回，
+    // 于是上面两处 `prefs.get(...) == Some(true)` 恒为 false —— 开关存进去、
+    // 读不出来，X11 转发与自动录制永远不生效（且无任何报错）。
+    if let Some(enabled) = map.get("x11_forwarding").and_then(Value::as_bool) {
+        prefs.insert("x11_forwarding".to_string(), Value::Bool(enabled));
+    }
+    if let Some(enabled) = map.get("auto_record").and_then(Value::as_bool) {
+        prefs.insert("auto_record".to_string(), Value::Bool(enabled));
+    }
     // RDP 安全设置（RDP-2）：use_nla 缺省 true、证书策略缺省 prompt；
     // 键不存在时不出现（前端按缺省处理）。
     if let Some(enabled) = map.get("rdp_experimental_enabled").and_then(Value::as_bool) {

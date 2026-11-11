@@ -10,6 +10,7 @@ import { tags } from "@lezer/highlight";
 import { dbxSyntaxHighlight } from "../../../../../shared/frontend/editorTheme";
 import { detectEditorLanguage } from "../lib/editor/languageDetect";
 import { logHighlightExtension } from "../lib/editor/logHighlight";
+import { previewThemeSpec } from "../lib/editor/previewTheme";
 import EditorFindBar from "./EditorFindBar.vue";
 
 const props = defineProps<{
@@ -317,41 +318,12 @@ onBeforeUnmount(() => {
 });
 
 function previewTheme() {
-  const colors = props.appearance.colors;
-  return EditorView.theme({
-    "&": { height: "100%", backgroundColor: colors.background, color: colors.foreground },
-    ".cm-scroller": {
-      overflow: "auto",
-      fontFamily: props.appearance.terminal.fontFamily,
-      fontSize: `${props.appearance.terminal.fontSize}px`,
-      lineHeight: "1.6",
-    },
-    ".cm-gutters": {
-      backgroundColor: colors.muted,
-      color: colors.mutedForeground,
-      borderRightColor: colors.border,
-      paddingRight: "8px",
-    },
-    ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: colors.accent },
-    ".cm-cursor": { borderLeftColor: colors.foreground, borderLeftWidth: "2px" },
-    // 选区色随明暗切换，与终端 xterm selectionBackground 保持同一观感。
-    // 透明度提高到 0xd0 并加深色相，确保选区在任意背景下都清晰可见（issue #155）。
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-      backgroundColor: props.appearance.colorScheme === "dark" ? "#6481b8d0" : "#5a9fd4d0",
-    },
-    // 查找命中高亮（applyFindDecorations 注入）：全部命中淡琥珀底，当前命中
-    // 加深并加 2px 描边。不改变文字颜色，语法高亮在两种主题下都保持可读。
-    ".cm-find-match": {
-      backgroundColor: props.appearance.colorScheme === "dark" ? "#fbbf2433" : "#f59e0b2e",
-      outline: `1px solid ${props.appearance.colorScheme === "dark" ? "#fbbf2473" : "#d9770666"}`,
-      borderRadius: "2px",
-    },
-    ".cm-find-match-active": {
-      backgroundColor: props.appearance.colorScheme === "dark" ? "#fbbf2480" : "#f59e0b73",
-      outline: `2px solid ${props.appearance.colorScheme === "dark" ? "#fbbf24" : "#d97706"}`,
-      borderRadius: "2px",
-    },
-  }, { dark: props.appearance.colorScheme === "dark" });
+  return EditorView.theme(previewThemeSpec({
+    dark: props.appearance.colorScheme === "dark",
+    colors: props.appearance.colors,
+    fontFamily: props.appearance.terminal.fontFamily,
+    fontSize: props.appearance.terminal.fontSize,
+  }), { dark: props.appearance.colorScheme === "dark" });
 }
 
 async function extensions() {

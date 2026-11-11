@@ -316,7 +316,7 @@ function beginResume(task: ResumableUploadTask) {
   border-radius: var(--radius-pill);
   padding: 0 6px;
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: 9.5px;
   font-variant-numeric: tabular-nums;
 }
 .transfer-panel-actions { display: inline-flex; margin-left: auto; flex: 0 0 auto; align-items: center; gap: 1px; }
@@ -337,20 +337,20 @@ function beginResume(task: ResumableUploadTask) {
 .transfer-filters::-webkit-scrollbar { display: none; }
 .transfer-filter {
   display: inline-flex;
-  height: 20px;
+  height: 22px;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-pill);
-  padding: 0 7px;
+  padding: 0 8px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 8.5px;
+  font-size: 9.5px;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
-.transfer-filter > svg { width: 10px; height: 10px; }
-.transfer-filter b { font-size: 8.5px; font-variant-numeric: tabular-nums; }
+.transfer-filter > svg { width: 11px; height: 11px; }
+.transfer-filter b { font-size: 9.5px; font-variant-numeric: tabular-nums; }
 .transfer-filter:hover { background: var(--card-surface-raised); color: var(--foreground); }
 .transfer-filter.is-active {
   border-color: color-mix(in srgb, var(--primary) 45%, transparent);
@@ -391,10 +391,10 @@ function beginResume(task: ResumableUploadTask) {
 .transfer-batch-icon > svg { width: 14px; height: 14px; }
 .transfer-batch-body { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .transfer-batch-head { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.transfer-batch-title { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.transfer-batch-percent { flex: 0 0 auto; color: var(--foreground); font-size: 9.5px; font-variant-numeric: tabular-nums; }
-.transfer-batch-meta { color: var(--muted-foreground); font-size: 9px; font-variant-numeric: tabular-nums; }
-.transfer-batch-file { overflow: hidden; color: var(--muted-foreground); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-batch-title { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); font-size: var(--text-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-batch-percent { flex: 0 0 auto; color: var(--foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+.transfer-batch-meta { color: var(--muted-foreground); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+.transfer-batch-file { overflow: hidden; color: var(--muted-foreground); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 .transfer-batch-line { position: absolute; bottom: 0; left: 0; height: 2px; border-radius: var(--radius-pill); background: var(--tone-violet); transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1); }
 
 .transfer-banner {

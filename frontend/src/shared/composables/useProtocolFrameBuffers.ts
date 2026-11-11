@@ -137,38 +137,50 @@ function drainTelnetFrames() {
     frame = telnetPendingFrames.get(telnetLastSequence.value + 1);
   }
   if (telnetPendingFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
+    // 洪峰把有序帧一并丢弃后必须主动补拉一次（与 local drain 同理）：清空后
+    // firstPending 变 Infinity，下面的洞检测永不触发——画面会停在洪峰前。
+    // 清空前先记下有限的 resync 目标，供三轮无进展跳洞使用。
+    const firstPendingAtFlood = Math.min(...telnetPendingFrames.keys());
     telnetPendingFrames.clear();
+    requestTelnetReplay(telnetLastSequence.value, firstPendingAtFlood - 1);
+    return;
   }
   const firstPending = telnetPendingFrames.size
     ? Math.min(...telnetPendingFrames.keys())
     : Number.POSITIVE_INFINITY;
   if (Number.isFinite(firstPending) && firstPending > telnetLastSequence.value + 1 && !telnetReplayInFlight.value && telnetSession.value) {
-    const sessionId = telnetSession.value.sessionId;
-    telnetReplayInFlight.value = true;
-    const holeAt = telnetLastSequence.value;
-    void window.dbxPlugin
-      .invoke<FrameReplayResult>("telnet/replay", { sessionId, afterSequence: telnetLastSequence.value })
-      .then((result) => {
-        if (!result.complete) {
-          markTelnetClosed(null);
-          return;
-        }
-        if (telnetLastSequence.value === holeAt) {
-          telnetReplayNoProgress.value += 1;
-          if (telnetReplayNoProgress.value >= 3) {
-            telnetLastSequence.value = firstPending - 1;
-            telnetReplayNoProgress.value = 0;
-          }
-        } else {
+    requestTelnetReplay(telnetLastSequence.value, firstPending - 1);
+  }
+}
+
+// telnet 统一的补发拉取：resyncTarget 是清空前捕获的缺口前帧号，连续三轮
+// 无进展后把游标 resync 过缺口，避免 replay 循环空转冻结工作台。
+function requestTelnetReplay(holeAt: number, resyncTarget: number) {
+  const telnet = telnetSession.value;
+  if (!telnet || telnetReplayInFlight.value) return;
+  telnetReplayInFlight.value = true;
+  void window.dbxPlugin
+    .invoke<FrameReplayResult>("telnet/replay", { sessionId: telnet.sessionId, afterSequence: holeAt })
+    .then((result) => {
+      if (!result.complete) {
+        markTelnetClosed(null);
+        return;
+      }
+      if (telnetLastSequence.value === holeAt) {
+        telnetReplayNoProgress.value += 1;
+        if (telnetReplayNoProgress.value >= 3) {
+          telnetLastSequence.value = resyncTarget;
           telnetReplayNoProgress.value = 0;
         }
-      })
-      .catch(() => markTelnetClosed(null))
-      .finally(() => {
-        telnetReplayInFlight.value = false;
-        drainTelnetFrames();
-      });
-  }
+      } else {
+        telnetReplayNoProgress.value = 0;
+      }
+    })
+    .catch(() => markTelnetClosed(null))
+    .finally(() => {
+      telnetReplayInFlight.value = false;
+      drainTelnetFrames();
+    });
 }
 
 function markSerialClosed(error: string | null) {
@@ -186,7 +198,13 @@ function drainSerialFrames() {
     frame = serialPendingFrames.get(serialLastSequence.value + 1);
   }
   if (serialPendingFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
+    // 洪峰把有序帧一并丢弃后必须主动补拉一次（与 local drain 同理）：清空后
+    // firstPending 变 Infinity，下面的洞检测永不触发——画面会停在洪峰前。
+    // 清空前先记下有限的 resync 目标，供三轮无进展跳洞使用。
+    const firstPendingAtFlood = Math.min(...serialPendingFrames.keys());
     serialPendingFrames.clear();
+    requestSerialReplay(serialLastSequence.value, firstPendingAtFlood - 1);
+    return;
   }
   // 序号缺口 → serial/replay（序号制回放）：重发帧从既有二进制通道到货后
   // 由同一 drain 消费；缺口永不可填（缓冲绕回/会话重建）时按无进度上限
@@ -195,35 +213,42 @@ function drainSerialFrames() {
     ? Math.min(...serialPendingFrames.keys())
     : Number.POSITIVE_INFINITY;
   if (Number.isFinite(firstPending) && firstPending > serialLastSequence.value + 1 && !serialReplayInFlight.value && serialSession.value) {
-    serialReplayInFlight.value = true;
-    const holeAt = serialLastSequence.value;
-    void window.dbxPlugin
-      .invoke<FrameReplayResult>("serial/replay", { sessionId: serialSession.value.sessionId, afterSequence: serialLastSequence.value })
-      .then((result) => {
-        // complete: false = 缓冲已绕回、回放不完整（设计稿 §3）——提示截断。
-        if (!result.complete) showNotice(t("serial.replayTruncated"));
-        if (serialLastSequence.value === holeAt) {
-          serialReplayNoProgress.value += 1;
-          if (serialReplayNoProgress.value >= 3) {
-            serialLastSequence.value = firstPending - 1;
-            serialReplayNoProgress.value = 0;
-          }
-        } else {
-          serialReplayNoProgress.value = 0;
-        }
-      })
-      .catch(() => {
-        // 会话不存在（已关闭/未重建）：resync 过缺口放出后续帧。
-        if (firstPending > serialLastSequence.value) {
-          serialLastSequence.value = firstPending - 1;
-          serialReplayNoProgress.value = 0;
-        }
-      })
-      .finally(() => {
-        serialReplayInFlight.value = false;
-        drainSerialFrames();
-      });
+    requestSerialReplay(serialLastSequence.value, firstPending - 1);
   }
+}
+
+// serial 统一的补发拉取：resyncTarget 是清空前捕获的缺口前帧号，连续三轮
+// 无进展后把游标 resync 过缺口，避免 replay 循环空转冻结工作台。
+function requestSerialReplay(holeAt: number, resyncTarget: number) {
+  const serial = serialSession.value;
+  if (!serial || serialReplayInFlight.value) return;
+  serialReplayInFlight.value = true;
+  void window.dbxPlugin
+    .invoke<FrameReplayResult>("serial/replay", { sessionId: serial.sessionId, afterSequence: holeAt })
+    .then((result) => {
+      // complete: false = 缓冲已绕回、回放不完整（设计稿 §3）——提示截断。
+      if (!result.complete) showNotice(t("serial.replayTruncated"));
+      if (serialLastSequence.value === holeAt) {
+        serialReplayNoProgress.value += 1;
+        if (serialReplayNoProgress.value >= 3) {
+          serialLastSequence.value = resyncTarget;
+          serialReplayNoProgress.value = 0;
+        }
+      } else {
+        serialReplayNoProgress.value = 0;
+      }
+    })
+    .catch(() => {
+      // 会话不存在（已关闭/未重建）：resync 过缺口放出后续帧。
+      if (resyncTarget > serialLastSequence.value) {
+        serialLastSequence.value = resyncTarget;
+        serialReplayNoProgress.value = 0;
+      }
+    })
+    .finally(() => {
+      serialReplayInFlight.value = false;
+      drainSerialFrames();
+    });
 }
 
 

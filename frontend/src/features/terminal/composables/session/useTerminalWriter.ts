@@ -445,61 +445,79 @@ export function useTerminalWriter(options: TerminalWriterOptions) {
     persistState();
     // A stalled gap must not grow the pending map without bound: once the
     // buffer overshoots, drop it and let the replay re-deliver everything
-    // after the last in-order sequence.
+    // after the last in-order sequence. Clearing empties the map, which makes
+    // firstPending Infinity below — the gap check can never fire and the cursor
+    // would freeze at the hole forever, so request the replay proactively.
+    // Capture the resync target *before* clearing: the three-strike no-progress
+    // ladder and the session-gone resync both need a finite frame number to
+    // jump past the hole (Infinity would corrupt the cursor / loop forever).
     if (frameStream.pendingFrames.size > TERMINAL_PENDING_FRAME_LIMIT) {
+      const firstPendingAtFlood = Math.min(...frameStream.pendingFrames.keys());
       frameStream.pendingFrames.clear();
+      requestSshReplay(frameStream.lastSequence, firstPendingAtFlood - 1);
+      return;
     }
     const firstPending = frameStream.pendingFrames.size
       ? Math.min(...frameStream.pendingFrames.keys())
       : Number.POSITIVE_INFINITY;
     if (Number.isFinite(firstPending) && firstPending > frameStream.lastSequence + 1 && !replayInFlight && session.value) {
-      const holeAt = frameStream.lastSequence;
-      replayInFlight = true;
-      // A session-gone replay failure must resync and reconnect: the hole can
-      // never be filled (the session object is gone server-side), so the
-      // ssh-transport-disconnected state frame stuck behind it would otherwise
-      // freeze the drain forever and the tab keeps claiming "connected".
-      let sessionGone = false;
-      void window.dbxPlugin.invoke<ReplayResult>("ssh/terminal/replay", { sessionId: session.value.sessionId, afterSequence: frameStream.lastSequence })
-        .then((result) => {
-          if (!result.complete) {
-            terminalState.value = "error";
-            terminalError.value = t("sessionUnrecoverable");
-            return;
-          }
-          // The replay returned healthy but the hole below firstPending is still
-          // there: those frames are gone for good (e.g. sequence numbering
-          // restarted across a reconnect). Retry once more, then resync the
-          // cursor past the hole — dropping the missing prefix beats spinning
-          // this replay loop forever and freezing the workbench.
-          if (frameStream.lastSequence === holeAt) {
-            frameStream.replayNoProgress += 1;
-            if (frameStream.replayNoProgress >= 3) {
-              frameStream.lastSequence = firstPending - 1;
-              frameStream.replayNoProgress = 0;
-            }
-          } else {
-            frameStream.replayNoProgress = 0;
-          }
-        })
-        .catch((cause) => {
-          if (isSessionGoneError(cause) && firstPending > frameStream.lastSequence) {
-            sessionGone = true;
-            frameStream.lastSequence = firstPending - 1;
-            frameStream.replayNoProgress = 0;
-            return;
-          }
-          showError(cause, "terminal");
-        })
-        .finally(() => {
-          replayInFlight = false;
-          drainTerminalFrames();
-          // Run after the resync drain above delivered the buffered disconnect
-          // state frame (it flips the state off "connected"); the ladder then
-          // picks the reconnect up unless one is already pending.
-          if (sessionGone && !isReconnectPending() && !isDisposed()) scheduleSessionReconnect();
-        });
+      requestSshReplay(frameStream.lastSequence, firstPending - 1);
     }
+  }
+
+  /** Pull frames after `holeAt` back from the sidecar ring buffer. `resyncTarget`
+   * is the frame just before the first pending one, captured before any map
+   * clear: a three-strike no-progress replay (or a session-gone failure) jumps
+   * the cursor there so buffered frames — notably the disconnect state frame —
+   * can finally drain instead of freezing the workbench forever. */
+  function requestSshReplay(holeAt: number, resyncTarget: number) {
+    const activeSession = session.value;
+    if (!activeSession || replayInFlight) return;
+    replayInFlight = true;
+    // A session-gone replay failure must resync and reconnect: the hole can
+    // never be filled (the session object is gone server-side), so the
+    // ssh-transport-disconnected state frame stuck behind it would otherwise
+    // freeze the drain forever and the tab keeps claiming "connected".
+    let sessionGone = false;
+    void window.dbxPlugin.invoke<ReplayResult>("ssh/terminal/replay", { sessionId: activeSession.sessionId, afterSequence: holeAt })
+      .then((result) => {
+        if (!result.complete) {
+          terminalState.value = "error";
+          terminalError.value = t("sessionUnrecoverable");
+          return;
+        }
+        // The replay returned healthy but the hole below firstPending is still
+        // there: those frames are gone for good (e.g. sequence numbering
+        // restarted across a reconnect). Retry once more, then resync the
+        // cursor past the hole — dropping the missing prefix beats spinning
+        // this replay loop forever and freezing the workbench.
+        if (frameStream.lastSequence === holeAt) {
+          frameStream.replayNoProgress += 1;
+          if (frameStream.replayNoProgress >= 3) {
+            frameStream.lastSequence = resyncTarget;
+            frameStream.replayNoProgress = 0;
+          }
+        } else {
+          frameStream.replayNoProgress = 0;
+        }
+      })
+      .catch((cause) => {
+        if (isSessionGoneError(cause) && resyncTarget > frameStream.lastSequence) {
+          sessionGone = true;
+          frameStream.lastSequence = resyncTarget;
+          frameStream.replayNoProgress = 0;
+          return;
+        }
+        showError(cause, "terminal");
+      })
+      .finally(() => {
+        replayInFlight = false;
+        drainTerminalFrames();
+        // Run after the resync drain above delivered the buffered disconnect
+        // state frame (it flips the state off "connected"); the ladder then
+        // picks the reconnect up unless one is already pending.
+        if (sessionGone && !isReconnectPending() && !isDisposed()) scheduleSessionReconnect();
+      });
   }
 
   /** 卸载兜底：在途写入回调整体作废，保护态复位（原 onBeforeUnmount 顺序不变）。 */

@@ -152,7 +152,7 @@ function submit() {
 
 <template>
   <Dialog :open="open" @update:open="(open) => emit('update:open', open)">
-    <DialogContent class="modal small-modal" @escape-key-down.prevent>
+    <DialogContent class="modal small-modal connect-modal" @escape-key-down.prevent>
       <header>
         <DialogTitle>{{ t("telnet.dialogTitle") }}</DialogTitle>
         <button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:open', false)"><X /></button>
@@ -251,9 +251,14 @@ function submit() {
 .telnet-security-note {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  margin: 0 0 8px;
-  font-size: 11px;
+  gap: 7px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--card-border));
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
   line-height: 1.5;
 }
 .telnet-security-note svg {
@@ -263,23 +268,19 @@ function submit() {
 }
 .telnet-form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 10px;
-  margin-bottom: 8px;
-}
-.telnet-form-grid select {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 6px 8px;
-  background: var(--background);
-  color: var(--foreground);
-  font-size: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 12px;
+  margin-bottom: 4px;
 }
 .telnet-auto-login summary {
+  border-top: 1px solid color-mix(in srgb, var(--card-border) 78%, transparent);
+  padding: 9px 0 2px;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
   cursor: pointer;
-  font-size: 11px;
   user-select: none;
 }
+.telnet-auto-login summary:hover { color: var(--foreground); }
 .telnet-auto-login[open] summary {
   margin-bottom: 6px;
 }

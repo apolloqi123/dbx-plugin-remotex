@@ -39,7 +39,7 @@
 //! credential pipeline — with the same streaming, cancel (process-group
 //! kill), timeout, env and working-directory semantics as the SSH path.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -182,9 +182,20 @@ pub(crate) struct TaskProvider {
     runs: Mutex<HashMap<String, watch::Sender<bool>>>,
     /// Per-run monotonic log sequence (contract: starts at 1).
     seqs: Mutex<HashMap<String, u64>>,
-    /// Resident sessions keyed by sessionId.
+    /// Live resident sessions keyed by sessionId. Entries leave this map the
+    /// moment they reach a terminal state, so repeated start/stop cycles cannot
+    /// grow it without bound.
     residents: Mutex<HashMap<String, ResidentEntry>>,
+    /// Bounded tail of terminal resident summaries, newest last. Kept only so
+    /// `task/status` can still report the real final state (`degraded`,
+    /// `crashed`) of a session that already left `residents`, instead of the
+    /// blanket `stopped` used for genuinely unknown ids.
+    resident_history: Mutex<VecDeque<ResidentSummary>>,
 }
+
+/// Upper bound on retained terminal resident summaries. The host keeps its own
+/// run history; this window only serves in-process reconciliation.
+pub(super) const RESIDENT_HISTORY_CAP: usize = 64;
 
 impl TaskProvider {}
 

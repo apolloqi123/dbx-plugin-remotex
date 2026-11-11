@@ -137,6 +137,7 @@ const {
   mcpInputsValid,
   x11Enabled,
   x11ReadOnlyNote,
+  localTogglePrefsFailed,
   rdpExperimentalEnabled,
   autoRecordEnabled,
   localShellOptions,
@@ -339,6 +340,7 @@ defineExpose({ consumeInlineEsc, setDownloadDirDraft, setDownloadUseDefaultDraft
               :x11-read-only-note="x11ReadOnlyNote"
               :rdp-experimental-enabled="rdpExperimentalEnabled"
               :auto-record-enabled="autoRecordEnabled"
+              :toggles-load-failed="localTogglePrefsFailed"
               :t="t"
               @set-pane-direction="(value) => emit('update:paneDirection', value)"
               @set-webgl="(value) => emit('update:webgl', value)"

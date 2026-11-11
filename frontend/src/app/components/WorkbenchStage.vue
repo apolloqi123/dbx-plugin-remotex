@@ -67,6 +67,9 @@ const paneClass = computed(() => ({
   "marker-visible": props.commandMarker.installed,
   "gutter-visible": props.gutterPaneVisible,
   "wallpaper-active": props.wallpaperActive,
+  // AI 修复条贴在终端顶部时，搜索面板/指标-录制浮卡也钉在同一处；用状态类
+  // 把浮层整体下移一条，避免两个浮层互相盖住（输入框/标题被截断）。
+  "ai-fix-visible": Boolean(props.aiFixBar),
   ...transferBusyPaneClass(props.terminalTransferBusy),
 }));
 </script>
@@ -195,12 +198,15 @@ const paneClass = computed(() => ({
 }
 .terminal-ai-fix-exit {
   flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--destructive) 38%, transparent);
   border-radius: 999px;
-  background: rgb(239 68 68 / 16%);
-  color: rgb(239 68 68 / 90%);
-  padding: 0 6px;
-  font-size: 10.5px;
-  line-height: 17px;
+  background: color-mix(in srgb, var(--destructive) 14%, transparent);
+  color: var(--destructive);
+  padding: 0 7px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
 }
 .terminal-ai-fix-command {
   min-width: 0;

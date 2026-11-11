@@ -502,6 +502,9 @@ describe("ContainerLogsTab end banners", () => {
     const banner = wrapper.get('[data-role="stream-end"]');
     expect(banner.text()).toContain("docker.streamEnded");
     expect(banner.text()).toContain("137");
+    // 非零退出才是失败：横幅用红色语义档，退出码同时标红。
+    expect(banner.classes()).toContain("is-error");
+    expect(wrapper.get(".docker-log-exit").classes()).toContain("is-failed");
 
     await wrapper.get('[data-action="restart"]').trigger("click");
     await flushPromises();
@@ -511,8 +514,21 @@ describe("ContainerLogsTab end banners", () => {
     expect(wrapper.get(".docker-log-scroll").text()).toBe("");
   });
 
-  it("offers a sudo retry that restarts with sudo", async () => {
-    const calls = stubHost();
+  it("does not style a clean exit as an error", async () => {
+    stubHost();
+    const wrapper = await mountTab();
+    dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", exitCode: 0 });
+    await settle();
+
+    const banner = wrapper.get('[data-role="stream-end"]');
+    expect(banner.classes()).not.toContain("is-error");
+    expect(banner.classes()).not.toContain("is-warning");
+    expect(wrapper.get(".docker-log-exit").classes()).not.toContain("is-failed");
+    // 正常结束仍保留重开入口，只是不再用告警色。
+    expect(wrapper.find('[data-action="restart"]').exists()).toBe(true);
+  });
+
+  it("offers a sudo retry that restarts with sudo", async () => {    const calls = stubHost();
     const wrapper = await mountTab();
     dispatchDockerLogEvent("docker/logs/end", { streamId: "stream-1", error: "permission denied", needsSudo: true });
     await settle();

@@ -437,7 +437,8 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   border-radius: 8px;
   font-size: 10px;
   line-height: 16px;
-  background: rgba(90, 140, 220, 0.22);
+  background: var(--tone-blue-soft);
+  color: var(--tone-blue);
   white-space: nowrap;
 }
 
@@ -475,13 +476,13 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 0;
+  gap: 1px;
   min-width: 0;
   border: none;
   background: none;
   color: inherit;
   text-align: left;
-  padding: 2px 4px;
+  padding: 4px 6px;
   cursor: pointer;
   font: inherit;
 }
@@ -497,51 +498,15 @@ const running = (container: DockerContainer): boolean => isDockerContainerRunnin
   min-width: 0;
 }
 
-.container-row-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-}
-
+.container-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); font-size: 11.5px; font-weight: 600; letter-spacing: -0.005em; }
 .container-row-meta,
-.container-row-status {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 9px;
-  opacity: 0.65;
-}
-
-.container-row-status {
-  font-size: 9px;
-  opacity: 0.55;
-}
-
-.docker-badge {
-  display: inline-block;
-  flex: 0 0 auto;
-  padding: 0 4px;
-  border-radius: 6px;
-  font-size: 9px;
-  line-height: 12px;
-  background: rgba(128, 128, 128, 0.18);
-}
-
-.docker-state-running {
-  background: rgba(34, 160, 94, 0.22);
-}
-
+.container-row-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: var(--text-2xs); }
+.container-row-status { color: color-mix(in srgb, var(--muted-foreground) 80%, transparent); }
+.docker-badge { display: inline-block; flex: 0 0 auto; border-radius: var(--radius-pill); padding: 0 6px; background: color-mix(in srgb, var(--muted-foreground) 16%, transparent); color: color-mix(in srgb, var(--foreground) 82%, transparent); font-size: 9.5px; font-weight: 600; line-height: 15px; }
+.docker-state-running { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
 .docker-state-paused,
-.docker-state-restarting {
-  background: rgba(217, 154, 35, 0.25);
-}
-
-.docker-state-dead {
-  background: rgba(214, 69, 69, 0.25);
-}
+.docker-state-restarting { background: var(--tone-amber-soft); color: var(--tone-amber); }
+.docker-state-dead { background: var(--tone-rose-soft); color: var(--tone-rose); }
 
 .docker-empty {
   opacity: 0.65;

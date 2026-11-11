@@ -201,7 +201,7 @@ function onDraftInput(event: Event) {
 .quick-group-head:hover { color: var(--foreground); }
 .quick-group-chevron { width: 13px; height: 13px; flex: 0 0 13px; }
 .quick-group-name { min-width: 0; flex: 1; overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.quick-group-count { flex: 0 0 auto; border-radius: 8px; padding: 0 6px; background: var(--muted); color: var(--muted-foreground); font-size: 9px; line-height: 15px; }
+.quick-group-count { flex: 0 0 auto; border-radius: 8px; padding: 0 6px; background: var(--muted); color: var(--muted-foreground); font-size: 9.5px; line-height: 16px; }
 .quick-command-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; }
 .quick-command-footer--readonly { justify-content: space-between; }
 .quick-command-limit { color: var(--muted-foreground); font-size: 10px; white-space: nowrap; }

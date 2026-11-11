@@ -40,6 +40,15 @@
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
+  /* 字号阶梯：密集界面只用这几档，避免 8/8.5/9/9.5 混用造成的“字号噪声”。
+     2xs 是可见文字下限（徽标/kbd），正文元信息用 xs，控件与列表用 sm。 */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
   --card-border: color-mix(in srgb, var(--foreground) 11%, transparent);
   --card-border-strong: color-mix(in srgb, var(--foreground) 18%, transparent);
   /* 表面色全部由宿主桥接的 background/muted/accent 混出（色相、明度随宿主
@@ -89,9 +98,31 @@
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
-button:focus-visible, input:focus-visible { outline: 1px solid var(--primary); outline-offset: -1px; }
+/* 键盘焦点环：1px 内描边在高密度工具条里几乎看不见；改为 2px 半透明主色环，
+   外扩 1px，既醒目又不会被圆角裁掉。输入类仍用内描边，避免与自身边框叠影。 */
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 72%, transparent);
+  outline-offset: 1px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--primary) 72%, transparent);
+  outline-offset: -1px;
+}
+/* 文本选中：与终端选区同色系，避免浏览器默认蓝与插件主题打架。 */
+::selection { background: color-mix(in srgb, var(--primary) 30%, transparent); }
 .hidden { display: none !important; }
 .muted { color: var(--muted-foreground); }
 .mono { font-family: var(--terminal-font-family); }
 .numeric { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* 系统开了“减少动态效果”时，全局停掉装饰性过渡/动画（组件内的关键状态动画
+   另有各自的 reduced-motion 处理）。避免设置页/弹层在宿主节流时停在首帧。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 

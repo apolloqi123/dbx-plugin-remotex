@@ -325,4 +325,92 @@ describe("useRemoteFileTransfer", () => {
     expect(c.session.value).toBeNull();
     expect(c.remote.entries).toEqual([]);
   });
+  it("discards a stale remote listing that resolves after a newer one", async () => {
+    // Slow-link double-click: two `sftp/list` calls in flight, the older reply
+    // lands last. Without an epoch guard it overwrites the newer directory.
+    let defer = false;
+    const pending: Array<{ path: string; resolve: (value: unknown) => void }> = [];
+    const harness = createHarness({
+      "sftp/list": (params) => {
+        if (!defer) return { entries: [] };
+        return new Promise((resolve) => {
+          pending.push({ path: String(params.path), resolve });
+        });
+      },
+    });
+    const c = harness.controller;
+    c.open();
+    await flush();
+    c.form.password = "secret";
+    await c.connect();
+    expect(c.remote.path).toBe("/home/demo");
+
+    defer = true;
+    const intoA = c.loadRemote("/home/demo/a");
+    const intoB = c.loadRemote("/home/demo/b");
+    await flush();
+    expect(pending).toHaveLength(2);
+
+    // The newer request (B) lands first, the older one (A) lands afterwards.
+    pending.find((entry) => entry.path === "/home/demo/b")?.resolve({
+      entries: [{ name: "b.txt", uri: "sftp:/home/demo/b/b.txt", kind: "file", size: 1 }],
+    });
+    await intoB;
+    expect(c.remote.path).toBe("/home/demo/b");
+    expect(c.remote.entries.map((entry) => entry.name)).toEqual(["b.txt"]);
+
+    pending.find((entry) => entry.path === "/home/demo/a")?.resolve({
+      entries: [{ name: "a.txt", uri: "sftp:/home/demo/a/a.txt", kind: "file", size: 1 }],
+    });
+    await intoA;
+    await flush();
+    expect(c.remote.path).toBe("/home/demo/b");
+    expect(c.remote.entries.map((entry) => entry.name)).toEqual(["b.txt"]);
+  });
+
+  it("reports a failed remote listing instead of silently keeping the old pane", async () => {
+    const harness = createHarness({
+      "sftp/list": () => {
+        throw new Error("Permission denied");
+      },
+    });
+    const c = harness.controller;
+    c.open();
+    await flush();
+    c.form.password = "secret";
+    // connect() also loads the remote pane, so the failure surfaces here.
+    await c.connect();
+    expect(c.remote.error).toBeTruthy();
+    expect(harness.showError).toHaveBeenCalledWith(expect.anything(), "terminal");
+  });
+
+  it("keeps the spinner up until the newest listing settles", async () => {
+    let defer = false;
+    const pending: Array<{ path: string; resolve: (value: unknown) => void }> = [];
+    const harness = createHarness({
+      "sftp/list": (params) => {
+        if (!defer) return { entries: [] };
+        return new Promise((resolve) => pending.push({ path: String(params.path), resolve }));
+      },
+    });
+    const c = harness.controller;
+    c.open();
+    await flush();
+    c.form.password = "secret";
+    await c.connect();
+
+    defer = true;
+    const older = c.loadRemote("/home/demo/a");
+    const newer = c.loadRemote("/home/demo/b");
+    await flush();
+    expect(c.remote.loading).toBe(true);
+    // An older reply finishing while the newest is still in flight must not
+    // turn the spinner off.
+    pending.find((entry) => entry.path === "/home/demo/a")?.resolve({ entries: [] });
+    await older;
+    expect(c.remote.loading).toBe(true);
+    pending.find((entry) => entry.path === "/home/demo/b")?.resolve({ entries: [] });
+    await newer;
+    expect(c.remote.loading).toBe(false);
+  });
 });

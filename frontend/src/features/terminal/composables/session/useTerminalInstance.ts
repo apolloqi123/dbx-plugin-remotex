@@ -162,6 +162,11 @@ export function useTerminalInstance(options: TerminalInstanceOptions) {
   // dispose 释放 context。
   const webglEnabled = settingsPreferences.webglEnabled;
   const webglRenderer = ref<WebglRendererLike | null>(null);
+  // WebGL 重建的销毁钩子与存活标志：context loss 后的延迟重建必须能在终端
+  // dispose 时被取消，并释放 onContextLoss 订阅——否则 1s 定时器会在销毁后
+  // 对已 dispose 的 Terminal 新建并 loadAddon 一个 context（每页 context 有限）。
+  let webglCleanup: (() => void) | undefined;
+  let terminalAlive = false;
   // GPU 重置/驱动切换后有限次重建 renderer（Tabby 同款策略）：成功经
   // onRecovered 回填引用，偏好已关闭则放弃重建，预算耗尽静默留在 DOM 渲染。
   function webglRecoveryOptions(): WebglRecoveryOptions<WebglRendererLike> {
@@ -170,6 +175,10 @@ export function useTerminalInstance(options: TerminalInstanceOptions) {
         webglRenderer.value = addon;
       },
       enabled: () => webglEnabled.value,
+      alive: () => terminalAlive,
+      onCleanup: (cleanup) => {
+        webglCleanup = cleanup;
+      },
     };
   }
 
@@ -337,6 +346,7 @@ export function useTerminalInstance(options: TerminalInstanceOptions) {
     terminalMouseDownHandler = (event) => handleTerminalMouseDown(event);
     terminalMouseUpHandler = (event) => handleTerminalMouseUp(event);
     attachTerminalHost(terminalHost.value);
+    terminalAlive = true;
     if (webglEnabled.value && !isWallpaperActive()) {
       webglRenderer.value = attachWebglRenderer(terminal, () => new WebglAddon(), webglRecoveryOptions());
     }
@@ -370,6 +380,11 @@ export function useTerminalInstance(options: TerminalInstanceOptions) {
   function setWebglEnabled(next: boolean) {
     settingsPreferences.setWebglEnabled(next);
     if (!terminal) return;
+    if (!next) {
+      // 关闭时先取消可能挂起的重建并释放 context-loss 订阅，再 dispose renderer。
+      webglCleanup?.();
+      webglCleanup = undefined;
+    }
     webglRenderer.value = syncWebglRenderer(terminal, next, webglRenderer.value, () => new WebglAddon(), webglRecoveryOptions());
   }
 
@@ -476,6 +491,12 @@ export function useTerminalInstance(options: TerminalInstanceOptions) {
   /** 终端销毁：释放本实例持有的 timer/observer/parser/输入与铃铛 handler，
    * 最后 dispose 终端本体（宿主在其之前先摘装饰与宿主级监听）。 */
   function disposeTerminalInstance() {
+    // 先标记终端已销毁并取消 WebGL 重建：挂起的 1s 重建若在 terminal.dispose()
+    // 之后触发，会对已销毁的 Terminal 新建并 loadAddon 一个 WebGL context。
+    terminalAlive = false;
+    webglCleanup?.();
+    webglCleanup = undefined;
+    webglRenderer.value = null;
     window.clearTimeout(resizeTimer);
     resizeObserver?.disconnect();
     osc52Disposable?.dispose();

@@ -411,3 +411,24 @@ fn keychain_tier_file_with_unrecoverable_secrets_is_left_untouched() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn degraded_vault_refuses_to_overwrite_secrets_with_blanks() {
+    let dir = temp_dir();
+    let secret = test_secret("guard");
+    let store = store_with("ops", &secret);
+    // Persist a healthy, encrypted file first.
+    save_store_with(&dir, &store, &file_provider(&dir)).unwrap();
+    let before = std::fs::read_to_string(store_path(&dir)).unwrap();
+    assert!(before.contains("sudoPasswordEnc"));
+
+    // Saving through a provider whose DEK cannot resolve must be refused
+    // instead of rewriting every envelope with "" (which a degraded load
+    // would otherwise do even when the in-memory secrets look empty).
+    let err = save_store_with(&dir, &store, &crate::core::vault::BrokenKeyProvider);
+    let message = err.expect_err("degraded vault save must fail");
+    assert!(message.contains("unavailable"), "error was: {message}");
+    let after = std::fs::read_to_string(store_path(&dir)).unwrap();
+    assert_eq!(after, before, "on-disk envelopes must be untouched");
+    let _ = std::fs::remove_dir_all(&dir);
+}

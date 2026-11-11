@@ -135,13 +135,18 @@ export function useSettingsDialogModel(options: {
    * （新会话才启用），不走 props/emit（App 无需感知）。 */
   const x11Enabled = ref(false);
   const x11ReadOnlyNote = ref(false);
+  /** 偏好快照读取失败：三项开关此时显示的是默认值，不是已保存值。 */
+  const localTogglePrefsFailed = ref(false);
 
   async function setX11Enabled(next: boolean) {
     x11Enabled.value = next;
     try {
       await window.dbxPlugin?.invoke("local/preferences/set", { x11_forwarding: next });
-    } catch {
+    } catch (cause) {
       x11Enabled.value = !next;
+      // 回滚必须解释原因：开关自己弹回去是最难理解的失败形态（用户会反复点）。
+      // 与 saveSettings 同一条 error 通道（SettingsDialog 上抛 App 的 showError）。
+      options.emitError(cause);
     }
   }
 
@@ -158,8 +163,9 @@ export function useSettingsDialogModel(options: {
       // 开关持久化到 sidecar 偏好即可生效（后端 rdp/start 前置检查）；
       // App 不再持有内存门副本（M32-A 后工具条无 RDP 入口）。
       await window.dbxPlugin?.invoke("local/preferences/set", { rdp_experimental_enabled: next });
-    } catch {
+    } catch (cause) {
       rdpExperimentalEnabled.value = !next;
+      options.emitError(cause);
     }
   }
 
@@ -172,9 +178,12 @@ export function useSettingsDialogModel(options: {
       rdpExperimentalEnabled.value = parseRdpExperimentalEnabled(prefs?.rdp_experimental_enabled);
       autoRecordEnabled.value = prefs?.auto_record === true;
     } catch {
+      // 回落默认值是正确降级（偏好读不到就按未启用渲染），但要让用户知道
+      // 这三项现在显示的是「默认值」而不是「已保存的值」。
       x11Enabled.value = false;
       rdpExperimentalEnabled.value = false;
       autoRecordEnabled.value = false;
+      localTogglePrefsFailed.value = true;
     }
   }
 
@@ -182,8 +191,9 @@ export function useSettingsDialogModel(options: {
     autoRecordEnabled.value = next;
     try {
       await window.dbxPlugin?.invoke("local/preferences/set", { auto_record: next });
-    } catch {
+    } catch (cause) {
       autoRecordEnabled.value = !next;
+      options.emitError(cause);
     }
   }
 
@@ -468,6 +478,7 @@ export function useSettingsDialogModel(options: {
     mcpInputsValid,
     x11Enabled,
     x11ReadOnlyNote,
+    localTogglePrefsFailed,
     rdpExperimentalEnabled,
     autoRecordEnabled,
     localShellOptions,

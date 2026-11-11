@@ -124,10 +124,10 @@ function area(points: string) {
   flex-direction: column;
   align-items: flex-end;
   justify-content: space-between;
-  /* 让首/末刻度中心正好落在图表顶/底边（8px 行高的一半外扩）。 */
-  margin-block: -4px;
+  /* 让首/末刻度中心正好落在图表顶/底边（行高的一半外扩）。 */
+  margin-block: -4.5px;
   color: var(--muted-foreground);
-  font-size: 8px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;

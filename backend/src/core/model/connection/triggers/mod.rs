@@ -100,7 +100,14 @@ pub(crate) fn decode_base32_secret(text: &str) -> Result<Vec<u8>, String> {
     }
     data_encoding::BASE32
         .decode(padded.as_bytes())
-        .map_err(|_| format!("invalid base32 TOTP secret (expected A-Z2-7, got '{text}')"))
+        // 与 `core::otp::decode_base32` 同一条纪律：TOTP 密钥不得出现在错误串里
+        // （连接解析失败的文案会进会话错误面板与审计日志）。
+        .map_err(|_| {
+            format!(
+                "invalid base32 TOTP secret (expected A-Z2-7, got {} characters)",
+                unpadded.chars().count()
+            )
+        })
 }
 
 /// Generates the RFC 6238 TOTP code: HMAC-SHA1, 6 digits, 30-second step —

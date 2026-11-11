@@ -415,10 +415,10 @@ function onRowMousedown(event: MouseEvent) {
   border: 1px solid var(--border, rgb(128 128 132 / 28%));
   border-radius: 4px;
   padding: 0 4px;
-  background: var(--muted, rgb(255 255 255 / 6%));
-  color: inherit;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
   font-family: var(--ui-font-family);
-  font-size: 9.5px;
-  line-height: 15px;
+  font-size: var(--text-2xs);
+  line-height: 16px;
 }
 </style>

@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "id": "io.dbx.sshx",
   "name": "RemoteX",
-  "version": "0.7.9-beta.142",
+  "version": "0.7.9-beta.144",
   "publisher": "apolloqi",
   "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
   "source": "https://github.com/jinpy666/dbx-plugin-sshx",
