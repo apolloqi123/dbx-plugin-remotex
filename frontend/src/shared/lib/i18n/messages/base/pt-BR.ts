@@ -359,6 +359,8 @@ const messages = {
       delete: "Excluir seleção",
       deleteTitle: "Excluir itens selecionados",
       deleteMessage: "Esta operação não pode ser desfeita.",
+      deleteListTitle: "Os seguintes itens serão excluídos:",
+      deleting: "Excluindo...",
       archive: "Arquivar seleção",
       archiveDone: "{count} arquivo(s) criado(s)",
       clear: "Limpar seleção",

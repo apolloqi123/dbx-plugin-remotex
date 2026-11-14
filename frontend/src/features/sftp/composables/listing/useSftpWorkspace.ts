@@ -224,6 +224,7 @@ export function useSftpWorkspace(options: {
     followDirectory, activePaneCwd, sftpHomePath, showError: options.showError,
     loadDirectory: (path, fromTerminal, quiet) => loadDirectory(path, fromTerminal, quiet),
     refreshSftpHomePath: () => refreshSftpHomePath(),
+    refreshDiskUsage: () => options.refreshDiskUsage(),
     clearSftpSearch: () => options.clearSftpSearch(),
     openEditorTab: (entry) => options.openEditorTab(entry),
     setRenameDraft: (value) => { renameDraft.value = value; },

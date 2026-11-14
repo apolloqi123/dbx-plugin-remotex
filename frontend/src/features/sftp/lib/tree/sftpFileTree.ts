@@ -32,6 +32,16 @@ function pathFromEntry(entry: SftpSanitizedEntry): string {
   return `/${bare || entry.name}`;
 }
 
+/**
+ * `path` 是否就是 `base` 或位于其下（按路径段边界判定）：`/a` 覆盖 `/a/b`，
+ * 但不覆盖兄弟前缀 `/ab`；`base` 为 "/" 时覆盖所有绝对路径。
+ */
+export function isPathAtOrUnder(path: string, base: string): boolean {
+  if (base === "/") return path.startsWith("/");
+  if (path === base) return true;
+  return path.length > base.length && path.startsWith(base) && path[base.length] === "/";
+}
+
 function entryForPath(path: string): SftpSanitizedEntry {
   return { name: "/", uri: path === "/" ? "sftp:/" : `sftp:${path}`, kind: "directory" };
 }
@@ -148,6 +158,35 @@ export function markFileTreeStale(root: SftpFileTreeNode): void {
 export function markCollapsedTreeNodesStale(root: SftpFileTreeNode): void {
   if (root.kind === "directory" && root.loaded && !root.expanded) root.loaded = false;
   for (const child of root.children) markCollapsedTreeNodesStale(child);
+}
+
+/**
+ * 删除后的本地对账：从树上摘掉「path 位于任一 deleted 路径之下」的节点
+ * （连同整棵子树）。根永不删除；`/ab` 不会因 `/a` 被删而消失。返回移除的
+ * 节点总数（含后代），无匹配/空列表时返回 0。
+ */
+export function pruneFileTreePaths(root: SftpFileTreeNode, paths: readonly string[]): number {
+  if (!paths.length) return 0;
+  return pruneChildrenUnder(root, paths);
+}
+
+function pruneChildrenUnder(node: SftpFileTreeNode, paths: readonly string[]): number {
+  let removed = 0;
+  const kept: SftpFileTreeNode[] = [];
+  for (const child of node.children) {
+    if (paths.some((deleted) => isPathAtOrUnder(child.path, deleted))) {
+      removed += countTreeNodes(child);
+      continue;
+    }
+    removed += pruneChildrenUnder(child, paths);
+    kept.push(child);
+  }
+  node.children = kept;
+  return removed;
+}
+
+function countTreeNodes(node: SftpFileTreeNode): number {
+  return 1 + node.children.reduce((sum, child) => sum + countTreeNodes(child), 0);
 }
 
 /**

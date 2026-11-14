@@ -4,6 +4,10 @@ import { advanceBatchProgress, createBatchProgress, type BatchProgressState } fr
 
 // 列表条目的最小结构（App.vue 的 SftpEntry 为局部接口，按消费字段收敛）。
 type DeleteEntry = { uri: string; name: string; kind: SftpEntryKind };
+// 批量删除一次 RPC 的返回：逐项归因，未删除项进 failed。
+type BatchDeleteResult = { deleted: string[]; failed: Array<{ path: string; error: string }> };
+/** 整批删除走一次远端 rm -rf：大目录树可能较久，给 10 分钟预算。 */
+const DELETE_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 // 批次进度状态（App.vue 的 batchProgress 使用的结构，lib/sftpBatchProgress
 
 /** SFTP 删除与批量操作：单条删除（sudo 通道分流）、多选批量删除、批量归档
@@ -32,17 +36,23 @@ export function useSftpDelete(options: {
    *  此关闭对应编辑器页签。 */
   onDeleted?: (paths: string[]) => void;
   /** 删除/批量删除成功或失败后的统一刷新入口（App 可借此刷新所有展开的树
-   *  节点）；缺省回退 loadDirectory() 保持旧调用方行为。 */
-  onMutated?: () => void | Promise<void>;
+   *  节点）；deletedPaths 为后端确认删除的路径（本地对账用），失败/异常时
+   *  缺省，调用方回退全量刷新。缺省回退 loadDirectory() 保持旧调用方行为。 */
+  onMutated?: (deletedPaths?: string[]) => void | Promise<void>;
 }) {
   const { t, showNotice, showError, session, sudoMode, currentPath, deleteTarget, deleteSubmitting, batchDeleteOpen, batchDeleteSubmitting, batchProgress, selectedEntries, pathFromUri, joinRemote, loadDirectory, clearRowSelection, archiveBusy, onDeleted, onMutated } = options;
 
-/** 变更后刷新：优先外部 onMutated，否则回退 loadDirectory()；刷新失败只报错，
- *  不把已完成的删除当作失败。 */
-async function refreshAfterMutation() {
+/** 变更后刷新：优先外部 onMutated（转发已删除路径供本地对账；失败/异常无
+ *  可信清单时零参数调用，走全量重列），否则回退 loadDirectory()；刷新失败
+ *  只报错，不把已完成的删除当作失败。 */
+async function refreshAfterMutation(deletedPaths?: string[]) {
   try {
-    if (onMutated) await onMutated();
-    else await loadDirectory();
+    if (!onMutated) {
+      await loadDirectory();
+      return;
+    }
+    if (deletedPaths?.length) await onMutated(deletedPaths);
+    else await onMutated();
   } catch (cause) {
     showError(cause);
   }
@@ -73,9 +83,10 @@ async function confirmDelete() {
     } catch (cause) {
       showError(cause);
     }
-    // 单条删除失败时传空数组（未删任何路径），调用方按空列表无操作。
+    // 单条删除失败时传空数组（未删任何路径），调用方按空列表无操作；刷新
+    // 不带路径（失败没有可信删除清单），走全量重列。
     onDeleted?.(deletedPath ? [deletedPath] : []);
-    await refreshAfterMutation();
+    await refreshAfterMutation(deletedPath ? [deletedPath] : undefined);
   } finally {
     deleteSubmitting.value = false;
   }
@@ -86,36 +97,50 @@ async function confirmBatchDelete() {
   const targets = selectedEntries.value;
   if (!sessionId || !targets.length || batchDeleteSubmitting.value) return;
   batchDeleteSubmitting.value = true;
-  let progress = createBatchProgress(targets.length);
-  batchProgress.value = progress;
-  // 只收集实际删除成功的路径：批量中途失败时不关闭未删除文件的页签。
-  const deletedPaths: string[] = [];
+  batchProgress.value = createBatchProgress(targets.length);
+  // 可信删除清单（后端返回）：仅成功/部分失败时本地对账，RPC 异常走全量刷新。
+  let deletedPaths: string[] | undefined;
   try {
     try {
-      for (const entry of targets) {
-        const path = pathFromUri(entry.uri);
-        try {
-          if (sudoMode.value) {
-            await window.dbxPlugin.invoke(entry.kind === "directory" ? "sudo/removeAll" : "sudo/remove", { sessionId, path });
-          } else {
-            await window.dbxPlugin.invoke("sftp/delete", { sessionId, path, recursive: entry.kind === "directory" });
-          }
-          deletedPaths.push(path);
-          progress = advanceBatchProgress(progress, { name: entry.name, ok: true });
-        } catch (cause) {
-          progress = advanceBatchProgress(progress, { name: entry.name, ok: false });
-          throw cause;
-        }
-        batchProgress.value = progress;
+      // 一次 RPC 完成整批（远端按 128 项分片 `rm -rf`），不再逐项
+      // invoke + 逐项 SFTP 往返；sudo 车道同样一次认证跑完整批。
+      const items = targets.map((entry) => ({
+        path: pathFromUri(entry.uri),
+        recursive: entry.kind === "directory",
+      }));
+      const result = sudoMode.value
+        ? await window.dbxPlugin.invoke<BatchDeleteResult>(
+            "sudo/removeMany",
+            { sessionId, paths: items.map((item) => item.path) },
+            { timeoutMs: DELETE_BATCH_TIMEOUT_MS },
+          )
+        : await window.dbxPlugin.invoke<BatchDeleteResult>(
+            "sftp/deleteMany",
+            { sessionId, items },
+            { timeoutMs: DELETE_BATCH_TIMEOUT_MS },
+          );
+      batchProgress.value = {
+        total: targets.length,
+        done: result.deleted.length,
+        failed: result.failed.length,
+        current: "",
+      };
+      if (result.failed.length > 0) {
+        // 部分失败：保留对话框（未删除项仍在列表里），报第一项「路径: 错误」。
+        showError(`${result.failed[0].path}: ${result.failed[0].error}`);
+      } else {
+        batchDeleteOpen.value = false;
+        clearRowSelection();
+        showNotice(t("deleted"));
       }
-      batchDeleteOpen.value = false;
-      clearRowSelection();
-      showNotice(t("deleted"));
+      // 只关闭确实删掉的编辑器页签：失败项不传。
+      onDeleted?.(result.deleted);
+      deletedPaths = result.deleted.length ? result.deleted : undefined;
     } catch (cause) {
       showError(cause);
+      onDeleted?.([]);
     }
-    onDeleted?.(deletedPaths);
-    await refreshAfterMutation();
+    await refreshAfterMutation(deletedPaths);
   } finally {
     batchDeleteSubmitting.value = false;
     batchProgress.value = null;

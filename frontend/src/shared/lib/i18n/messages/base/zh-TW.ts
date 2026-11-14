@@ -357,6 +357,8 @@ const messages = {
       delete: "刪除所選",
       deleteTitle: "刪除所選項目",
       deleteMessage: "此操作無法復原。",
+      deleteListTitle: "將刪除以下項目：",
+      deleting: "正在刪除...",
       archive: "封存所選",
       archiveDone: "已建立 {count} 個封存",
       clear: "取消選擇",

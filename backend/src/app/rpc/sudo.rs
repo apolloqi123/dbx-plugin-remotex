@@ -104,6 +104,26 @@ impl Plugin {
                 Ok(json!({ "success": true }))
             }
 
+            "sudo/removeMany" => {
+                let session_id = required_string(&params, "sessionId")?;
+                let paths = params
+                    .get("paths")
+                    .and_then(Value::as_array)
+                    .ok_or("Missing paths")?
+                    .iter()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map(str::to_string)
+                            .ok_or_else(|| "paths must be strings".to_string())
+                    })
+                    .collect::<Result<Vec<String>, String>>()?;
+                self.runtime
+                    .block_on(crate::features::security::sudo::fs::remove_many(
+                        &self.ssh, session_id, &paths,
+                    ))
+            }
+
             "sudo/chmod" => {
                 let session_id = required_string(&params, "sessionId")?;
                 let path = required_string(&params, "path")?;

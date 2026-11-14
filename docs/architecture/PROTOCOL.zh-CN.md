@@ -98,7 +98,7 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `sftp/chmod` | 修改远端路径权限位（八进制）；`sftp_name_encoding` 为 `latin-1` 时路径整条按 wire 还原走裸包 SETSTAT（M17） |
 | `sftp/diskUsage` | 路径所在挂载的磁盘用量 |
 | `sftp/home`、`sftp/list`、`sftp/read` | 浏览、预览远端文件（`sftp/list` 支持可选 `includeOwner` 附加属主/属组；`sftp/read` 支持可选 `offset` 分片续读，见下文）。`sftp/home` 走高层客户端 `canonicalize(".")`（`ssh.rs:3505`）——**编码边界（登记，M28-A）**：家目录名非 UTF-8 时返回串已含 U+FFFD（高层 lossy 解码，原始字节不可恢复），以其为基准拼接的后续路径无法命中，与 `sftp/list` 节 M17 段登记的 shell cwd 回读同类不可恢复边界 |
-| `sftp/createDirectory`、`sftp/rename`、`sftp/delete`、`sftp/exists`、`sftp/rename-unique`、`sftp/touch`、`sftp/write`、`sftp/upload/start/finish`、`sftp/upload-local`、`watch/upload` | SFTP 写操作/预检（`sftp_name_encoding` 为 `latin-1` 时走裸包客户端字节保真，路径来源分工见 `sftp/list` 节 M15-B/M16 段；symlink 三命令见独立行） |
+| `sftp/createDirectory`、`sftp/rename`、`sftp/delete`、`sftp/deleteMany`、`sftp/exists`、`sftp/rename-unique`、`sftp/touch`、`sftp/write`、`sftp/upload/start/finish`、`sftp/upload-local`、`watch/upload` | SFTP 写操作/预检（`sftp_name_encoding` 为 `latin-1` 时走裸包客户端字节保真，路径来源分工见 `sftp/list` 节 M15-B/M16 段；symlink 三命令见独立行） |
 | `sftp/upload/start`、`finish` | 上传事务生命周期（`resumeTaskId` 断点续传；`finish` 校验后交后台任务推送并立即返回，见「上传两阶段计数与收尾语义」）。start/finish 响应附 `compression: "gzip"\|"none"`（M33 压缩通道决策结果，见「压缩传输（gzip 混合方案）」节；旧客户端可忽略） |
 | `watch/start`、`watch/stop`、`watch/stop-all`、`watch/upload` | 外部编辑器回写 watcher（仅桌面端，见「外部编辑器 watcher（watch/*）」节）：`start` 对 `remote-edit/` 下载目录内的本机文件登记监听并返回 `{watchId}`，内容确认变化后发 `watch/file-modified` 事件；`upload` 把监听文件当前字节按 `sftp/write` 同款原子提交推回远端（latin-1 按所属连接编码走裸包字节保真，M21） |
 | `local/editors/list`、`local/open-with` | 外部编辑器目录与按名打开（编辑器映射增强，仅桌面端消费，见「外部编辑器目录与打开方式（local/editors/*、local/open-with）」节）：`list` 返回平台知名编辑器目录（文件系统/PATH 探测，不 spawn 进程，unavailable 条目仍返回）；`open-with` 在与 `local/open` 同源的下载历史 allowlist 下用目录编辑器或用户自定义命令行打开已下载文件（argv 直接 spawn，不过 shell） |
@@ -118,7 +118,7 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `import/preview/start`、`finish`、`cancel` | 第三方 SSH 客户端会话导入的临时流式预览与脱敏规范化导出（不落盘，见下文） |
 | `sudo/stat`、`sudo/exists`、`sudo/touch` | sudo 元信息查询与空文件创建 |
 | `sudo/listDir`、`sudo/readFile`、`sudo/writeFile` | sudo 目录浏览与文件读写 |
-| `sudo/mkdir`、`sudo/remove`、`sudo/removeAll`、`sudo/chmod`、`sudo/rename` | sudo 写操作 |
+| `sudo/mkdir`、`sudo/remove`、`sudo/removeAll`、`sudo/removeMany`、`sudo/chmod`、`sudo/rename` | sudo 写操作 |
 | `sudo/download/start`、`sudo/download/cancel` | sudo 下载（root 大文件二进制下载，M14-C DownloadSudo）：start 把源文件暂存进同目录 0600 临时件后复用 `sftp/download/next`/`finish` 分块管线与进度事件，见「sudo 下载（DownloadSudo）」节 |
 | `sudo/upload/start`、`sudo/upload/finish` | sudo 上传（sudo 模式下向 root 目录上传，UploadSudo）：start 参数族与 `sftp/upload/start` 一致（`remotePath`），分块二进制帧/进度事件/取消全复用；finish 把 spool 推到登录用户 home 暂存件后经 exec `sudo mv` 提交，见「sudo 上传（UploadSudo）」节 |
 | `sudo/profiles/list`、`sudo/profiles/save`、`sudo/profiles/delete` | 全局 Quick Sudo 配置管理（多套命名凭据/策略档，插件数据目录持久化，密钥永不回显） |
@@ -485,6 +485,16 @@ Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 
 递归删除，不跟随符号链接——只删除链接本身，不触碰其指向的目标（防误删语义）。错误：路径不存在；只读连接；sudo 不可用。
 
+### sudo/removeMany（M34）
+
+批量递归删除：一次 RPC 跑完整批，Quick Sudo 认证只发生一次。
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `paths` | string[] | 是 | 待删除路径列表（空数组合法，返回空结果） |
+
+返回 `{ deleted: string[], failed: [{ path, error }] }`。路径先 `normalize_remote_path`、拒绝 `/`（整体预检，任何一项非法则整批拒绝），完全重复路径去重，同时选中祖先与后代时只保留祖先。随后按 128 项分片，每片一次 `rm -rf -- '<path>' ...`（路径逐项 `shell_quote`，`--` 终止选项解析）；某片非零退出时对该片逐项回退 `sudo fs::remove_all` 归因——`-f` 对已不存在路径幂等成功，无需存在性预检。单项失败不中断其余项。符号链接不跟随（只删链接本身）。错误（整体）：`paths` 缺失或非字符串数组；任一路径为空/含 NUL/为 `/`；read-only 连接；sudo 不可用。
+
 ### sudo/chmod
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -519,6 +529,8 @@ Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 **文件名编码（M14-B / M15-B）**：偏好 `sftp_name_encoding`（`auto`/`latin-1`，默认 `auto`）控制列表文件名的显示解码。`auto` 走高层客户端（合法 UTF-8 服务器字节往返无损），wire 名含 U+FFFD（上游 lossy 解码已替换非法字节）时条目附带 `lossy: true`（false 时字段省略）。`latin-1` 改走独立裸包客户端（SFTPv3，严格串行）拿原始文件名字节：`name` 为 latin-1 解码的显示文本，`uri` 中的文件名为 `%XX` 转义的 wire 形式——**传输路径始终用服务器原始字节/转义形式，显示层解码绝不回灌**；下载这类条目时 sidecar 自动把转义还原为原始字节走 raw OPEN/READ（每 chunk 独立 open/close；`start` 的 size 探测同样整条还原后走裸包 STAT——M21 收口）。**下载路径形态契约（M27-A 明示）**：latin-1 生效时下载族入口（`sftp/download/start`/`next`、`sftp/download/tree/start`）的 `remotePath` 必须是**本节列表回传的 wire 形式**（前端 `pathFromUri(entry.uri)`）——`escape_wire` 把字面 `%` 自转义为 `%25`，因此 wire 字符串中出现的 `%XX`（X∈hex）唯一解读就是转义还原；该入口从不接受用户字面输入的显示文本，真实文件名含字面 `%XX` 序列（如 `caf%E9.txt`）时列表回传的 wire 形式为 `caf%25E9.txt`，回传后往返无损。M15-B 段「输入中的字面 `%XX` 序列保持字面量，不再转义」限定于**写操作的末段用户新输入显示编码**（`latin1_encode_display` 分工，见下段 M16 两条分工），与下载车道的 wire 整条还原是不同分工，不构成矛盾。**回退口径按车道区分（2026-09-26 审计修正）**：列表 raw 路径失败（服务器版本协商/异常包）自动回退高层客户端（只读安全）；下载车道（size 探测与分块读取）不做回退，raw 失败原样上抛——转义名在高层客户端本就打不开，回退只会重演同一错误。**车道判定按生效编码区分（M28-B 修 D-7）**：下载 raw 车道仅在 latin-1 生效且 wire 含 `%XX` 转义时进入（`has_wire_lane` 收口判定）；auto 生效时一律走高层客户端——auto 列表 uri 字面 `%` 未经 `%25` 自转义，wire 串里的 `%XX` 是文件名字面量而非转义，不还原（auto 以字面量语义与列表一致）。**M16 连接级覆盖**：编码判定来源升级为「连接覆盖 > 全局偏好 > 缺省 auto」——覆盖存储在偏好键 `sftp_name_encoding_overrides`（语义见 `local/preferences` 行），全局偏好缺省时的行为完全不变；本节所述 raw/auto 两条路径的语义只取决于**最终生效的编码值**，与它来自连接覆盖还是全局无关。
 
 **M15-B 起 latin-1 模式下路径写操作同样走裸包客户端字节保真**：`sftp/rename`、`sftp/delete`（含 `recursive: true` 的递归树删）、`sftp/createDirectory` 对路径参数先还原为服务器原始字节再发送 raw RENAME/REMOVE/RMDIR/MKDIR（判型用 raw LSTAT，symlink 绝不跟随，与 auto 语义一致）。路径处理规则：目录前缀（列表回传的 wire 形式）按 `%XX` 转义还原；rename 目标 / mkdir 名这类**用户新输入的最后一段**按 latin-1 显示编码回字节（>U+00FF 的字符按 UTF-8 兜底；输入中的字面 `%XX` 序列保持字面量，不再转义）。裸包客户端**建立**失败时自动回退高层客户端（此时尚未发出任何请求，回退安全）；操作已发出后的失败原样报错，不回退（避免重复执行写操作）。`auto` 模式下所有操作行为完全不变（继续走高层客户端）。
+
+**M34 递归删除快路径**：非 latin-1 的 `sftp/delete { recursive: true }` 先尝试一次远端 `rm -rf -- '<path>'`（同 `sftp/deleteMany` 的命令拼装与 300 秒预算），成功即返回；exec 建立失败（如 `ForceCommand internal-sftp` 无 shell）或非零退出时回退上述 SFTP 递归树删，错误语义不变。注意 `rm -rf -f` 对不存在的路径幂等成功：单条递归删除因此从「报 no such file」变为「成功」，属于可接受的行为改进。非递归删除仍走 SFTP LSTAT + REMOVE/RMDIR。latin-1 连接不走该快路径。
 
 **M16 起 latin-1 裸包字节保真覆盖全部前端 SFTP 写路径**。裸包客户端补齐写侧操作（OPEN(creat|write|trunc)/WRITE/SETSTAT/READLINK/SYMLINK，SYMLINK 按 OpenSSH wire 次序装包，与高层 `symlink(target, linkPath)` 的生产行为一致）。路径来源分两类，还原分工固定：
 
@@ -597,6 +609,22 @@ Quick Sudo（`sudo: true`）提供 sudo 远程执行服务：
 | `dataBase64` | string | 是 | 完整文件内容（base64） |
 
 先写入同目录临时 `.dbx-part` 文件，完成后原子替换目标路径，避免读到半写状态。解码后不得超过 4 MiB，超限报错并提示改走 `sftp/upload/*` 上传槽。错误：载荷超限；父目录不存在或无权限；只读连接。
+
+### sftp/deleteMany（M34）
+
+批量删除：一次 RPC 完成整批，不再逐项两次 SFTP 往返。
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `items` | Array<{ path: string, recursive: boolean }> | 是 | 待删除条目；`recursive` 缺省 `false`（目录需要 `true`） |
+
+返回 `{ deleted: string[], failed: [{ path, error }] }`（`deleted` 为归一化后的路径）。语义：
+
+- 全部路径先 `normalize_remote_path`；空串、含 NUL、`/` 在任何删除发生前整体拒绝（fail-closed）；完全重复路径去重（`recursive` 取 OR），同时选中祖先与后代只保留祖先（`/a` 与 `/ab` 互不影响）。
+- 非 latin-1：按 128 项分片，每片一次远端 `rm -rf -- '<path>' ...`（`shell_quote` + `--`）。整片成功全部计入 `deleted`；某片 exec 建立失败或非零退出时逐项回退——先用 `sftp/exists` 同款探测确认路径是否还在（批命令可能已部分删除，不存在视为成功），仍在则走**纯 SFTP 删除**（`LSTAT` + `REMOVE`/`RMDIR`/递归树删）逐项归因，不再重试已失败的 exec 快路径（避免每项重复等待无 shell/300 秒超时）。
+- latin-1：绝不进 shell 快路径（exec 命令串是 UTF-8 String，字节名不可控）。只建立一次裸包客户端，逐项按原始字节 `REMOVE/RMDIR/递归树删`。
+- 符号链接不跟随（`rm -rf` 只删链接本身；SFTP 回退按 `symlink_metadata` 判型）。
+- 单项失败不中断其余项（与 `sftp/delete` 的「首错即停」不同），失败项逐项返回。只读连接整体拒绝。
 
 ### sftp/archive
 

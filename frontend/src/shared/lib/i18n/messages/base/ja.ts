@@ -359,6 +359,8 @@ const messages = {
       delete: "選択項目を削除",
       deleteTitle: "選択した項目を削除",
       deleteMessage: "この操作は元に戻せません。",
+      deleteListTitle: "次の項目を削除します：",
+      deleting: "削除しています...",
       archive: "選択項目をアーカイブ",
       archiveDone: "{count} 件のアーカイブを作成しました",
       clear: "選択を解除",

@@ -359,6 +359,8 @@ const messages = {
       delete: "Elimina selezione",
       deleteTitle: "Elimina elementi selezionati",
       deleteMessage: "Questa operazione non può essere annullata.",
+      deleteListTitle: "Verranno eliminati i seguenti elementi:",
+      deleting: "Eliminazione in corso...",
       archive: "Archivia selezione",
       archiveDone: "{count} archivi creati",
       clear: "Deseleziona",

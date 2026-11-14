@@ -144,7 +144,8 @@ export function installWorkbenchSftp(deps: Deps) {
     t, showNotice, showError, session, sudoMode, canWrite, pathFromUri,
     // 保存成功后刷新当前列表、所有已展开树节点并重新揭示当前路径；失败由
     // useEditorTabs 统一转全局错误条，保存本身已成功不回滚脏标记。
-    onSaved: refreshSftpAfterMutation,
+    // 保存不是删除：忽略 EditorTab 参数，走全量刷新（无本地对账清单）。
+    onSaved: () => refreshSftpAfterMutation(),
   });
   // 编辑器分栏：比例/拖拽/键盘调整/焦点判定收口在 composables/useEditorSplitPane。
   const {

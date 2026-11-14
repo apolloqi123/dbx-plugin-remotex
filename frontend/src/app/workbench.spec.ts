@@ -251,6 +251,8 @@ describe("workbench localization", () => {
       "sftpSearch.footerMatch",
       "sftpFilter.all",
       "sftpBatch.delete",
+      "sftpBatch.deleteListTitle",
+      "sftpBatch.deleting",
       "sftpNewFile.action",
       "sftpAttrs.action",
       "sftpAttrs.kind.directory",

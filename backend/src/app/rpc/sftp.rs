@@ -327,6 +327,31 @@ impl Plugin {
                 Ok(json!({ "success": true }))
             }
 
+            "sftp/deleteMany" => {
+                let session_id = required_string(&params, "sessionId")?;
+                let items = params
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .ok_or("Missing items")?
+                    .iter()
+                    .map(|value| {
+                        let path = value
+                            .get("path")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| "items[].path must be a string".to_string())?
+                            .to_string();
+                        let recursive = value
+                            .get("recursive")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false);
+                        Ok((path, recursive))
+                    })
+                    .collect::<Result<Vec<(String, bool)>, String>>()?;
+                let encoding = self.resolve_sftp_encoding(session_id);
+                self.runtime
+                    .block_on(self.ssh.sftp_delete_many(session_id, &items, encoding))
+            }
+
             "sftp/bookmarks/list" => crate::filesystem::sftp::bookmarks::list(&self.ssh.data_dir()),
 
             "sftp/bookmarks/save" => {

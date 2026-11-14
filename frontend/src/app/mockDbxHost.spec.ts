@@ -175,6 +175,29 @@ describe("mockDbxHost fixture", () => {
     await expect(failing.invoke("sftp/transfer/history", {})).rejects.toThrow(/transfer history/);
   });
 
+  // M34 回归：批量删除必须镜像后端 normalize_delete_items 的祖先折叠——父项
+  // 先删掉后，子项不能再被当成"no such file"误报进 failed（兄弟前缀名
+  // `/etc/nginx` 与 `/etc/hosts` 不折叠）。
+  it("batch delete collapses selected descendants instead of failing them", async () => {
+    const plugin = await loadMock("");
+    const batch = (await plugin.invoke("sftp/deleteMany", {
+      sessionId: "visual-session",
+      items: [
+        { path: "/home/demo", recursive: true },
+        { path: "/home/demo/projects", recursive: true },
+      ],
+    })) as { deleted: string[]; failed: Array<{ path: string; error: string }> };
+    expect(batch).toEqual({ deleted: ["/home/demo"], failed: [] });
+    expect(await plugin.invoke("sftp/exists", { path: "/home/demo" })).toEqual({ exists: false });
+
+    const sudo = (await plugin.invoke("sudo/removeMany", {
+      sessionId: "visual-session",
+      paths: ["/etc/nginx", "/etc/nginx/nginx.conf", "/etc/hosts"],
+    })) as { deleted: string[]; failed: Array<{ path: string; error: string }> };
+    // 祖先折叠后 `/etc/nginx/nginx.conf` 不再单独出现，`/etc/hosts` 不受影响。
+    expect(sudo).toEqual({ deleted: ["/etc/nginx", "/etc/hosts"], failed: [] });
+  });
+
   // round4：sftp/copy | sftp/move | sftp/write 夹具补齐——此前落 catch-all
   // （静默 success 但树不变），粘贴/编辑保存流在 mock.html 无法闭环走查。
   it("sftp/copy and sftp/move mutate the fixture tree per the sidecar contract", async () => {

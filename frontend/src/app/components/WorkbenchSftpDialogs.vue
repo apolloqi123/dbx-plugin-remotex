@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Dialog, DialogContent, DialogTitle } from "../../shared/ui/dialog/index";
 import { Switch } from "../../shared/ui/switch/index";
-import { FolderOpen, Loader2, Trash2, X } from "@lucide/vue";
+import { FolderOpen, Loader2, Trash2, X, File, Folder } from "@lucide/vue";
 import { formatBytes } from "../../shared/lib/format";
 import type { BatchProgressState } from "../../features/transfers/lib/sftpBatchProgress";
 
@@ -35,10 +35,10 @@ const props = defineProps<{
   chmodTarget: { name: string } | undefined;
   chmodDraft: string;
   chmodSubmitting: boolean;
-  deleteTarget: { name: string } | undefined;
+  deleteTarget: { name: string; kind?: string } | undefined;
   deleteSubmitting: boolean;
   batchDeleteOpen: boolean;
-  selectedEntries: ReadonlyArray<{ name: string }>;
+  selectedEntries: ReadonlyArray<{ name: string; uri?: string; kind?: string }>;
   batchProgress: BatchProgressState | null | undefined;
   batchDeleteSubmitting: boolean;
   downloadPrompt: DownloadPromptState | null | undefined;
@@ -76,7 +76,7 @@ const emit = defineEmits<{
   (e: "update:customEditorRemember", value: boolean): void;
   (e: "update:chmodTarget", value: { name: string } | undefined): void;
   (e: "update:chmodDraft", value: string): void;
-  (e: "update:deleteTarget", value: { name: string } | undefined): void;
+  (e: "update:deleteTarget", value: { name: string; kind?: string } | undefined): void;
   (e: "update:batchDeleteOpen", value: boolean): void;
   (e: "update:downloadPrompt", value: DownloadPromptState | undefined): void;
   (e: "update:uploadDuplicateApplyAll", value: boolean): void;
@@ -104,6 +104,20 @@ const emit = defineEmits<{
 }>();
 
 const t = props.t;
+
+/** 类型标签复用文件属性弹窗的既有翻译（sftpAttrs.kind.*），未知/缺省按文件。 */
+function kindLabel(kind?: string): string {
+  switch (kind) {
+    case "directory":
+      return t("sftpAttrs.kind.directory");
+    case "symlink":
+      return t("sftpAttrs.kind.symlink");
+    case "other":
+      return t("sftpAttrs.kind.other");
+    default:
+      return t("sftpAttrs.kind.file");
+  }
+}
 </script>
 
 <template>
@@ -186,7 +200,7 @@ const t = props.t;
       <DialogContent class="modal small-modal" @escape-key-down.prevent>
         <template v-if="deleteTarget">
         <header><DialogTitle>{{ t("deleteTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:deleteTarget', undefined)"><X /></button></header>
-        <div class="destructive-copy"><div><strong>{{ deleteTarget.name }}</strong><p class="muted">{{ t("deleteMessage") }}</p></div></div>
+        <div class="destructive-copy"><div><div class="delete-target"><Folder v-if="deleteTarget.kind === 'directory'" :size="14" aria-hidden="true" /><File v-else :size="14" aria-hidden="true" /><strong class="delete-target-name mono">{{ deleteTarget.name }}</strong><span class="delete-kind">{{ kindLabel(deleteTarget.kind) }}</span></div><p class="muted">{{ t("deleteMessage") }}</p></div></div>
         <footer><button @click="emit('update:deleteTarget', undefined)">{{ t("cancel") }}</button><button class="danger-button" :disabled="deleteSubmitting" @click="emit('confirm-delete')"><Trash2 />{{ t("delete") }}</button></footer>
         </template>
       </DialogContent>
@@ -196,7 +210,17 @@ const t = props.t;
       <DialogContent class="modal small-modal" @escape-key-down.prevent>
         <header><DialogTitle>{{ t("sftpBatch.deleteTitle") }}</DialogTitle><button :title="t('close')" :aria-label="t('close')" class="icon-button" @click="emit('update:batchDeleteOpen', false)"><X /></button></header>
         <div class="destructive-copy"><div><strong>{{ t("sftpBatch.selected", { count: selectedEntries.length }) }}</strong><p class="muted">{{ t("sftpBatch.deleteMessage") }}</p></div></div>
-        <div v-if="batchProgress" class="batch-progress-row"><progress class="batch-progress-bar" :value="batchProgressPercent(batchProgress)" max="100" /><span class="batch-progress mono">{{ t("sftpBatch.progress", { done: batchProgress.done, total: batchProgress.total }) }}</span></div>
+        <p class="delete-list-title">{{ t("sftpBatch.deleteListTitle") }}</p>
+        <ul class="delete-list" role="list" tabindex="0" :aria-label="t('sftpBatch.deleteListTitle')">
+          <li v-for="entry in selectedEntries" :key="entry.uri || entry.name">
+            <Folder v-if="entry.kind === 'directory'" :size="14" aria-hidden="true" />
+            <File v-else :size="14" aria-hidden="true" />
+            <span class="delete-list-name mono" :title="entry.name">{{ entry.name }}</span>
+            <span class="delete-list-kind">{{ kindLabel(entry.kind) }}</span>
+          </li>
+        </ul>
+        <div v-if="batchDeleteSubmitting" class="batch-progress-row"><progress class="batch-progress-bar" max="100" /><span class="batch-progress mono">{{ t("sftpBatch.deleting") }}</span></div>
+        <div v-else-if="batchProgress" class="batch-progress-row"><progress class="batch-progress-bar" :value="batchProgressPercent(batchProgress)" max="100" /><span class="batch-progress mono">{{ t("sftpBatch.progress", { done: batchProgress.done, total: batchProgress.total }) }}</span></div>
         <footer><button @click="emit('update:batchDeleteOpen', false)" :disabled="batchDeleteSubmitting">{{ t("cancel") }}</button><button class="danger-button" :disabled="batchDeleteSubmitting" @click="emit('confirm-batch-delete')"><Loader2 v-if="batchDeleteSubmitting" class="spinning" /><Trash2 v-else />{{ t("delete") }}</button></footer>
       </DialogContent>
     </Dialog>
@@ -324,4 +348,16 @@ const t = props.t;
 .batch-progress-bar { flex: 0 1 140px; height: 6px; min-width: 80px; accent-color: var(--primary); }
 .batch-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .batch-progress-row .batch-progress-bar { flex: 1; }
+/* 删除确认的类型提示与待删清单：低视觉重量、只需在弹窗内滚动核对。 */
+.delete-target { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
+.delete-target svg { flex: 0 0 auto; color: var(--muted-foreground); }
+.delete-target-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.delete-kind { flex: 0 0 auto; color: var(--muted-foreground); font-size: 11px; font-weight: 400; }
+.delete-list-title { margin: 8px 0 4px; color: var(--muted-foreground); font-size: 12px; }
+.delete-list { max-height: min(38vh, 240px); margin: 0; padding: 2px 0; overflow-y: auto; list-style: none; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); }
+.delete-list:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.delete-list li { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; font-size: 12px; line-height: 20px; }
+.delete-list li svg { flex: 0 0 auto; color: var(--muted-foreground); }
+.delete-list-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.delete-list-kind { flex: 0 0 auto; color: var(--muted-foreground); font-size: 11px; }
 </style>

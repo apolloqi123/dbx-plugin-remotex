@@ -4,9 +4,11 @@ import {
   applyFileTreeChildren,
   createFileTreeRoot,
   findFileTreeNode,
+  isPathAtOrUnder,
   isSftpTreeRequestCurrent,
   markCollapsedTreeNodesStale,
   markFileTreeStale,
+  pruneFileTreePaths,
   type SftpFileTreeNode,
 } from "../../lib/tree/sftpFileTree";
 import { mergeSftpDetail, type SftpDetailInfo } from "../../lib/actions/sftpDetails";
@@ -46,6 +48,8 @@ export function useSftpTreeWorkspace(options: {
   // 后段声明的依赖（导航/页签/重命名 composable）：惰性 getter，规避声明顺序。
   loadDirectory: (path?: string, fromTerminal?: boolean, quiet?: boolean) => Promise<void> | void;
   refreshSftpHomePath: () => Promise<void> | void;
+  /** 删除后的磁盘用量刷新（fire-and-forget，不阻塞本地对账）。 */
+  refreshDiskUsage: () => Promise<void> | void;
   clearSftpSearch: () => void;
   openEditorTab: (entry: SftpSanitizedEntry) => void;
   setRenameDraft: (value: string) => void;
@@ -60,7 +64,6 @@ export function useSftpTreeWorkspace(options: {
     loadDirectory, refreshSftpHomePath, clearSftpSearch, openEditorTab,
     setRenameDraft, commitRenameEntry,
   } = options;
-
   let sftpTreeSessionId = "";
   let sftpTreeInitInFlight = false;
   // 树 epoch：重建（显隐切换）与会话重置都会递增；reveal/刷新在每次 await 后
@@ -203,9 +206,24 @@ export function useSftpTreeWorkspace(options: {
    *  祖先被改名的场景）+ 所有已展开分支 + 把当前路径重新揭示。
    *  loadDirectory 会清空选中；这里先快照，刷新完成后只恢复「仍挂在当前树上」
    *  的 URI（编辑器保存保住选中文件，删除/改名的 URI 自然掉落）。会话已切换
-   *  时绝不恢复，避免把旧会话选择带到新会话。 */
-  async function refreshSftpAfterMutation(): Promise<void> {
+   *  时绝不恢复，避免把旧会话选择带到新会话。
+   *
+   *  `deletedPaths` 为后端确认删除的路径（祖先已折叠）：当前目录不受影响时
+   *  纯删除只需本地对账——树/列表/选中直接摘掉这些路径，零网络重列；只有
+   *  当前目录本身（或其后代）被删时仍需走下面的全量刷新。 */
+  async function refreshSftpAfterMutation(deletedPaths?: string[]): Promise<void> {
     if (!session.value) return;
+    if (deletedPaths?.length && !deletedPaths.some((path) => isPathAtOrUnder(currentPath.value, path))) {
+      const isDeletedPath = (path: string) => deletedPaths.some((deleted) => isPathAtOrUnder(path, deleted));
+      pruneFileTreePaths(sftpTreeRoot.value, deletedPaths);
+      entries.value = entries.value.filter((entry) => !isDeletedPath(pathFromUri(entry.uri)));
+      const keptUris = selectedUris.value.filter((uri) => !isDeletedPath(pathFromUri(uri)));
+      if (keptUris.length !== selectedUris.value.length) selectedUris.value = keptUris;
+      if (isDeletedPath(pathFromUri(selectedPath.value))) selectedPath.value = "";
+      if (isDeletedPath(pathFromUri(lastClickedUri.value))) lastClickedUri.value = keptUris[0] ?? "";
+      void options.refreshDiskUsage();
+      return;
+    }
     const sessionId = session.value.sessionId;
     const pathAtStart = currentPath.value;
     const previousSelection = [...selectedUris.value];

@@ -359,6 +359,8 @@ const messages = {
       delete: "Delete selected",
       deleteTitle: "Delete selected items",
       deleteMessage: "This operation cannot be undone.",
+      deleteListTitle: "The following items will be deleted:",
+      deleting: "Deleting...",
       archive: "Archive selected",
       archiveDone: "Created {count} archive(s)",
       clear: "Clear selection",

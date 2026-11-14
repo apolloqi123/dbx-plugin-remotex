@@ -81,6 +81,44 @@ impl SshRuntime {
         crate::sessions::ssh::exec::exec_plain(&session.handle, command, timeout, &[]).await
     }
 
+    /// Filesystem-family plain command channel: regular sessions go through
+    /// [`SshRuntime::exec`] (env/timeout/registration preserved); files-only
+    /// transfer sessions are absent from the host connection registry, so they
+    /// reuse the already authenticated transport handle directly.
+    pub(crate) async fn filesystem_exec(
+        &self,
+        session_id: &str,
+        command: &str,
+        timeout_secs: u64,
+    ) -> Result<crate::sessions::ssh::exec::ExecOutcome, String> {
+        let session = self.session(session_id).await?;
+        if session.files_only {
+            let timeout = Duration::from_secs(timeout_secs.clamp(5, 300));
+            return crate::sessions::ssh::exec::exec_plain(
+                &session.handle,
+                command,
+                timeout,
+                &[],
+            )
+            .await;
+        }
+        let response = self
+            .exec(session_id, None, command, false, Some(timeout_secs))
+            .await?;
+        Ok(ExecOutcome {
+            output: response
+                .get("output")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            exit_code: response
+                .get("exitCode")
+                .and_then(Value::as_i64)
+                .map(|code| code as i32)
+                .unwrap_or(-1),
+        })
+    }
+
     /// Runs a command on the session's connection, optionally with Quick Sudo
     /// orchestration (password injection plus automatic 2FA/TOTP answers).
     pub async fn exec(

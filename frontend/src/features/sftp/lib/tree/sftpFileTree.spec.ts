@@ -6,9 +6,11 @@ import {
   createFileTreeRoot,
   findFileTreeNode,
   flattenVisibleTreeRows,
+  isPathAtOrUnder,
   isSftpTreeRequestCurrent,
   markCollapsedTreeNodesStale,
   markFileTreeStale,
+  pruneFileTreePaths,
   type SftpFileTreeNode,
 } from "./sftpFileTree";
 
@@ -245,5 +247,45 @@ describe("sftp file tree model", () => {
       "/docs/target.txt",
     ]);
     expect(paths(root, { search: "target", type: "directory" })).toEqual(["/", "/docs", "/docs/target-folder"]);
+  });
+});
+
+describe("delete reconcile helpers", () => {
+  it("matches at/under by path segment only", () => {
+    expect(isPathAtOrUnder("/a", "/a")).toBe(true);
+    expect(isPathAtOrUnder("/a/b", "/a")).toBe(true);
+    expect(isPathAtOrUnder("/ab", "/a")).toBe(false);
+    expect(isPathAtOrUnder("/a-b", "/a")).toBe(false);
+    expect(isPathAtOrUnder("/x", "/")).toBe(true);
+    expect(isPathAtOrUnder("/", "/a")).toBe(false);
+  });
+
+  it("prunes deleted subtrees but keeps sibling prefixes and the root", () => {
+    const root = filledRoot([entry("a", "directory"), entry("ab", "directory"), entry("keep.txt")]);
+    applyFileTreeChildren(root, "/a", [entry("child.txt", "file", "/a")]);
+
+    // `/a` 与其子项一起移除；`/ab` 是兄弟前缀，必须保留。
+    expect(pruneFileTreePaths(root, ["/a"])).toBe(2);
+    expect(findFileTreeNode(root, "/a")).toBeNull();
+    expect(findFileTreeNode(root, "/ab")).not.toBeNull();
+    expect(findFileTreeNode(root, "/keep.txt")).not.toBeNull();
+    expect(root.path).toBe("/");
+  });
+
+  it("handles empty lists, nested exact paths and root input", () => {
+    const root = filledRoot([entry("a", "directory"), entry("keep.txt")]);
+    applyFileTreeChildren(root, "/a", [
+      entry("child.txt", "file", "/a"),
+      entry("other.txt", "file", "/a"),
+    ]);
+
+    expect(pruneFileTreePaths(root, [])).toBe(0);
+    expect(pruneFileTreePaths(root, ["/a/child.txt"])).toBe(1);
+    expect(findFileTreeNode(root, "/a")?.children.map((node) => node.path)).toEqual(["/a/other.txt"]);
+
+    // 根路径输入只清理子项：根节点永不删除。
+    expect(pruneFileTreePaths(root, ["/"])).toBeGreaterThan(0);
+    expect(root.path).toBe("/");
+    expect(root.children).toEqual([]);
   });
 });

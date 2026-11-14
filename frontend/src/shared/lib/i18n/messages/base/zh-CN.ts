@@ -357,6 +357,8 @@ const messages = {
       delete: "删除所选",
       deleteTitle: "删除所选项目",
       deleteMessage: "此操作无法撤销。",
+      deleteListTitle: "将删除以下项目：",
+      deleting: "正在删除...",
       archive: "打包所选",
       archiveDone: "已创建 {count} 个归档",
       clear: "取消选择",

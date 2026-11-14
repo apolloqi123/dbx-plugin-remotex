@@ -2,6 +2,8 @@
 
 use super::*;
 
+mod delete;
+
 impl SshRuntime {
     /// SFTP 会话建立。老旧服务器兼容模式（M14-B，偏好 `sftp_compat_mode`）
     /// 生效时：请求/响应不做流水线并发（读写各 1 路），并避免依赖服务器端
@@ -415,61 +417,6 @@ impl SshRuntime {
             .await
             .map_err(sftp_error);
         result
-    }
-
-    pub async fn sftp_delete(
-        &self,
-        session_id: &str,
-        path: &str,
-        recursive: bool,
-        encoding: NameEncoding,
-    ) -> Result<(), String> {
-        self.ensure_writable(session_id).await?;
-        let path = normalize_remote_path(path)?;
-        if path == "/" {
-            return Err("Refusing to delete the filesystem root".to_string());
-        }
-        if encoding == NameEncoding::Latin1 {
-            // latin-1：wire 路径整条还原为原始字节后走裸包删除（LSTAT 判型
-            // → REMOVE/RMDIR/递归树删，symlink 绝不跟随）。回退策略与
-            // mkdir/rename 相同：仅客户端建立失败时回退高层路径。
-            match self.raw_sftp_client(session_id).await {
-                Ok(mut client) => {
-                    let raw_path = sftp_name::unescape_wire(&path);
-                    return raw_delete_path(&mut client, &raw_path, recursive).await;
-                }
-                Err(error) => {
-                    eprintln!(
-                        "[dbx-plugin-sshx] raw byte delete unavailable, falling back: {error}"
-                    );
-                }
-            }
-        }
-        let sftp = self.sftp(session_id).await?;
-        let metadata = sftp
-            .lock()
-            .await
-            .symlink_metadata(path.clone())
-            .await
-            .map_err(sftp_error)?;
-        if metadata.is_symlink() {
-            sftp.lock()
-                .await
-                .remove_file(path)
-                .await
-                .map_err(sftp_error)
-        } else if metadata.is_dir() {
-            if !recursive {
-                return sftp.lock().await.remove_dir(path).await.map_err(sftp_error);
-            }
-            delete_directory_tree(&sftp, path).await
-        } else {
-            sftp.lock()
-                .await
-                .remove_file(path)
-                .await
-                .map_err(sftp_error)
-        }
     }
 
     /// Changes the permission bits of a remote path (`sftp/chmod`).

@@ -14,6 +14,32 @@ interface MockBookmark { id: string; label: string; path: string; createdAt: num
 const bookmarksState: MockBookmark[] = [];
 let bookmarkSeq = 0;
 
+/** 从 mock 文件树摘除单个节点（sftp/delete 与批量删除共用的删除单元）。 */
+function removeMockNode(path: string) {
+  const { parent, name } = mockFileSystem.parentAndName(path);
+  const index = parent?.children?.findIndex((child) => child.name === name) ?? -1;
+  if (!parent || index < 0) throw new Error(`sftp: no such file: ${name}`);
+  parent.children!.splice(index, 1);
+}
+
+/** 后端 normalize_delete_items 的 mock 镜像：归一 + 去重 + 祖先折叠。按段
+ *  判祖先（`/ab` 不算 `/a` 的后代），父子同时选中时只删祖先——否则父项先
+ *  删掉后子项会被误报进 failed。 */
+function collapseMockDeletePaths(paths: string[]): string[] {
+  const unique = [...new Set(paths.map((path) => mockFileSystem.normalizePath(path)))];
+  const selected = new Set(unique);
+  const hasSelectedAncestor = (path: string) => {
+    let cursor = path;
+    for (;;) {
+      const index = cursor.lastIndexOf("/");
+      if (index <= 0) return false;
+      cursor = cursor.slice(0, index);
+      if (selected.has(cursor)) return true;
+    }
+  };
+  return unique.filter((path) => !hasSelectedAncestor(path));
+}
+
 export async function handleSftpInvoke(method: string, params: unknown): Promise<unknown | Unhandled> {
   if (method === "sftp/list" || method === "sudo/listDir") return { entries: mockFileSystem.list(String((params as Record<string, unknown>)?.path || "/")) };
   if (method === "sftp/home") return { path: "/home/demo" };
@@ -37,11 +63,29 @@ export async function handleSftpInvoke(method: string, params: unknown): Promise
     return mockFileSystem.writeEntry(destination, mockFileSystem.dir(destination.split("/").pop() || "extracted", [mockFileSystem.file("README", 64)]));
   }
   if (method === "sftp/delete" || method === "sudo/remove" || method === "sudo/removeAll") {
-    const { parent, name } = mockFileSystem.parentAndName(String((params as Record<string, unknown>)?.path || ""));
-    const index = parent?.children?.findIndex((child) => child.name === name) ?? -1;
-    if (!parent || index < 0) throw new Error(`sftp: no such file: ${name}`);
-    parent.children!.splice(index, 1);
+    removeMockNode(String((params as Record<string, unknown>)?.path || ""));
     return { success: true };
+  }
+  // 批量删除（M34）：一次 RPC 逐路径摘除，成功进 deleted、缺失/异常进 failed，
+  // 与后端 { deleted, failed } 契约同形（单项失败不中断其余项）。
+  if (method === "sftp/deleteMany" || method === "sudo/removeMany") {
+    const input = params as Record<string, unknown>;
+    const paths = method === "sudo/removeMany"
+      ? (Array.isArray(input.paths) ? (input.paths as string[]).map(String) : [])
+      : (Array.isArray(input.items)
+          ? (input.items as Array<Record<string, unknown>>).map((item) => String(item?.path || ""))
+          : []);
+    const deleted: string[] = [];
+    const failed: Array<{ path: string; error: string }> = [];
+    for (const path of collapseMockDeletePaths(paths)) {
+      try {
+        removeMockNode(path);
+        deleted.push(path);
+      } catch (cause) {
+        failed.push({ path, error: cause instanceof Error ? cause.message : String(cause) });
+      }
+    }
+    return { deleted, failed };
   }
   if (method === "sftp/rename") {
     const input = params as Record<string, unknown>;
