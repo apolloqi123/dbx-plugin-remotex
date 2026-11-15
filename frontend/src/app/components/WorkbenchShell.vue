@@ -17,13 +17,13 @@ import WorkbenchDialogs from "./WorkbenchDialogs.vue";
 import WorkbenchSessionDialogs from "./WorkbenchSessionDialogs.vue";
 import WorkbenchSftpDialogs from "./WorkbenchSftpDialogs.vue";
 import WorkbenchToolbar from "./WorkbenchToolbar.vue";
-import { ChevronDown, X } from "@lucide/vue";
+import { X } from "@lucide/vue";
 import { PERM_COLUMNS, PERM_ROLES, permBit } from "../../features/sftp/composables/actions/useSftpChmod";
 import { ToastAction, ToastClose, ToastProvider, ToastRoot, ToastViewport } from "../../shared/ui/toast/index";
 import { batchProgressPercent } from "../../features/transfers/lib/sftpBatchProgress";
 import { batchUploadPercent } from "../../features/transfers/lib/transferQueue";
 import { folderUploadPercent } from "../../features/sftp/lib/transfer/folderUpload";
-import { formatBytes, formatRate } from "../../shared/lib/format";
+import { formatBytes } from "../../shared/lib/format";
 import { transferPausable } from "../../features/transfers/lib/transferResume";
 import { workbenchBindings, type Workbench } from "../workbench/useWorkbench";
 
@@ -68,9 +68,7 @@ const {
   noticeActions, noticeKey, noticeOpen, onFolderPicked, onFolderUploadInput,
   onNoticeOpenChange, onSftpErrorOpenChange, onTrzszPickCancel, onTrzszPickInput, onUploadInput,
   onZmodemInput, operationDialog, operationDraft, otpPanelOpen, paneDirection,
-  paneOrder, panelActiveSchemeId, panelCpuPercent, panelMemPercent, panelMetricsErrorTitle,
-  panelMetricsFailed, panelMetricsVisible, panelNetRates, panelPaletteOpen, panelSchemeChoices,
-  panelSurface, panelToolbarHidden, pasteConfirm, pausedTaskIds, pendingConfirmDialog,
+  paneOrder, panelSurface, pasteConfirm, pausedTaskIds, pendingConfirmDialog,
   previewDirty, previewDraft, previewEditable, previewEditableAllowed, previewImageUrl,
   previewImageZoomed, previewLoading, previewMode, previewOpen, previewSaving,
   previewSize, previewText, previewTitle, previewTruncated, profilesOpen,
@@ -96,7 +94,7 @@ const {
   startTelnetSession, startVncSession, suggestionPrefsAdapter, symlinkDialog, symlinkDraft,
   symlinkSubmitting, symlinkTargetDraft, t, telnetDialogOpen, terminal,
   terminalAppearance, terminalAppearanceState, terminalBehavior, terminalFontSize, terminalHotkeys,
-  terminalState, toggleAttrsPerm, toggleChmodPerm, toggleHighlightRule, togglePanelToolbar,
+  terminalState, toggleAttrsPerm, toggleChmodPerm, toggleHighlightRule,
   toolbarActions, toolbarStyle, tooltip,
   transferHistory, transferHistoryClearOpen, transferHistoryFailed, transferHistoryLoading, transferHistoryMenu,
   transferList, transferPanelOpen, transferPercent, transferPrefsAdapter, transferShownBytes,
@@ -135,12 +133,12 @@ watch(
 
 <template>
   <main class="workbench" :class="{ 'panel-surface': panelSurface }">
-    <!-- dock 工具条隐藏后：右上角低透明度微钮还原（偏好落 pluginStore）。 -->
-    <button v-if="panelSurface && panelToolbarHidden" type="button" class="panel-toolbar-reveal" :title="t('panel.showToolbar')" :aria-label="t('panel.showToolbar')" @click="togglePanelToolbar"><ChevronDown /></button>
-    <!-- 工作台工具条：外壳/身份区/主操作位/panel 变体 + 会话、快速命令、
-         RDP 工具组、配色快切子组件（T19 自本模板迁出）。状态与动作仍由
-         本文件持有，经显式 props/v-model/actions 下发。 -->
+    <!-- 工作台工具条：身份区/主操作位 + 会话、快速命令、RDP / VNC 工具组
+         子组件（T19 自本模板迁出）。dock 面板不渲染本工具条（顶部插件工具
+         条整行消失）；状态与动作仍由本文件持有，经显式 props/v-model/actions
+         下发。 -->
     <WorkbenchToolbar
+      v-if="!panelSurface"
       v-model:connection-info-open="connectionInfoOpen"
       v-model:agent-mode-open="agentModeOpen"
       v-model:importPanelOpen="importPanelOpen"
@@ -156,7 +154,6 @@ watch(
       v-model:session-menu-shell-pick-open="sessionMenuShellPickOpen"
       v-model:local-shell-surface-open="localShellSurfaceOpen"
       v-model:quick-menu-open="quickMenuOpen"
-      v-model:panel-palette-open="panelPaletteOpen"
       v-model:rdp-scale-mode="rdpScaleMode"
       v-model:rdp-resolution-open="rdpResolutionOpen"
       v-model:rdp-custom-width="rdpCustomWidth"
@@ -174,8 +171,6 @@ watch(
       :vnc-auto-fit="vncAutoFit"
       :vnc-desktop-size="vncDesktopSize"
       :t="t"
-      :panel-surface="panelSurface"
-      :panel-toolbar-hidden="panelToolbarHidden"
       :toolbar-style="toolbarStyle"
       :connection="connection"
       :connection-identity="connectionIdentity"
@@ -218,15 +213,6 @@ watch(
       :recordings-open="recordingsOpen"
       :recordings-count="recordings.length"
       :active-transfers="activeTransfers"
-      :panel-metrics-visible="panelMetricsVisible"
-      :panel-metrics-failed="panelMetricsFailed"
-      :panel-cpu-percent="panelCpuPercent"
-      :panel-mem-percent="panelMemPercent"
-      :panel-net-rates="panelNetRates"
-      :panel-metrics-error-title="panelMetricsErrorTitle"
-      :format-rate="formatRate"
-      :panel-scheme-choices="panelSchemeChoices"
-      :panel-active-scheme-id="panelActiveSchemeId"
       :local-shells="localShells"
       :local-shells-loading="localShellsLoading"
       :local-shell-pref="localShellPref"

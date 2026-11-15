@@ -43,6 +43,7 @@ const {
   isLocalMode, isRdpConnection, isRdpMode, isSerialMode, isTelnetMode,
   isVncMode, localCanSave, localExitCode, localShellRestored, localState,
   localUiMode, locale, onReplaySeek, openReplay, panelSurface,
+  panelMetricsVisible, panelMetricsFailed, panelCpuPercent, panelMemPercent, panelNetRates, panelMetricsErrorTitle,
   promptHintsAnchor, promptHintsCompletionsKey, promptHintsHistoryKey, promptHintsVisible, quickSelectActive,
   quickSelectHits, quickSelectOpen, rdpAutoFit, rdpClosedTitle, rdpDesktopSize, rdpDialogOpen,
   rdpScaleMode, rdpState, rdpSurface, reconnect, reconnectCountdown,
@@ -98,6 +99,12 @@ const {
         :command-marker-elapsed="commandMarkerElapsed"
         :agent-running="agentRunning"
         :format-command-duration="formatCommandDuration"
+        :panel-metrics-visible="panelMetricsVisible"
+        :panel-metrics-failed="panelMetricsFailed"
+        :panel-cpu-percent="panelCpuPercent"
+        :panel-mem-percent="panelMemPercent"
+        :panel-net-rates="panelNetRates"
+        :panel-metrics-error-title="panelMetricsErrorTitle"
         @contextmenu="showTerminalMenu"
         @middle-click="handleTerminalMiddleClick"
         @dismiss-diagnostics="terminalDiagVisible = false"

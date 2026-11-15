@@ -2,6 +2,8 @@
 import { computed, ref } from "vue";
 import { FileUp, Info, Loader2, TriangleAlert } from "@lucide/vue";
 import TerminalGutter from "../../features/terminal/components/TerminalGutter.vue";
+import DockMetricsStrip from "./DockMetricsStrip.vue";
+import { formatRate } from "../../shared/lib/format";
 import { transferBusyPaneClass } from "../../features/terminal/lib/behavior/terminalInteraction";
 import type { GutterRow } from "../../features/terminal/lib/appearance/terminalGutter";
 
@@ -46,6 +48,12 @@ const props = defineProps<{
   commandMarkerElapsed: number | null;
   agentRunning: { command: string } | null | undefined;
   formatCommandDuration: (ms: number | null | undefined) => string;
+  panelMetricsVisible: boolean;
+  panelMetricsFailed: boolean;
+  panelCpuPercent: number | null;
+  panelMemPercent: number | null;
+  panelNetRates: { rx: number; tx: number } | null;
+  panelMetricsErrorTitle: string;
 }>();
 
 const emit = defineEmits<{
@@ -119,6 +127,19 @@ const paneClass = computed(() => ({
       <span v-else-if="commandMarker.exitCode !== null" class="marker-text">{{ t("terminalCommand.finished", { code: commandMarker.exitCode, duration: formatCommandDuration(commandMarker.durationMs) }) }}</span>
       <span v-else class="marker-text">{{ t("terminalCommand.hint") }}</span>
       <span v-if="commandMarker.cwd" class="marker-cwd mono">{{ commandMarker.cwd }}</span>
+    </div>
+    <!-- 右下角系统信息带：贴终端底部、与命令状态条同一行右端；数据不可用时降级带。 -->
+    <div v-if="panelMetricsVisible || panelMetricsFailed" class="panel-metrics-footer">
+      <DockMetricsStrip
+        :panel-metrics-visible="panelMetricsVisible"
+        :panel-metrics-failed="panelMetricsFailed"
+        :panel-cpu-percent="panelCpuPercent"
+        :panel-mem-percent="panelMemPercent"
+        :panel-net-rates="panelNetRates"
+        :panel-metrics-error-title="panelMetricsErrorTitle"
+        :format-rate="formatRate"
+        :t="t"
+      />
     </div>
     <div v-if="agentRunning" class="agent-run-banner" role="status">
       <Loader2 class="spinning" />
@@ -247,4 +268,15 @@ const paneClass = computed(() => ({
 .agent-run-command { min-width: 0; flex: 1; overflow: hidden; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
 .agent-interrupt { flex: 0 0 auto; height: 24px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--destructive); font-size: 11px; cursor: pointer; }
 .agent-interrupt:hover { background: var(--accent); }
+/* 右下角指标带：绝对定位覆盖终端右缘，与底部命令状态条同基线；
+   不拦截指针事件，不影响终端点选。 */
+.panel-metrics-footer {
+  position: absolute;
+  right: 10px;
+  bottom: 4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
 </style>

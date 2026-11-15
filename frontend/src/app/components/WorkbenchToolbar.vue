@@ -4,7 +4,6 @@ import { AGENT_MODES } from "../../features/agent/lib/agentTerminal";
 import type { AgentTerminalMode } from "../../features/agent/lib/agentTerminal";
 import type { QuickCommand, QuickCommandGroup } from "../../features/quick-commands/lib/quickCommands";
 import type { FolderUploadProgress } from "../../features/sftp/lib/transfer/folderUpload";
-import type { TerminalColorScheme } from "../../features/terminal/lib/appearance/terminalScheme";
 import type { TransferHistoryEntry } from "../../features/transfers/lib/transferHistory";
 import type { ResumableUploadTask } from "../../features/transfers/lib/transferResume";
 import type { BatchUploadSummary, TransferTask } from "../../features/transfers/lib/transferQueue";
@@ -14,7 +13,6 @@ import type { PortForwardsController } from "../../features/forwarding/composabl
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
 import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
 import ConnectionInfoPopover from "./ConnectionInfoPopover.vue";
-import DockMetricsStrip from "./DockMetricsStrip.vue";
 import QuickCommandsMenu from "./QuickCommandsMenu.vue";
 import RecordingMenu from "../../features/recording/components/RecordingMenu.vue";
 import RdpToolbarControls from "./RdpToolbarControls.vue";
@@ -29,17 +27,15 @@ import type {
 } from "../lib/workbenchToolbarActions";
 
 /** 工作台工具条外壳（T19 自 App.vue 模板迁入）：<header class="toolbar"> 整段，
- *  含身份区（连接名/会话徽章/Info）、SSH 视图段与主操作位、dock 面板变体
- *  （panel-toolbar-left 系统信息带，居中显示）与传输弹层单实例。
- *  会话下拉 / 快速命令 / RDP 工具组 / 配色快切拆成同级子组件。
+ *  含身份区（连接名/会话徽章/Info）、SSH 视图段与主操作位、传输弹层单实例。
+ *  会话下拉 / 快速命令 / RDP / VNC 工具组拆成同级子组件；dock 面板不渲染本
+ *  组件（顶部插件工具条整行消失）。
  *
  *  数据面全部显式下传：只读态走 props，可写开关（各弹层 open、RDP 自定义宽高、
  *  快速命令搜索词）走 v-model 链，动作统一经 `actions` 类型化对象上抛——组件内
  *  不 inject、不读全局，也不持有会话逻辑，与迁移前 App 模板的绑定名逐字一致。 */
 const props = defineProps<{
   t: (key: string, values?: Record<string, string | number>) => string;
-  panelSurface: boolean;
-  panelToolbarHidden: boolean;
   toolbarStyle: CSSProperties | undefined;
   connection: {
     name?: string;
@@ -94,17 +90,6 @@ const props = defineProps<{
   /** 端口映射控制器：工具条按钮徽标与快捷弹层共用工作台的同一实例。 */
   forwards: PortForwardsController;
   activeTransfers: number;
-  // dock 面板系统信息带
-  panelMetricsVisible: boolean;
-  panelMetricsFailed: boolean;
-  panelCpuPercent: number | null;
-  panelMemPercent: number | null;
-  panelNetRates: { rx: number; tx: number } | null;
-  panelMetricsErrorTitle: string;
-  formatRate: (value: number) => string;
-  // dock 面板配色快切（转发 AppearanceMenu）
-  panelSchemeChoices: TerminalColorScheme[];
-  panelActiveSchemeId: string | null;
   // 会话下拉（转发 SessionMenu）
   localShells: LocalShellEntry[];
   localShellsLoading: boolean;
@@ -140,7 +125,7 @@ const props = defineProps<{
   vncCanResize: boolean;
   vncAutoFit: boolean;
   vncDesktopSize: { width: number; height: number } | null;
-  // 传输弹层单实例（tab/panel 两表面共用）
+  // 传输弹层单实例（工具条内）
   transferList: TransferTask[];
   transferHistory: TransferHistoryEntry[];
   resumableTasks: ResumableUploadTask[];
@@ -176,7 +161,6 @@ const sessionMenuShellOpen = defineModel<boolean>("sessionMenuShellOpen", { requ
 const sessionMenuShellPickOpen = defineModel<boolean>("sessionMenuShellPickOpen", { required: true });
 const localShellSurfaceOpen = defineModel<boolean>("localShellSurfaceOpen", { required: true });
 const quickMenuOpen = defineModel<boolean>("quickMenuOpen", { required: true });
-const panelPaletteOpen = defineModel<boolean>("panelPaletteOpen", { required: true });
 const rdpScaleMode = defineModel<"fit" | "stretch" | "actual">("rdpScaleMode", { required: true });
 const rdpResolutionOpen = defineModel<boolean>("rdpResolutionOpen", { required: true });
 const rdpCustomWidth = defineModel<string>("rdpCustomWidth", { required: true });
@@ -198,7 +182,6 @@ const t = props.t;
 const actions = props.actions;
 // 动作名与迁移前 App 模板里的绑定名逐字一致，模板不需要改写。
 const {
-  togglePanelToolbar,
   toggleConnectionInfo,
   measureLatency,
   togglePaneOrder,
@@ -238,10 +221,9 @@ function openForwardManager(mode: "add" | "manage") {
 </script>
 
 <template>
-  <header v-if="!panelSurface || !panelToolbarHidden" class="toolbar" :style="toolbarStyle">
-    <!-- 连接信息入口：Info 图标按钮紧跟标识区（状态徽章右侧），弹层左对齐锚定。
-         Dock 面板表面不渲染身份区（宿主 chrome 已有标题/关闭），只保留下方居中的系统信息带。 -->
-    <div v-if="!panelSurface" class="identity-side">
+  <header class="toolbar" :style="toolbarStyle">
+    <!-- 连接信息入口：Info 图标按钮紧跟标识区（状态徽章右侧），弹层左对齐锚定。 -->
+    <div class="identity-side">
       <div class="identity">
         <span v-if="connection.color" class="connection-color" :style="{ backgroundColor: connection.color }" />
         <!-- 主标题跟随 ConnectingCard 的口径：连接名优先，未命名回退 user@host:port；
@@ -270,11 +252,11 @@ function openForwardManager(mode: "add" | "manage") {
         @measure="measureLatency"
       />
     </div>
-    <div v-if="!panelSurface" class="toolbar-actions">
+    <div class="toolbar-actions">
       <!-- —— 视图段（分栏互换 / 字号）：SFTP 面板入口已移到右缘文件组；
            连接协议门控（!isRdpConnection && !isVncConnection）在组级判一次，RDP 连接下整组不渲染。 -->
       <template v-if="!isRdpConnection && !isVncConnection">
-        <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :disabled="panelSurface" @click="togglePaneOrder"><WorkbenchGlyph name="pane-swap" /></button>
+        <button class="icon-button icon-neutral" :title="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" :aria-label="paneOrder === 'terminal-left' ? t('moveSftpLeft') : t('moveTerminalLeft')" @click="togglePaneOrder"><WorkbenchGlyph name="pane-swap" /></button>
         <button class="icon-button" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
         <button class="icon-button" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
       </template>
@@ -403,7 +385,7 @@ function openForwardManager(mode: "add" | "manage") {
         :quick-importing="quickImporting"
         :actions="actions"
       />
-      <button v-if="!localUiMode && !panelSurface" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><WorkbenchGlyph name="batch-send" /></button>
+      <button v-if="!localUiMode" class="icon-button icon-neutral" :class="{ 'is-active': batchSendBarOpen }" :title="t('batchSendTitle')" :aria-label="t('batchSendTitle')" :aria-pressed="batchSendBarOpen" :disabled="!connected" @click="toggleBatchBar"><WorkbenchGlyph name="batch-send" /></button>
       <div>
         <Popover :open="agentModeOpen" @update:open="(open) => { if (!open) agentModeOpen = false; }">
           <PopoverAnchor as-child>
@@ -444,34 +426,19 @@ function openForwardManager(mode: "add" | "manage") {
         <!-- 历史卡右键菜单（ContextMenu）打开时忽略弹层的外点关闭请求：
              菜单项 pointerdown 相对弹层是"外部"，不加守卫会在 select 前把宿主弹层
              连同菜单一起卸载，动作丢失。 -->
-        <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" :disabled="panelSurface" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
+        <button class="icon-button icon-blue" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
       </div>
-      <button v-if="!localUiMode" class="icon-button icon-cyan" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" :disabled="panelSurface" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
+      <button v-if="!localUiMode" class="icon-button icon-cyan" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
       <span class="toolbar-separator" aria-hidden="true" />
       <!-- 设置弹窗承载 SSH/SFTP/终端专属分节；审计日志只记录 SSH/SFTP 操作。 -->
       <button class="icon-button icon-amber" :title="t('auditLog.title')" :aria-label="t('auditLog.title')" @click="openAuditLog"><WorkbenchGlyph name="audit" /></button>
       <button class="icon-button icon-violet" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
       </template>
     </div>
-    <!-- dock 面板左组：系统信息带（CPU/内存/网速，5s 轮询），flex:1 把
-         右侧按钮组推到右缘；数据未就绪/不支持时整条隐藏不占位。 -->
-    <div v-if="panelSurface" class="panel-toolbar-left">
-      <DockMetricsStrip
-        :panel-metrics-visible="panelMetricsVisible"
-        :panel-metrics-failed="panelMetricsFailed"
-        :panel-cpu-percent="panelCpuPercent"
-        :panel-mem-percent="panelMemPercent"
-        :panel-net-rates="panelNetRates"
-        :panel-metrics-error-title="panelMetricsErrorTitle"
-        :format-rate="formatRate"
-        :t="t"
-      />
-    </div>
-    <!-- 传输弹层单实例（tab/panel 两表面共用）：Popover 挂在 header 层，锚点是
-         工具条右缘下的隐形定位点（.transfer-popover-anchor，固定定位不随表面
-         工具条高度变化）；tab 工具条的传输按钮只是 toggleTransferPanel 的普通
-         开关——dock 面板已无 panel-actions 按钮组（顶部 chrome 精简，指标带居中），
-         共享锚点仍让同一个弹层在两个表面都能弹出（内容单拷贝零复制）。 -->
+    <!-- 传输弹层单实例：Popover 挂在 header 层，锚点是工具条右缘下的隐形
+         定位点（.transfer-popover-anchor，固定定位不随工具条高度变化）；
+         工具条的传输按钮只是 toggleTransferPanel 的普通开关，共享锚点让同
+         一个弹层在工具条下方弹出（内容单拷贝零复制）。 -->
     <TransferPopover
       :transfer-panel-open="transferPanelOpen"
       :transfer-list="transferList"
@@ -510,8 +477,7 @@ function openForwardManager(mode: "add" | "manage") {
 <style scoped>
 /* 工具栏 A+/A- 字号步进按钮（复用 Ctrl+滚轮的 clampFontSize 语义） */
 .font-step-label { font-size: 11px; font-weight: 600; line-height: 1; letter-spacing: 0; }
-/* 录制中图标按钮（原 App.vue scoped 样式随 DOM 迁入；dock 面板的
-   .workbench.panel-surface 覆盖仍在全局 toolbar.css）。 */
+/* 录制中图标按钮（原 App.vue scoped 样式随 DOM 迁入）。 */
 .is-recording { color: var(--destructive); }
 /* 终端 MCP 模式快速开关（工具栏弹出层，与设置弹窗共用三档文案；根规则见 style.css 全局） */
 .agent-mode-popover h3 { margin: 4px 0 8px; font-size: 12px; }

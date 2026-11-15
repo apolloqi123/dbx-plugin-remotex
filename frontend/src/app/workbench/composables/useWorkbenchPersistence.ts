@@ -144,7 +144,7 @@ export function useWorkbenchPersistence(options: {
     }
     paneOrder.value = state.paneOrder === "sftp-left" ? "sftp-left" : state.paneOrder === "terminal-left" ? "terminal-left" : paneOrder.value;
     // Dock panel surface：SFTP 面板默认不开（不自动列目录/不自动建 SFTP 会话，
-    // dock 保持轻量）；需要文件面板时用 panel-actions 的开关手动打开（连接建立时
+    // dock 保持轻量）；需要文件面板时由用户手动打开（连接建立时
     // loadDirectory 本就会拉列表，打开即有数据）。
     sftpPaneOpen.value = panelSurface.value ? false : resolveSftpPaneOpen(state, sftpPaneOpen.value);
     // 本地终端工作台没有 SFTP 语义：连接less tab 的恢复态/布局镜像若带开合

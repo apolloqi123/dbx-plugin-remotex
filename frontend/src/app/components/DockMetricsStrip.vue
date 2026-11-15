@@ -1,7 +1,7 @@
 <script setup lang="ts">
-/** Dock 面板工具条左组的系统信息带（CPU/内存/网速快照）。
+/** Dock 面板右下角系统信息带（CPU/内存/网速快照）。
  *  数据未就绪/不支持时整条隐藏；失败时降级显示占位带（tooltip 带原因）。
- *  父级 `.panel-toolbar-left` 容器仍留在 App（flex 布局），本组件只渲染两条互斥带。 */
+ *  父级是 WorkbenchStage 的右下角 `.panel-metrics-footer`，本组件只渲染两条互斥带。 */
 defineProps<{
   panelMetricsVisible: boolean;
   panelMetricsFailed: boolean;
