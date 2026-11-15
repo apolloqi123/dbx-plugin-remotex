@@ -15,6 +15,7 @@ import {
   shouldFollowTabCwd,
   splitTerminalLayout,
   TERMINAL_PANE_TAB_LIMIT,
+  terminalLayoutNeedsTabs,
   type TerminalLayoutNode,
 } from "./terminalLayout";
 
@@ -33,6 +34,16 @@ describe("terminalLayout", () => {
     expect(layout.activeTabId).toBe("main");
     expect(hasTerminalSplit(layout)).toBe(false);
     expect(collectSplitPaneIds(layout)).toEqual([]);
+  });
+
+  it("needs the pane tab strip only for splits or extra shell tabs", () => {
+    const layout = createTerminalLayout();
+    // 新建布局只有主终端一个页签 → 不需要页签栏。
+    expect(terminalLayoutNeedsTabs(layout)).toBe(false);
+    // 追加 shell 页签后需要页签栏（切换/关闭页签）。
+    expect(terminalLayoutNeedsTabs(addTerminalTab(layout, "main", "tab1"))).toBe(true);
+    // 分屏后同样需要页签栏。
+    expect(terminalLayoutNeedsTabs(splitTerminalLayout(layout, "main", "row", "B", "tabB"))).toBe(true);
   });
 
   it("splits only the selected pane, keeping nested orientation intact", () => {

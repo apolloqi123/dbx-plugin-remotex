@@ -77,8 +77,9 @@
 }
 .workbench.panel-surface .toolbar .icon-button.is-recording { color: var(--destructive); opacity: 1; }
 
-/* 左组系统信息带：11px 等宽数字、tabular-nums 防抖动，溢出截断不换行。 */
-.panel-toolbar-left { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; overflow: hidden; }
+/* 左组系统信息带：11px 等宽数字、tabular-nums 防抖动，溢出截断不换行；
+   dock 面板删掉右侧 panel-actions 按钮组后本带独占整行，指标水平居中。 */
+.panel-toolbar-left { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; justify-content: center; overflow: hidden; }
 .panel-metrics {
   display: inline-flex;
   align-items: center;

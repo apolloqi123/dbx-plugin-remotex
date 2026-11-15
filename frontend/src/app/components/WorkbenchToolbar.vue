@@ -13,7 +13,6 @@ import PortForwardMenu from "../../features/forwarding/components/PortForwardMen
 import type { PortForwardsController } from "../../features/forwarding/composables/usePortForwards";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/popover/index";
 import WorkbenchGlyph from "../../shared/ui/icons/WorkbenchGlyph.vue";
-import AppearanceMenu from "./AppearanceMenu.vue";
 import ConnectionInfoPopover from "./ConnectionInfoPopover.vue";
 import DockMetricsStrip from "./DockMetricsStrip.vue";
 import QuickCommandsMenu from "./QuickCommandsMenu.vue";
@@ -31,7 +30,7 @@ import type {
 
 /** 工作台工具条外壳（T19 自 App.vue 模板迁入）：<header class="toolbar"> 整段，
  *  含身份区（连接名/会话徽章/Info）、SSH 视图段与主操作位、dock 面板变体
- *  （panel-toolbar-left 系统信息带 + panel-actions 精简组）与传输弹层单实例。
+ *  （panel-toolbar-left 系统信息带，居中显示）与传输弹层单实例。
  *  会话下拉 / 快速命令 / RDP 工具组 / 配色快切拆成同级子组件。
  *
  *  数据面全部显式下传：只读态走 props，可写开关（各弹层 open、RDP 自定义宽高、
@@ -241,7 +240,7 @@ function openForwardManager(mode: "add" | "manage") {
 <template>
   <header v-if="!panelSurface || !panelToolbarHidden" class="toolbar" :style="toolbarStyle">
     <!-- 连接信息入口：Info 图标按钮紧跟标识区（状态徽章右侧），弹层左对齐锚定。
-         Dock 面板表面整体换用下方 panel-actions 精简组（宿主 chrome 已有标题/关闭）。 -->
+         Dock 面板表面不渲染身份区（宿主 chrome 已有标题/关闭），只保留下方居中的系统信息带。 -->
     <div v-if="!panelSurface" class="identity-side">
       <div class="identity">
         <span v-if="connection.color" class="connection-color" :style="{ backgroundColor: connection.color }" />
@@ -468,59 +467,11 @@ function openForwardManager(mode: "add" | "manage") {
         :t="t"
       />
     </div>
-    <!-- Dock 面板表面（底部栏）的精简工具区：宿主 dock chrome 已带标题与
-         关闭/收起/最大化，这里只留终端快捷操作——字号、录屏、传输、配色快切、
-         设置与工具条收起，密度对齐底部栏（紧凑 30px 工具条 + 透明 ghost 按钮）。 -->
-    <div v-if="panelSurface" class="toolbar-actions panel-actions">
-      <!-- 面板紧凑组：新标签 → 字号 → 录制 → 传输 → SFTP 面板（与传输紧邻）
-           → 配色 → 设置 → 收起。 -->
-      <button v-if="!localUiMode && !isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('newSessionTab')" :aria-label="t('newSessionTab')" :disabled="!connectionId" @click="openNewSessionTab"><WorkbenchGlyph name="new-tab" /></button>
-      <button v-if="!isRdpMode && !isVncMode" class="icon-button compact" :title="t('terminalFontDecrease')" :aria-label="t('terminalFontDecrease')" @click="adjustTerminalZoom(-1)"><span class="font-step-label" aria-hidden="true">A−</span></button>
-      <button v-if="!isRdpMode && !isVncMode" class="icon-button compact" :title="t('terminalFontIncrease')" :aria-label="t('terminalFontIncrease')" @click="adjustTerminalZoom(1)"><span class="font-step-label" aria-hidden="true">A+</span></button>
-      <RecordingMenu
-        v-if="!isRdpConnection && !isVncConnection"
-        compact
-        :t="t"
-        :can-record="!!recordingTarget"
-        :recording-active="recordingActive"
-        :record-countdown="recordCountdown"
-        :recording-elapsed-sec="recordingElapsedSec"
-        :recordings-count="recordingsCount"
-        :recordings-open="recordingsOpen"
-        :actions="recordingActions"
-      />
-      <button v-if="!isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('transfers')" :aria-label="t('transfers')" @pointerdown.stop @click.stop="toggleTransferPanel"><WorkbenchGlyph name="transfers" /><span v-if="activeTransfers" class="activity-dot" /></button>
-      <button v-if="!localUiMode && !isRdpConnection && !isVncConnection" class="icon-button compact" :class="{ 'is-active': sftpPaneOpen && sftpViewActive }" :title="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-label="sftpPaneOpen && sftpViewActive ? t('sftpPane.close') : t('sftpPane.open')" :aria-pressed="sftpPaneOpen && sftpViewActive" @click="toggleSftpPane"><WorkbenchGlyph :name="sftpPaneOpen && sftpViewActive ? 'panel-close' : 'panel-sftp'" /></button>
-      <VncToolbarControls
-        v-if="isVncMode"
-        v-model:vnc-scale-mode="vncScaleMode"
-        v-model:vnc-resolution-open="vncResolutionOpen"
-        v-model:vnc-custom-width="vncCustomWidth"
-        v-model:vnc-custom-height="vncCustomHeight"
-        :t="t"
-        :resolution-presets="vncResolutionPresets"
-        :vnc-resizing="vncResizing"
-        :vnc-can-resize="vncCanResize"
-        :vnc-auto-fit="vncAutoFit"
-        :vnc-desktop-size="vncDesktopSize"
-        :actions="actions"
-      />
-      <AppearanceMenu
-        v-model:panel-palette-open="panelPaletteOpen"
-        :t="t"
-        :is-rdp-mode="isRdpMode"
-        :panel-scheme-choices="panelSchemeChoices"
-        :panel-active-scheme-id="panelActiveSchemeId"
-        :actions="actions"
-      />
-      <button v-if="!isRdpConnection && !isVncConnection" class="icon-button compact" :title="t('settings')" :aria-label="t('settings')" @click="openSettings"><WorkbenchGlyph name="settings" /></button>
-      <button class="icon-button compact" :title="t('panel.hideToolbar')" :aria-label="t('panel.hideToolbar')" :aria-pressed="panelToolbarHidden" @click="togglePanelToolbar"><WorkbenchGlyph name="collapse-up" /></button>
-    </div>
     <!-- 传输弹层单实例（tab/panel 两表面共用）：Popover 挂在 header 层，锚点是
          工具条右缘下的隐形定位点（.transfer-popover-anchor，固定定位不随表面
-         工具条高度变化）；tab 工具条与 dock panel-actions 里的按钮都只是
-         toggleTransferPanel 的普通开关——panel 没有这组 tab 工具条实例，
-         共享锚点让同一个弹层在两个表面都能弹出（内容单拷贝零复制）。 -->
+         工具条高度变化）；tab 工具条的传输按钮只是 toggleTransferPanel 的普通
+         开关——dock 面板已无 panel-actions 按钮组（顶部 chrome 精简，指标带居中），
+         共享锚点仍让同一个弹层在两个表面都能弹出（内容单拷贝零复制）。 -->
     <TransferPopover
       :transfer-panel-open="transferPanelOpen"
       :transfer-list="transferList"

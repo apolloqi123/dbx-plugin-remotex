@@ -264,3 +264,9 @@ export function collectSplitPaneIds(node: TerminalLayoutNode): string[] {
 export function hasTerminalSplit(node: TerminalLayoutNode): boolean {
   return node.kind === "split";
 }
+
+/** 终端布局是否需要窗格页签栏：存在分屏，或窗格内除主终端外还有 shell 页签。 */
+export function terminalLayoutNeedsTabs(node: TerminalLayoutNode): boolean {
+  if (node.kind === "split") return true;
+  return node.tabs.length > 1;
+}

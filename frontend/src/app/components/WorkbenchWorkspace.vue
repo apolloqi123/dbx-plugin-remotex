@@ -11,8 +11,9 @@ import { ArrowLeftRight, ArrowUpDown, Eraser, FileUp, History, Search, ShieldChe
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../shared/ui/context-menu/index";
 import WorkbenchTerminalStage from "./WorkbenchTerminalStage.vue";
 import type { WorkbenchApi } from "../workbench/useWorkbench";
-import { onBeforeUnmount, type ComponentPublicInstance } from "vue";
+import { computed, onBeforeUnmount, type ComponentPublicInstance } from "vue";
 import { trackExposedRef } from "../workbench/lib/trackExposedRef";
+import { terminalLayoutNeedsTabs } from "../../features/terminal/lib/appearance/terminalLayout";
 
 const props = defineProps<{ bindings: WorkbenchApi }>();
 
@@ -41,7 +42,7 @@ const {
   onTerminalDragEnter, onTerminalDragLeave, onTerminalDrop, openAttributes, openBatchBarSave,
   openEntry, openSftpTreeNode, openTerminalSearch, openTerminalSplit, openWithCustomEntry,
   openWithKnownEntry, openWithSystemEntry, orderedPaneClass, otpPanelOpen, paneContainer, workbenchSplitRef,
-  paneLayout, paneSplitStyle, pasteClipboard, pasteTerminal, pathBarEditing,
+  paneLayout, paneSplitStyle, panelSurface, pasteClipboard, pasteTerminal, pathBarEditing,
   bookmarksOpen, pickBatchQuick, pickBatchTargets, quickCollapsedGroups, quickCommandGroupSummary,
   quickCommands, quickGroupName, quickHasRealGroups, refreshBatchTargets, refreshMetrics,
   refreshProcessList, refreshSftpFolder, reloadEditorTab, removeBookmark, renamingPath, rerunLocalCommand,
@@ -56,6 +57,13 @@ const {
   toggleProcessPanel, toggleQuickGroupCollapse, toggleSftpShowHidden, toggleSftpTreeNode, toggleSudoMode,
   updateEditorText, workbenchId,
 } = props.bindings;
+
+// Dock 面板只剩主终端一个页签时隐藏窗格页签栏（用户要求精简顶部）；
+// 出现分屏或多个 shell 页签时仍显示，切换/关闭页签的能力不丢失。
+const terminalTabsHidden = computed(() =>
+  isRdpConnection.value || isVncMode.value ||
+  (panelSurface.value && !terminalLayoutNeedsTabs(terminalLayout.value)),
+);
 
 /** 侧栏根元素经 defineExpose 回传；模板 ref 跨组件不会自动绑定到父级 ref，
  *  且子组件根节点的 `v-if` 切换不会重新触发函数 ref，必须持续跟踪暴露值。 */
@@ -149,7 +157,7 @@ function dockerTerminalStateEvents(
         :locale="locale"
         :can-split="canSplitTerminal"
         :can-create-tab="canOpenShellTab"
-        :hide-tabs="isRdpConnection || isVncMode"
+        :hide-tabs="terminalTabsHidden"
         :engines="ctxSearchEngines"
         :connected="connected"
         :can-write="canWrite"
