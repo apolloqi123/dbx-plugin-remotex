@@ -70,8 +70,7 @@ function openRow(item: RecordingSummary) {
 
     <div class="recordings-subhead">
       <span>{{ t("recordingsSummary", { count: recordings.length }) }}</span>
-      <span v-if="recordingActive" class="recordings-capture-hint">{{ t("recordingsCapturingHint") }}</span>
-      <span v-else>{{ t("recordingsFooterHint") }}</span>
+      <span>{{ t("recordingsFooterHint") }}</span>
     </div>
 
     <div v-if="recordings.length" class="recordings-toolbar">
@@ -151,7 +150,6 @@ function openRow(item: RecordingSummary) {
 .recordings-head-action:disabled { opacity: .4; cursor: default; }
 .recordings-subhead { display: flex; gap: 8px; padding: 5px 10px; border-bottom: 1px solid color-mix(in srgb, var(--card-border) 60%, transparent); color: var(--muted-foreground); font-size: 11px; }
 .recordings-subhead > span:first-child { flex: 0 0 auto; color: var(--foreground); }
-.recordings-capture-hint { color: var(--primary); }
 .recordings-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid color-mix(in srgb, var(--card-border) 65%, transparent); }
 .recordings-toolbar > svg:first-child { width: 13px; height: 13px; flex: 0 0 13px; color: var(--muted-foreground); }
 .recordings-toolbar input { min-width: 0; flex: 1; height: 28px; border: 1px solid var(--card-border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 12px; }

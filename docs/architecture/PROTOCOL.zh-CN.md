@@ -91,7 +91,6 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `ssh/recording/start`、`stop`、`list`、`get`、`delete` | 会话录制（asciicast v2 `.cast` 落盘、回放分页读取、列表/删除，见下文） |
 | `ssh/recording/clear`、`ssh/recording/reveal` | 录制管理补齐（家族语义见下文「会话录制」节）：`clear` 无参 → `{success, deleted}`——只删 recordings 目录内 `.cast`，单个删除失败（如 Windows 上进行中录制）跳过计数不整批失败；`reveal {recordingId}` → `{success: true}`——id 走路径穿越校验（`/`/`\`/`..` 拒绝）、文件已不存在报错后在文件管理器定位，非任意路径打开原语 |
 | `ssh/recording/search` | 录制搜索：`{query}` → `{recordings: [行]}`，无持久索引对现存 `.cast` 即时扫描（名称命中或内容命中），见下文「会话录制」节 |
-| `ssh/recording/event` | 录制中的有界结构化 `x` 事件入口：`{sessionId, data}` → `{success: true}`，只接受归一化指针或 xterm 光标格，单条结构化负载 ≤512 B；无活动录制返回 `This session has no active recording`，不进 MCP 工具面 |
 | `ssh/host-key/check` | 连接维度主机密钥预检（探针三态：已知 / 变更 / 未知，不发认证） |
 | `ssh/settings/get`、`ssh/settings/set` | 读取/运行时更新 Quick Sudo 编排设置 |
 | `mcp/tools`、`mcp/call` | MCP 工具发现与执行（供 DBX MCP 桥 `dbx_call_plugin_tool` 调用；连接凭据以标准 lifecycle payload 转发，按 `connectionId` 池化，payload 新增 `name` 字段携带连接名）。连接类工具新增可选 `connectionName`（与 `connectionId` 二选一，注册表按名匹配，重名报错并列出候选）；stdio 独立模式对未注册 `connectionId` 的调用自动经宿主桥 `POST /list-plugin-connections` 转发到运行中的 DBX 应用执行——请求 `{"plugin_id":"io.dbx.sshx"}`、响应 `{"connections":[{id,name,host,port,username,authentication,readOnly}]}`（仅元数据，密钥只出布尔标志位），桥不可用回落内联凭据；新增 `ssh_list_connections` 工具即消费该路由，降级时仅回本会话注册表并附 `note`。`mcp/tools` 与 stdio `tools/list` 返回的每个工具附 `annotations`（`title` + `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`，与内部门禁分类同源，见 docs/guides/MCP.zh-CN.md「工具 annotations」与下文「MCP 工具面」节） |
@@ -140,7 +139,6 @@ WezTerm 的 ssh domain 支持 `spawn` 语义：在已认证 transport 上另开 
 | `local/terminal/launch-options` | 宿主 dock「+」启动选项（PR-A4 通用契约）：`{entries: [{label, description, context, group?}]}`——首项为默认 Shell 启动项，**不带 `group`**（宿主顶层首位平铺，最快常用动作；`description` 为解析后的默认 Shell，`localShell` 偏好优先，否则 DS/`$SHELL`/平台默认链；`context` 携带 `mode`），其余为本机扫描到的 shell 子项（`context` 额外携带 `shell` 固定程序），`group` 同为本地化「本地SHELL」标签，宿主渲染为紧随其后的单个可折叠分组（默认折叠）。可选参数 `locale`（宿主 UI 语言，如 `zh-CN`/`zh-TW`/`ja`/`es`/`it`/`pt-BR`/`en`；宿主侧 `options_action` 调用统一下发）：本地化 label/group/description 前缀，未识别语言回落英文；旧宿主不传参数行为不变（`group` 字段被忽略，平铺渲染）。默认 Shell 在设置·终端配置（`localShell` 偏好，与工作台 shell 选择器同一存储键）。**已显式配置 `localShell` 时折叠发现分组**：菜单只留「本地终端」单个入口（描述即配置的 shell），不再列本机各 shell；未配置时维持默认入口 + 发现分组 |
 | `local/session/list`、`local/session/close` | 本地终端会话清单（webview 重载后接回）与关闭 |
 | `local/recording/start`、`local/recording/stop` | 本地终端录制（dock 本地终端录制按钮的数据面）：与 `ssh/recording` 同形——`start`（参数 `{ sessionId }`）给本地 PTY 会话挂同一 asciicast 录制器（PTY 输出发布前观察、State 帧不录），`stop` 返回同一形状摘要；`.cast` 落同一 recordings 目录（`meta.host` 为 `"local"`），`ssh/recording/list|get|search|delete` 全家族照常可用。shell 退出随会话槽位释放录制器（缓冲即落盘）；重复 start / 无录制 stop 报错文案与 SSH 家族一致 |
-| `local/recording/event` | RemoteX 本地终端录制中的有界结构化 `x` 事件入口，契约同 `ssh/recording/event`：`{sessionId, data}` → `{success: true}`，只接受归一化指针或 xterm 光标格，单条结构化负载 ≤512 B；无活动录制返回 `This session has no active recording` |
 | `local/metrics` | 本机系统快照（dock 面板左上角系统信息带，本地终端场景）：与 `ssh/metrics` 同一采集脚本走 sidecar 宿主机自身 shell（POSIX sh；macOS 走 sysctl/vm_stat/netstat 兜底分支），返回同形状文档（hostname/kernel/cpu/memory/disks/network/processes…），GPU/NPU 两段保持 SSH-only、本地文档缺省。无会话参数；Windows 无捆绑 sh 时返回结构化错误（`local metrics unavailable`），前端整条隐藏不占位 |
 | `local/capabilities` | 本机落盘能力探测（无参）：`{canSaveLocal, downloadsDir, platform}`——`canSaveLocal` 由环境变量强制，缺省 macOS/Windows 恒 true、Linux 需 `DISPLAY`/`WAYLAND_DISPLAY`；前端据此决定 sidecar 下载目录落盘还是浏览器 `<a download>` 兜底，递归目录下载可用性同判（见「递归目录下载」节） |
 | `local/fs/browse`、`local/fs/drives`、`local/fs/exists` | 应用内目录选择器/冲突预检（信任边界与 `local/*` 同级：只列目录、永不返回文件内容）：`browse {path?}` 缺省下载目录、必须绝对路径 → `{path, parent, entries: [{name, path, is_dir}]}`，仅子目录（symlink 到目录跟随）、大小写不敏感排序、封顶 500 条（先排序后截断）；`drives` 无参 → `{drives: [盘符]}`，仅 Windows C:..Z: 探测，其他平台空数组；`exists {dir, name}` → `{exists, path}`——「询问我」冲突策略预检，`name` 经文件名消毒、`path` 为精确候选路径 |
@@ -1436,7 +1434,7 @@ sudo 模式下向登录用户不可写目录（如 `/root`）上传（对标 sud
 `> 1`（init/pid 0 直接拒绝），signal 仅接受 `1/2/9/15`；渲染为 `kill -<NAME> <pid>`（数值全部白名单化，
 无注入面）。返回 `{ success: true, pid }`；远端退出码非 0 报错（如进程不存在）。
 
-### ssh/recording/start、stop、event、list、get、delete、search
+### ssh/recording/start、stop、list、get、delete、search
 
 会话级录制：`ssh/recording/start`（参数 `{ sessionId }`）在会话读循环安装录制器，输出
 （stdout+stderr、目录跟随过滤后、不含 State 帧）以 asciicast v2 JSONL 写入
@@ -1463,27 +1461,7 @@ connectionId, host, startedAt, durationSecs, bytes, nameMatch, hits: [{ time, ex
 ANSI/OSC 剥离 + 换行压平后的单行文本截取约 120 字符、命中词完整保留）。命中 = 名称命中
 （`host`/`recordingId` 包含查询词，大小写不敏感，`nameMatch: true`、`hits` 可为空）或内容命中
 （stdout 展平文本包含查询词）。空查询返回空集（前端显示未过滤列表）；新→旧排序同 `list`。
-搜索只扫 `eventtype == "o"` 的输出行；旧文件无 `eventtype` 的行仍按输出处理。转录与 GIF
-导出同样只消费 `o` 事件，`x`/`m` 永不写入 xterm。
-
-**结构化指针/光标轨道（自定义 `x` 事件）**：`ssh/recording/event` 与
-`local/recording/event` 都接受 `{ sessionId, data }`，返回 `{ success: true }`，分别把事件追加到
-该 SSH / RemoteX 本地会话当前活动的录制器。无活动录制（含会话种类不匹配）统一返回
-`This session has no active recording`，不创建文件。两条方法都不进 MCP 工具面。`data`
-只允许以下两种精确形状，未知键、非有限数值、越界坐标、几何缺失、非布尔 `pressed`、序列化后
-超过 512 B 的负载一律报错且不落盘；时间由 sidecar 录制器的单调时钟生成，前端不传时间：
-
-```json
-{"time": 1.234, "eventtype": "x", "eventdata": {"kind":"pointer","x":0.42,"y":0.31,"pressed":false,"cols":120,"rows":32}}
-{"time": 1.284, "eventtype": "x", "eventdata": {"kind":"cursor","col":18,"row":7,"cols":120,"rows":32}}
-```
-
-`x/y` 是相对终端宿主矩形的 0..1 归一化坐标；`col/row` 是 xterm 当前光标格（0-based）；
-`cols/rows` 是采样时终端几何（1..=1000）。绝不采集 OS 全局指针坐标、终端文本、按键、
-剪贴板、凭据或绝对路径。`ssh/recording/get` 保留 `x` 行的 `data` 为原始对象，回放叠层按
-`x/y` 百分比定位指针、按 `col/cols`、`row/rows` 定位光标，拖动进度条时取最近一次 ≤ 播放头的
-指针/光标采样。旧录制只有 `o`/`m`（或无 `eventtype` 的旧输出行）时仍可列表、搜索、回放、
-导出，叠层静默降级为不显示。
+搜索、转录与 GIF 只消费 `o` 输出事件；旧文件无 `eventtype` 的行仍按输出处理。
 
 会话自动录制（M14）：偏好键 `auto_record`（`local/preferences/set` 白名单布尔，默认关），
 sidecar 启动与偏好写入时同步进程内快速标志（同 `x11_forwarding` 模式）；`ssh/session/open`

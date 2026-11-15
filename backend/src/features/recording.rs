@@ -8,11 +8,9 @@
 //! Format: line 1 is the asciicast v2 header (`{"version":2,...}` with a
 //! plugin `meta` block carrying sessionId/connectionId/host); every further
 //! line is `{"time": <secs since start>, "eventtype": "o", "eventdata":
-//! "<utf-8 output>"}`. Bounded custom `x` events carry normalized pointer /
-//! caret-cell metadata for replay overlays; they are never terminal output.
-//! Replay consumers (asciinema-compatible) ignore the extra `meta` field;
-//! the plugin's own replay reads it back for the list view without touching
-//! output event lines. Legacy lines without `eventtype` remain output.
+//! "<utf-8 output>"}`. Replay consumers (asciinema-compatible) ignore the
+//! extra `meta` field; the plugin's own replay reads it back for the list
+//! view without touching event lines.
 
 use std::path::{Path, PathBuf};
 
@@ -38,10 +36,6 @@ pub const SEARCH_MAX_RECORDINGS: usize = 200;
 /// Max text hits returned per recording (excerpts are small, but the payload
 /// must stay bounded).
 pub const SEARCH_MAX_HITS: usize = 5;
-/// Cap on one structured metadata (`x`) event's serialized size. Pointer and
-/// caret samples are tiny; this keeps the custom event lane bounded even if a
-/// caller sends a padded object.
-pub const MAX_METADATA_EVENT_BYTES: usize = 512;
 
 /// Fast-path `auto_record` flag (mirrors the `x11_forwarding` pattern: an
 /// in-process atomic kept in lockstep with the allowlisted preferences.json
@@ -77,102 +71,6 @@ pub fn header(connection_id: &str, host: &str, session_id: &str, width: u32, hei
             "host": host,
         },
     })
-}
-
-fn metadata_keys_exact(
-    object: &serde_json::Map<String, Value>,
-    expected: &[&str],
-) -> Result<(), String> {
-    if object.len() != expected.len() || expected.iter().any(|key| !object.contains_key(*key)) {
-        return Err("Recording metadata event has unexpected keys".to_string());
-    }
-    Ok(())
-}
-
-fn metadata_geometry(value: Option<&Value>) -> Result<u64, String> {
-    let geometry = value
-        .and_then(Value::as_u64)
-        .ok_or("Recording metadata geometry must be a positive integer")?;
-    if !(1..=1000).contains(&geometry) {
-        return Err("Recording metadata geometry must be within 1..=1000".to_string());
-    }
-    Ok(geometry)
-}
-
-fn metadata_unit(value: Option<&Value>) -> Result<f64, String> {
-    let coordinate = value
-        .and_then(Value::as_f64)
-        .ok_or("Recording metadata coordinate must be a finite number")?;
-    if !coordinate.is_finite() || !(0.0..=1.0).contains(&coordinate) {
-        return Err("Recording metadata coordinate must be within 0..=1".to_string());
-    }
-    Ok(coordinate)
-}
-
-fn metadata_cell(value: Option<&Value>, bound: u64) -> Result<u64, String> {
-    let cell = value
-        .and_then(Value::as_u64)
-        .ok_or("Recording metadata caret cell must be an integer")?;
-    if cell >= bound {
-        return Err("Recording metadata caret cell is outside the terminal geometry".to_string());
-    }
-    Ok(cell)
-}
-
-/// Validates and canonicalizes one bounded pointer / caret sample. Only the
-/// two exact shapes are accepted; no text, path, keystroke or OS-global
-/// coordinate is ever part of the payload.
-pub fn validate_metadata_event(data: &Value) -> Result<Value, String> {
-    let encoded = serde_json::to_string(data)
-        .map_err(|error| format!("Failed to encode recording metadata: {error}"))?;
-    if encoded.len() > MAX_METADATA_EVENT_BYTES {
-        return Err(format!(
-            "Recording metadata event exceeds {MAX_METADATA_EVENT_BYTES} bytes"
-        ));
-    }
-    let Some(object) = data.as_object() else {
-        return Err("Recording metadata event must be an object".to_string());
-    };
-    let Some(kind) = object.get("kind").and_then(Value::as_str) else {
-        return Err("Recording metadata event is missing its kind".to_string());
-    };
-    let cols = metadata_geometry(object.get("cols"))?;
-    let rows = metadata_geometry(object.get("rows"))?;
-    match kind {
-        "pointer" => {
-            metadata_keys_exact(
-                object,
-                &["kind", "x", "y", "pressed", "cols", "rows"],
-            )?;
-            let x = metadata_unit(object.get("x"))?;
-            let y = metadata_unit(object.get("y"))?;
-            let pressed = object
-                .get("pressed")
-                .and_then(Value::as_bool)
-                .ok_or("Recording pointer pressed state must be a boolean")?;
-            Ok(json!({
-                "kind": "pointer",
-                "x": x,
-                "y": y,
-                "pressed": pressed,
-                "cols": cols,
-                "rows": rows,
-            }))
-        }
-        "cursor" => {
-            metadata_keys_exact(object, &["kind", "col", "row", "cols", "rows"])?;
-            let col = metadata_cell(object.get("col"), cols)?;
-            let row = metadata_cell(object.get("row"), rows)?;
-            Ok(json!({
-                "kind": "cursor",
-                "col": col,
-                "row": row,
-                "cols": cols,
-                "rows": rows,
-            }))
-        }
-        _ => Err("Unknown recording metadata event kind".to_string()),
-    }
 }
 
 mod catalog;

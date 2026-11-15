@@ -1,29 +1,11 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { createRequestEpoch } from "../../../shared/lib/requestEpoch";
 import { buildTimeline, eventIndexAtTime, replaySpan, type RecordingSummary, type ReplayEvent } from "../lib/replayScheduler";
-import { motionAtTime, type CursorMotion, type PointerMotion, type ReplayMotionEvent } from "../lib/replayMotion";
 import { terminalOptionPatch, type TerminalAppearanceState } from "../../terminal/lib/appearance/terminalAppearance";
 import { resolveTerminalFont, type TerminalFontOverride } from "../../terminal/lib/appearance/terminalFont";
 import { type TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
-
-export interface ReplayState {
-  summary: RecordingSummary;
-  events: ReplayEvent[];
-  motion: ReplayMotionEvent[];
-  pointer: PointerMotion | null;
-  cursor: CursorMotion | null;
-}
-
-export type ReplayLoadResult = { events: ReplayEvent[]; motion: ReplayMotionEvent[] };
-
-/** Pure state patch: the overlay always reflects the latest samples at or
- * before the playhead, including after a backward seek. */
-export function replayStateWithMotion(state: ReplayState, playheadMs: number): ReplayState {
-  const { pointer, cursor } = motionAtTime(state.motion, playheadMs);
-  return { ...state, pointer, cursor };
-}
 
 /** 回放播放器（F3）：事件一次性拉全（分页合并由调用方完成），rAF 按时间轴
  * 推进。单个 replayTerminal/rAF 生命周期全部收口在本 composable；外观跟随
@@ -35,11 +17,11 @@ export function useReplayPlayer(options: {
   terminalAppearance: Ref<TerminalAppearanceState>;
   hostFontFamily: () => string;
   showError: (cause: unknown, target?: "terminal" | "sftp") => void;
-  loadReplayRecording: (recordingId: string) => Promise<ReplayLoadResult>;
+  loadReplayEvents: (recordingId: string) => Promise<ReplayEvent[]>;
 }) {
-  const { appearance, terminalTheme, terminalFontOverride, terminalAppearance, hostFontFamily, showError, loadReplayRecording } = options;
+  const { appearance, terminalTheme, terminalFontOverride, terminalAppearance, hostFontFamily, showError, loadReplayEvents } = options;
 
-const replayState = ref<ReplayState | null>(null);
+const replayState = ref<{ summary: RecordingSummary; events: ReplayEvent[] } | null>(null);
 const replayPlaying = ref(false);
 const replaySpeed = ref(1);
 const replayPlayheadMs = ref(0);
@@ -65,17 +47,10 @@ const replayEpoch = createRequestEpoch();
 async function openReplay(item: RecordingSummary) {
   const epoch = replayEpoch.next();
   try {
-    const result = await loadReplayRecording(item.recordingId);
+    const events = await loadReplayEvents(item.recordingId);
     if (!replayEpoch.isCurrent(epoch)) return;
     closeReplay();
-    const events = result.events;
-    replayState.value = replayStateWithMotion({
-      summary: item,
-      events,
-      motion: result.motion,
-      pointer: null,
-      cursor: null,
-    }, 0);
+    replayState.value = { summary: item, events };
     replayTimeline = buildTimeline(events, 1);
     replayWriteIndex = 0;
     replayPlayheadMs.value = 0;
@@ -138,7 +113,6 @@ function replayFrame() {
   if (!state || !replayPlaying.value) return;
   const elapsed = (performance.now() - replayStartWall) * replaySpeed.value;
   replayPlayheadMs.value = Math.min(replayDurationMs.value, replayStartPlayhead + elapsed);
-  replayState.value = replayStateWithMotion(state, replayPlayheadMs.value);
   const target = eventIndexAtTime(replayTimeline, replayPlayheadMs.value);
   while (replayWriteIndex < target) {
     replayTerminal?.write(state.events[replayWriteIndex]!.data);
@@ -174,8 +148,7 @@ watch(replaySpeed, () => {
 
 function onReplaySeek(event: Event) {
   const value = Number((event.target as HTMLInputElement).value);
-  const state = replayState.value;
-  if (!Number.isFinite(value) || !state) return;
+  if (!Number.isFinite(value) || !replayState.value) return;
   cancelAnimationFrame(replayRaf);
   replayPlaying.value = false;
   replayPlayheadMs.value = value;
@@ -184,9 +157,8 @@ function onReplaySeek(event: Event) {
   replayWriteIndex = eventIndexAtTime(replayTimeline, value);
   replayTerminal?.reset();
   for (let index = 0; index < replayWriteIndex; index += 1) {
-    replayTerminal?.write(state.events[index]!.data);
+    replayTerminal?.write(replayState.value.events[index]!.data);
   }
-  replayState.value = replayStateWithMotion(state, value);
 }
 
 /** 卸载清理：取消 rAF 并释放回放终端（调用方负责在统一的 onBeforeUnmount

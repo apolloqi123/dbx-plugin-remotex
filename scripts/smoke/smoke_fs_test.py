@@ -1655,10 +1655,6 @@ def main() -> None:
             try:
                 client.send_binary(f"ssh/terminal/in/{session_id}", struct.pack(">Q", 910) + f"echo {marker}\r".encode())
                 time.sleep(2.0)
-                pointer_event = {"kind": "pointer", "x": 0.42, "y": 0.31, "pressed": False, "cols": 100, "rows": 24}
-                cursor_event = {"kind": "cursor", "col": 18, "row": 7, "cols": 100, "rows": 24}
-                req("ssh/recording/event", {"sessionId": session_id, "data": pointer_event})
-                req("ssh/recording/event", {"sessionId": session_id, "data": cursor_event})
             finally:
                 summary = req("ssh/recording/stop", {"sessionId": session_id})
             if summary.get("recordingId") != recording_id:
@@ -1670,9 +1666,6 @@ def main() -> None:
             blob = json.dumps(page.get("events", []), ensure_ascii=False)
             if marker not in blob:
                 raise AssertionError(f"marker {marker} not captured in recording ({page.get('total')} events)")
-            event_types = [event.get("type") for event in page.get("events", [])]
-            if event_types.count("x") != 2 or "o" not in event_types:
-                raise AssertionError(f"ssh x events or output marker missing: {event_types}")
             if page.get("hasMore"):
                 raise AssertionError("unexpected hasMore with limit 500 and cap below page size")
             req("ssh/recording/delete", {"recordingId": recording_id})
@@ -1705,10 +1698,6 @@ def main() -> None:
                 client.send_binary(f"local/terminal/in/{local_id}",
                                    struct.pack(">Q", 1) + f"echo {marker}\r".encode())
                 time.sleep(2.0)
-                pointer_event = {"kind": "pointer", "x": 0.42, "y": 0.31, "pressed": False, "cols": 100, "rows": 24}
-                cursor_event = {"kind": "cursor", "col": 18, "row": 7, "cols": 100, "rows": 24}
-                req("local/recording/event", {"sessionId": local_id, "data": pointer_event})
-                req("local/recording/event", {"sessionId": local_id, "data": cursor_event})
             finally:
                 summary = req("local/recording/stop", {"sessionId": local_id})
             if summary.get("recordingId") != recording_id:
@@ -1730,9 +1719,6 @@ def main() -> None:
             blob = json.dumps(page.get("events", []), ensure_ascii=False)
             if marker not in blob:
                 raise AssertionError(f"marker {marker} not captured ({page.get('total')} events)")
-            event_types = [event.get("type") for event in page.get("events", [])]
-            if event_types.count("x") != 2 or "o" not in event_types:
-                raise AssertionError(f"local x events or output marker missing: {event_types}")
             req("ssh/recording/delete", {"recordingId": recording_id})
             print(f"    local shell recorded {summary.get('events')} events, captured {marker}, deleted")
             req("local/session/close", {"sessionId": local_id})

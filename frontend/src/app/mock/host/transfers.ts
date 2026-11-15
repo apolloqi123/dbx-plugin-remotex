@@ -50,8 +50,6 @@ const demoLiveTransfers = () =>
 const RECORDING_FIXTURE_EVENTS = [
   { time: 0, type: "o", data: "user@server:~$ ./deploy.sh --env=production\r\n" },
   { time: 1.2, type: "o", data: "[1/4] building image …\r\n" },
-  { time: 2.0, type: "x", data: { kind: "pointer", x: 0.42, y: 0.31, pressed: false, cols: 120, rows: 32 } },
-  { time: 2.1, type: "x", data: { kind: "cursor", col: 18, row: 7, cols: 120, rows: 32 } },
   { time: 4.5, type: "o", data: "[2/4] pushing registry.demo.internal/app:1.4.2\r\n" },
   { time: 9.8, type: "o", data: "[3/4] rolling update 3/3 replicas ✓\r\n" },
   { time: 15.4, type: "o", data: "[4/4] health check passed (200 OK)\r\n" },
@@ -125,11 +123,6 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
   }
   if (method === "local/recording/stop") {
     return { ...RECORDING_FIXTURE_SUMMARY, host: "local", recordingId: "visual-local-recording-1" };
-  }
-  if (method === "ssh/recording/event" || method === "local/recording/event") {
-    // Bounded pointer/caret metadata is fire-and-forget in the workbench;
-    // the visual fixture has no active recorder to mutate.
-    return { success: true };
   }
   if (method === "sftp/transfer/history") {
     // ?err=transferHistory 模拟历史查询失败，供面板 loadFailed+重试态走查。

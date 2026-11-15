@@ -48,7 +48,7 @@ export function installWorkbenchShell(deps: Deps) {
   terminalFontOverride, terminalInputQueue, terminalMenuOpen, terminalState, terminalTheme, transferHistoryClearOpen,
   transferHistoryMenu, transferPanelOpen, updateTransfer, uploadAckWaiters, uploadDuplicatePrompt, vncDialogOpen,
   vncError, receiveVncClipboard, vncSession, vncState, vncSurface, watchModifiedQueue,
-  pasteVncClipboard, workbenchId, terminal, terminalHost,
+  pasteVncClipboard, workbenchId,
   } = deps;
 
   // Remote-desktop file transfer (RDP/VNC toolbar): the controller owns the
@@ -63,11 +63,6 @@ export function installWorkbenchShell(deps: Deps) {
     initialUsername: () => connection.value.username || "",
   });
   const remoteFileTransferOpen = ref(false);
-  /** 回放指针/光标叠层开关：默认开启，旧录制无轨道时静默不显示。 */
-  const replayMotionEnabled = ref(true);
-  function toggleReplayMotion() {
-    replayMotionEnabled.value = !replayMotionEnabled.value;
-  }
   // VNC file copy: RFB only carries text, so the remote X11 file list is read
   // through the transfer session and downloaded onto the Mac clipboard.
   const vncRemoteClipboard = useVncRemoteClipboard({
@@ -255,7 +250,6 @@ export function installWorkbenchShell(deps: Deps) {
       REPLAY_EVENT_CAP,
       replayDurationMs,
       loadReplayEvents,
-      loadReplayRecording,
       openReplay,
       closeReplay,
       stopReplayLoop,
@@ -270,7 +264,6 @@ export function installWorkbenchShell(deps: Deps) {
   } = useRecording({
     t, showNotice, showError, recordingTarget, appearance, terminalTheme, openTransferTarget, revealTransferTarget,
     terminalFontOverride, terminalAppearance,
-    terminalHost, terminal: () => terminal.value,
     hostFontFamily: () => hostTerminalFontFamily(appearance.value),
     loadDownloadDir, loadDownloadUseDefaultDir, askDownloadTarget, applyChosenDirAsDefault, resolveDownloadConflictFor,
     probeLocalCapabilities, saveHostFile,
@@ -571,10 +564,10 @@ export function installWorkbenchShell(deps: Deps) {
     replayExporting, replayHost, recordCountdown, recordingStartedAt, recordingElapsedSec, beginRecordCountdown, cancelRecordCountdown, startRecordingClock,
     stopRecordingClock, startRecordingNow, toggleRecording, loadRecordings, refreshRecordings, toggleRecordings, revealRecording, exportRecordingTranscript, recordingsQuery,
     recordingHits, recordingSearchBusy, filteredRecordings, runRecordingSearch, clearRecordingsSearch, deleteRecording, confirmRecordingDelete, recordingClearAllOpen,
-    recordingClearAllSubmitting, confirmRecordingClearAll, REPLAY_EVENT_CAP, replayDurationMs, loadReplayEvents, loadReplayRecording, openReplay, closeReplay, stopReplayLoop,
+    recordingClearAllSubmitting, confirmRecordingClearAll, REPLAY_EVENT_CAP, replayDurationMs, loadReplayEvents, openReplay, closeReplay, stopReplayLoop,
     replayFrame, toggleReplayPlay, onReplaySeek, exportRecordingGif, exportReplayGif, exportRecordingFromList, formatDuration, formatRecordedAt,
     bindReplayHost, handlePluginEvent, handleEvent, metricsOpen, processesOpen, processRows, processLoading, processSortKey,
-    remoteFileTransfer, remoteFileTransferOpen, replayMotionEnabled, toggleReplayMotion, openRemoteFileTransfer, pasteVncWithFileClipboard, probeVncRemoteClipboard,
+    remoteFileTransfer, remoteFileTransferOpen, openRemoteFileTransfer, pasteVncWithFileClipboard, probeVncRemoteClipboard,
     metrics, metricsLoading, metricsError, metricSamples, recordMetricSamples, metricsRxSparkline, metricsTxSparkline, metricsCpuSparkline,
     metricsMemSparkline, visibleDiskMounts, visibleNetworkInterfaces, metricsDistroBadge, refreshMetrics, openMetrics, closeMetrics, backfillMetricsHistory,
     toggleProcessPanel, refreshProcessList, sortedProcessRows, PROCESS_VISIBLE_LIMIT, visibleProcessRows, killProcessRow, metricsView, setMetricsProcessSort,

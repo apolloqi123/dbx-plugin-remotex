@@ -84,18 +84,11 @@ pub(super) fn excerpt_around(text: &str, needle_lower: &str, max_chars: usize) -
     out
 }
 
-/// Builds a single-line flattened text of one output event's `eventdata`:
-/// ANSI/OSC control sequences are stripped (searching must not miss "ERROR"
-/// hidden behind a color escape) and line breaks become spaces so each hit
-/// renders as one excerpt line. Non-output (`x`/`m`) events and legacy lines
-/// without `eventtype` are handled as documented: legacy stays output, custom
-/// metadata never becomes searchable text.
+/// Builds a single-line flattened text of one event's `eventdata`: ANSI/OSC
+/// control sequences are stripped (searching must not miss "ERROR" hidden
+/// behind a color escape) and line breaks become spaces so each hit renders
+/// as one excerpt line.
 pub(super) fn flatten_event_text(event: &Value) -> String {
-    if let Some(event_type) = event.get("eventtype").and_then(Value::as_str) {
-        if event_type != "o" {
-            return String::new();
-        }
-    }
     let raw = event.get("eventdata").and_then(Value::as_str).unwrap_or("");
     let mut out = String::with_capacity(raw.len());
     let mut chars = raw.chars().peekable();

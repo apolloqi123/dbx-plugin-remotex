@@ -690,14 +690,4 @@ describe("mockDbxHost fixture", () => {
     const listed = await plugin.invoke("docker/list", {}) as { available: boolean };
     expect(listed.available).toBe(true);
   });
-
-  it("recording fixture exposes x metadata without making it searchable output", async () => {
-    const plugin = await loadMock("");
-    const page = (await plugin.invoke("ssh/recording/get", { recordingId: "visual-recording-1", offset: 0, limit: 500 })) as { events: Array<Record<string, unknown>> };
-    const motion = page.events.filter((event) => event.type === "x");
-    expect(motion).toHaveLength(2);
-    expect(motion.map((event) => (event.data as Record<string, unknown>).kind)).toEqual(["pointer", "cursor"]);
-    const search = (await plugin.invoke("ssh/recording/search", { query: "pointer" })) as { recordings: Array<{ hits?: unknown[] }> };
-    expect(search.recordings).toHaveLength(0);
-  });
 });

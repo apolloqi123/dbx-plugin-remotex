@@ -52,7 +52,7 @@ const {
   reconnectNow, reconnectPending, reconnectRdpSession, reconnectVncSession, onRdpSurfaceResize, recordCountdown, recordingActive,
   recordingClearAllOpen, recordingClearAllSubmitting, recordingElapsedSec, recordingExportingId, recordingHits, recordingSearchBusy, recordingTarget,
   recordings, recordingsLoading, recordingsOpen, recordingsQuery, refreshRecordings, replayDurationMs,
-  replayExporting, replayPlayheadMs, replayPlaying, replaySpeed, replayState, replayMotionEnabled, toggleReplayMotion,
+  replayExporting, replayPlayheadMs, replayPlaying, replaySpeed, replayState,
   restartLocalTerminal, revealRecording, runTerminalSearch, searchMatchState, searchOpen,
   searchResultCount, searchResultIndex, searchSeedOptions, searchSeedQuery, selectHistoryEntry,
   sendRdpClipboard, pasteRdpClipboard, sendRdpInput, sendVncClipboard, pasteVncClipboard, pasteVncWithFileClipboard, probeVncRemoteClipboard, sendVncInput, onVncSurfaceResize, serialError,
@@ -374,7 +374,6 @@ const {
           :replay-playhead-ms="replayPlayheadMs"
           :replay-duration-ms="replayDurationMs"
           :replay-exporting="replayExporting"
-          :replay-motion-enabled="replayMotionEnabled"
           :format-bytes="formatBytes"
           :format-duration="formatDuration"
           :t="t"
@@ -387,7 +386,6 @@ const {
           @update:replay-speed="replaySpeed = $event"
           @replay-seek="onReplaySeek"
           @replay-export-gif="exportReplayGif"
-          @replay-motion-toggle="toggleReplayMotion"
           @bind-replay-host="bindReplayHost"
         />
         </template>

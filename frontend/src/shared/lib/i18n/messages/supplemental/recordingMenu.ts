@@ -14,7 +14,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "Recordings stay on this machine; replay, export a GIF or transcript.",
     "recordingsRefresh": "Refresh recordings",
     "recordingsStop": "Stop recording",
-    "recordingsCapturingHint": "Pointer and caret positions are captured while recording.",
     "recordingsKeyboardHint": "Enter opens replay · Esc closes",
   },
   "zh-CN": {
@@ -31,7 +30,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "录制文件保存在本机，可回放、导出 GIF 或转录文本。",
     "recordingsRefresh": "刷新录制",
     "recordingsStop": "停止录制",
-    "recordingsCapturingHint": "录制期间会采集指针与光标位置。",
     "recordingsKeyboardHint": "Enter 打开回放 · Esc 关闭",
   },
   "zh-TW": {
@@ -48,7 +46,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "錄製檔保存在本機，可回放、匯出 GIF 或轉錄文字。",
     "recordingsRefresh": "重新整理錄製",
     "recordingsStop": "停止錄製",
-    "recordingsCapturingHint": "錄製期間會擷取指標與游標位置。",
     "recordingsKeyboardHint": "Enter 開啟回放 · Esc 關閉",
   },
   es: {
@@ -65,7 +62,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "Las grabaciones se guardan en este equipo; puedes reproducirlas o exportar GIF/transcripción.",
     "recordingsRefresh": "Actualizar grabaciones",
     "recordingsStop": "Detener grabación",
-    "recordingsCapturingHint": "Durante la grabación se capturan el puntero y el cursor.",
     "recordingsKeyboardHint": "Enter abre la reproducción · Esc cierra",
   },
   it: {
@@ -82,7 +78,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "Le registrazioni restano su questa macchina; puoi riprodurle o esportare GIF/trascrizione.",
     "recordingsRefresh": "Aggiorna registrazioni",
     "recordingsStop": "Interrompi registrazione",
-    "recordingsCapturingHint": "Durante la registrazione vengono acquisiti puntatore e cursore.",
     "recordingsKeyboardHint": "Enter apre la riproduzione · Esc chiude",
   },
   ja: {
@@ -99,7 +94,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "録画はこのマシンに保存されます。再生、GIF、文字起こしの書き出しが可能です。",
     "recordingsRefresh": "録画を更新",
     "recordingsStop": "録画を停止",
-    "recordingsCapturingHint": "録画中はポインターとカーソル位置を記録します。",
     "recordingsKeyboardHint": "Enter で回放 · Esc で閉じる",
   },
   "pt-BR": {
@@ -116,7 +110,6 @@ const recordingMenuMessages: Record<string, Record<string, string>> = {
     "recordingsFooterHint": "As gravações ficam nesta máquina; reproduza ou exporte GIF/transcrição.",
     "recordingsRefresh": "Atualizar gravações",
     "recordingsStop": "Parar gravação",
-    "recordingsCapturingHint": "Durante a gravação, o ponteiro e o cursor são capturados.",
     "recordingsKeyboardHint": "Enter abre a reprodução · Esc fecha",
   },
 };

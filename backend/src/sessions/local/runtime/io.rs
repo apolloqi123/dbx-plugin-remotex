@@ -86,26 +86,6 @@ impl LocalTerminalRuntime {
         recorder.finish()
     }
 
-    /// `local/recording/event`: bounded structured `x` event ingress for a
-    /// RemoteX local shell. Mirrors the SSH path; a missing / wrong-kind
-    /// session reports "no active recording" and never creates a file.
-    pub async fn recording_event(&self, session_id: &str, data: &Value) -> Result<Value, String> {
-        let session = self
-            .session(session_id)
-            .await
-            .map_err(|_| "This session has no active recording".to_string())?;
-        let mut slot = session
-            .recorder
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        let Some(recorder) = slot.as_mut() else {
-            return Err("This session has no active recording".to_string());
-        };
-        let canonical = session_recording::validate_metadata_event(data)?;
-        recorder.observe_metadata(&canonical)?;
-        Ok(json!({ "success": true }))
-    }
-
     /// Keyboard input from the SDK's blocking binary-handler thread. A full
     /// queue is retried briefly (bounded) and then the chunk is dropped so one
     /// flooded session cannot park a shared SDK worker, and a transient drop

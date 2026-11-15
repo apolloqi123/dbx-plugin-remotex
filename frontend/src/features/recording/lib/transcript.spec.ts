@@ -77,21 +77,8 @@ describe("transcriptFileName", () => {
   });
 });
 
-describe("buildTranscript metadata safety", () => {
-  const pointer = { kind: "pointer", x: 0.4, y: 0.6, pressed: false, cols: 100, rows: 26 } as const;
-
-  it("keeps only o output rows and skips object metadata", () => {
-    const events: TranscriptEvent[] = [
-      { time: 0, type: "o", data: "hello\n" },
-      { time: 0.5, type: "x", data: pointer },
-      { time: 1, type: "o", data: "world\n" },
-      { time: 1.5, type: "m", data: "" },
-      { time: 2, type: "o", data: { nope: true } as unknown as string },
-    ];
-    expect(buildTranscript(events)).toBe("hello\nworld\n");
-  });
-
-  it("treats legacy rows without an event type as output", () => {
+describe("buildTranscript legacy rows", () => {
+  it("treats rows without an event type as output", () => {
     expect(buildTranscript([{ time: 0, data: "legacy\n" }])).toBe("legacy\n");
   });
 });

@@ -61,13 +61,6 @@ impl Plugin {
                 self.runtime.block_on(self.local.recording_stop(session_id))
             }
 
-            "local/recording/event" => {
-                let session_id = required_string(&params, "sessionId")?;
-                let data = params.get("data").cloned().unwrap_or(json!({}));
-                self.runtime
-                    .block_on(self.local.recording_event(session_id, &data))
-            }
-
             "local/session/list" => Ok(self.runtime.block_on(self.local.list())),
 
             // 本地终端 shell 发现：工作台选择器用（多平台 shell 设置）。

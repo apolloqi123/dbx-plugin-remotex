@@ -7,7 +7,6 @@ import {
   mergeEventPages,
   replayDuration,
   replaySpan,
-  splitReplayPages,
   type ReplayEventPage,
 } from "./replayScheduler";
 
@@ -35,39 +34,6 @@ describe("replay event pages", () => {
       { time: 0.5, data: "world" },
       { time: 1.2, data: "!" },
     ]);
-  });
-
-  it("mergeEventPages narrows output data to strings", () => {
-    const events = mergeEventPages([{
-      events: [
-        { time: 0, type: "o", data: "ok" },
-        { time: 1, type: "o", data: { kind: "pointer" } as unknown as string },
-      ],
-      total: 2,
-      hasMore: false,
-    }]);
-    expect(events).toEqual([{ time: 0, data: "ok" }]);
-  });
-
-  it("splitReplayPages keeps x metadata out of terminal events", () => {
-    const pages: ReplayEventPage[] = [{
-      events: [
-        { time: 0, type: "o", data: "hello" },
-        { time: 0.2, type: "x", data: { kind: "pointer", x: 0.42, y: 0.31, pressed: false, cols: 120, rows: 32 } },
-        { time: 0.3, type: "i", data: "ignored" },
-        { time: 0.4, type: "x", data: { kind: "cursor", col: 18, row: 7, cols: 120, rows: 32 } },
-        { time: 0.5, type: "x", data: { kind: "unknown" } as never },
-        { time: 0.6, type: "o", data: { nope: true } as unknown as string },
-        { time: 9, type: "m", data: "" },
-      ],
-      total: 7,
-      hasMore: false,
-    }];
-    const result = splitReplayPages(pages);
-    expect(result.events).toEqual([{ time: 0, data: "hello" }]);
-    expect(result.motion).toHaveLength(2);
-    expect(result.motion[0]?.data.kind).toBe("pointer");
-    expect(result.motion[1]?.data.kind).toBe("cursor");
   });
 
   it("measures duration from the last event", () => {
@@ -119,21 +85,5 @@ describe("gif frame plan", () => {
     expect(gifFramePlan([0, 100, 200], 500, 10)).toEqual([3]);
     expect(gifFramePlan([0, 100], 0, 10)).toEqual([]);
     expect(gifFramePlan([], 100, 10)).toEqual([0]);
-  });
-
-  it("ignores x metadata rows in the GIF frame plan", () => {
-    const pages: ReplayEventPage[] = [{
-      events: [
-        { time: 0, type: "o", data: "a" },
-        { time: 0.5, type: "x", data: { kind: "pointer", x: 0.4, y: 0.6, pressed: false, cols: 100, rows: 26 } },
-        { time: 1, type: "o", data: "b" },
-        { time: 2, type: "o", data: "c" },
-      ],
-      total: 4,
-      hasMore: false,
-    }];
-    const { events } = splitReplayPages(pages);
-    expect(gifFramePlan(buildTimeline(events, 1), 1000, 10)).toEqual([2, 3]);
-    expect(events.map((event) => event.data)).toEqual(["a", "b", "c"]);
   });
 });
