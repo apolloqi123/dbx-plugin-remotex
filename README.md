@@ -2,10 +2,29 @@
 
 [English](README.en.md) · [文档索引](docs/README.md)
 
-RemoteX 是 DBX 的远程连接工作台。覆盖 SSH、Telnet、VNC、RDP、串口与本机
-终端，并把终端、SFTP、端口转发、容器、监控、录制和 MCP 自动化放在同一个工作区里。
-它关心的不是“连上去”这一秒，而是登录之后的整个操作过程：少切窗口、少复制凭据、
+RemoteX 是 DBX 的远程连接工作台。覆盖 SSH、Telnet、VNC、RDP、串口与本机终端，可使用DBX的AI助手对远程主机进行操作，并把终端、SFTP、端口转发、容器、监控、录制和 MCP 自动化放在同一个工作区里。  
+它关心的不是“连上去”这一秒，而是登录之后的整个操作过程：少切窗口、少复制凭据、  
 危险操作有边界、做过的事能回看。
+
+本项目基于[https://github.com/jinpy666/dbx-plugin-ssh.git](https://github.com/jinpy666/dbx-plugin-ssh.git)项目进行开发，向该项目作者致敬。
+
+
+
+## 截图
+
+
+| 服务器指标                                    | Docker 工作台                                   |
+| ---------------------------------------- | -------------------------------------------- |
+| ![服务器指标](docs/media/remotex-metrics.png) | ![Docker 工作台](docs/media/remotex-docker.png) |
+
+
+
+| AI助手                                                | 主机监控                                           |
+| --------------------------------------------------- | ---------------------------------------------- |
+| ![终端与实时指标](docs/media/remotex-terminal-metrics.png) | ![AI 终端与工具审批](docs/media/remotex-ai-agent.png) |
+
+
+
 
 ## 能做什么
 
@@ -122,17 +141,6 @@ scripts/build.sh
 | [MCP 参考](docs/guides/MCP.zh-CN.md)            | 工具语义、权限档、错误与长任务      |
 | [开发指南](docs/development.zh-CN.md)             | 环境、测试、打包与发布检查        |
 | [故障排查](docs/troubleshooting.zh-CN.md)         | 连接、传输、终端、构建的常见问题     |
-
-
-## 截图
-
-| 服务器指标 | Docker 工作台 |
-| --- | --- |
-| ![服务器指标](docs/media/remotex-metrics.png) | ![Docker 工作台](docs/media/remotex-docker.png) |
-
-| 终端与实时指标 | AI 终端与工具审批 |
-| --- | --- |
-| ![终端与实时指标](docs/media/remotex-terminal-metrics.png) | ![AI 终端与工具审批](docs/media/remotex-ai-agent.png) |
 
 
 ## 许可
