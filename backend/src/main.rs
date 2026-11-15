@@ -10,6 +10,9 @@ mod sessions;
 #[cfg(test)]
 mod structure_tests;
 
+#[cfg(test)]
+mod test_env;
+
 fn main() -> std::io::Result<()> {
     app::run()
 }

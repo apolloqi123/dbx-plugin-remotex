@@ -2,10 +2,6 @@ use super::*;
 
 use std::path::{Path, PathBuf};
 
-/// Serialises the tests that redirect HOME so they cannot race each
-/// other or the read-only HOME accesses elsewhere in the crate.
-static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Restores the home environment variable on drop, even on panic.
 struct HomeEnvGuard {
     previous: Option<std::ffi::OsString>,
@@ -79,7 +75,7 @@ fn generate_key(path: &Path, passphrase: &str) -> bool {
 
 #[test]
 fn discover_reports_generated_keys() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let ssh_dir = home.path().join(".ssh");
     std::fs::create_dir_all(&ssh_dir).unwrap();
@@ -173,7 +169,7 @@ fn discover_reports_generated_keys() {
 
 #[test]
 fn discover_tolerates_missing_home_ssh() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let _guard_env = HomeEnvGuard::set(home.path());
     assert!(discover().unwrap().is_empty());
@@ -189,7 +185,7 @@ fn discover_tolerates_missing_home_ssh() {
 /// key material never travels in the options.
 #[test]
 fn discover_options_shape_only_metadata() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let ssh_dir = home.path().join(".ssh");
     std::fs::create_dir_all(&ssh_dir).unwrap();
@@ -230,7 +226,7 @@ fn discover_options_shape_only_metadata() {
 #[cfg(unix)]
 #[test]
 fn discover_skips_unreadable_files() {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let ssh_dir = home.path().join(".ssh");
     std::fs::create_dir_all(&ssh_dir).unwrap();

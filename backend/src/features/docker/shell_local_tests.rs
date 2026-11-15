@@ -35,7 +35,12 @@ async fn drive_local_pty_forwards_output_and_exit_code() {
 
     let program = PathBuf::from("/bin/sh");
     let args = vec!["-c".to_string(), "printf ready; exit 3".to_string()];
-    let pty = spawn_local_program(&program, &args, &[], 80, 24).expect("spawn");
+    // portable-pty starts the child in the process HOME directory, so the
+    // spawn must not observe another test's temporary HOME (see test_env).
+    let pty = {
+        let _env = crate::test_env::lock_env();
+        spawn_local_program(&program, &args, &[], 80, 24).expect("spawn")
+    };
     let code = drive_local_pty(pty, sink, input, resize, cancel)
         .await
         .expect("drive");
@@ -60,7 +65,10 @@ async fn cancel_stops_the_local_pty() {
 
     let program = PathBuf::from("/bin/sh");
     let args = vec!["-c".to_string(), "sleep 30".to_string()];
-    let pty = spawn_local_program(&program, &args, &[], 80, 24).expect("spawn");
+    let pty = {
+        let _env = crate::test_env::lock_env();
+        spawn_local_program(&program, &args, &[], 80, 24).expect("spawn")
+    };
     let drive = tokio::spawn(drive_local_pty(pty, sink, input, resize, cancel));
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     cancel_tx.send(true).expect("cancel");

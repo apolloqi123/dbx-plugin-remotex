@@ -51,6 +51,14 @@ fn enable_file_clipboard(stage: &FileClipboardStage) {
     stage.set_ready();
 }
 
+/// Small remote copies auto-download only where the host pasteboard accepts
+/// file URLs (macOS, Windows, or Linux with xclip/wl-copy). Headless Linux CI
+/// has no clipboard backend, so `on_remote_file_list` stays metadata-only and
+/// tests that follow the automatic download stream have nothing to assert.
+fn require_auto_pasteboard() -> bool {
+    crate::platform::pasteboard::supported()
+}
+
 fn test_emitter() -> (PluginEmitter, SharedSink) {
     let sink = SharedSink::default();
     let output: Arc<StdMutex<Box<dyn Write + Send>>> =
@@ -381,6 +389,9 @@ fn remote_file_list_caps_are_enforced() {
 
 #[test]
 fn remote_file_list_downloads_and_zips_relative_paths() {
+    if !require_auto_pasteboard() {
+        return;
+    }
     use base64::Engine as _;
 
     let (emitter, sink) = test_emitter();
@@ -543,6 +554,9 @@ fn linux_nested_wire_names_keep_their_folder_tree() {
 
 #[test]
 fn malformed_file_contents_responses_do_not_panic() {
+    if !require_auto_pasteboard() {
+        return;
+    }
     let (emitter, sink) = test_emitter();
     let stage = FileClipboardStage::new("incoming-session".to_string());
     enable_file_clipboard(&stage);
@@ -585,6 +599,9 @@ fn malformed_file_contents_responses_do_not_panic() {
 
 #[test]
 fn failed_download_can_be_retried_without_a_stale_directory() {
+    if !require_auto_pasteboard() {
+        return;
+    }
     let (emitter, _sink) = test_emitter();
     let stage = FileClipboardStage::new("retry-session".to_string());
     enable_file_clipboard(&stage);
@@ -622,6 +639,9 @@ fn failed_download_can_be_retried_without_a_stale_directory() {
 
 #[test]
 fn remote_error_and_oversized_range_responses_fail_safely() {
+    if !require_auto_pasteboard() {
+        return;
+    }
     let (emitter, _sink) = test_emitter();
     let stage = FileClipboardStage::new("incoming-session".to_string());
     enable_file_clipboard(&stage);

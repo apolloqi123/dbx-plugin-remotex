@@ -224,6 +224,7 @@ impl Drop for HomeIsolationGuard {
 
 #[test]
 fn check_learn_check_closes_the_trust_loop() {
+    let _env = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let _guard = HomeIsolationGuard::new(home.path());
     let directory = tempfile::tempdir().unwrap();
@@ -254,6 +255,7 @@ fn check_learn_check_closes_the_trust_loop() {
 
 #[test]
 fn learned_key_mismatch_still_rejects_with_changed_key() {
+    let _env = crate::test_env::lock_env();
     let home = tempfile::tempdir().unwrap();
     let _guard = HomeIsolationGuard::new(home.path());
     let directory = tempfile::tempdir().unwrap();
