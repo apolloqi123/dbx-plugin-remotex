@@ -74,8 +74,5 @@ fn stream_aborts_settle_before_the_kill_backstop() {
     // The POSIX logs supervisor cleans up its watchers in a HUP/TERM trap;
     // KILL cannot be caught, so a back-to-back KILL can orphan them. Pin the
     // scheduling window (see `abort_stream_channel`).
-    assert_eq!(
-        super::run::STREAM_SIGNAL_SETTLE,
-        Duration::from_millis(100)
-    );
+    assert_eq!(super::run::STREAM_SIGNAL_SETTLE, Duration::from_millis(100));
 }

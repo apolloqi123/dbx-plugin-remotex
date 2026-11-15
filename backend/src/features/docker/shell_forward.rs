@@ -79,11 +79,8 @@ impl DockerTerminals {
     }
 
     fn started(&self, terminal_id: &str) -> Option<Instant> {
-        self.lock()
-            .get(terminal_id)
-            .map(|entry| entry.started)
+        self.lock().get(terminal_id).map(|entry| entry.started)
     }
-
 }
 
 /// Waits out a runner after the pump ends, bounded by `grace`. A runner that
@@ -137,7 +134,8 @@ impl DockerTerminals {
         owner: &str,
         session: &str,
     ) -> Result<(), String> {
-        self.reserve_for_test(terminal_id, owner, session).map(|_| ())
+        self.reserve_for_test(terminal_id, owner, session)
+            .map(|_| ())
     }
 
     /// Starts a runner that emits one chunk and then ignores cancellation, so

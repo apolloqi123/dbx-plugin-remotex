@@ -111,7 +111,11 @@ fn first_positional(args: &[String]) -> Option<usize> {
         let arg = args[index].as_str();
         if arg.starts_with('-') {
             let takes_value = COMMAND_VALUE_FLAGS.contains(&arg);
-            index += if takes_value && !arg.contains('=') { 2 } else { 1 };
+            index += if takes_value && !arg.contains('=') {
+                2
+            } else {
+                1
+            };
             continue;
         }
         return Some(index);

@@ -46,7 +46,8 @@ pub const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 /// manifest provides one password field per slot bound to `connection_secrets`.
 pub const SECRET_SLOT_KEYS: &[&str] = &["trigger_answer_1", "trigger_answer_2"];
 /// Rolling match buffer ceiling (contract D2).
-pub(crate) const MAX_BUFFER_BYTES: usize = 8 * 1024;/// TOTP secret ceiling after base32 decode (RFC 4226 recommends ≥16 bytes;
+pub(crate) const MAX_BUFFER_BYTES: usize = 8 * 1024;
+/// TOTP secret ceiling after base32 decode (RFC 4226 recommends ≥16 bytes;
 /// 64 is a generous abuse cap).
 const MAX_TOTP_SECRET_BYTES: usize = 64;
 /// tssh (trzsz-ssh) `--enc-secret` obfuscation key, byte-for-byte identical to

@@ -180,7 +180,9 @@ pub(in crate::features::mcp) fn resolve_connection_in_bridge_list(
 }
 
 /// Renders registry candidates for the ambiguous-connectionName error.
-pub(in crate::features::mcp) fn render_connection_candidates(connections: &[&StoredConnection]) -> String {
+pub(in crate::features::mcp) fn render_connection_candidates(
+    connections: &[&StoredConnection],
+) -> String {
     connections
         .iter()
         .map(|connection| format!("{} (host {})", connection.id, connection.host))

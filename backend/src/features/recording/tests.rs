@@ -1,8 +1,7 @@
 use super::*;
 
 fn temp_dir() -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("dbx-session-recording-{}", uuid::Uuid::new_v4()));
+    let dir = std::env::temp_dir().join(format!("dbx-session-recording-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -238,8 +237,7 @@ fn cast_path_rejects_traversal() {
 fn flatten_event_text_strips_control_sequences() {
     // 颜色/OSC 控制序列剥掉后命中词才不会被转义符藏起来；换行/制表压成
     // 空格（摘录保持单行），CR 直接丢弃。
-    let event =
-        json!({ "eventdata": "\x1b[31mER\x1b[0mROR\x1b]0;title\x07: boom\r\nnext\tline" });
+    let event = json!({ "eventdata": "\x1b[31mER\x1b[0mROR\x1b]0;title\x07: boom\r\nnext\tline" });
     let flat = flatten_event_text(&event);
     assert_eq!(flat, "ERROR: boom next line");
     assert_eq!(flatten_event_text(&json!({ "eventdata": "" })), "");

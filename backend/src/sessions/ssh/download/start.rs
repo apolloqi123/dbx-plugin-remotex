@@ -431,32 +431,33 @@ impl SshRuntime {
                 }
             };
             downloads.insert(
-            task_id.clone(),
-            DownloadState {
-                session_id: session_id.to_string(),
-                remote_path,
-                file_name: file_name.clone(),
-                size,
-                next_offset: offset,
-                sink,
-                emit_chunks,
-                tree: None,
-                sudo_tmp: None,
-                latin1,
-                throttle,
-                progress_throttle: crate::features::transfer::progress::ProgressThrottle::default(),
-                compression,
-                ready: false,
-                serving_plain: false,
-                staged_plain: staged_plain.clone(),
-                gz_staging: gz_staging.clone(),
-                remote_temp: remote_temp.clone(),
-                final_dir,
-                overwrite: matches!(conflict, Some("overwrite")),
-                read_handle: Arc::new(AsyncMutex::new(None)),
-                raw_client: Arc::new(AsyncMutex::new(None)),
-            },
-        );
+                task_id.clone(),
+                DownloadState {
+                    session_id: session_id.to_string(),
+                    remote_path,
+                    file_name: file_name.clone(),
+                    size,
+                    next_offset: offset,
+                    sink,
+                    emit_chunks,
+                    tree: None,
+                    sudo_tmp: None,
+                    latin1,
+                    throttle,
+                    progress_throttle:
+                        crate::features::transfer::progress::ProgressThrottle::default(),
+                    compression,
+                    ready: false,
+                    serving_plain: false,
+                    staged_plain: staged_plain.clone(),
+                    gz_staging: gz_staging.clone(),
+                    remote_temp: remote_temp.clone(),
+                    final_dir,
+                    overwrite: matches!(conflict, Some("overwrite")),
+                    read_handle: Arc::new(AsyncMutex::new(None)),
+                    raw_client: Arc::new(AsyncMutex::new(None)),
+                },
+            );
         }
         if let Some((gz_path, staged_path, remote_path_for_prep)) = compressed_paths {
             // prep 注册 + 后台任务（远端 gzip → 拉取 → 解压 → ready）。

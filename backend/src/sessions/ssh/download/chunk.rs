@@ -26,7 +26,8 @@ impl SshRuntime {
             ));
         }
         let remaining = download.size.saturating_sub(offset);
-        let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
+        let requested =
+            remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
         let mut source = tokio::fs::File::open(staged)
             .await
             .map_err(|error| format!("Failed to open decompressed staging file: {error}"))?;
@@ -116,7 +117,8 @@ impl SshRuntime {
             ));
         }
         let remaining = download.size.saturating_sub(offset);
-        let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
+        let requested =
+            remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
         // 限速节奏（issue #66）：块耗时从读开始计量（含网络/磁盘），读毕
         // 由 limiter 补足差额等待。限速关闭时 Throttle::pace 是纯即时调用，
         // 热路径零开销。

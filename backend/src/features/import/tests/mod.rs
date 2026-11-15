@@ -1,8 +1,8 @@
 use super::*;
 
+mod apply;
 mod ssh_config;
 mod stream;
-mod apply;
 
 /// Builds an in-memory ZIP archive with the given entries.
 fn xshell_zip(entries: &[(&str, &str)]) -> Vec<u8> {

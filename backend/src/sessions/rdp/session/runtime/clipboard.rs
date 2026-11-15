@@ -16,7 +16,8 @@ impl RdpSessionRuntime {
         }
         // Finder file copies also expose their names as text. The sidecar owns
         // the native file advertisement; a text advert here would replace it.
-        if crate::platform::pasteboard::supported() && crate::platform::pasteboard::has_file_urls() {
+        if crate::platform::pasteboard::supported() && crate::platform::pasteboard::has_file_urls()
+        {
             log_rdp_debug(format!(
                 "rdp clipboard session={session_id} text advert skipped: macOS pasteboard holds files"
             ));

@@ -119,9 +119,16 @@ impl Plugin {
                 let mut params = params;
                 // A password saved by an earlier successful transfer wins over
                 // the desktop form's credentials.
-                if params.get("authentication").and_then(Value::as_str).unwrap_or("password")
+                if params
+                    .get("authentication")
+                    .and_then(Value::as_str)
+                    .unwrap_or("password")
                     == "password"
-                    && params.get("password").and_then(Value::as_str).unwrap_or("").is_empty()
+                    && params
+                        .get("password")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .is_empty()
                 {
                     if let (Some(host), Some(username)) = (
                         params.get("host").and_then(Value::as_str),
@@ -157,16 +164,16 @@ impl Plugin {
                     self.remote_files.cancel_session(&previous);
                     let _ = self.runtime.block_on(ssh.close_session(&previous));
                 }
-                let session_id = self
-                    .runtime
-                    .block_on(ssh.open_files_session(&connection, workbench_id, emitter))?;
+                let session_id = self.runtime.block_on(ssh.open_files_session(
+                    &connection,
+                    workbench_id,
+                    emitter,
+                ))?;
                 let home = match self.runtime.block_on(ssh.sftp_home(&session_id)) {
                     Ok(home) => home,
                     Err(error) => {
                         let _ = self.runtime.block_on(ssh.close_session(&session_id));
-                        return Err(format!(
-                            "SSH connected but SFTP is unavailable: {error}"
-                        ));
+                        return Err(format!("SSH connected but SFTP is unavailable: {error}"));
                     }
                 };
                 if connection.authentication.method_name() == "password"
@@ -191,8 +198,10 @@ impl Plugin {
             "filetransfer/ping" => {
                 let session_id = required_string(&params, "sessionId")?;
                 let tracked = self.remote_files.touch_session(session_id);
-                let alive =
-                    tracked && self.runtime.block_on(self.ssh.files_session_alive(session_id));
+                let alive = tracked
+                    && self
+                        .runtime
+                        .block_on(self.ssh.files_session_alive(session_id));
                 if !alive {
                     self.remote_files.cancel_session(session_id);
                     self.remote_files.untrack_session(session_id);
@@ -269,7 +278,9 @@ mod tests {
     fn transfer_connection_requires_host_and_user() {
         let creds = NonSshCredentials::new();
         assert!(transfer_connection(&json!({ "username": "dev" }), &creds, false).is_err());
-        assert!(transfer_connection(&json!({ "host": "h", "username": " " }), &creds, false).is_err());
+        assert!(
+            transfer_connection(&json!({ "host": "h", "username": " " }), &creds, false).is_err()
+        );
     }
 
     #[test]

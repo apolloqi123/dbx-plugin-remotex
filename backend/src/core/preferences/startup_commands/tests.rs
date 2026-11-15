@@ -132,8 +132,8 @@ fn sanitize_store_shapes_and_caps() {
     let many: Vec<Value> = (0..MAX_COMMANDS + 10)
         .map(|index| json!({ "command": format!("echo {index}") }))
         .collect();
-    let store = sanitize_store(&json!({ "conn": { "enabled": true, "commands": many } }))
-        .expect("store");
+    let store =
+        sanitize_store(&json!({ "conn": { "enabled": true, "commands": many } })).expect("store");
     assert_eq!(
         store["conn"]["commands"].as_array().unwrap().len(),
         MAX_COMMANDS

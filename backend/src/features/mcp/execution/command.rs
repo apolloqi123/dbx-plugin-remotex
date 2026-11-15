@@ -37,13 +37,7 @@ impl McpState {
                 let route = agent_terminal::routes_to_terminal(mode);
                 if route {
                     return self
-                        .ssh_exec_terminal_tool(
-                            name,
-                            command,
-                            connection_id,
-                            timeout_secs,
-                            emitter,
-                        )
+                        .ssh_exec_terminal_tool(name, command, connection_id, timeout_secs, emitter)
                         .await;
                 }
             }

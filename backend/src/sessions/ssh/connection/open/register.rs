@@ -108,7 +108,10 @@ impl SshRuntime {
             agent_exec_lock: Arc::new(AsyncMutex::new(())),
         });
         let session_id = Uuid::new_v4().to_string();
-        self.sessions.write().await.insert(session_id.clone(), entry);
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.clone(), entry);
         session_id
     }
 

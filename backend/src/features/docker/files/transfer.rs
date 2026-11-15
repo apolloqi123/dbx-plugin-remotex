@@ -139,16 +139,24 @@ mod tests {
     #[test]
     fn remote_commands_quote_staged_paths() {
         let engine = test_engine("docker", None);
-        let export =
-            export_command(&engine, "d4a7c9f1e2b3", "/tmp/a b", "/tmp/dbx-sshx.Ab12Cd/f")
-                .unwrap();
+        let export = export_command(
+            &engine,
+            "d4a7c9f1e2b3",
+            "/tmp/a b",
+            "/tmp/dbx-sshx.Ab12Cd/f",
+        )
+        .unwrap();
         assert_eq!(
             export,
             "docker cp 'd4a7c9f1e2b3:/tmp/a b' '/tmp/dbx-sshx.Ab12Cd/f'"
         );
-        let import =
-            import_command(&engine, "d4a7c9f1e2b3", "/tmp/dbx-sshx.Ab12Cd/f", "/srv/it's")
-                .unwrap();
+        let import = import_command(
+            &engine,
+            "d4a7c9f1e2b3",
+            "/tmp/dbx-sshx.Ab12Cd/f",
+            "/srv/it's",
+        )
+        .unwrap();
         assert_eq!(
             import,
             "docker cp '/tmp/dbx-sshx.Ab12Cd/f' 'd4a7c9f1e2b3:/srv/it'\\''s'"

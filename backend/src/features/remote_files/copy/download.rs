@@ -141,10 +141,7 @@ pub(super) async fn download_inner(
                 return Err(error);
             }
         };
-        failed += done
-            .get("failedCount")
-            .and_then(Value::as_u64)
-            .unwrap_or(0) as usize;
+        failed += done.get("failedCount").and_then(Value::as_u64).unwrap_or(0) as usize;
         if let Some(local) = done.get("localPath").and_then(Value::as_str) {
             downloaded.push(local.to_string());
         }

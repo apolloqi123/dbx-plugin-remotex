@@ -96,7 +96,10 @@ mod tests {
     #[test]
     fn ignores_plain_text_and_duplicates() {
         assert!(parse_uri_list("/etc/hosts").is_empty());
-        assert_eq!(parse_uri_list("copy\n# comment\nfile:///a\nfile:///a"), ["/a"]);
+        assert_eq!(
+            parse_uri_list("copy\n# comment\nfile:///a\nfile:///a"),
+            ["/a"]
+        );
     }
 
     #[test]

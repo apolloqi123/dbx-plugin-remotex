@@ -6,8 +6,8 @@ mod tssh;
 mod validate;
 
 use tssh::*;
-use validate::*;
 pub(crate) use validate::validate_pattern_text;
+use validate::*;
 
 /// Parses `external_config.triggers` into a validated [`TriggersConfig`].
 /// Accepts three input shapes:

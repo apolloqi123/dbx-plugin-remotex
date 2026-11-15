@@ -171,7 +171,10 @@ pub fn files_list_payload(path: &str, entries: Vec<ContainerEntry>) -> Value {
 /// Parses one `stat -c '%F|%s|%Y|%a'` row. The file type is the GNU
 /// human-readable `%F` text ("regular file", "directory", …).
 pub fn parse_stat_output(output: &str) -> Option<ContainerStat> {
-    let line = output.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
     let mut fields = line.split('|');
     let file_type = fields.next()?.trim();
     let size = fields.next()?.trim().parse().ok()?;
@@ -225,7 +228,10 @@ mod tests {
     #[test]
     fn normalizes_container_paths() {
         assert_eq!(normalize_container_path("/").unwrap(), "/");
-        assert_eq!(normalize_container_path("/var//log/../lib/").unwrap(), "/var/lib");
+        assert_eq!(
+            normalize_container_path("/var//log/../lib/").unwrap(),
+            "/var/lib"
+        );
         assert!(normalize_container_path("relative").is_err());
         assert!(normalize_container_path("/tmp/\0x").is_err());
         assert!(normalize_container_path(&format!("/{}", "a".repeat(4097))).is_err());
@@ -246,7 +252,10 @@ mod tests {
         assert_eq!(stat.mtime, 1712345678);
         assert_eq!(stat.mode, "644");
         assert!(stat.is_regular_file());
-        assert_eq!(parse_stat_output("directory|4096|1|755").unwrap().kind, "dir");
+        assert_eq!(
+            parse_stat_output("directory|4096|1|755").unwrap().kind,
+            "dir"
+        );
         assert!(parse_stat_output("garbage").is_none());
     }
 
@@ -258,7 +267,10 @@ mod tests {
         for file_type in ["symbolic link", "FIFO", "socket", "block special file"] {
             let stat = parse_stat_output(&format!("{file_type}|0|0|644")).unwrap();
             assert_eq!(stat.kind, "file");
-            assert!(!stat.is_regular_file(), "{file_type} must not be exportable");
+            assert!(
+                !stat.is_regular_file(),
+                "{file_type} must not be exportable"
+            );
         }
         let directory = parse_stat_output("directory|4096|0|755").unwrap();
         assert_eq!(directory.kind, "dir");

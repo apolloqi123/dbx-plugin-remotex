@@ -22,9 +22,7 @@ impl McpState {
             agent_terminal::CommandRisk::Elevated
         } else {
             match mcp_safety::assess_command(command) {
-                mcp_safety::CommandRisk::Destructive(_) => {
-                    agent_terminal::CommandRisk::Elevated
-                }
+                mcp_safety::CommandRisk::Destructive(_) => agent_terminal::CommandRisk::Elevated,
                 mcp_safety::CommandRisk::ReadOnly => agent_terminal::CommandRisk::ReadOnly,
                 mcp_safety::CommandRisk::Unknown => agent_terminal::CommandRisk::Mutating,
             }

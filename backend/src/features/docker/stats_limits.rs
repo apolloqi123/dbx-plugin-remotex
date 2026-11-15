@@ -126,9 +126,7 @@ mod tests {
 
     #[test]
     fn parses_host_cores_and_an_unlimited_container() {
-        let payload = stats_limits_payload(
-            "DBXDOCKER_CPU_HOST\n16\nDBXDOCKER_CPU_LIMIT\n0|0|0\n",
-        );
+        let payload = stats_limits_payload("DBXDOCKER_CPU_HOST\n16\nDBXDOCKER_CPU_LIMIT\n0|0|0\n");
         assert_eq!(payload["hostCpus"], 16);
         assert!(payload["cpuLimitCores"].is_null());
     }

@@ -11,11 +11,11 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use crate::sessions::ssh::exec::{self, AuthFlowMode, SudoAuth};
 use crate::core::vault::{
     delete_keychain_dek, keyfile_path, resolve_provider, KeyProvider, KeyStorage, KeyfileProvider,
     Vault, FIELD_SUDO_PASSWORD, FIELD_TOTP_SECRET,
 };
+use crate::sessions::ssh::exec::{self, AuthFlowMode, SudoAuth};
 
 mod json;
 mod ops;

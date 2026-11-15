@@ -106,10 +106,15 @@ mod tests {
     fn flushes_at_byte_limit() {
         let mut batcher = ChunkBatcher::new();
         let now = Instant::now();
-        assert!(batcher.push(&vec![b'a'; MAX_BATCH_BYTES - 1], now).is_none());
+        assert!(batcher
+            .push(&vec![b'a'; MAX_BATCH_BYTES - 1], now)
+            .is_none());
         let batch = batcher.push(b"b", now).unwrap();
         assert_eq!(batch.len(), MAX_BATCH_BYTES);
-        assert_eq!(&batch[..MAX_BATCH_BYTES - 1], vec![b'a'; MAX_BATCH_BYTES - 1].as_slice());
+        assert_eq!(
+            &batch[..MAX_BATCH_BYTES - 1],
+            vec![b'a'; MAX_BATCH_BYTES - 1].as_slice()
+        );
         assert_eq!(batch[MAX_BATCH_BYTES - 1], b'b');
     }
 
@@ -118,7 +123,9 @@ mod tests {
         let mut batcher = ChunkBatcher::new();
         let now = Instant::now();
         assert!(batcher.push(b"a", now).is_none());
-        assert!(batcher.push(b"b", now + BATCH_INTERVAL - Duration::from_millis(1)).is_none());
+        assert!(batcher
+            .push(b"b", now + BATCH_INTERVAL - Duration::from_millis(1))
+            .is_none());
         assert_eq!(batcher.push(b"c", now + BATCH_INTERVAL).unwrap(), b"abc");
     }
 

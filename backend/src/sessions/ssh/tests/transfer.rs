@@ -766,7 +766,11 @@ async fn poisoned_prep_registry_rolls_back_the_registered_download() {
     let data_dir = tempfile::tempdir().expect("tempdir");
     let runtime = SshRuntime::new(data_dir.path().to_path_buf());
     let sink_task = "t-prep-poison-sink";
-    let download_dir = data_dir.path().join("downloads").to_string_lossy().into_owned();
+    let download_dir = data_dir
+        .path()
+        .join("downloads")
+        .to_string_lossy()
+        .into_owned();
     let sink = runtime
         .build_download_sink(sink_task, Some(&download_dir), None)
         .await

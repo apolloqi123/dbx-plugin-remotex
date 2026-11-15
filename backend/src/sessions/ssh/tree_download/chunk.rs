@@ -156,7 +156,9 @@ impl SshRuntime {
                         finalize_tree_current(self, &tree).await;
                         continue;
                     }
-                    let requested = remaining.min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64) as usize;
+                    let requested = remaining
+                        .min(download.throttle.chunk_size(TRANSFER_CHUNK_SIZE) as u64)
+                        as usize;
                     // 限速节奏（issue #66）：树下载逐文件分块循环与单文件同口径——
                     // 块耗时从读开始计量，读毕由 limiter 补足差额；缺省 0 零开销。
                     // 压缩树不限速（网络腿已在 prep 拉取段按压缩流限速，这里是

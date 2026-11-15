@@ -192,18 +192,14 @@ impl SshRuntime {
         self.build_transfer_history(session_id, connection_id, limit, &connection_id_for)
     }
 
-    pub async fn clear_transfer_history(
-        &self,
-        connection_id: Option<&str>,
-    ) -> Result<(), String> {
+    pub async fn clear_transfer_history(&self, connection_id: Option<&str>) -> Result<(), String> {
         let mut history = self
             .transfer_history
             .lock()
             .map_err(|_| "Transfer history is poisoned".to_string())?;
         match connection_id.filter(|scope| !scope.is_empty()) {
-            Some(scope) => history.retain(|task| {
-                task.get("connectionId").and_then(Value::as_str) != Some(scope)
-            }),
+            Some(scope) => history
+                .retain(|task| task.get("connectionId").and_then(Value::as_str) != Some(scope)),
             None => history.clear(),
         }
         drop(history);

@@ -72,7 +72,10 @@ fn remembered_approval_only_skips_a_prompt() {
     assert!(!remembered_bypasses_prompt("rm -rf /", true));
     assert!(!remembered_bypasses_prompt("mkfs.ext4 /dev/sda1", true));
     assert!(remembered_bypasses_prompt("systemctl restart nginx", true));
-    assert!(!remembered_bypasses_prompt("systemctl restart nginx", false));
+    assert!(!remembered_bypasses_prompt(
+        "systemctl restart nginx",
+        false
+    ));
 }
 
 #[test]

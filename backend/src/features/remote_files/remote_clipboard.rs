@@ -48,8 +48,8 @@ pub(crate) async fn read(
     let outcome = ssh
         .files_session_exec(session_id, clipboard_command(), Duration::from_secs(10))
         .await?;
-    let supported = outcome.output.contains(CLIPTOOL_MARKER)
-        && !outcome.output.contains(CLIPTOOL_NONE_MARKER);
+    let supported =
+        outcome.output.contains(CLIPTOOL_MARKER) && !outcome.output.contains(CLIPTOOL_NONE_MARKER);
     let paths = if supported {
         parse_uri_list(&outcome.output)
     } else {

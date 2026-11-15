@@ -454,11 +454,8 @@ async fn finish_tree_download_waits_for_the_in_flight_final_chunk() {
     let chunk_runtime = runtime.clone();
     let chunk_emitter = emitter.clone();
     let id = task_id.to_string();
-    let chunk = tokio::spawn(async move {
-        chunk_runtime
-            .download_chunk(&id, 0, &chunk_emitter)
-            .await
-    });
+    let chunk =
+        tokio::spawn(async move { chunk_runtime.download_chunk(&id, 0, &chunk_emitter).await });
     tokio::time::timeout(std::time::Duration::from_secs(2), started.notified())
         .await
         .expect("the chunk must enter its read");
@@ -466,9 +463,8 @@ async fn finish_tree_download_waits_for_the_in_flight_final_chunk() {
     let finish_runtime = runtime.clone();
     let finish_emitter = emitter.clone();
     let id = task_id.to_string();
-    let finish = tokio::spawn(async move {
-        finish_runtime.complete_download(&id, &finish_emitter).await
-    });
+    let finish =
+        tokio::spawn(async move { finish_runtime.complete_download(&id, &finish_emitter).await });
     // The finish must block on the pump, not tear the staged bytes down.
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
     assert!(

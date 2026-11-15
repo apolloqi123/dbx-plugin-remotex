@@ -34,7 +34,10 @@ fn validated_paths(params: &Value) -> Result<Vec<PathBuf>, String> {
             return Err("Clipboard file paths must be absolute".to_string());
         }
         if std::fs::symlink_metadata(&path).is_err() {
-            return Err(format!("Clipboard file '{}' does not exist", path.display()));
+            return Err(format!(
+                "Clipboard file '{}' does not exist",
+                path.display()
+            ));
         }
         paths.push(path);
     }
@@ -71,10 +74,7 @@ pub(crate) fn write_paths(paths: &[String]) -> Result<usize, String> {
     if !pasteboard::supported() {
         return Err("The native file clipboard is only available on macOS".to_string());
     }
-    let rows = paths
-        .iter()
-        .map(|path| json!(path))
-        .collect::<Vec<_>>();
+    let rows = paths.iter().map(|path| json!(path)).collect::<Vec<_>>();
     let paths = validated_paths(&json!({ "paths": rows }))?;
     pasteboard::write_file_urls(&paths)?;
     Ok(paths.len())

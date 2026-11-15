@@ -1,8 +1,8 @@
 //! Local SSH key discovery and known-hosts management, mirroring tiny-rdm.
 
+pub(crate) mod decode_error;
 mod discovery;
 mod known_hosts;
-pub(crate) mod decode_error;
 
 #[cfg(test)]
 mod tests;

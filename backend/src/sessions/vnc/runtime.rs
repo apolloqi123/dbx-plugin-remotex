@@ -114,12 +114,7 @@ impl VncSessionRuntime {
     /// (DesktopUpdate → retained framebuffer swap + full refresh), so the
     /// generation/session id stay put. Returns `live=false` when no engine is
     /// attached (dialling/backoff); the request is then dropped.
-    pub async fn resize(
-        &self,
-        session_id: &str,
-        width: u16,
-        height: u16,
-    ) -> Result<Value, String> {
+    pub async fn resize(&self, session_id: &str, width: u16, height: u16) -> Result<Value, String> {
         validate_resize_size(width, height)?;
         let entry = self.session(session_id).await?;
         if entry.close_requested.load(Ordering::Acquire) {

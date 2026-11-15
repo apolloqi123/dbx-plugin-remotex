@@ -187,8 +187,7 @@ impl Plugin {
             "docker/files/prepareUpload" => {
                 if is_local_target(&params)? {
                     return Err(
-                        "docker/files/prepareUpload is only available for SSH targets"
-                            .to_string(),
+                        "docker/files/prepareUpload is only available for SSH targets".to_string(),
                     );
                 }
                 let session_id = required_string(&params, "sessionId")?;
@@ -305,8 +304,7 @@ impl Plugin {
             "docker/files/upload/begin" => {
                 if !is_local_target(&params)? {
                     return Err(
-                        "docker/files/upload/begin is only available for local targets"
-                            .to_string(),
+                        "docker/files/upload/begin is only available for local targets".to_string(),
                     );
                 }
                 let name = required_string(&params, "name")?;
@@ -320,8 +318,7 @@ impl Plugin {
             "docker/files/upload/chunk" => {
                 if !is_local_target(&params)? {
                     return Err(
-                        "docker/files/upload/chunk is only available for local targets"
-                            .to_string(),
+                        "docker/files/upload/chunk is only available for local targets".to_string(),
                     );
                 }
                 let upload_id = required_string(&params, "uploadId")?;
@@ -333,17 +330,13 @@ impl Plugin {
                 // Reject an oversized encoded payload before allocating the
                 // decoded buffer (base64 expands 3 bytes to 4 chars).
                 if encoded.len() > UPLOAD_CHUNK_BYTES.div_ceil(3) * 4 {
-                    return Err(format!(
-                        "Upload chunk exceeds {UPLOAD_CHUNK_BYTES} bytes"
-                    ));
+                    return Err(format!("Upload chunk exceeds {UPLOAD_CHUNK_BYTES} bytes"));
                 }
                 let data = BASE64_STANDARD
                     .decode(encoded)
                     .map_err(|_| "Invalid dataBase64".to_string())?;
                 if data.len() > UPLOAD_CHUNK_BYTES {
-                    return Err(format!(
-                        "Upload chunk exceeds {UPLOAD_CHUNK_BYTES} bytes"
-                    ));
+                    return Err(format!("Upload chunk exceeds {UPLOAD_CHUNK_BYTES} bytes"));
                 }
                 let received = self.upload_registry()?.chunk(upload_id, offset, &data)?;
                 Ok(json!({ "received": received }))
@@ -378,9 +371,7 @@ impl Plugin {
     }
 
     /// Locks the shared upload registry (poisoning is a hard error).
-    fn upload_registry(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, UploadRegistry>, String> {
+    fn upload_registry(&self) -> Result<std::sync::MutexGuard<'_, UploadRegistry>, String> {
         self.docker_uploads
             .lock()
             .map_err(|_| "Upload registry is poisoned".to_string())
@@ -405,12 +396,8 @@ impl Plugin {
         let cli = find_local_cli(&engine.cli)
             .ok_or_else(|| format!("{} CLI not found on this machine", engine.cli))?;
         let args: Vec<&str> = argv.iter().map(String::as_str).collect();
-        self.runtime.block_on(run_local(
-            &cli,
-            &args,
-            timeout,
-            engine.endpoint.as_deref(),
-        ))
+        self.runtime
+            .block_on(run_local(&cli, &args, timeout, engine.endpoint.as_deref()))
     }
 
     /// Runs one SSH command and flattens the response into `(exitCode, output)`.
@@ -428,7 +415,10 @@ impl Plugin {
             Some(timeout.as_secs()),
         ))?;
         Ok((
-            response.get("exitCode").and_then(Value::as_i64).unwrap_or(-1) as i32,
+            response
+                .get("exitCode")
+                .and_then(Value::as_i64)
+                .unwrap_or(-1) as i32,
             response
                 .get("output")
                 .and_then(Value::as_str)
@@ -492,11 +482,7 @@ impl Plugin {
     /// anything that is not a plain file. `docker cp` preserves symlinks, so
     /// the type must be checked after staging (and before import, where a
     /// link would be copied into the container). Returns the real size.
-    fn remote_staging_regular_file(
-        &self,
-        session_id: &str,
-        staging: &str,
-    ) -> Result<u64, String> {
+    fn remote_staging_regular_file(&self, session_id: &str, staging: &str) -> Result<u64, String> {
         let command = staging_probe_command(staging)?;
         let (exit_code, output) = self.ssh_output(session_id, &command, FILES_TIMEOUT)?;
         if exit_code != 0 {
@@ -507,9 +493,9 @@ impl Plugin {
         }
         match parse_staging_probe(&output) {
             Some((file_type, size)) if is_regular_file_type(&file_type) => Ok(size),
-            Some((file_type, _)) => Err(format!(
-                "Staging path is not a regular file ({file_type})"
-            )),
+            Some((file_type, _)) => {
+                Err(format!("Staging path is not a regular file ({file_type})"))
+            }
             None => Err(format!("Failed to inspect staging file '{staging}'")),
         }
     }

@@ -419,7 +419,10 @@ fn tail_backfills_from_the_rotated_generation_only_when_needed() {
     );
 
     // limit 2 is satisfied by the active generation alone.
-    assert_eq!(timestamps(&tail(&dir, 2, None).unwrap()), vec![3_000, 4_000]);
+    assert_eq!(
+        timestamps(&tail(&dir, 2, None).unwrap()),
+        vec![3_000, 4_000]
+    );
     // limit 3 must backfill exactly one entry from the rotated generation.
     assert_eq!(
         timestamps(&tail(&dir, 3, None).unwrap()),
@@ -488,12 +491,20 @@ fn clear_keeps_the_ledger_owner_only() {
     let dir = temp_dir("clear-mode");
     // No pre-existing ledger: clear creates it, so this is the creation mode.
     clear(&dir).unwrap();
-    let mode = std::fs::metadata(audit_path(&dir)).unwrap().permissions().mode() & 0o777;
+    let mode = std::fs::metadata(audit_path(&dir))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
     assert_eq!(mode, 0o600, "clear must create the ledger owner-only");
 
     // A later append must not widen it either.
     append(&dir, &sample_entry(1)).unwrap();
-    let mode = std::fs::metadata(audit_path(&dir)).unwrap().permissions().mode() & 0o777;
+    let mode = std::fs::metadata(audit_path(&dir))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
     assert_eq!(mode, 0o600, "append keeps the owner-only mode");
     let _ = std::fs::remove_dir_all(&dir);
 }

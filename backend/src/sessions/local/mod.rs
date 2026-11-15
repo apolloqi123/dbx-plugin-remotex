@@ -50,10 +50,10 @@ use crate::core::model::TerminalStream;
 use crate::sessions::ssh::ReplayBuffer;
 
 use conpty::*;
+pub(crate) use env::sanitize_env_pair;
 /// Grace for a EOF'd/HUP'd child to exit on its own (zsh/bash flush command
 /// history only on a clean exit) before the killer escalates to SIGKILL.
 use env::*;
-pub(crate) use env::sanitize_env_pair;
 use integration::*;
 #[allow(unused_imports)]
 use runtime::*;

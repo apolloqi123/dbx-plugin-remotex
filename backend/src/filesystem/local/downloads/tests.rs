@@ -62,9 +62,7 @@ fn save_local_file_writes_records_history_and_yields_name() {
 #[test]
 fn save_local_file_rejects_relative_dir_and_empty_payload() {
     let data_dir = tempfile::tempdir().expect("tempdir");
-    assert!(
-        save_local_file(data_dir.path(), "a.gif", b"x", Some("relative/dir"), None).is_err()
-    );
+    assert!(save_local_file(data_dir.path(), "a.gif", b"x", Some("relative/dir"), None).is_err());
     assert!(save_local_file(data_dir.path(), "a.gif", b"", None, None).is_err());
 }
 

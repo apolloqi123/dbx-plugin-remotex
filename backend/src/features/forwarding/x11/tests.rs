@@ -396,7 +396,10 @@ fn enabled_from_reads_the_nested_prefs_object() {
     // top-level `x11_forwarding` lookup silently returned false and X11
     // requests were never sent even with the switch on.
     let data_dir = tempfile::tempdir().expect("tempdir");
-    assert!(!enabled_from(data_dir.path()), "missing file must fail closed");
+    assert!(
+        !enabled_from(data_dir.path()),
+        "missing file must fail closed"
+    );
     std::fs::create_dir_all(data_dir.path()).expect("data dir");
     std::fs::write(
         crate::core::preferences::store_path(data_dir.path()),

@@ -2,9 +2,9 @@
 
 use super::*;
 
-pub(crate) use crate::core::preferences::env::{sanitize_env_pair, USER_ENV_MAX_PAIRS};
 #[cfg(test)]
 pub(crate) use crate::core::preferences::env::USER_ENV_MAX_VALUE;
+pub(crate) use crate::core::preferences::env::{sanitize_env_pair, USER_ENV_MAX_PAIRS};
 
 /// Pure core of user-env validation over the request map: keeps the valid
 /// pairs up to the pair cap. `BTreeMap` iterates key-sorted, so the cap trims

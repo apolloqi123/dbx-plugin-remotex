@@ -320,8 +320,7 @@ impl SshRuntime {
         if std::fs::rename(staged, &final_path).is_ok() {
             return Ok(final_path);
         }
-        let result = std::fs::copy(staged, &final_path)
-            .and_then(|_| std::fs::remove_file(staged));
+        let result = std::fs::copy(staged, &final_path).and_then(|_| std::fs::remove_file(staged));
         if let Err(error) = result {
             if !overwrite {
                 let _ = std::fs::remove_file(&final_path);

@@ -50,8 +50,13 @@ async fn registry_enforces_the_concurrency_cap() {
         let error = registry.insert_for_test(id).await;
         assert!(error.is_empty(), "{error}");
     }
-    let error = registry.insert_for_test("terminal-9-0000".to_string()).await;
-    assert!(error.contains("Too many active container terminals"), "{error}");
+    let error = registry
+        .insert_for_test("terminal-9-0000".to_string())
+        .await;
+    assert!(
+        error.contains("Too many active container terminals"),
+        "{error}"
+    );
 }
 
 #[tokio::test]
@@ -187,7 +192,10 @@ fn audit_terminal_intent_records_only_the_fixed_command() {
     let entries = crate::features::security::audit::tail(dir.path(), 10, None).unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].tool, "docker/terminal");
-    assert_eq!(entries[0].outcome, crate::features::security::audit::EntryOutcome::Ok);
+    assert_eq!(
+        entries[0].outcome,
+        crate::features::security::audit::EntryOutcome::Ok
+    );
     assert_eq!(
         entries[0].command.as_deref(),
         Some("docker exec -it d4a7c9f1e2b3 sh")

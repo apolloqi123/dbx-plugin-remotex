@@ -56,7 +56,11 @@ impl UploadRegistry {
     /// Creates a temp file and returns the upload id.
     pub fn begin(&mut self, name: &str) -> Result<String, String> {
         self.sweep();
-        let active = self.entries.values().filter(|entry| !entry.finished).count();
+        let active = self
+            .entries
+            .values()
+            .filter(|entry| !entry.finished)
+            .count();
         if active >= UPLOAD_MAX_ACTIVE {
             return Err(format!(
                 "Too many active uploads (max {UPLOAD_MAX_ACTIVE}); finish or cancel one first"
@@ -88,9 +92,7 @@ impl UploadRegistry {
         self.sweep();
         let entry = self.entry(id)?;
         if entry.received.saturating_add(bytes) > UPLOAD_MAX_BYTES {
-            return Err(format!(
-                "Upload exceeds the {UPLOAD_MAX_BYTES}-byte limit"
-            ));
+            return Err(format!("Upload exceeds the {UPLOAD_MAX_BYTES}-byte limit"));
         }
         Ok(())
     }
@@ -267,7 +269,10 @@ mod tests {
         let id = registry.begin("report.log").unwrap();
         registry.chunk(&id, 0, b"hello").unwrap();
         let (staging, _) = registry.finish(&id).unwrap();
-        let upload_dir = std::path::Path::new(&staging).parent().unwrap().to_path_buf();
+        let upload_dir = std::path::Path::new(&staging)
+            .parent()
+            .unwrap()
+            .to_path_buf();
         // `docker/files/cleanup` deletes the file, then drops the entry.
         assert!(registry.remove_by_staging_path(&staging));
         assert!(!upload_dir.exists());

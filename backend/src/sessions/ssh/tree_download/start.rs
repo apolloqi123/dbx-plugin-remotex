@@ -195,48 +195,49 @@ impl SshRuntime {
                 }
             };
             downloads.insert(
-            task_id.clone(),
-            DownloadState {
-                session_id: session_id.to_string(),
-                remote_path: root_remote.clone(),
-                file_name: file_name.clone(),
-                size: total,
-                next_offset: 0,
-                sink: None,
-                emit_chunks,
-                tree: Some(Arc::new(TreeDownloadState::new(
-                    root_local.clone(),
-                    file_count,
-                    skipped,
-                    encoding == NameEncoding::Latin1,
-                    TreeDownloadProgress {
-                        files: VecDeque::from(scan.files),
-                        current: None,
-                        current_offset: 0,
-                        sink: None,
-                        files_done: 0,
-                        failures: scan.failures,
-                        read_handle: None,
-                        handle_path: None,
-                    },
-                ))),
-                sudo_tmp: None,
-                // 树任务的逐文件读取按 TreeDownloadState.latin1 判分支。
-                latin1: false,
-                throttle,
-                progress_throttle: crate::features::transfer::progress::ProgressThrottle::default(),
-                compression,
-                ready: false,
-                serving_plain: false,
-                staged_plain: None,
-                gz_staging: gz_staging.clone(),
-                remote_temp: remote_temp.clone(),
-                final_dir: (compression == CompressionMode::Gzip).then(|| base_dir.clone()),
-                overwrite: false,
-                read_handle: Arc::new(AsyncMutex::new(None)),
-                raw_client: Arc::new(AsyncMutex::new(None)),
-            },
-        );
+                task_id.clone(),
+                DownloadState {
+                    session_id: session_id.to_string(),
+                    remote_path: root_remote.clone(),
+                    file_name: file_name.clone(),
+                    size: total,
+                    next_offset: 0,
+                    sink: None,
+                    emit_chunks,
+                    tree: Some(Arc::new(TreeDownloadState::new(
+                        root_local.clone(),
+                        file_count,
+                        skipped,
+                        encoding == NameEncoding::Latin1,
+                        TreeDownloadProgress {
+                            files: VecDeque::from(scan.files),
+                            current: None,
+                            current_offset: 0,
+                            sink: None,
+                            files_done: 0,
+                            failures: scan.failures,
+                            read_handle: None,
+                            handle_path: None,
+                        },
+                    ))),
+                    sudo_tmp: None,
+                    // 树任务的逐文件读取按 TreeDownloadState.latin1 判分支。
+                    latin1: false,
+                    throttle,
+                    progress_throttle:
+                        crate::features::transfer::progress::ProgressThrottle::default(),
+                    compression,
+                    ready: false,
+                    serving_plain: false,
+                    staged_plain: None,
+                    gz_staging: gz_staging.clone(),
+                    remote_temp: remote_temp.clone(),
+                    final_dir: (compression == CompressionMode::Gzip).then(|| base_dir.clone()),
+                    overwrite: false,
+                    read_handle: Arc::new(AsyncMutex::new(None)),
+                    raw_client: Arc::new(AsyncMutex::new(None)),
+                },
+            );
         }
         if let Some((gz_path, remote_path_for_prep)) = compressed_paths {
             // prep 注册 + 后台任务（远端 tar.gz → 拉取 → 本地解包 → ready）。

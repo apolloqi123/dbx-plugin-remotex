@@ -525,13 +525,7 @@ pub fn audit_action_intent(data_dir: &Path, command: &str) {
 }
 
 pub fn audit_action_failure(data_dir: &Path, command: &str, error: &str, duration_ms: u64) {
-    audit_failure(
-        data_dir,
-        "docker/action",
-        command,
-        error,
-        duration_ms,
-    );
+    audit_failure(data_dir, "docker/action", command, error, duration_ms);
 }
 
 #[cfg(test)]

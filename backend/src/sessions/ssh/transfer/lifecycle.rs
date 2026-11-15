@@ -39,16 +39,15 @@ impl SshRuntime {
         } else {
             String::new()
         };
-        let resolved = resolve_transfer_connection_id(
-            &task,
-            &session_connection,
-            &persisted_connection,
-        );
+        let resolved =
+            resolve_transfer_connection_id(&task, &session_connection, &persisted_connection);
         if !resolved.is_empty() {
             task["connectionId"] = json!(resolved);
         }
         if let Ok(mut history) = self.transfer_history.lock() {
-            history.retain(|entry| entry.get("taskId").and_then(Value::as_str) != Some(task_id.as_str()));
+            history.retain(|entry| {
+                entry.get("taskId").and_then(Value::as_str) != Some(task_id.as_str())
+            });
             history.push_back(task.clone());
             while history.len() > 64 {
                 history.pop_front();
@@ -233,14 +232,14 @@ impl SshRuntime {
             // Keep rows owned by other connections. Legacy rows without a
             // `connectionId` still fall back to the closing session id so
             // disconnect clears the ghosts it used to clear.
-            history.retain(|task| {
-                match task.get("connectionId").and_then(Value::as_str) {
+            history.retain(
+                |task| match task.get("connectionId").and_then(Value::as_str) {
                     Some(scope) if !scope.is_empty() && !connection_id.is_empty() => {
                         scope != connection_id
                     }
                     _ => task.get("sessionId").and_then(Value::as_str) != Some(session_id),
-                }
-            });
+                },
+            );
         }
         Ok(())
     }

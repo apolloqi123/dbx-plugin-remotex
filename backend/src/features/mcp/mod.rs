@@ -54,8 +54,8 @@ pub(crate) use args::arg_bool;
 use args::*;
 #[allow(unused_imports)]
 use bridge::*;
-pub(crate) use catalog::{tool_definitions, tool_definitions_for_host};
 use catalog::*;
+pub(crate) use catalog::{tool_definitions, tool_definitions_for_host};
 use connections::*;
 #[allow(unused_imports)]
 use dispatch::*;
@@ -74,7 +74,6 @@ pub use stdio::run_mcp_stdio;
 #[allow(unused_imports)]
 use stdio::*;
 
-use crate::sessions::ssh::exec::{self, AuthFlowMode, Hints, SudoAuth};
 use crate::core::host_key::HostKeyVerifier;
 use crate::core::model::{
     normalize_remote_path, AuthenticationMethod, JumpHost, StoredConnection, SudoSource,
@@ -82,6 +81,7 @@ use crate::core::model::{
 use crate::core::preferences;
 use crate::features::automation::multi_exec;
 use crate::features::mcp::safety::CommandRisk;
+use crate::sessions::ssh::exec::{self, AuthFlowMode, Hints, SudoAuth};
 use crate::sessions::ssh::{
     classify_raw_kind, sftp_client_config, RawSftpClient, SshClient, SshRuntime,
     NO_TERMINAL_SESSION_MESSAGE,

@@ -122,7 +122,6 @@ pub fn stats_script(engine: &EngineConfig, container_id: &str) -> Result<String,
     ))
 }
 
-
 /// Builds the logs + inspect collector for one container. Inspect runs
 /// first so the (potentially large) log tail cannot bury the marker scan,
 /// and the log section is last by construction (everything after its
@@ -185,11 +184,8 @@ mod tests {
     #[test]
     fn supervised_follow_command_reaps_child_on_signals_stdin_eof_and_ttl() {
         let engine = crate::features::docker::test_engine("docker", None);
-        let command = crate::features::docker::supervised_logs_follow_command(
-            &engine,
-            "d4a7c9f1e2b3",
-            200,
-        );
+        let command =
+            crate::features::docker::supervised_logs_follow_command(&engine, "d4a7c9f1e2b3", 200);
         assert!(
             command.starts_with("DBX_DOCKER_LOGS_CMD='docker logs -f --tail 200 d4a7c9f1e2b3' exec sh -c 'exec 3<&0; $DBX_DOCKER_LOGS_CMD &"),
             "{command}"
@@ -251,11 +247,8 @@ mod tests {
     fn supervised_follow_command_keeps_the_endpoint_inside_the_script() {
         let engine =
             crate::features::docker::test_engine("podman", Some("unix:///tmp/podman.sock"));
-        let command = crate::features::docker::supervised_logs_follow_command(
-            &engine,
-            "d4a7c9f1e2b3",
-            500,
-        );
+        let command =
+            crate::features::docker::supervised_logs_follow_command(&engine, "d4a7c9f1e2b3", 500);
         assert!(
             command.contains("env DOCKER_HOST=unix:///tmp/podman.sock CONTAINER_HOST=unix:///tmp/podman.sock podman logs -f --tail 500 d4a7c9f1e2b3"),
             "{command}"

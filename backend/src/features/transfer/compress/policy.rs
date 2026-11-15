@@ -1,6 +1,5 @@
 pub use crate::core::preferences::transfer::{
-    CompressPolicy, WEAK_CPU_PARALLELISM,
-    WORTHWHILE_PERCENT,
+    CompressPolicy, WEAK_CPU_PARALLELISM, WORTHWHILE_PERCENT,
 };
 
 /// 压缩传输生效的模式。序列化进 RPC 响应（`compression` 字段）与进度事件。

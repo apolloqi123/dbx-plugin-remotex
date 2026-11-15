@@ -19,10 +19,10 @@ mod auth;
 #[cfg(test)]
 mod channel_error_tests;
 mod channel_ledger;
+mod connection;
 mod container_terminal;
 #[cfg(test)]
 mod container_terminal_tests;
-mod connection;
 mod download;
 pub(crate) mod exec;
 mod execution;
@@ -69,9 +69,9 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use auth::*;
 #[cfg(test)]
 use crate::core::keys::decode_error::looks_like_public_key;
+use auth::*;
 use sftp_format::*;
 pub(crate) use sftp_format::{
     classify_raw_kind, format_permissions, lookup_owner_group_names, RawSftpClient,
@@ -82,9 +82,9 @@ use terminal_support::*;
 pub(crate) use terminal_support::{connection_id_param, filesystem_path};
 #[cfg(test)]
 pub(crate) use transfer::resolve_transfer_connection_id;
+use transfer_read::read_filled;
 pub(crate) use transfer_util::apply_preserved_permissions;
 use transfer_util::*;
-use transfer_read::read_filled;
 use tree_support::*;
 
 use self::exec::{

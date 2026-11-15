@@ -312,7 +312,9 @@ mod tests {
     #[ignore = "requires a live macOS session (window server cursor)"]
     fn reads_the_live_cursor() {
         let sample = sample();
-        let cursor = sample.cursor.expect("CGEventCreate(NULL) must expose the cursor");
+        let cursor = sample
+            .cursor
+            .expect("CGEventCreate(NULL) must expose the cursor");
         assert!(cursor.x.is_finite() && cursor.y.is_finite());
         assert_eq!(sample.platform, "macos");
     }

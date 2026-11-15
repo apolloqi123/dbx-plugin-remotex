@@ -35,9 +35,18 @@ pub(super) fn init(data_dir: &Path) {
     {
         let _ = std::fs::remove_file(&path);
     }
-    let mut file = OpenOptions::new().create(true).append(true).open(&path).ok();
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok();
     if let Some(file) = file.as_mut() {
-        let _ = writeln!(file, "START version={} t={}", env!("CARGO_PKG_VERSION"), now_ms());
+        let _ = writeln!(
+            file,
+            "START version={} t={}",
+            env!("CARGO_PKG_VERSION"),
+            now_ms()
+        );
         let _ = file.flush();
     }
     let _ = LEDGER.set(Mutex::new(Ledger {
@@ -57,9 +66,7 @@ fn update(change: impl FnOnce(&mut Ledger, u64) -> String) {
     let Some(ledger) = LEDGER.get() else {
         return;
     };
-    let mut ledger = ledger
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
+    let mut ledger = ledger.lock().unwrap_or_else(|poison| poison.into_inner());
     let now = now_ms();
     let line = change(&mut ledger, now);
     if let Some(file) = ledger.file.as_mut() {
@@ -97,10 +104,7 @@ pub(super) fn refused(label: &str, error: &str) {
             .live
             .iter()
             .map(|(id, (label, opened_at))| {
-                format!(
-                    "{id}:{label}:{}s",
-                    now.saturating_sub(*opened_at) / 1000
-                )
+                format!("{id}:{label}:{}s", now.saturating_sub(*opened_at) / 1000)
             })
             .collect();
         live.sort();

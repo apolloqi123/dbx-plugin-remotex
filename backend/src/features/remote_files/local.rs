@@ -158,7 +158,10 @@ mod tests {
         fs::write(root.path().join(".hidden"), b"h").unwrap();
         let result = list(&json!({ "path": root.path().to_str().unwrap() })).expect("list");
         let rows = result["entries"].as_array().unwrap();
-        let names: Vec<&str> = rows.iter().map(|row| row["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = rows
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect();
         assert_eq!(names, ["adir", "zdir", ".hidden", "A.txt", "b.txt"]);
         assert_eq!(rows[0]["kind"], "directory");
         assert_eq!(rows[2]["hidden"], true);

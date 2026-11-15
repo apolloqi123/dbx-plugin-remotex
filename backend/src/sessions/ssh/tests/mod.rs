@@ -2,11 +2,11 @@ use super::*;
 use russh::{cipher, kex, mac};
 
 mod connection;
-mod transfer;
-mod tree;
-mod terminal;
 mod forwarding;
 mod security;
+mod terminal;
+mod transfer;
+mod tree;
 
 fn auth_failure(remaining: &[MethodKind], partial_success: bool) -> AuthResult {
     let mut methods = russh::MethodSet::empty();

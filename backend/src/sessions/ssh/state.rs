@@ -11,9 +11,9 @@ pub(crate) use payload::{
     sudo_commit_body, sudo_upload_staging_name, upload_cancel_error, upload_progress_payload,
     SUDO_UPLOAD_COMMIT_SECS, SUDO_UPLOAD_QUICK_SECS,
 };
-pub(crate) use runtime::{SharedTransportLease, TaskTransport};
 #[cfg(test)]
 pub(crate) use runtime::TransportLeaseCounter;
+pub(crate) use runtime::{SharedTransportLease, TaskTransport};
 
 /// Remote (-R) port mapping table for one connection, keyed by
 /// `(listen_host, bound_port)` and consulted by the SSH client handler when

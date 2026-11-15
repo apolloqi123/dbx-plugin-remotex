@@ -9,7 +9,10 @@ impl McpState {
     /// within the configured `maxUploadBytes`) so bad paths fail fast and
     /// refusals leave the pooled connection untouched. SFTP transport
     /// errors drop the cached connection so the next call reconnects.
-    pub(in crate::features::mcp) async fn sftp_upload_tool(&self, arguments: &Value) -> Result<Value, String> {
+    pub(in crate::features::mcp) async fn sftp_upload_tool(
+        &self,
+        arguments: &Value,
+    ) -> Result<Value, String> {
         // Both gaps named in one error (round 6 enumeration contract).
         missing_required(arguments, &["localPath", "remotePath"])?;
         let local_path = required_str(arguments, "localPath")?;

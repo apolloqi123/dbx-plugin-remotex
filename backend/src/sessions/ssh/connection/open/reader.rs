@@ -19,7 +19,8 @@ fn observer_text<'a>(
     carry: &mut Vec<u8>,
     data: &[u8],
 ) -> &'a str {
-    cell.get_or_init(|| decode_stream_text(carry, data)).as_str()
+    cell.get_or_init(|| decode_stream_text(carry, data))
+        .as_str()
 }
 
 /// State handed to the detached read loop.

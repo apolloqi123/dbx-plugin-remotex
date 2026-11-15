@@ -378,8 +378,14 @@ pub(super) fn spawn_pump(
         // user is waiting to read.
         while let Ok(Some(data)) = tokio::time::timeout(LOCAL_EXIT_DRAIN, out_rx.recv()).await {
             observe_local_recording(&recorder, &data);
-            publish_local_terminal(&terminal_channel, TerminalStream::Stdout, data, &replay, &emitter)
-                .await;
+            publish_local_terminal(
+                &terminal_channel,
+                TerminalStream::Stdout,
+                data,
+                &replay,
+                &emitter,
+            )
+            .await;
         }
         // A handshake prefix held back at the very end of the stream is the
         // terminal's last visible bytes — never drop them.

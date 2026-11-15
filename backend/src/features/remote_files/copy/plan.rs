@@ -67,9 +67,7 @@ pub(super) async fn remote_names(
     session_id: &str,
     dir: &str,
 ) -> Result<HashSet<String>, String> {
-    let entries = ssh
-        .sftp_list_path(session_id, dir, false, ENCODING)
-        .await?;
+    let entries = ssh.sftp_list_path(session_id, dir, false, ENCODING).await?;
     Ok(entries.into_iter().map(|entry| entry.name).collect())
 }
 
@@ -237,7 +235,10 @@ mod tests {
         assert_eq!(plan.files.len(), 2);
         assert_eq!(plan.total, 7);
         assert_eq!(plan.dirs, vec!["sub", "sub/deep"]);
-        assert!(plan.files.iter().any(|file| file.relative == "sub/deep/a.bin"));
+        assert!(plan
+            .files
+            .iter()
+            .any(|file| file.relative == "sub/deep/a.bin"));
     }
 
     #[cfg(unix)]

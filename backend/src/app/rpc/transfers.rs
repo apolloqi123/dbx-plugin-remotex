@@ -247,8 +247,11 @@ impl Plugin {
                     .and_then(Value::as_u64)
                     .unwrap_or(50)
                     .clamp(1, 200) as usize;
-                self.runtime
-                    .block_on(self.ssh.transfer_history_query(session_id, connection_id, limit))
+                self.runtime.block_on(self.ssh.transfer_history_query(
+                    session_id,
+                    connection_id,
+                    limit,
+                ))
             }
 
             "sftp/transfer/history/clear" => {

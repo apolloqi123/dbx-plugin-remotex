@@ -45,7 +45,15 @@ impl SshRuntime {
         &self,
         session_id: &str,
         sudo: bool,
-    ) -> Result<(Arc<Handle<SshClient>>, SudoAuth, Vec<(String, String)>, bool), String> {
+    ) -> Result<
+        (
+            Arc<Handle<SshClient>>,
+            SudoAuth,
+            Vec<(String, String)>,
+            bool,
+        ),
+        String,
+    > {
         let session = self.session(session_id).await?;
         if sudo && session.read_only {
             return Err(

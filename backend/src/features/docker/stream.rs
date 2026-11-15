@@ -108,7 +108,6 @@ pub fn logs_follow_command(engine: &EngineConfig, container_id: &str, tail: u64)
     )
 }
 
-
 #[path = "stream_command.rs"]
 mod stream_command;
 pub use stream_command::supervised_logs_follow_command;

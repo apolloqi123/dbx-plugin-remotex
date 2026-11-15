@@ -146,4 +146,3 @@ pub(crate) fn private_key_decode_failure(
     }
     detailed("the key could not be decoded", error)
 }
-

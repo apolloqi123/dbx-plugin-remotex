@@ -71,12 +71,7 @@ fn write_entries(data_dir: &Path, entries: &Map<String, Value>) -> Result<(), St
         .map_err(|error| format!("Unable to write {}: {error}", target.display()))
 }
 
-pub(crate) fn load(
-    data_dir: &Path,
-    host: &str,
-    port: u16,
-    username: &str,
-) -> Option<String> {
+pub(crate) fn load(data_dir: &Path, host: &str, port: u16, username: &str) -> Option<String> {
     let id = entry_id(host, port, username);
     let envelope = entries(data_dir).get(&id)?.as_str()?.to_string();
     let password = vault(data_dir).open(FIELD, &id, &envelope);
@@ -95,7 +90,9 @@ pub(crate) fn save(
     if password.is_empty() {
         return Ok(());
     }
-    let _guard = WRITE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let id = entry_id(host, port, username);
     let envelope = vault(data_dir).seal(FIELD, &id, password);
     if envelope.is_empty() {
@@ -112,13 +109,10 @@ pub(crate) fn save(
     write_entries(data_dir, &rows)
 }
 
-pub(crate) fn forget(
-    data_dir: &Path,
-    host: &str,
-    port: u16,
-    username: &str,
-) -> Result<(), String> {
-    let _guard = WRITE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+pub(crate) fn forget(data_dir: &Path, host: &str, port: u16, username: &str) -> Result<(), String> {
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let id = entry_id(host, port, username);
     let mut rows = entries(data_dir);
     if rows.remove(&id).is_none() {
@@ -153,10 +147,6 @@ mod tests {
         save(dir.path(), "host-b", 22, "u", "b").expect("save b");
         forget(dir.path(), "host-a", 22, "u").expect("forget");
         assert_eq!(load(dir.path(), "host-a", 22, "u"), None);
-        assert_eq!(
-            load(dir.path(), "host-b", 22, "u"),
-            Some("b".to_string())
-        );
+        assert_eq!(load(dir.path(), "host-b", 22, "u"), Some("b".to_string()));
     }
 }
-

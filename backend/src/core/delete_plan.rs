@@ -62,12 +62,18 @@ pub(crate) fn build_rm_rf_command(paths: &[String]) -> String {
 
 /// 按 [`DELETE_CHUNK_PATHS`] 切片（空输入得到空集合）。
 pub(crate) fn chunk_delete_items(items: &[(String, bool)]) -> Vec<Vec<(String, bool)>> {
-    items.chunks(DELETE_CHUNK_PATHS).map(<[_]>::to_vec).collect()
+    items
+        .chunks(DELETE_CHUNK_PATHS)
+        .map(<[_]>::to_vec)
+        .collect()
 }
 
 /// 按 [`DELETE_CHUNK_PATHS`] 切片（空输入得到空集合）。
 pub(crate) fn chunk_delete_paths(paths: &[String]) -> Vec<Vec<String>> {
-    paths.chunks(DELETE_CHUNK_PATHS).map(<[_]>::to_vec).collect()
+    paths
+        .chunks(DELETE_CHUNK_PATHS)
+        .map(<[_]>::to_vec)
+        .collect()
 }
 
 /// `path` 的任一**按段**祖先是否在已选集合里：逐次裁到最后一个 `/`，
@@ -115,7 +121,8 @@ mod tests {
     fn collapses_ancestors_across_interleaved_sibling_names() {
         // 回归：`/a-b` 夹在 `/a` 与 `/a/b` 之间，旧实现只比较相邻保留项会漏折叠。
         let collapsed =
-            normalize_delete_items(&items(&[("/a", true), ("/a-b", true), ("/a/b", true)])).unwrap();
+            normalize_delete_items(&items(&[("/a", true), ("/a-b", true), ("/a/b", true)]))
+                .unwrap();
         assert_eq!(collapsed, items(&[("/a", true), ("/a-b", true)]));
 
         let mixed = normalize_delete_items(&items(&[
@@ -173,10 +180,8 @@ mod tests {
         let exact: Vec<String> = (0..DELETE_CHUNK_PATHS)
             .map(|index| format!("/p{index}"))
             .collect();
-        let exact_items: Vec<(String, bool)> = exact
-            .iter()
-            .map(|path| (path.clone(), false))
-            .collect();
+        let exact_items: Vec<(String, bool)> =
+            exact.iter().map(|path| (path.clone(), false)).collect();
         assert_eq!(chunk_delete_paths(&exact).len(), 1);
         assert_eq!(chunk_delete_items(&exact_items).len(), 1);
 
@@ -189,7 +194,8 @@ mod tests {
     #[test]
     fn sudo_paths_collapse_and_keep_order() {
         let normalized =
-            normalize_delete_paths(&paths(&["/var/log/app/old", "/var/log/app", "/tmp/a"])).unwrap();
+            normalize_delete_paths(&paths(&["/var/log/app/old", "/var/log/app", "/tmp/a"]))
+                .unwrap();
         assert_eq!(normalized, paths(&["/tmp/a", "/var/log/app"]));
     }
 }

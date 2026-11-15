@@ -42,9 +42,9 @@ mod send;
 pub use crate::core::model::connection::triggers::*;
 
 #[cfg(test)]
-use aes_gcm::{aead::KeyInit, Aes256Gcm, Nonce};
-#[cfg(test)]
 use crate::core::model::connection::triggers::TSSH_ENC_SECRET_KEY;
+#[cfg(test)]
+use aes_gcm::{aead::KeyInit, Aes256Gcm, Nonce};
 
 #[cfg(test)]
 mod tests;

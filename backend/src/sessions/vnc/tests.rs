@@ -328,12 +328,30 @@ fn copy_rect_composites_overlapping_regions() {
     let mut framebuffer = VncFramebuffer::new(4, 2).expect("framebuffer");
     let source = rgba_rect(2, 1, 10);
     framebuffer
-        .apply_rgba(Rect { x: 0, y: 0, width: 2, height: 1 }, &source)
+        .apply_rgba(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+            &source,
+        )
         .expect("apply source");
     let copied = framebuffer
         .copy_rect(
-            Rect { x: 2, y: 1, width: 2, height: 1 },
-            Rect { x: 0, y: 0, width: 2, height: 1 },
+            Rect {
+                x: 2,
+                y: 1,
+                width: 2,
+                height: 1,
+            },
+            Rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
         )
         .expect("copy");
     assert_eq!(copied, source);
@@ -341,18 +359,41 @@ fn copy_rect_composites_overlapping_regions() {
     // the retained desktop used by reconnect repaints.
     let frame = framebuffer.full_frame_bytes(0).expect("full frame");
     let destination = FRAME_HEADER_BYTES + ((1 * 4) + 2) * 4;
-    assert_eq!(&frame[destination..destination + source.len()], source.as_slice());
+    assert_eq!(
+        &frame[destination..destination + source.len()],
+        source.as_slice()
+    );
     // Out-of-bounds and mismatched sizes are rejected.
     assert!(framebuffer
         .copy_rect(
-            Rect { x: 3, y: 0, width: 2, height: 1 },
-            Rect { x: 0, y: 0, width: 2, height: 1 },
+            Rect {
+                x: 3,
+                y: 0,
+                width: 2,
+                height: 1
+            },
+            Rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 1
+            },
         )
         .is_err());
     assert!(framebuffer
         .copy_rect(
-            Rect { x: 0, y: 0, width: 1, height: 1 },
-            Rect { x: 0, y: 0, width: 2, height: 1 },
+            Rect {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1
+            },
+            Rect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 1
+            },
         )
         .is_err());
 }
@@ -368,37 +409,80 @@ fn tight_jpeg_rect_decodes_to_rgba_and_checks_dimensions() {
     image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
         .encode_image(&image)
         .expect("encode jpeg");
-    let pixels = decode_jpeg_rect(Rect { x: 0, y: 0, width: 2, height: 2 }, &jpeg)
-        .expect("decode jpeg");
+    let pixels = decode_jpeg_rect(
+        Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+        },
+        &jpeg,
+    )
+    .expect("decode jpeg");
     assert_eq!(pixels.len(), 2 * 2 * 4);
     assert!(pixels[0] > 200, "red channel should survive JPEG");
     assert_eq!(pixels[3], 255, "alpha is opaque");
-    assert!(decode_jpeg_rect(Rect { x: 0, y: 0, width: 3, height: 2 }, &jpeg).is_err());
+    assert!(decode_jpeg_rect(
+        Rect {
+            x: 0,
+            y: 0,
+            width: 3,
+            height: 2
+        },
+        &jpeg
+    )
+    .is_err());
 }
 
 #[test]
 fn cursor_pseudo_payload_matches_the_rdp_pointer_shape() {
     let bitmap = cursor_event_payload(
         "s1",
-        Rect { x: 2, y: 3, width: 1, height: 1 },
+        Rect {
+            x: 2,
+            y: 3,
+            width: 1,
+            height: 1,
+        },
         &[10, 20, 30, 255],
     );
     assert_eq!(bitmap["type"], "bitmap");
     assert_eq!(bitmap["width"], 1);
     assert_eq!(bitmap["hotspotX"], 2);
     assert_eq!(bitmap["hotspotY"], 3);
-    assert!(bitmap["rgbaBase64"].as_str().is_some_and(|value| !value.is_empty()));
-    let empty = cursor_event_payload("s1", Rect { x: 0, y: 0, width: 0, height: 0 }, &[]);
+    assert!(bitmap["rgbaBase64"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    let empty = cursor_event_payload(
+        "s1",
+        Rect {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        },
+        &[],
+    );
     assert_eq!(empty["type"], "hidden");
     let oversized = cursor_event_payload(
         "s1",
-        Rect { x: 0, y: 0, width: 300, height: 1 },
+        Rect {
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 1,
+        },
         &vec![0; 300 * 4],
     );
     assert_eq!(oversized["type"], "default");
     let malformed = cursor_event_payload(
         "s1",
-        Rect { x: 0, y: 0, width: 2, height: 2 },
+        Rect {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+        },
         &[1, 2, 3],
     );
     assert_eq!(malformed["type"], "default");

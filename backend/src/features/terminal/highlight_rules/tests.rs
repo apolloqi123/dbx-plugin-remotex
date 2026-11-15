@@ -7,8 +7,7 @@ fn save(store: &mut HighlightRuleStore, pattern: &str) -> HighlightRuleEntry {
 #[test]
 fn save_creates_with_defaults_and_updates_in_place() {
     let mut store = HighlightRuleStore::default();
-    let (created_entry, created) =
-        save_entry(&mut store, &json!({ "pattern": "ERROR" })).unwrap();
+    let (created_entry, created) = save_entry(&mut store, &json!({ "pattern": "ERROR" })).unwrap();
     assert!(created);
     assert!(!created_entry.id.is_empty());
     assert_eq!(created_entry.pattern, "ERROR");

@@ -498,9 +498,9 @@ pub fn save_preferences(data_dir: &Path, params: &Value) -> Result<Value, String
     // 连接级启动命令（P0-4）：整表替换（对象按 connectionId 分桶，前端
     // 读改写合并自己的桶），形状清洗在 startup_commands 模块（单测覆盖）。
     if let Some(value) = params.get("startup_commands") {
-        let store = super::startup_commands::sanitize_store(value).ok_or_else(
-            || "startup_commands must be an object keyed by connectionId".to_string(),
-        )?;
+        let store = super::startup_commands::sanitize_store(value).ok_or_else(|| {
+            "startup_commands must be an object keyed by connectionId".to_string()
+        })?;
         map.insert("startup_commands".to_string(), store);
     }
     // RDP 安全设置（RDP-2）：布尔直存；证书策略走白名单（白名单外报错，

@@ -75,9 +75,7 @@ impl Default for TerminalLimits {
 
 impl TerminalLimits {
     fn tick(&self) -> Duration {
-        self.ttl
-            .min(TTL_TICK)
-            .max(Duration::from_millis(1))
+        self.ttl.min(TTL_TICK).max(Duration::from_millis(1))
     }
 }
 
@@ -198,12 +196,7 @@ impl DockerTerminals {
     /// opens cannot both observe the last free slot. A new open on the same
     /// owner (pane) or SSH session supersedes the old entry, so a lost close
     /// or a rapid remount cannot leave a second PTY alive.
-    fn reserve(
-        &self,
-        terminal_id: &str,
-        owner: &str,
-        session: &str,
-    ) -> Result<Reserved, String> {
+    fn reserve(&self, terminal_id: &str, owner: &str, session: &str) -> Result<Reserved, String> {
         let mut superseded = Vec::new();
         let reserved = {
             let mut inner = self.lock();
@@ -306,7 +299,14 @@ impl DockerTerminals {
         let runner_id = terminal_id.clone();
         let handle = tokio::spawn(async move {
             ssh.run_container_terminal(
-                &session_id, &command, cols, rows, sink, input_rx, resize_rx, cancel_rx,
+                &session_id,
+                &command,
+                cols,
+                rows,
+                sink,
+                input_rx,
+                resize_rx,
+                cancel_rx,
             )
             .await
         });
@@ -404,10 +404,7 @@ impl DockerTerminals {
     pub fn resize(&self, terminal_id: &str, cols: u32, rows: u32) -> bool {
         let inner = self.lock();
         match inner.get(terminal_id) {
-            Some(entry) => entry
-                .resize
-                .try_send((cols.max(1), rows.max(1)))
-                .is_ok(),
+            Some(entry) => entry.resize.try_send((cols.max(1), rows.max(1))).is_ok(),
             None => false,
         }
     }
@@ -499,4 +496,3 @@ impl Drop for DockerTerminals {
 pub fn audit_terminal_intent(data_dir: &Path, command: &str) {
     super::local::audit_intent(data_dir, "docker/terminal", command);
 }
-

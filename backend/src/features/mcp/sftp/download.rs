@@ -7,7 +7,10 @@ impl McpState {
     /// target is validated before dialing (those refusals keep the pooled
     /// connection); the remote size is checked against the configured
     /// `maxDownloadBytes` and transport errors drop the cached connection.
-    pub(in crate::features::mcp) async fn sftp_download_tool(&self, arguments: &Value) -> Result<Value, String> {
+    pub(in crate::features::mcp) async fn sftp_download_tool(
+        &self,
+        arguments: &Value,
+    ) -> Result<Value, String> {
         // Both gaps named in one error (round 6 enumeration contract), in
         // the schema's required order (remotePath before localPath).
         missing_required(arguments, &["remotePath", "localPath"])?;

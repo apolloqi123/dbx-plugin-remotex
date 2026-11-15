@@ -196,8 +196,7 @@ pub fn resolve_sftp_name_encoding(
     override_value: Option<&str>,
     global_value: Option<&str>,
 ) -> crate::core::model::NameEncoding {
-    let parse =
-        |raw: Option<&str>| raw.and_then(crate::core::model::NameEncoding::parse);
+    let parse = |raw: Option<&str>| raw.and_then(crate::core::model::NameEncoding::parse);
     parse(override_value)
         .or_else(|| parse(global_value))
         .unwrap_or(crate::core::model::NameEncoding::Auto)

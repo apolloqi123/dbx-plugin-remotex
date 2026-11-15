@@ -146,7 +146,11 @@ pub fn validate_clipboard_text(text: &str) -> Result<(), String> {
 /// but the retained framebuffer contract (and patch payload budget) is
 /// 3840×2160. Keep a sane floor so a collapsed pane cannot ask for 1×1.
 pub(crate) fn validate_resize_size(width: u16, height: u16) -> Result<(), String> {
-    if width < 200 || height < 200 || width > MAX_FRAMEBUFFER_WIDTH || height > MAX_FRAMEBUFFER_HEIGHT {
+    if width < 200
+        || height < 200
+        || width > MAX_FRAMEBUFFER_WIDTH
+        || height > MAX_FRAMEBUFFER_HEIGHT
+    {
         return Err(format!(
             "vnc/resize: desktop size must be within 200x200 .. {MAX_FRAMEBUFFER_WIDTH}x{MAX_FRAMEBUFFER_HEIGHT}"
         ));
@@ -171,7 +175,10 @@ pub(crate) enum VncCommand {
     /// Live RFB SetDesktopSize (ExtendedDesktopSize pseudo-encoding). The
     /// server applies it and answers with a DesktopUpdate; the generation
     /// and session id stay put.
-    Resize { width: u16, height: u16 },
+    Resize {
+        width: u16,
+        height: u16,
+    },
     Clipboard(String),
     Close,
 }

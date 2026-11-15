@@ -7,7 +7,10 @@ use super::*;
 /// 命中 `sftp_name_encoding_overrides` 时优先，否则跟随全局
 /// `sftp_name_encoding`，缺省 auto——与工作台
 /// `Plugin::resolve_sftp_encoding_opt` 同构（内联拨号按未覆盖处理）。
-pub(in crate::features::mcp) fn mcp_sftp_encoding(data_dir: &Path, arguments: &Value) -> sftp_name::NameEncoding {
+pub(in crate::features::mcp) fn mcp_sftp_encoding(
+    data_dir: &Path,
+    arguments: &Value,
+) -> sftp_name::NameEncoding {
     preferences::sftp_name_encoding_for(data_dir, non_empty_argument(arguments, "connectionId"))
 }
 
@@ -17,7 +20,10 @@ pub(in crate::features::mcp) fn mcp_sftp_encoding(data_dir: &Path, arguments: &V
 /// sftp_mkdir/sftp_remove/sftp_rename 即落回服务器原始字节，不引入 %XX
 /// 转义噪声）。kind 按 v3 permissions 类型位归类（缺 permissions 退回
 /// file，非标准服务器不会把普通文件误渲染成目录）；`.`/`..` 跳过。
-pub(in crate::features::mcp) fn raw_list_items(dir: &str, entries: Vec<sftp_raw::RawEntry>) -> Vec<Value> {
+pub(in crate::features::mcp) fn raw_list_items(
+    dir: &str,
+    entries: Vec<sftp_raw::RawEntry>,
+) -> Vec<Value> {
     entries
         .into_iter()
         .filter(|entry| entry.name.as_slice() != b"." && entry.name.as_slice() != b"..")

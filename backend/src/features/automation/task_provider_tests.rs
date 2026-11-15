@@ -807,9 +807,7 @@ fn retired_history_is_bounded_and_evicts_the_oldest_entries() {
     );
     let newest = format!("session-{}", RESIDENT_HISTORY_CAP as u32 + 9);
     assert!(
-        history
-            .iter()
-            .any(|summary| summary.session_id == newest),
+        history.iter().any(|summary| summary.session_id == newest),
         "the newest summary must still be retained"
     );
     drop(history);

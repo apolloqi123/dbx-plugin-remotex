@@ -1,7 +1,7 @@
 //! Sidecar exit and input diagnostic logs.
 
-use crate::platform::paths::plugin_data_dir;
 use super::*;
+use crate::platform::paths::plugin_data_dir;
 
 /// Best-effort append to `<data-dir>/sidecar-exit.log`; never fails startup
 /// or shutdown when the data dir is unusable.

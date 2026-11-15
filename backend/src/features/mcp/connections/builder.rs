@@ -161,7 +161,9 @@ pub(in crate::features::mcp) fn stored_connection_from_arguments(
 
 /// Parses the optional `jumpHosts` array (snake_case fields, same shape as
 /// `external_config.jump_hosts`) into the ProxyJump chain.
-pub(in crate::features::mcp) fn parse_jump_hosts(arguments: &Value) -> Result<Vec<JumpHost>, String> {
+pub(in crate::features::mcp) fn parse_jump_hosts(
+    arguments: &Value,
+) -> Result<Vec<JumpHost>, String> {
     let Some(list) = arguments.get("jumpHosts") else {
         return Ok(Vec::new());
     };

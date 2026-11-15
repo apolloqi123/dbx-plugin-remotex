@@ -99,19 +99,32 @@ fn host_tool_listing_hides_display_noise_arguments() {
             .unwrap()
             .iter()
             .find(|tool| tool["name"] == name)
-            .unwrap_or_else(|| panic!("{name} missing from tools/list"))["inputSchema"]["properties"]
+            .unwrap_or_else(|| panic!("{name} missing from tools/list"))["inputSchema"]
+            ["properties"]
             .as_object()
             .cloned()
             .unwrap()
     };
 
     for name in ["ssh_exec", "ssh_exec_sudo", "sftp_upload"] {
-        assert!(properties(&full, name).contains_key("connectionId"), "{name} standalone should keep connectionId");
-        assert!(!properties(&host, name).contains_key("connectionId"), "{name} host listing should hide connectionId");
+        assert!(
+            properties(&full, name).contains_key("connectionId"),
+            "{name} standalone should keep connectionId"
+        );
+        assert!(
+            !properties(&host, name).contains_key("connectionId"),
+            "{name} host listing should hide connectionId"
+        );
     }
     for name in ["ssh_exec", "ssh_exec_sudo", "ssh_multi_exec"] {
-        assert!(properties(&full, name).contains_key("timeoutSecs"), "{name} standalone should keep timeoutSecs");
-        assert!(!properties(&host, name).contains_key("timeoutSecs"), "{name} host listing should hide timeoutSecs");
+        assert!(
+            properties(&full, name).contains_key("timeoutSecs"),
+            "{name} standalone should keep timeoutSecs"
+        );
+        assert!(
+            !properties(&host, name).contains_key("timeoutSecs"),
+            "{name} host listing should hide timeoutSecs"
+        );
     }
     // The command remains the reviewable payload.
     let exec = properties(&host, "ssh_exec");

@@ -47,11 +47,7 @@ fn resolve_plugin_data_dir(lookup: impl Fn(&str) -> Option<OsString>) -> PathBuf
     };
     platform_base
         .map(|base| base.join("dbx-plugin-data").join(PLUGIN_ID))
-        .unwrap_or_else(|| {
-            std::env::temp_dir()
-                .join("dbx-plugin-data")
-                .join(PLUGIN_ID)
-        })
+        .unwrap_or_else(|| std::env::temp_dir().join("dbx-plugin-data").join(PLUGIN_ID))
 }
 
 /// RDP must be explicitly enabled in persisted preferences;
@@ -74,9 +70,7 @@ pub(crate) fn plugin_data_dir() -> PathBuf {
     match prepare_plugin_data_dir(&requested) {
         Ok(data_dir) => data_dir,
         Err(request_error) => {
-            let fallback = std::env::temp_dir()
-                .join("dbx-plugin-data")
-                .join(PLUGIN_ID);
+            let fallback = std::env::temp_dir().join("dbx-plugin-data").join(PLUGIN_ID);
             match prepare_plugin_data_dir(&fallback) {
                 Ok(data_dir) => {
                     eprintln!(

@@ -183,7 +183,9 @@ pub(super) async fn detect_remote_shell(
 /// read is bounded, and the channel is always closed explicitly — a dropped
 /// russh channel never sends CHANNEL_CLOSE either.
 async fn probe_remote_shell(handle: &Handle<SshClient>) -> Option<RemoteShell> {
-    let mut channel = open_session_channel_labeled(handle, "shell-probe").await.ok()?;
+    let mut channel = open_session_channel_labeled(handle, "shell-probe")
+        .await
+        .ok()?;
     if channel.exec(true, "printf '%s' \"$SHELL\"").await.is_err() {
         exec::close_setup_channel(&mut channel).await;
         return None;

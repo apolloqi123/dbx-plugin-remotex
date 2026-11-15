@@ -15,8 +15,8 @@
 
 use std::future::Future;
 
-use crate::platform::diagnostics::log_lifecycle_debug;
 use super::*;
+use crate::platform::diagnostics::log_lifecycle_debug;
 
 // Host workbench re-inits can take much longer than a connection re-push
 // (measured ~16s in the wild). Keep the PTY until the restored webview has
@@ -44,7 +44,10 @@ impl Plugin {
         }
         self.runtime.spawn(async move {
             tokio::time::sleep(grace).await;
-            let fire = pending.lock().map(|entries| entries.get(&key).copied() == Some(generation)).unwrap_or(false);
+            let fire = pending
+                .lock()
+                .map(|entries| entries.get(&key).copied() == Some(generation))
+                .unwrap_or(false);
             if !fire {
                 return;
             }
@@ -63,7 +66,9 @@ impl Plugin {
         // immediately after; requiring both would defeat the grace in exactly
         // that order.
         let registered = self.ssh.has_connection(connection_id);
-        let live = self.runtime.block_on(self.ssh.has_live_session(connection_id));
+        let live = self
+            .runtime
+            .block_on(self.ssh.has_live_session(connection_id));
         if !registered && !live {
             log_lifecycle_debug(format!(
                 "connection-disconnect immediate id={connection_id} registered=false live=false"
@@ -80,9 +85,14 @@ impl Plugin {
     fn schedule_ssh_disconnect(&self, connection_id: &str) {
         let ssh = self.ssh.clone();
         let connection_id = connection_id.to_string();
-        self.schedule_after_grace(self.pending_ssh_disconnects.clone(), connection_id.clone(), SSH_LIFECYCLE_GRACE, async move {
-            let _ = ssh.disconnect_connection(&connection_id).await;
-        });
+        self.schedule_after_grace(
+            self.pending_ssh_disconnects.clone(),
+            connection_id.clone(),
+            SSH_LIFECYCLE_GRACE,
+            async move {
+                let _ = ssh.disconnect_connection(&connection_id).await;
+            },
+        );
     }
 
     /// Pushes an already scheduled disconnect back by another grace window.
@@ -102,10 +112,18 @@ impl Plugin {
 
     /// Cancels a deferred disconnect and returns the old stored connection so
     /// the caller can compare runtime identity before keeping live sessions.
-    pub(super) fn cancel_pending_ssh_disconnect(&self, connection_id: &str) -> Option<StoredConnection> {
-        self.pending_ssh_disconnects.lock().ok()?.remove(connection_id)?;
+    pub(super) fn cancel_pending_ssh_disconnect(
+        &self,
+        connection_id: &str,
+    ) -> Option<StoredConnection> {
+        self.pending_ssh_disconnects
+            .lock()
+            .ok()?
+            .remove(connection_id)?;
         log_lifecycle_debug(format!("connection-disconnect canceled id={connection_id}"));
-        self.runtime.block_on(self.ssh.stored_connection(connection_id)).ok()
+        self.runtime
+            .block_on(self.ssh.stored_connection(connection_id))
+            .ok()
     }
 
     /// Defers the SSH portion of `workbench/close`. The next attach/open on
@@ -118,9 +136,14 @@ impl Plugin {
     fn schedule_workbench_close(&self, workbench_id: &str) {
         let ssh = self.ssh.clone();
         let workbench_id = workbench_id.to_string();
-        self.schedule_after_grace(self.pending_workbench_closes.clone(), workbench_id.clone(), SSH_LIFECYCLE_GRACE, async move {
-            let _ = ssh.close_workbench(&workbench_id).await;
-        });
+        self.schedule_after_grace(
+            self.pending_workbench_closes.clone(),
+            workbench_id.clone(),
+            SSH_LIFECYCLE_GRACE,
+            async move {
+                let _ = ssh.close_workbench(&workbench_id).await;
+            },
+        );
     }
 
     pub(super) fn cancel_pending_workbench_close(&self, workbench_id: &str) {
@@ -253,9 +276,18 @@ mod tests {
     #[test]
     fn same_transport_rejects_endpoint_and_credential_changes() {
         let base = connection("10.0.0.8", 22, "root");
-        assert!(!same_ssh_transport(&base, &connection("10.0.0.9", 22, "root")));
-        assert!(!same_ssh_transport(&base, &connection("10.0.0.8", 2222, "root")));
-        assert!(!same_ssh_transport(&base, &connection("10.0.0.8", 22, "admin")));
+        assert!(!same_ssh_transport(
+            &base,
+            &connection("10.0.0.9", 22, "root")
+        ));
+        assert!(!same_ssh_transport(
+            &base,
+            &connection("10.0.0.8", 2222, "root")
+        ));
+        assert!(!same_ssh_transport(
+            &base,
+            &connection("10.0.0.8", 22, "admin")
+        ));
 
         let mut changed_password = base.clone();
         changed_password.password = "other".to_string();

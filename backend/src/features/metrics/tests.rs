@@ -151,7 +151,10 @@ async fn bounded_reader_join_times_out_aborts_and_returns_empty() {
         started.elapsed() < std::time::Duration::from_secs(2),
         "the join must be bounded by the supplied limit"
     );
-    assert!(data.is_empty(), "a timed-out stream degrades to empty output");
+    assert!(
+        data.is_empty(),
+        "a timed-out stream degrades to empty output"
+    );
     tokio::time::timeout(std::time::Duration::from_secs(2), dropped_rx)
         .await
         .expect("the timed-out reader task must be aborted, not detached")
@@ -434,7 +437,8 @@ fn parses_top_processes_with_truncated_commands() {
 fn busybox_fallback_rows_parse_as_zero_cpu_processes() {
     // Alpine/OpenWrt 的 busybox ps 不支持 pcpu/pmem：采集端探测失败后按同一
     // 行形合成「0.0 CPU% + 真实 MEM%」行，解析器不需要 busybox 专属分支。
-    let top = "1 root 0.0 4.6 /sbin/init\n42 root 0.0 12.3 dockerd --host=unix:///var/run/docker.sock\n";
+    let top =
+        "1 root 0.0 4.6 /sbin/init\n42 root 0.0 12.3 dockerd --host=unix:///var/run/docker.sock\n";
     let processes = parse_process_lines(top);
     assert_eq!(processes.len(), 2);
     assert_eq!(processes[0].cpu_percent, 0.0);
@@ -453,8 +457,11 @@ fn collector_scripts_keep_the_busybox_ps_fallback() {
     // bug 只输出第一列）与 busybox（无 pcpu/pmem）服务器的进程卡片会再次消失。
     assert!(METRICS_SCRIPT.contains("LC_ALL=C ps -eo pid= -o user= -o pcpu= -o pmem= -o args="));
     assert!(METRICS_SCRIPT.contains("LC_ALL=C ps -eo pid= -o user= -o rss= -o args="));
-    assert!(PROCESS_LIST_SCRIPT.contains("LC_ALL=C ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args="));
-    assert!(PROCESS_LIST_SCRIPT.contains("LC_ALL=C ps -eo pid= -o ppid= -o user= -o etime= -o stat= -o args="));
+    assert!(PROCESS_LIST_SCRIPT.contains(
+        "LC_ALL=C ps -eo pid= -o ppid= -o user= -o pcpu= -o pmem= -o etime= -o state= -o args="
+    ));
+    assert!(PROCESS_LIST_SCRIPT
+        .contains("LC_ALL=C ps -eo pid= -o ppid= -o user= -o etime= -o stat= -o args="));
 }
 
 #[test]

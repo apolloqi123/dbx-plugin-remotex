@@ -688,7 +688,9 @@ fn stats_payload_parses_percent_sizes_and_pids() {
 
 #[test]
 fn stats_payload_distinguishes_stopped_and_denied() {
-    let stopped = stats_payload("DBXDOCKER_STATS\nError response from daemon: container d4a7 is not running\n");
+    let stopped = stats_payload(
+        "DBXDOCKER_STATS\nError response from daemon: container d4a7 is not running\n",
+    );
     assert_eq!(stopped["available"], true);
     assert_eq!(stopped["running"], false);
     assert_eq!(stopped["needsSudo"], false);
@@ -725,9 +727,7 @@ fn stats_script_keeps_the_id_marker_and_endpoint_inside_the_script() {
     assert!(script.starts_with("sh -s <<'DBXDOCKER'\n"));
     assert!(script.contains("echo DBXDOCKER_STATS\n"));
     assert!(script.contains("DOCKER_HOST='unix:///tmp/podman.sock'"));
-    assert!(script.contains(
-        "podman stats --no-stream --format '{{json .}}' d4a7c9f1e2b3 2>&1"
-    ));
+    assert!(script.contains("podman stats --no-stream --format '{{json .}}' d4a7c9f1e2b3 2>&1"));
     assert!(stats_script(&engine, "../evil").is_err());
     let sudo = sudo_stats_body(&engine, "d4a7c9f1e2b3").unwrap();
     assert!(sudo.contains("podman stats --no-stream"));

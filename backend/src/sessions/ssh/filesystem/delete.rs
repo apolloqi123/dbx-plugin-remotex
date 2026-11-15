@@ -155,7 +155,11 @@ impl SshRuntime {
                 .map(|(path, _)| path.clone())
                 .collect::<Vec<_>>();
             let outcome = self
-                .filesystem_exec(session_id, &build_rm_rf_command(&paths), DELETE_TIMEOUT_SECS)
+                .filesystem_exec(
+                    session_id,
+                    &build_rm_rf_command(&paths),
+                    DELETE_TIMEOUT_SECS,
+                )
                 .await;
             let batch_ok = matches!(&outcome, Ok(found) if found.exit_code == 0);
             if batch_ok {

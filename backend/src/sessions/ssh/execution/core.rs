@@ -94,13 +94,8 @@ impl SshRuntime {
         let session = self.session(session_id).await?;
         if session.files_only {
             let timeout = Duration::from_secs(timeout_secs.clamp(5, 300));
-            return crate::sessions::ssh::exec::exec_plain(
-                &session.handle,
-                command,
-                timeout,
-                &[],
-            )
-            .await;
+            return crate::sessions::ssh::exec::exec_plain(&session.handle, command, timeout, &[])
+                .await;
         }
         let response = self
             .exec(session_id, None, command, false, Some(timeout_secs))

@@ -62,7 +62,12 @@ mod tests {
 
     #[tokio::test]
     async fn fills_the_buffer_across_short_packet_reads() {
-        let mut source = Trickle { data: (0..40).collect(), pos: 0, max: 7, reads: 0 };
+        let mut source = Trickle {
+            data: (0..40).collect(),
+            pos: 0,
+            max: 7,
+            reads: 0,
+        };
         let mut buf = [0_u8; 32];
         let read = read_filled(&mut source, &mut buf).await.unwrap();
         assert_eq!(read, 32);
@@ -72,7 +77,12 @@ mod tests {
 
     #[tokio::test]
     async fn returns_a_short_tail_at_eof() {
-        let mut source = Trickle { data: (0..10).collect(), pos: 0, max: 4, reads: 0 };
+        let mut source = Trickle {
+            data: (0..10).collect(),
+            pos: 0,
+            max: 4,
+            reads: 0,
+        };
         let mut buf = [0_u8; 32];
         let read = read_filled(&mut source, &mut buf).await.unwrap();
         assert_eq!(read, 10);

@@ -532,12 +532,10 @@ pub(crate) fn decode_jpeg_rect(rect: Rect, jpeg: &[u8]) -> Result<Vec<u8>, Strin
     }
     let expected_width = u32::from(rect.width);
     let expected_height = u32::from(rect.height);
-    let dimensions = image::ImageReader::with_format(
-        std::io::Cursor::new(jpeg),
-        image::ImageFormat::Jpeg,
-    )
-    .into_dimensions()
-    .map_err(|error| format!("VNC Tight JPEG header is invalid: {error}"))?;
+    let dimensions =
+        image::ImageReader::with_format(std::io::Cursor::new(jpeg), image::ImageFormat::Jpeg)
+            .into_dimensions()
+            .map_err(|error| format!("VNC Tight JPEG header is invalid: {error}"))?;
     if dimensions != (expected_width, expected_height) {
         return Err(format!(
             "VNC Tight JPEG dimensions {}x{} do not match rect {}x{}",

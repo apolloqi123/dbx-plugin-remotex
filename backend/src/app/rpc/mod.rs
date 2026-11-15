@@ -2,8 +2,8 @@
 
 use super::actions::*;
 use super::params::*;
-use crate::platform::paths::*;
 use super::*;
+use crate::platform::paths::*;
 
 pub(super) mod agent;
 pub(super) mod automation;

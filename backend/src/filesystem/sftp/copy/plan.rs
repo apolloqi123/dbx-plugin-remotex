@@ -192,20 +192,12 @@ pub fn same_directory(from: &str, to_dir: &str) -> bool {
 /// `cp -a -- <src> <toDir/name>` — archive mode keeps permissions, timestamps
 /// and copies directories recursively.
 pub fn build_copy_command(source: &str, target: &str) -> String {
-    format!(
-        "cp -a -- {} {}",
-        shell_quote(source),
-        shell_quote(target)
-    )
+    format!("cp -a -- {} {}", shell_quote(source), shell_quote(target))
 }
 
 /// `mv -f -- <src> <toDir/name>`.
 pub fn build_move_command(source: &str, target: &str) -> String {
-    format!(
-        "mv -f -- {} {}",
-        shell_quote(source),
-        shell_quote(target)
-    )
+    format!("mv -f -- {} {}", shell_quote(source), shell_quote(target))
 }
 
 /// One-shot existence probe for every target: echoes the index of each path

@@ -8,19 +8,19 @@ use tokio::sync::{mpsc, watch};
 #[test]
 fn transient_channel_open_failures_are_recognized() {
     use russh::{ChannelOpenFailure, Error};
-    assert!(is_transient_channel_open_failure(&Error::ChannelOpenFailure(
-        ChannelOpenFailure::AdministrativelyProhibited
-    )));
-    assert!(is_transient_channel_open_failure(&Error::ChannelOpenFailure(
-        ChannelOpenFailure::ResourceShortage
-    )));
+    assert!(is_transient_channel_open_failure(
+        &Error::ChannelOpenFailure(ChannelOpenFailure::AdministrativelyProhibited)
+    ));
+    assert!(is_transient_channel_open_failure(
+        &Error::ChannelOpenFailure(ChannelOpenFailure::ResourceShortage)
+    ));
     // Some OpenSSH builds report MaxSessions exhaustion as ConnectFailed.
-    assert!(is_transient_channel_open_failure(&Error::ChannelOpenFailure(
-        ChannelOpenFailure::ConnectFailed
-    )));
-    assert!(!is_transient_channel_open_failure(&Error::ChannelOpenFailure(
-        ChannelOpenFailure::UnknownChannelType
-    )));
+    assert!(is_transient_channel_open_failure(
+        &Error::ChannelOpenFailure(ChannelOpenFailure::ConnectFailed)
+    ));
+    assert!(!is_transient_channel_open_failure(
+        &Error::ChannelOpenFailure(ChannelOpenFailure::UnknownChannelType)
+    ));
     assert!(!is_transient_channel_open_failure(&Error::Disconnect));
 }
 

@@ -93,9 +93,7 @@ fn strip_comments_and_strings(text: &str) -> String {
             }
             '/' if chars.get(index + 1) == Some(&'*') => {
                 index += 2;
-                while index + 1 < chars.len()
-                    && !(chars[index] == '*' && chars[index + 1] == '/')
-                {
+                while index + 1 < chars.len() && !(chars[index] == '*' && chars[index + 1] == '/') {
                     index += 1;
                 }
                 index = (index + 2).min(chars.len());
@@ -118,8 +116,7 @@ fn strip_comments_and_strings(text: &str) -> String {
                 // Skip char literals but keep lifetimes (`'a`).
                 if chars.get(index + 2) == Some(&'\'') {
                     index += 3;
-                } else if chars.get(index + 1) == Some(&'\\')
-                    && chars.get(index + 3) == Some(&'\'')
+                } else if chars.get(index + 1) == Some(&'\\') && chars.get(index + 3) == Some(&'\'')
                 {
                     index += 4;
                 } else {

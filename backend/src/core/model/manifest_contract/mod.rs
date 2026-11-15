@@ -3,10 +3,10 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-mod form;
 mod fields;
-mod triggers;
+mod form;
 mod localization;
+mod triggers;
 
 fn manifest() -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../manifest.json");

@@ -110,7 +110,10 @@ pub(in crate::core::model) fn validate_host_field(host: String) -> Result<String
 
 /// Reads a credential field verbatim (no trimming): passwords and
 /// passphrases may legitimately start or end with spaces.
-pub(in crate::core::model) fn credential_string(object: &serde_json::Map<String, Value>, key: &str) -> String {
+pub(in crate::core::model) fn credential_string(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> String {
     object
         .get(key)
         .and_then(Value::as_str)

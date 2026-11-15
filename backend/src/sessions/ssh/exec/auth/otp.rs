@@ -48,7 +48,8 @@ pub(in crate::sessions::ssh::exec) fn otp_usage_ledger() -> &'static Mutex<HashM
 /// `scope|secret-fingerprint|code` with their replay-window expiry
 /// (`validUntil + period`, i.e. including the ±1-step acceptance slack).
 /// Global for the same reason as [`otp_usage_ledger`].
-pub(in crate::sessions::ssh::exec) fn committed_otp_ledger() -> &'static Mutex<HashMap<String, u64>> {
+pub(in crate::sessions::ssh::exec) fn committed_otp_ledger() -> &'static Mutex<HashMap<String, u64>>
+{
     static LEDGER: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
     LEDGER.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -57,7 +58,8 @@ pub(in crate::sessions::ssh::exec) fn committed_otp_ledger() -> &'static Mutex<H
 /// each one a clean slate: hold the returned guard for the whole test so
 /// parallel tests neither share marks nor wipe each other mid-run.
 #[cfg(test)]
-pub(in crate::sessions::ssh::exec) fn otp_ledger_test_guard() -> std::sync::MutexGuard<'static, ()> {
+pub(in crate::sessions::ssh::exec) fn otp_ledger_test_guard() -> std::sync::MutexGuard<'static, ()>
+{
     static SERIAL: OnceLock<Mutex<()>> = OnceLock::new();
     let serial = SERIAL.get_or_init(|| Mutex::new(()));
     let guard = serial.lock().unwrap_or_else(|poison| poison.into_inner());

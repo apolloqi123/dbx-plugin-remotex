@@ -326,9 +326,7 @@ pub(crate) fn start_clipboard_download(
         let text = row.as_str().ok_or("Remote path is invalid")?;
         paths.push(normalize_remote_path(text)?);
     }
-    let local_dir = super::local::clipboard_dir()?
-        .to_string_lossy()
-        .to_string();
+    let local_dir = super::local::clipboard_dir()?.to_string_lossy().to_string();
     let task_id = Uuid::new_v4().to_string();
     let cancel = runtime.register_task(&task_id, &session_id);
     let ssh = runtime.ssh.clone();

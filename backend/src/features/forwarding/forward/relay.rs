@@ -364,11 +364,11 @@ pub(crate) fn note_relay_end(entry: &ForwardEntry) {
     // its own decrement and the drain's can both land. A plain `fetch_sub`
     // would then push the counter negative (and wrap on the next relay),
     // making `connectionsActive` nonsense. Clamp at zero instead.
-    let _ = entry.connections_active.fetch_update(
-        Ordering::Relaxed,
-        Ordering::Relaxed,
-        |active| (active > 0).then_some(active - 1),
-    );
+    let _ = entry
+        .connections_active
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |active| {
+            (active > 0).then_some(active - 1)
+        });
     retain_live_relays(entry);
 }
 

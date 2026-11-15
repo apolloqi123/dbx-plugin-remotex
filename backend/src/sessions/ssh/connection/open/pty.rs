@@ -51,7 +51,13 @@ impl SshRuntime {
             match crate::features::forwarding::x11::arm_session() {
                 Ok(cookie_hex) => {
                     if let Err(error) = channel
-                        .request_x11(true, false, crate::features::forwarding::x11::X11_AUTH_PROTOCOL, cookie_hex, 0)
+                        .request_x11(
+                            true,
+                            false,
+                            crate::features::forwarding::x11::X11_AUTH_PROTOCOL,
+                            cookie_hex,
+                            0,
+                        )
                         .await
                     {
                         eprintln!("[x11] x11-req refused by server: {error}");

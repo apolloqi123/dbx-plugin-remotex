@@ -1,9 +1,9 @@
 //! Plugin construction and the sidecar serve loop.
 
 use super::diagnostics::{log_sidecar_exit, spawn_terminal_input_counter};
-use crate::platform::paths::plugin_data_dir;
 use super::*;
 use crate::core::plugin_ids::PLUGIN_ID;
+use crate::platform::paths::plugin_data_dir;
 
 impl Plugin {
     fn new() -> Result<Self, String> {
@@ -23,9 +23,9 @@ impl Plugin {
             prefs.get("auto_record").and_then(Value::as_bool) == Some(true),
         );
         let ssh = Arc::new(SshRuntime::new(data_dir));
-        let remote_files = Arc::new(
-            crate::features::remote_files::RemoteFilesRuntime::new(ssh.clone()),
-        );
+        let remote_files = Arc::new(crate::features::remote_files::RemoteFilesRuntime::new(
+            ssh.clone(),
+        ));
         // The file transfer panel has no PTY/read loop, so nothing else can
         // notice that its webview went away. Sessions heartbeat through
         // `filetransfer/ping`; reap the ones that stopped (closed tab, killed
@@ -34,12 +34,11 @@ impl Plugin {
             let remote_files = remote_files.clone();
             let ssh = ssh.clone();
             runtime.handle().spawn(async move {
-                let mut ticker =
-                    tokio::time::interval(std::time::Duration::from_secs(60));
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
                 loop {
                     ticker.tick().await;
-                    for session_id in remote_files
-                        .take_stale_sessions(std::time::Duration::from_secs(180))
+                    for session_id in
+                        remote_files.take_stale_sessions(std::time::Duration::from_secs(180))
                     {
                         remote_files.cancel_session(&session_id);
                         let _ = ssh.close_session(&session_id).await;
@@ -96,9 +95,15 @@ impl Plugin {
             ),
             connection_import: crate::features::import::ImportStream::default(),
             non_ssh_creds: crate::core::non_ssh_credentials::NonSshCredentials::new(),
-            pending_ssh_disconnects: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            pending_workbench_closes: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            pending_ssh_session_closes: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            pending_ssh_disconnects: Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            pending_workbench_closes: Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            pending_ssh_session_closes: Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
             lifecycle_grace_seq: AtomicU64::new(0),
             tasks: Arc::new(crate::features::automation::task_provider::TaskProvider::new()),
         })

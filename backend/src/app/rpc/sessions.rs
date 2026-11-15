@@ -100,11 +100,7 @@ impl Plugin {
                 // direct RPC that does not come through workbench.onClose) may
                 // be followed by an attach to the same session. Only explicit
                 // user/UI closes opt into `immediate`.
-                if params
-                    .get("immediate")
-                    .and_then(Value::as_bool)
-                    == Some(true)
-                {
+                if params.get("immediate").and_then(Value::as_bool) == Some(true) {
                     crate::platform::diagnostics::log_lifecycle_debug(format!(
                         "session-close immediate session={session_id}"
                     ));

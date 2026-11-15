@@ -1,9 +1,9 @@
 use super::*;
 
-mod tools;
-mod safety;
-mod connections;
 mod bridge;
+mod connections;
+mod safety;
+mod tools;
 
 fn state() -> McpState {
     // Unique data dir per call: settings persistence (limits AND the

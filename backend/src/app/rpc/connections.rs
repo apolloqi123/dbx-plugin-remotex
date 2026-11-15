@@ -110,7 +110,8 @@ impl Plugin {
                 // Keep the live PTY when the transport identity is unchanged;
                 // changed host/port/credentials still take the fresh path.
                 if let Some(previous) = self.cancel_pending_ssh_disconnect(&connection.id) {
-                    let same = super::super::lifecycle_grace::same_ssh_transport(&previous, &connection);
+                    let same =
+                        super::super::lifecycle_grace::same_ssh_transport(&previous, &connection);
                     crate::platform::diagnostics::log_lifecycle_debug(format!(
                         "connection-repush id={} same_transport={same}",
                         connection.id

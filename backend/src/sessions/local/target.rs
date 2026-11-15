@@ -225,9 +225,10 @@ mod tests {
 
     #[test]
     fn local_provider_payload_parses_with_trimmed_fields() {
-        let target = LocalTarget::from_lifecycle_params(&lifecycle(LEGACY_LOCAL_CONNECTION_PROVIDER))
-            .expect("parse")
-            .expect("local target");
+        let target =
+            LocalTarget::from_lifecycle_params(&lifecycle(LEGACY_LOCAL_CONNECTION_PROVIDER))
+                .expect("parse")
+                .expect("local target");
         assert_eq!(target.id, "conn-local-1");
         assert_eq!(target.name.as_deref(), Some("ops box"));
         assert_eq!(target.shell, "/bin/bash");

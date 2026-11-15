@@ -113,8 +113,7 @@ fn listing_missing_store_is_empty() {
 fn listing_survives_adversarial_known_hosts_content() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("known_hosts");
-    let key_line =
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB1234567890abcdefghijklmnopqrstuvwxyz ok";
+    let key_line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB1234567890abcdefghijklmnopqrstuvwxyz ok";
     // Hashed hostname entry (OpenSSH privacy form), CRLF endings, blank
     // lines, comments, a line with an unparseable key, a bare marker, a
     // stray marker fragment, a keyless host line, and one megabyte-scale
@@ -167,8 +166,7 @@ fn listing_survives_adversarial_known_hosts_content() {
 fn removal_ignores_nonstandard_marker_tokens() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("known_hosts");
-    let key_line =
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB1234567890abcdefghijklmnopqrstuvwxyz x";
+    let key_line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB1234567890abcdefghijklmnopqrstuvwxyz x";
     std::fs::write(
         &path,
         format!("@unknownmarker plain.test {key_line}\nplain.test {key_line}\n"),
@@ -233,7 +231,7 @@ fn check_learn_check_closes_the_trust_loop() {
     let key = generated_test_key();
 
     // First sight: unknown (electerm's "prompts for an unknown host key
-        // once" precondition).
+    // once" precondition).
     assert_eq!(
         verifier.check("tofu.test", 2222, &key).unwrap(),
         HostKeyState::Unknown

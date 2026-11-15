@@ -83,9 +83,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 
-use crate::sessions::ssh::exec::strip_ansi_control_sequences;
 use crate::core::model::TerminalStream;
 use crate::features::automation::triggers;
+use crate::sessions::ssh::exec::strip_ansi_control_sequences;
 use crate::sessions::ssh::ReplayBuffer;
 
 /// Dial timeout for the initial TCP connect (contract P2-3).
