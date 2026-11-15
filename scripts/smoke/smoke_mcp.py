@@ -893,8 +893,11 @@ def dead_bridge_section(args: argparse.Namespace) -> None:
         for tool, tool_args in (
             ("ssh_exec", {"connectionId": "ghost-1", "command": "echo hi"}),
             ("sftp_stat", {"connectionId": "ghost-1", "path": "/tmp"}),
+            # A shape-valid task log so the local logPath guard passes and the
+            # dead-bridge connection lookup is what fails, as this section
+            # intends (see validate_task_log_path).
             ("ssh_task_status", {
-                "connectionId": "ghost-1", "logPath": "/tmp/.dbx-ssh-tasks/x.log",
+                "connectionId": "ghost-1", "logPath": "/tmp/.dbx-ssh-tasks/bg-1.log",
             }),
         ):
             error = call_tool_error(proc, next_id, tool, tool_args)
