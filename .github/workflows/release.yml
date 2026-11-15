@@ -3,13 +3,19 @@ name: Release DBX RemoteX plugin
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Existing GitHub Release tag that receives the plugin assets
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 # Same tag cannot run twice concurrently; different tags are independent.
 concurrency:
-  group: release-remotex-${{ github.event.release.tag_name }}
+  group: release-remotex-${{ github.event.release.tag_name || inputs.release-tag }}
   cancel-in-progress: false
 
 env:
@@ -29,7 +35,7 @@ env:
 
 jobs:
   validate:
-    if: startsWith(github.event.release.tag_name, 'remotex-v')
+    if: startsWith(github.event.release.tag_name || inputs.release-tag, 'remotex-v')
     name: Validate RemoteX release identity
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -43,7 +49,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Validate manifest and release tag
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release-tag }}
         run: |
           python3 scripts/verify/validate_repo.py
           # 与 ci.yml validate/backend 同一组廉价门：vendored RDP 链锁步、
@@ -69,7 +75,7 @@ jobs:
   # Build the target-independent UI once; every platform job below unpacks it
   # as ui/ and packages it as-is instead of rebuilding the frontend 5x.
   frontend:
-    if: startsWith(github.event.release.tag_name, 'remotex-v')
+    if: startsWith(github.event.release.tag_name || inputs.release-tag, 'remotex-v')
     name: Build release frontend
     needs: validate
     runs-on: ubuntu-24.04
@@ -103,7 +109,7 @@ jobs:
   # validate，tag 构建会绕过它。单平台（ubuntu）跑一次，不进入 5 平台矩阵，
   # rust setup/sccache/rust-cache 约定与 ci.yml backend job 保持一致。
   backend:
-    if: startsWith(github.event.release.tag_name, 'remotex-v')
+    if: startsWith(github.event.release.tag_name || inputs.release-tag, 'remotex-v')
     name: Rust sidecar checks
     needs: validate
     runs-on: ubuntu-24.04
@@ -133,7 +139,7 @@ jobs:
       - run: cargo test --locked --manifest-path backend/Cargo.toml
 
   build:
-    if: startsWith(github.event.release.tag_name, 'remotex-v')
+    if: startsWith(github.event.release.tag_name || inputs.release-tag, 'remotex-v')
     name: Build ${{ matrix.target }}
     needs: [validate, frontend, backend]
     timeout-minutes: 45
@@ -297,7 +303,7 @@ jobs:
             dist/*.artifact.json
 
   publish:
-    if: startsWith(github.event.release.tag_name, 'remotex-v')
+    if: startsWith(github.event.release.tag_name || inputs.release-tag, 'remotex-v')
     name: Publish plugin release assets
     needs: build
     runs-on: ubuntu-24.04
@@ -311,7 +317,7 @@ jobs:
           merge-multiple: true
       - name: Validate candidates and merge metadata
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release-tag }}
         run: |
           python3 scripts/release/check_candidates.py dist \
             --expect linux-x64,linux-arm64,darwin-arm64,darwin-x64,windows-x64 \
@@ -319,7 +325,7 @@ jobs:
       - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release-tag }}
         run: |
           mapfile -d '' packages < <(find dist -type f -name '*.dbxp' -print0)
           if [ "${#packages[@]}" -eq 0 ]; then
