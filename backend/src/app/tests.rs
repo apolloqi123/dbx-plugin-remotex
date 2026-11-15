@@ -280,6 +280,6 @@ fn optional_u64_falls_back_on_missing_or_invalid() {
 
 #[test]
 fn password_is_not_in_workbench_status() {
-    let value = json!({ "ok": true, "plugin": "io.dbx.sshx" });
+    let value = json!({ "ok": true, "plugin": "io.dbx.remotex" });
     assert!(!value.to_string().contains("password"));
 }

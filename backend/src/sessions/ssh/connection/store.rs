@@ -18,7 +18,7 @@ impl SshRuntime {
             .ok_or_else(|| format!("Connection {connection_id} is not active; reopen it from DBX"))
     }
 
-    /// Registers a hydrated `io.dbx.sshx.local` target (`connection/connect`
+    /// Registers a hydrated `io.dbx.remotex.local` target (`connection/connect`
     /// lifecycle). Re-connecting over an existing entry replaces it, exactly
     /// like [`Self::store_connection`].
     pub(crate) fn store_local_target(

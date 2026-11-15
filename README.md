@@ -1,129 +1,140 @@
 # RemoteX
 
-[![CI](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml/badge.svg)](https://github.com/jinpy666/dbx-plugin-sshx/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/jinpy666/dbx-plugin-sshx?display_name=tag)](https://github.com/jinpy666/dbx-plugin-sshx/releases)
+[English](README.en.md) · [文档索引](docs/README.md)
 
-[English](README.en.md) · [产品宣传页](docs/guides/MEDIA.zh-CN.md) · [特性与竞品对比](docs/architecture/COMPARISON.zh-CN.md) · [独立仓库迁移说明](docs/architecture/REPOSITORY_SPLIT.zh-CN.md)
+RemoteX 是 DBX 的远程连接工作台。覆盖 SSH、Telnet、VNC、RDP、串口与本机
+终端，并把终端、SFTP、端口转发、容器、监控、录制和 MCP 自动化放在同一个工作区里。
+它关心的不是“连上去”这一秒，而是登录之后的整个操作过程：少切窗口、少复制凭据、
+危险操作有边界、做过的事能回看。
 
-RemoteX 是面向现代运维团队的远程连接工作台：一个入口即可连接 SSH、Telnet、VNC、
-RDP、串口与本地 Shell，并完成终端操作、文件传输、跳板访问、受控提权和 MCP 自动化。
-它把“登录服务器之后的下一小时”压缩成一个连贯、可审计、可复用的工作流。
+## 能做什么
 
-> RemoteX · SFTP · Remote Operations：终端、文件、自动化和受控运维操作集中在一个 DBX 终端面板中。
 
-## 先看效果
+| 场景      | RemoteX 的做法                                |
+| ------- | ------------------------------------------ |
+| 日常巡检与排障 | PTY 终端、命令历史、快速命令、输出高亮、目录跟随、可取消执行           |
+| 文件管理    | SFTP 浏览、预览、编辑、拖放上传、断点续传、批量删除、压缩/解压、书签      |
+| 进入内网    | 最多三跳 ProxyJump、连接保活、Known Hosts 校验         |
+| 端口转发    | 本地、远程与 SOCKS5 动态转发，统一在 Port forwards 工作台管理 |
+| 容器运维    | 容器列表、日志、资源统计、容器终端与文件浏览                     |
+| 状态观察    | CPU、内存、网络、磁盘与进程视图，终端右下角常驻摘要                |
+| 受控操作    | 只读模式、命令白名单、sudo 档案、危险命令确认、审计与告警            |
+| 留痕与复盘   | 终端录制、回放、GIF 与转录文本导出，按连接隔离的传输历史             |
+| AI 自动化  | 16 个 MCP 工具，复用已保存连接，不把密码放进工具参数             |
 
-[观看 87 秒真实操作演示（点击在线播放）](docs/media/dbx-ssh-live-demo.mp4) ·
-[观看 15 秒功能预览](docs/media/dbx-ssh-demo.mp4)
 
-![RemoteX 产品总览](docs/media/dbx-ssh-overview.png)
+## 支持的协议
 
-如果你正在工具之间来回切换：终端一个窗口、SFTP 一个窗口、跳板机靠配置文件、
-自动化又要另写脚本，那么 RemoteX 的价值很直接——连接、终端、文件和自动化
-都围绕同一个 DBX 连接上下文工作。
 
-## 为什么值得用
+| 协议      | 能力                                                               |
+| ------- | ---------------------------------------------------------------- |
+| SSH     | 密码、私钥、私钥+口令、SSH Agent、键盘交互、Auto；TOTP/2FA；ProxyJump；PTY；SFTP；端口转发 |
+| Telnet  | 交互式终端、窗口调整、回放、自动登录                                               |
+| 串口      | 端口枚举、交互终端、文件上传、回放                                                |
+| VNC     | 远程画面、键鼠输入、剪贴板                                                    |
+| RDP     | 密码/NLA、TLS、剪贴板、断线重连；不含音频与磁盘重定向                                   |
+| RemoteX | 本机登录 Shell，与远程终端一致的标签页、录制与通知体验                                   |
 
-| 你要完成的事 | RemoteX 给你的体验 |
-| --- | --- |
-| 快速处理线上问题 | PTY 终端、命令历史、快速命令、可取消命令和目录跟随 |
-| 安全地传文件 | SFTP 预览、拖放、断点确认、进度、取消和原子替换 |
-| 进入私网服务器 | 最多三跳 ProxyJump、连接保活和 Known Hosts 校验 |
-| 限制高风险操作 | 只读模式、sudo 来源选择、命令白名单和宿主 secret binding |
-| 把重复工作自动化 | MCP 工具复用连接、审批和权限边界 |
 
-## 适合场景
+新建连接时只需选择 **RemoteX** 入口，再在表单里选择协议；主机、端口、凭据和协议专属
+字段会随选择切换。
 
-- 日常 Linux/Unix 服务器巡检、日志查看和远程命令执行。
-- 通过跳板机访问内网环境，并在终端与 SFTP 之间快速切换。
-- 在受控权限下完成配置文件、脚本和构建产物的上传下载。
+## 几个常用工作流
 
-## 核心能力
+**从登录到定位问题**
 
-- 支持密码、私钥、SSH Agent、键盘交互和无密码认证。
-- 交互式终端支持 PTY、窗口调整、会话恢复、剪贴板、远程目录跟随和批量输入。
-- 工具栏“复制会话”可在当前已认证 SSH 连接上打开独立终端，无需再次输入堡垒机动态令牌；“新建会话”仍会建立全新连接并重新认证。
-- SFTP 支持浏览、排序、预览、上传、下载、重命名、新建、拖放和递归删除；聚焦 SFTP 面板后按 Ctrl/Cmd+V，可把系统剪贴板中的本地文件直接上传到当前目录。
-- 大文件传输支持进度、取消、断点确认和原子替换，降低中断造成的半成品风险。
-- 支持 Known Hosts 校验、变更主机密钥拒绝、只读模式和远程目录磁盘用量查看。
-- 支持最多三跳 ProxyJump、连接保活、可取消远程命令、chmod 和 Quick Sudo。
-- 支持 TOTP/键盘交互式双因素认证；手机、硬件令牌或短信动态码可在连接时通过密文弹窗输入，无需保存当前六位码。另提供面向自动化客户端的 MCP 工具接口。
-- 界面支持简体中文、繁体中文、英语、西班牙语、意大利语、日语和葡萄牙语。
+1. 打开连接，终端自动建立 PTY。
+2. 用快速命令或批量输入执行巡检命令，输出按高亮规则标出错误与关键字。
+3. 打开服务器指标浮层查看 CPU、内存、网络与进程。
+4. 需要改配置时切到 SFTP，双击文件预览或编辑，保存后原子替换。
 
-系统剪贴板文件粘贴使用宿主/浏览器提供的原生 `paste` 文件事件；若当前宿主不暴露该事件，仍可使用 Upload 按钮或拖放上传。
+**安全地传文件**
 
-完整的能力矩阵和与 OpenSSH、Tabby、Termius、FinalShell 等方案的定位对比见
-[特性与竞品对比](docs/architecture/COMPARISON.zh-CN.md)。
+- 拖放或粘贴本地文件到 SFTP 面板即可上传。
+- 大文件显示进度并可取消；中断后可继续。
+- 删除前列出待删文件/文件夹；多选删除按计划批量执行。
+- 传输历史按连接隔离，切换连接不会看到别的连接的记录。
 
-> **协议路线**：DBX 新建连接的插件分类现在只有一个 **RemoteX** 入口；在连接表单内选择 SSH、Telnet、VNC、RDP、串口或本地 Shell，主机、端口、凭据与协议专属字段会随类型切换。更多远程访问场景会持续补齐，请以对应版本发布说明为准。
+**受控提权**
 
-更多截图见[产品宣传页](docs/guides/MEDIA.zh-CN.md)。
+- 连接级只读模式会同时约束 SFTP 写操作、命令执行与 MCP 工具。
+- sudo 档案可预设命令白名单与凭据来源。
+- 命中危险命令时要求显式确认；审计页可回看执行记录与告警。
 
-## MCP 自动化
+**录制与复盘**
 
-插件内置 16 个 MCP 工具——远程命令、sudo 提权、SFTP 文件、终端输入和连接管理——
-让 AI 编码代理（ZCode、Claude 等任何 MCP 客户端）在你的权限边界内操作服务器。
-支持两种接入方式：
-
-**方式一：DBX MCP 桥（推荐）**。DBX 的 MCP 服务器内置 `dbx_list_plugin_tools` /
-`dbx_call_plugin_tool` 两个通用桥工具，可发现并调用已装插件的全部 MCP 工具。
-传 `connectionId` 即引用 DBX 已保存的 SSH 连接，凭据由 DBX 解析转发，
-工具参数中不出现任何密码，审批、sudo 白名单与只读模式照常生效。
-
-**方式二：独立 stdio 模式**。无需 DBX 在场，把插件二进制直接注册为 MCP 服务器：
-
-```json
-{
-  "mcp": {
-    "servers": {
-      "sshx": {
-        "type": "stdio",
-        "command": "/绝对路径/dbx-plugin-sshx",
-        "args": ["--mcp"]
-      }
-    }
-  }
-}
-```
-
-生产环境可以开一个只读 MCP 入口（整个进程强制走只读门，工具无法自行关闭）：
-
-```bash
-DBX_SSH_MCP_READ_ONLY=1 dbx-plugin-sshx --mcp
-```
-
-| 任务 | 工具 |
-| --- | --- |
-| 远程巡检 | `ssh_exec`、`ssh_multi_exec`、`sftp_list_dir`、`sftp_stat` |
-| 特权操作 | `ssh_exec_sudo`（自动应答 TOTP）、Quick Sudo 档案 |
-| 长任务 | `ssh_run_bg` + `ssh_task_status`（断线、换会话不丢） |
-| 文件传输 | `sftp_upload` / `sftp_download` / `sftp_read_file` / `sftp_write_file` |
-| 会话管理 | `ssh_terminal_input`、`ssh_list_connections`、`ssh_close`、`ssh_list_known_hosts` / `ssh_remove_known_host` |
-
-完整配置、连接寻址（免内联凭据）、工具清单与安全边界见
-[MCP 使用指南](docs/guides/MCP_USAGE.zh-CN.md)与[SSH MCP 参考](docs/guides/MCP.zh-CN.md)。
-
-## 安全设计
-
-密码、私钥口令、TOTP 和 sudo 凭据由 DBX 宿主 secret binding 管理。连接期人工输入的动态令牌只用于当次认证，不会持久化或写入日志。插件不会把
-凭据写入配置文件、日志或导出内容。建议生产连接启用 Known Hosts 严格校验，
-并按需启用只读模式和 sudo 命令白名单。
+- 录制文件为 asciicast v2 `.cast`，保存在本机。
+- 录制面板提供时间线、搜索、回放、GIF 与转录导出。
+- 只记录终端输出与输入，不采集系统鼠标指针、光标坐标或剪贴板内容。
 
 ## 安装
 
-从 [GitHub Releases](https://github.com/jinpy666/dbx-plugin-sshx/releases) 下载匹配平台的
-`.dbxp` 包，在 DBX 插件中心选择本地安装。开发者也可以按照
-[迁移与发布说明](docs/architecture/REPOSITORY_SPLIT.zh-CN.md) 构建候选包。
+从 [GitHub Releases](https://github.com/apolloqi123/dbx-plugin-remotex/releases) 下载匹配平台与
+架构的 `.dbxp`，在 DBX 插件中心选择“从本地安装”。安装后重启或刷新插件即可看到
+**RemoteX** 连接入口与工作台。
 
-## 开发与验证
+要求：
+
+- DBX 宿主 `host_api >= 1.0.0`
+- macOS、Linux 或 Windows（按发布包架构选择）
+
+## 从源码构建
 
 ```bash
+# 前端
 pnpm --dir frontend install
-pnpm --dir frontend typecheck && pnpm --dir frontend test && pnpm --dir frontend build
+pnpm --dir frontend typecheck
+pnpm --dir frontend test
+pnpm --dir frontend build
+
+# 后端
 cargo test --manifest-path backend/Cargo.toml
-python3 scripts/verify/validate_repo.py && node scripts/verify/connection-forms/verify.mjs
-scripts/test.sh --skip-host
+cargo build --release --manifest-path backend/Cargo.toml
+
+# 打包 .dbxp（需要 dbx-plugin CLI）
+scripts/build.sh
 ```
 
-协议、构建和完整集成验证说明位于 `docs/`。公开贡献前请先阅读
-[迁移说明](docs/architecture/REPOSITORY_SPLIT.zh-CN.md)，了解独立仓库的迁移边界、公共依赖和发布前置条件。
+产物在 `dist/`。构建与验证的完整说明见 [开发指南](docs/development.zh-CN.md)。
+
+## 安全边界
+
+- 连接密码、私钥与私钥口令由 DBX 宿主的 secret binding 管理；Quick Sudo 与 OTP 种子由插件 vault 以字段级 AEAD 加密后落盘。
+- 连接时临时输入的双因素验证码只用于本次认证，不持久化、不写日志。
+- Known Hosts 默认校验；主机密钥变化时拒绝连接并给出明确提示。
+- MCP 工具在执行前经过只读检查、路径检查、命令白名单与危险命令确认。
+- 录制文件、传输历史与日志都可能包含敏感信息，请按本机敏感数据管理。
+
+更多细节见 [安全模型](docs/security.zh-CN.md)。
+
+## 文档
+
+
+| 文档                                            | 内容                   |
+| --------------------------------------------- | -------------------- |
+| [文档索引](docs/README.md)                        | 全部文档与阅读顺序            |
+| [快速开始](docs/getting-started.zh-CN.md)         | 安装、建立第一条连接、界面导览      |
+| [功能指南](docs/features.zh-CN.md)                | 终端、SFTP、转发、容器、录制、自动化 |
+| [架构说明](docs/architecture.zh-CN.md)            | 进程、模块、数据流与打包结构       |
+| [RPC 协议](docs/architecture/PROTOCOL.zh-CN.md) | 方法总表、事件、二进制通道与错误码    |
+| [安全模型](docs/security.zh-CN.md)                | 凭据、主机校验、只读边界与审计      |
+| [MCP 快速开始](docs/guides/MCP_USAGE.zh-CN.md)    | 两种接入方式与常用工具          |
+| [MCP 参考](docs/guides/MCP.zh-CN.md)            | 工具语义、权限档、错误与长任务      |
+| [开发指南](docs/development.zh-CN.md)             | 环境、测试、打包与发布检查        |
+| [故障排查](docs/troubleshooting.zh-CN.md)         | 连接、传输、终端、构建的常见问题     |
+
+
+## 截图
+
+| 服务器指标 | Docker 工作台 |
+| --- | --- |
+| ![服务器指标](docs/media/remotex-metrics.png) | ![Docker 工作台](docs/media/remotex-docker.png) |
+
+| 终端与实时指标 | AI 终端与工具审批 |
+| --- | --- |
+| ![终端与实时指标](docs/media/remotex-terminal-metrics.png) | ![AI 终端与工具审批](docs/media/remotex-ai-agent.png) |
+
+
+## 许可
+
+[MIT](LICENSE)

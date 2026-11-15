@@ -363,7 +363,7 @@ impl TaskProvider {
         outcome
     }
 
-    /// Local-shell run (`io.dbx.sshx.local` target): spawn the connection's
+    /// Local-shell run (`io.dbx.remotex.local` target): spawn the connection's
     /// shell on this machine with process-level env/cwd and the same
     /// streaming/cancel/timeout contract as the SSH path. Script mode
     /// verifies the file here (before spawn) so a stale path fails the run

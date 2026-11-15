@@ -1,28 +1,26 @@
-# SSH MCP 使用指南
+# MCP 快速开始
 
-本插件向 MCP 客户端（ZCode、Claude 等 AI 代理）暴露 16 个 SSH/SFTP 工具：
-远程命令、sudo 提权、文件传输、终端输入与连接管理。有两种接入方式，
-协议细节与完整安全设计见 [SSH MCP 参考](MCP.zh-CN.md)。
+RemoteX 提供 16 个 MCP 工具，覆盖远程执行、后台任务、SFTP 与连接查询。本文只讲
+接入和常用调用；完整语义、权限档与错误处理见 [MCP 参考](MCP.zh-CN.md)。
 
-## 两种接入方式
+## 选择接入方式
 
-| | 方式一：DBX MCP 桥 | 方式二：独立 stdio 模式 |
-| --- | --- | --- |
-| 前提 | 安装插件并启动 DBX | 仅插件二进制，无需 DBX |
-| 凭据 | DBX 解析已保存连接，不经工具参数 | 随调用内联传入（带 `connectionId` 时自动经桥转发） |
-| 安全策略 | 审批、sudo 白名单、只读模式全部复用 | 四层门禁 + 进程级开关 |
-| 适用 | 日常使用（推荐） | 独立自动化、CI、无 DBX 环境 |
-
-## 方式一：DBX MCP 桥（推荐）
-
-DBX 的 MCP 服务器（`dbx mcp` 或桌面内置 MCP）内置两个通用桥工具：
-
-| 工具 | 说明 |
+| 你的情况 | 用哪种 |
 | --- | --- |
-| `dbx_list_plugin_tools` | 列出所有已装插件贡献的 MCP 工具（含本插件 16 个工具及其 JSON Schema、annotations） |
-| `dbx_call_plugin_tool` | 调用插件工具；传 `connectionId` 即引用 DBX 已保存的 SSH 连接，凭据由 DBX 解析转发 |
+| 已安装 DBX，想让 AI 使用保存的连接 | **DBX MCP 桥**（推荐） |
+| 客户端可以直接拉起进程，没有 DBX | **独立 stdio** |
+| 有 DBX，但客户端只支持 stdio | 独立 stdio + 桥接兜底 |
 
-客户端配置示例：
+## 方式一：DBX MCP 桥
+
+DBX 的 MCP 服务器内置两个通用桥工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `dbx_list_plugin_tools` | 发现已加载插件的工具与参数 Schema |
+| `dbx_call_plugin_tool` | 调用插件工具 |
+
+配置你的 MCP 客户端：
 
 ```json
 {
@@ -35,162 +33,196 @@ DBX 的 MCP 服务器（`dbx mcp` 或桌面内置 MCP）内置两个通用桥工
 }
 ```
 
-典型调用流：
+调用流程：
 
-```
-dbx_list_connections                      → 找到 SSH 连接 id
-dbx_list_plugin_tools                     → 发现 io.dbx.sshx 的工具
+```text
+dbx_list_connections
+  → 找到目标连接 id
+dbx_list_plugin_tools
+  → 确认工具名与参数
 dbx_call_plugin_tool {
-  pluginId: "io.dbx.sshx",
-  tool: "ssh_exec_sudo",
-  connectionId: "<DBX 连接 id>",
-  arguments: { "command": "systemctl status nginx" }
+  "pluginId": "<plugin-id>",
+  "tool": "ssh_exec",
+  "connectionId": "<connection id>",
+  "arguments": { "command": "uptime" }
 }
 ```
 
-## 方式二：独立 stdio 模式
+- 凭据由 DBX 解析，不出现在工具参数里。
+- 连接配置（跳板、sudo、TOTP）与工作台共用。
+- 首次连接未知主机需确认主机密钥。
 
-启动命令：
+## 方式二：独立 stdio
 
 ```bash
 dbx-plugin-sshx --mcp
 ```
 
-以 ZCode 为例，注册到用户级 `~/.zcode/cli/config.json`（本机路径属机器相关配置，
-不放工作区共享配置）：
+客户端配置：
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "sshx": {
-        "type": "stdio",
-        "command": "/绝对路径/backend/target/release/dbx-plugin-sshx",
-        "args": ["--mcp"]
-      }
+  "mcpServers": {
+    "remotex": {
+      "type": "stdio",
+      "command": "/absolute/path/backend/target/release/dbx-plugin-sshx",
+      "args": ["--mcp"]
     }
   }
 }
 ```
 
-说明：
+特点：
 
-- `tools/list` 即 16 个工具，无需 DBX 在场。
-- 此模式没有 DBX 连接存储，凭据随调用内联传入（`host`/`username`/`password`
-  或 `privateKeyPath`，及跳板链、Quick Sudo 编排字段）。
-- 带 `connectionId` / `connectionName` 的调用会自动转发给运行中的 DBX 应用执行
-  （应用未运行会尝试唤起），凭据由应用侧解析，不经工具参数。
-- 未知主机密钥采用 TOFU 首次信任（记录后变化仍拒绝）；首次确认也可以先在
-  工作台连接一次。
-- 数据目录默认 `/tmp/dbx-plugin-data/io.dbx.sshx`，可用 `DBX_PLUGIN_DATA_DIR`
-  重定向（known_hosts、`mcp-settings.json`、Quick Sudo 全局配置都在其中）。
+- 无 DBX 连接存储，凭据内联传入。
+- 未知主机 TOFU：首次记录，之后变化拒绝。
+- 数据目录可用 `DBX_PLUGIN_DATA_DIR` 重定向。
+- 传 `connectionId` 但本会话未注册时，会尝试转发给运行中的 DBX 应用。
 
-生产环境可以开只读入口（整个进程强制走只读门，工具无法自行关闭）：
+内联凭据示例：
+
+```json
+{
+  "host": "10.0.0.12",
+  "port": 22,
+  "username": "ops",
+  "password": "..."
+}
+```
+
+私钥可用 `privateKeyPath` 或 `privateKey`。凭据会进入工具参数与模型上下文，仅限
+本机可信会话。
+
+### 只读入口
 
 ```bash
 DBX_SSH_MCP_READ_ONLY=1 dbx-plugin-sshx --mcp
 ```
 
-## 连接寻址（免内联凭据）
+整个进程强制只读，适合生产环境。
 
-连接类工具按以下顺序定位目标，凭据暴露面逐级增大：
-
-1. **`connectionId`**（首选）：用 `ssh_list_connections` 列出已保存连接
-   （仅元数据，任何密钥只出布尔标志位，绝不出值）。
-2. **`connectionName` 或唯一 endpoint**：连接名重复时补充 `host` / `port` /
-   `username` 收窄到唯一连接；也可以只传完整 endpoint（`host` + `username`，
-   `port` 默认 22）复用已注册连接。匹配到多个候选时拒绝执行并列出候选，
-   绝不猜选。
-3. **内联凭据**（最后兜底）：凭据会进工具参数与 LLM 上下文，仅限本机可信会话。
-
-## 工具速览（16 个）
+## 工具速览
 
 ### 远程执行
 
 | 工具 | 用途 |
 | --- | --- |
-| `ssh_exec` | 非交互远程命令；只读连接仅放行白名单巡检命令；超过 ~10 秒的命令改用 `ssh_run_bg` |
-| `ssh_exec_sudo` | sudo 提权执行，自动注入密码并应答 TOTP/2FA |
-| `ssh_multi_exec` | 一条命令在最多 10 个已保存连接上聚合执行（并行/顺序） |
-| `ssh_run_bg` | 长命令以 nohup 方式脱离会话启动，立即返回 `taskId`/`logPath` |
-| `ssh_task_status` | 轮询后台任务：状态、退出码、输出尾部 |
-| `ssh_terminal_input` | 向已打开的 DBX 终端注入交互输入（应答提示、Ctrl+C）；输出不收集 |
+| `ssh_exec` | 执行非交互命令；只读连接只放行巡检命令 |
+| `ssh_exec_sudo` | sudo 执行，自动应答 TOTP/2FA |
+| `ssh_multi_exec` | 在 1–10 个连接上执行同一命令 |
+| `ssh_run_bg` | 长命令后台运行，返回 taskId/logPath |
+| `ssh_task_status` | 轮询后台任务状态与输出 |
+| `ssh_terminal_input` | 向已打开的终端注入输入 |
 
-### 文件传输（SFTP）
-
-| 工具 | 用途 |
-| --- | --- |
-| `sftp_list_dir` / `sftp_stat` | 浏览与检查远端路径（`sftp_stat` 也用于判断路径是否存在） |
-| `sftp_read_file` / `sftp_write_file` | 读写远端文件（文本或 base64，支持 offset 分页） |
-| `sftp_upload` / `sftp_download` | 本地 ↔ 远端单文件传输（受尺寸上限与本地路径约束） |
-
-### 连接与主机管理
+### 文件传输
 
 | 工具 | 用途 |
 | --- | --- |
-| `ssh_list_connections` | 列出已保存连接元数据（id / name / host / port / username / authentication / readOnly） |
-| `ssh_list_known_hosts` / `ssh_remove_known_host` | 插件 known_hosts 管理（不改系统文件） |
-| `ssh_close` | 关闭缓存的连接 |
+| `sftp_list_dir` | 列目录 |
+| `sftp_stat` | 查看路径信息；也用于判断存在性 |
+| `sftp_read_file` | 读文件，支持 offset 分页 |
+| `sftp_write_file` | 写文件，父目录需已存在 |
+| `sftp_upload` | 本地 → 远端单文件 |
+| `sftp_download` | 远端 → 本地单文件 |
+
+### 连接与主机
+
+| 工具 | 用途 |
+| --- | --- |
+| `ssh_list_connections` | 列出已保存连接的元数据 |
+| `ssh_list_known_hosts` | 列出插件 known_hosts |
+| `ssh_remove_known_host` | 移除 known_hosts 条目 |
+| `ssh_close` | 关闭缓存连接 |
 
 ## 典型用法
 
-**服务器巡检**：
+### 服务器巡检
 
-```
-ssh_list_connections → ssh_exec {connectionId, command: "uptime; free -m; df -h /data"}
-```
-
-**长任务**（包管理器、构建、备份）：
-
-```
-ssh_run_bg {connectionId, command: "apt upgrade -y"} → 得到 taskId/logPath
-→ ssh_task_status {connectionId, logPath}   # 断线、换会话后仍可轮询
+```text
+ssh_list_connections
+→ ssh_exec { connectionId, command: "uptime; free -m; df -h /data" }
 ```
 
-**多机巡检**：
+### 长任务
 
-```
-ssh_list_connections → ssh_multi_exec {targets: ["<id1>", "<id2>"], command: "uptime"}
+```text
+ssh_run_bg { connectionId, command: "apt upgrade -y" }
+→ 返回 taskId/logPath
+→ ssh_task_status { connectionId, logPath }
 ```
 
-**文件分发**：
+后台命令用 nohup 运行，日志在远端 `/tmp/.dbx-ssh-tasks/`，断线后可继续查询。
 
+### 多机执行
+
+```text
+ssh_multi_exec {
+  targets: ["<id1>", "<id2>"],
+  command: "systemctl is-active nginx",
+  mode: "parallel"
+}
 ```
-sftp_upload {connectionId, localPath, remotePath} → ssh_exec {connectionId, command: "cp <remotePath> <dest>"}
+
+一次最多 10 个目标；不提供 sudo。
+
+### 文件分发
+
+```text
+sftp_upload { connectionId, localPath: "/tmp/app.tar.gz", remotePath: "/tmp/app.tar.gz" }
+→ ssh_exec { connectionId, command: "tar -xzf /tmp/app.tar.gz -C /opt/app" }
 ```
+
+本地路径必须落在允许根内；敏感路径一律拒绝。
 
 ## 安全边界
 
-工具调用在执行前过四层门禁（全部在任何网络 I/O 之前）：
+调用在执行前经过：
 
-1. **只读连接写门**：连接勾选「只读」后，写类工具直接拒绝。
-2. **只读命令白名单**：只读连接上的 `ssh_exec` 只放行可证明只读的巡检命令
-   （白名单而非黑名单：识别不了 = 不放行）。
-3. **敏感路径拒绝清单**：只读连接上命中凭据/私钥位置的路径即拒绝。
-4. **危险命令确认**：命中灾难模式（`rm -rf /`、`mkfs`、`shutdown` 等）的命令
-   要求显式 `confirmDestructive: true`；只读连接上直接拒绝。
+1. **连接范围**：`connectionScope` 允许清单。
+2. **只读连接**：写操作与 sudo 拒绝。
+3. **只读命令白名单**：只放行可证明只读的巡检命令。
+4. **敏感路径**：只读连接上拒绝凭据与私钥位置。
+5. **sudo 白名单**：提权命令必须命中连接配置。
+6. **危险命令确认**：灾难模式要求 `confirmDestructive: true`。
+7. **人工审批**：`execPermissionMode=confirm` 时再请求一次确认。
 
-另有操作者级开关：进程级只读（`DBX_SSH_MCP_READ_ONLY=1`）、每连接 sudo
-命令白名单、权限档（`execPermissionMode`：写操作人工确认；`connectionScope`：
-连接允许清单）、传输工具的本地路径约束。全部工具附带 MCP annotations
-（`readOnlyHint` / `destructiveHint` 等），供客户端做只读预放行与确认分级。
-细节见 [SSH MCP 参考](MCP.zh-CN.md)的「生产环境误操作防范」与「权限档」章节。
+这些门都在网络 I/O 之前执行。
+
+## 常见问题
+
+### 找不到工具
+
+先调用 `dbx_list_plugin_tools`。确认插件已加载且版本包含 16 个工具。
+
+### 连接 id 解析失败
+
+用 `ssh_list_connections` 取 id；连接名重复时补 `host`/`port`/`username`。
+
+### 工具被拒绝
+
+按错误文案区分只读、白名单、危险命令、路径或权限档。详见
+[MCP 参考的常见错误](MCP.zh-CN.md#常见错误)。
+
+### 命令执行很久
+
+改用 `ssh_run_bg` + `ssh_task_status`。宿主等待有上限，后台任务不受影响。
 
 ## 验证
-
-离线冒烟（无需真实 SSH 服务）：
 
 ```bash
 cargo build --release --manifest-path backend/Cargo.toml
 python3 scripts/smoke/smoke_mcp.py --binary backend/target/release/dbx-plugin-sshx
 ```
 
-真机回环（凭据走环境变量，不落盘）：
+真机回环：
 
 ```bash
-DBX_SSH_SMOKE_PASSWORD=… python3 scripts/smoke/smoke_mcp.py \
+DBX_SSH_SMOKE_PASSWORD=... python3 scripts/smoke/smoke_mcp.py \
   --host <host> --port <port> --username <user>
 ```
 
-涉及真实连接的参数必须显式提供；环境不可用时脚本按用例输出 `SKIP`，
-离线通过不代表 live 连接通过。
+## 下一步
+
+- 完整工具语义与权限档：[MCP 参考](MCP.zh-CN.md)
+- 产品功能：[功能指南](../features.zh-CN.md)
+- 安全模型：[安全模型](../security.zh-CN.md)

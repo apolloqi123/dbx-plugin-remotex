@@ -2,7 +2,7 @@
 """Instance-level e2e for the DBX app bridge path of teaching mode.
 
 Requires the test host DBX.app (plugin-framework debug bundle) with the e2e
-app-data: the io.dbx.sshx plugin installed and a saved connection (default id
+app-data: the io.dbx.remotex plugin installed and a saved connection (default id
 "vagrant"). Scenarios:
 
   T1  stdio runInTerminal + saved connectionId → forwarded into the app's

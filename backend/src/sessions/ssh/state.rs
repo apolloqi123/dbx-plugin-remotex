@@ -393,7 +393,7 @@ pub(crate) struct CachedMetrics {
 
 pub struct SshRuntime {
     pub(crate) connections: RwLock<HashMap<String, StoredConnection>>,
-    /// Hydrated `io.dbx.sshx.local` targets (`src/local_target.rs`), keyed by
+    /// Hydrated `io.dbx.remotex.local` targets (`src/local_target.rs`), keyed by
     /// connection id — the scheduler task provider's "is this connection a
     /// local shell target" source of truth. Same lifecycle as `connections`:
     /// stored on `connection/connect`, dropped on `connection/disconnect`,

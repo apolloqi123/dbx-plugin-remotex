@@ -337,7 +337,7 @@ mod tests {
             assert!(object.contains_key(key), "missing {key}");
         }
         assert_eq!(object.len(), 5);
-        assert_eq!(object["plugin_id"], "io.dbx.sshx");
+        assert_eq!(object["plugin_id"], "io.dbx.remotex");
         assert_eq!(object["connection_id"], "conn-1");
         assert_eq!(object["tool"], "ssh_exec");
         assert_eq!(object["arguments"]["command"], "uptime");
@@ -349,7 +349,7 @@ mod tests {
         let body = list_connections_request_body();
         let object = body.as_object().unwrap();
         assert_eq!(object.len(), 1, "the list route takes no per-call fields");
-        assert_eq!(object["plugin_id"], "io.dbx.sshx");
+        assert_eq!(object["plugin_id"], "io.dbx.remotex");
     }
 
     #[test]

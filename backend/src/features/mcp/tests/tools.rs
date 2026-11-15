@@ -257,7 +257,7 @@ async fn initialize_and_list_tools_follow_mcp_shape() {
     assert_eq!(init["result"]["protocolVersion"], PROTOCOL_VERSION);
     assert!(init["result"]["capabilities"]["tools"].is_object());
     // 同族基线：serverInfo.name 用完整插件 id（files/ldap/kafka 同款）。
-    assert_eq!(init["result"]["serverInfo"]["name"], "io.dbx.sshx");
+    assert_eq!(init["result"]["serverInfo"]["name"], "io.dbx.remotex");
 
     let list = state
         .dispatch(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }))

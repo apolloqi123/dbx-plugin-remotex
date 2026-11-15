@@ -65,7 +65,7 @@ struct Plugin {
     /// workbench re-init; an attach to the same session cancels it.
     pending_ssh_session_closes: Arc<std::sync::Mutex<std::collections::HashMap<String, u64>>>,
     lifecycle_grace_seq: AtomicU64,
-    /// Scheduler Task Provider（io.dbx.sshx.tasks）：固定 task/* RPC 面
+    /// Scheduler Task Provider（io.dbx.remotex.tasks）：固定 task/* RPC 面
     /// （validate/execute/start/stop/status）与常驻会话监管，见
     /// src/task_provider.rs 与冻结契约 ADR §6。
     tasks: Arc<crate::features::automation::task_provider::TaskProvider>,

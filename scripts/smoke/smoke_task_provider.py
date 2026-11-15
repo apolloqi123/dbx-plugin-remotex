@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for the Scheduler Task Provider (io.dbx.sshx.tasks)
+"""End-to-end smoke test for the Scheduler Task Provider (io.dbx.remotex.tasks)
 against a real SSH container.
 
 Covers the frozen task/* RPC contract (ADR §6) over a live sidecar:
@@ -45,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from sidecar_client import FRAME_JSON, SidecarClient, SidecarError, lifecycle_params
 from smoke_common import auto_accept_challenge, step
 
-TASK_PROVIDER_ID = "io.dbx.sshx.tasks"
+TASK_PROVIDER_ID = "io.dbx.remotex.tasks"
 
 
 def task_envelope(trigger_id: str, connection_id: str, config: dict, run_id: str, task_id: str = "smoke-task") -> dict:

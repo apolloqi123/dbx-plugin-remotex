@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
   "manifest_version": 1,
-  "id": "io.dbx.sshx",
+  "id": "io.dbx.remotex",
   "name": "RemoteX",
-  "version": "0.7.9-beta.144",
+  "version": "0.0.1-beta",
   "publisher": "apolloqi",
   "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and RemoteX connections.",
-  "source": "https://github.com/jinpy666/dbx-plugin-sshx",
-  "homepage": "https://github.com/jinpy666/dbx-plugin-sshx",
+  "source": "https://github.com/apolloqi123/dbx-plugin-remotex",
+  "homepage": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "icon": "assets/plugin.svg",
   "engines": {
     "host_api": ">=1.0.0"
@@ -34,7 +34,7 @@
   "contributions": [
     {
       "type": "connection-provider",
-      "id": "io.dbx.sshx.connection",
+      "id": "io.dbx.remotex.connection",
       "label": "RemoteX",
       "icon": "assets/plugin.svg",
       "database_type": "ssh",
@@ -1218,8 +1218,8 @@
           }
         }
       ],
-      "workbench": "io.dbx.sshx.workbench",
-      "filesystem_provider": "io.dbx.sshx.files",
+      "workbench": "io.dbx.remotex.workbench",
+      "filesystem_provider": "io.dbx.remotex.files",
       "actions": [
         {
           "id": "import-private-key",
@@ -1248,21 +1248,21 @@
     },
     {
       "type": "workbench",
-      "id": "io.dbx.sshx.workbench",
+      "id": "io.dbx.remotex.workbench",
       "label": "RemoteX",
       "description": "Terminal, SFTP file manager, and remote operations workspace.",
       "icon": "assets/plugin.svg"
     },
     {
       "type": "workbench",
-      "id": "io.dbx.sshx.tunnels",
+      "id": "io.dbx.remotex.tunnels",
       "label": "Port forwards",
       "description": "Manage SSH port forwards without opening a terminal.",
       "icon": "assets/plugin.svg"
     },
     {
       "type": "workbench",
-      "id": "io.dbx.sshx.tunnels.quick",
+      "id": "io.dbx.remotex.tunnels.quick",
       "label": "Start saved port forwards",
       "description": "Start every saved SSH port forward for this connection.",
       "icon": "assets/plugin.svg"
@@ -1276,7 +1276,7 @@
     },
     {
       "type": "filesystem-provider",
-      "id": "io.dbx.sshx.files",
+      "id": "io.dbx.remotex.files",
       "label": "SFTP files",
       "description": "Remote filesystem exposed through SFTP.",
       "schemes": [
@@ -1299,7 +1299,7 @@
       "icon": "assets/plugin.svg",
       "action": {
         "type": "open-workbench",
-        "workbench": "io.dbx.sshx.workbench",
+        "workbench": "io.dbx.remotex.workbench",
         "presentation": "panel",
         "reuse": "singleton",
         "instance_key": "local-terminal",
@@ -1338,25 +1338,25 @@
       "name": "RemoteX",
       "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and RemoteX connections.",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and RemoteX. Pick the protocol inside the form; host, port and credentials follow that choice.",
           "label": "RemoteX"
         },
-        "io.dbx.sshx.workbench": {},
-        "io.dbx.sshx.files": {},
+        "io.dbx.remotex.workbench": {},
+        "io.dbx.remotex.files": {},
         "open-local-terminal": {
           "label": "RemoteX",
           "description": "Open a terminal on this machine."
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "Port forwards",
           "description": "Manage SSH port forwards without opening a terminal."
         },
         "manage-tunnels": {
           "label": "Port forwards"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "Start saved port forwards"
         }
       }
@@ -1365,7 +1365,7 @@
       "name": "RemoteX",
       "description": "Un único espacio de trabajo DBX para SSH, Telnet, VNC, RDP, puerto serie y RemoteX.",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "Una sola entrada para SSH, Telnet, VNC, RDP, puerto serie y RemoteX. Elige el protocolo en el formulario; el host, el puerto y las credenciales se adaptan a esa elección.",
           "fields": {
@@ -1630,11 +1630,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "Terminal, gestor SFTP y operaciones remotas."
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "Archivos SFTP",
           "description": "Sistema de archivos remoto mediante SFTP."
         },
@@ -1643,14 +1643,14 @@
           "description": "Abrir una terminal en esta máquina."
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "Redirecciones de puertos",
           "description": "Administra redirecciones SSH sin abrir una terminal."
         },
         "manage-tunnels": {
           "label": "Redirecciones de puertos"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "Iniciar redirecciones guardadas"
         }
       }
@@ -1659,7 +1659,7 @@
       "name": "RemoteX",
       "description": "Un'unica area di lavoro DBX per SSH, Telnet, VNC, RDP, seriale e RemoteX.",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "Una sola voce per SSH, Telnet, VNC, RDP, seriale e RemoteX. Scegli il protocollo nel modulo; host, porta e credenziali seguono la scelta.",
           "fields": {
@@ -1924,11 +1924,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "Terminale, gestore SFTP e operazioni remote."
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "File SFTP",
           "description": "File system remoto tramite SFTP."
         },
@@ -1937,14 +1937,14 @@
           "description": "Apri un terminale su questa macchina."
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "Inoltri porta",
           "description": "Gestisci gli inoltri SSH senza aprire un terminale."
         },
         "manage-tunnels": {
           "label": "Inoltri porta"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "Avvia inoltri salvati"
         }
       }
@@ -1953,7 +1953,7 @@
       "name": "RemoteX",
       "description": "SSH、Telnet、VNC、RDP、シリアル、RemoteX を1つの DBX ワークベンチに統合。",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "SSH、Telnet、VNC、RDP、シリアル、RemoteX を1つの接続エントリに統合。フォーム内でプロトコルを選ぶと、ホスト・ポート・認証情報がそれに合わせて切り替わります。",
           "fields": {
@@ -2218,11 +2218,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "ターミナル、SFTP ファイル管理、リモート運用。"
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "SFTP ファイル",
           "description": "SFTP 経由のリモートファイルシステム。"
         },
@@ -2231,14 +2231,14 @@
           "description": "このマシンでターミナルを開きます。"
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "ポート転送",
           "description": "ターミナルを開かずに SSH ポート転送を管理します。"
         },
         "manage-tunnels": {
           "label": "ポート転送"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "保存済みポート転送を開始"
         }
       }
@@ -2247,7 +2247,7 @@
       "name": "RemoteX",
       "description": "Um único espaço de trabalho DBX para SSH, Telnet, VNC, RDP, serial e RemoteX.",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "Uma única entrada para SSH, Telnet, VNC, RDP, serial e RemoteX. Escolha o protocolo no formulário; host, porta e credenciais acompanham a escolha.",
           "fields": {
@@ -2512,11 +2512,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "Terminal, gestor SFTP e operações remotas."
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "Arquivos SFTP",
           "description": "Sistema de arquivos remoto via SFTP."
         },
@@ -2525,14 +2525,14 @@
           "description": "Abrir um terminal nesta máquina."
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "Encaminhamentos de porta",
           "description": "Gerencie encaminhamentos SSH sem abrir um terminal."
         },
         "manage-tunnels": {
           "label": "Encaminhamentos de porta"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "Iniciar encaminhamentos salvos"
         }
       }
@@ -2541,7 +2541,7 @@
       "name": "RemoteX",
       "description": "SSH、Telnet、VNC、RDP、串口与 RemoteX 的统一 DBX 终端与远程桌面工作台。",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "SSH、Telnet、VNC、RDP、串口与 RemoteX 共用一个连接入口。在表单内选择协议，主机、端口与凭据会随协议切换。",
           "fields": {
@@ -2806,11 +2806,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "终端、SFTP 文件管理与远程运维。"
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "SFTP 文件",
           "description": "通过 SFTP 访问远程文件系统。"
         },
@@ -2819,14 +2819,14 @@
           "description": "在本机打开一个终端。"
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "端口映射",
           "description": "无需打开终端即可管理 SSH 端口转发。"
         },
         "manage-tunnels": {
           "label": "端口映射"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "启用所有已保存端口映射"
         }
       }
@@ -2835,7 +2835,7 @@
       "name": "RemoteX",
       "description": "SSH、Telnet、VNC、RDP、序列埠與 RemoteX 的統一 DBX 終端與遠端桌面工作台。",
       "contributions": {
-        "io.dbx.sshx.connection": {
+        "io.dbx.remotex.connection": {
           "label": "RemoteX",
           "description": "SSH、Telnet、VNC、RDP、序列埠與 RemoteX 共用一個連線入口。在表單內選擇協定，主機、連接埠與憑證會隨協定切換。",
           "fields": {
@@ -3100,11 +3100,11 @@
             }
           }
         },
-        "io.dbx.sshx.workbench": {
+        "io.dbx.remotex.workbench": {
           "label": "RemoteX",
           "description": "終端、SFTP 檔案管理與遠端維運。"
         },
-        "io.dbx.sshx.files": {
+        "io.dbx.remotex.files": {
           "label": "SFTP 檔案",
           "description": "透過 SFTP 存取遠端檔案系統。"
         },
@@ -3113,14 +3113,14 @@
           "description": "在本機開啟一個終端。"
         },
         "local-terminal-entrypoints": {},
-        "io.dbx.sshx.tunnels": {
+        "io.dbx.remotex.tunnels": {
           "label": "連接埠映射",
           "description": "無需開啟終端即可管理 SSH 連接埠轉發。"
         },
         "manage-tunnels": {
           "label": "連接埠映射"
         },
-        "io.dbx.sshx.tunnels.quick": {
+        "io.dbx.remotex.tunnels.quick": {
           "label": "啟用所有已儲存連接埠映射"
         }
       }

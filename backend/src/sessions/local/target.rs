@@ -1,7 +1,7 @@
 //! Local shell connection targets — connections whose `protocol` is `local`
 //! in the unified RemoteX provider, for scheduler tasks and terminals that
 //! must run on the machine running DBX itself instead of over SSH. The
-//! legacy standalone provider id (`io.dbx.sshx.local`) is still accepted so
+//! legacy standalone provider id (`io.dbx.remotex.local`) is still accepted so
 //! connections saved before the provider collapse keep working.
 //!
 //! Division of labor mirrors the SSH provider: the host owns the form, the
@@ -196,7 +196,7 @@ mod tests {
 
     fn unified_lifecycle(protocol: &str) -> Value {
         json!({
-            "provider": { "id": "io.dbx.sshx.connection", "databaseType": "ssh" },
+            "provider": { "id": "io.dbx.remotex.connection", "databaseType": "ssh" },
             "connection": {
                 "id": "conn-local-1",
                 "name": "ops box",
@@ -212,7 +212,7 @@ mod tests {
             .expect("parse")
             .expect("local target");
         assert_eq!(target.shell, "/bin/bash");
-        assert!(!connection_is_local(Some("io.dbx.sshx.connection")));
+        assert!(!connection_is_local(Some("io.dbx.remotex.connection")));
         // Every other protocol remains SSH/non-SSH, never a local target.
         for protocol in ["ssh", "telnet", "vnc", "rdp", "serial"] {
             assert_eq!(
@@ -263,7 +263,7 @@ mod tests {
     fn other_providers_fall_through_and_missing_provider_is_not_local() {
         // The SSH provider's payload must never be claimed by this parser.
         assert_eq!(
-            LocalTarget::from_lifecycle_params(&lifecycle("io.dbx.sshx.connection"))
+            LocalTarget::from_lifecycle_params(&lifecycle("io.dbx.remotex.connection"))
                 .expect("parse"),
             None
         );
@@ -274,7 +274,7 @@ mod tests {
             None
         );
         assert!(!connection_is_local(None));
-        assert!(!connection_is_local(Some("io.dbx.sshx.connection")));
+        assert!(!connection_is_local(Some("io.dbx.remotex.connection")));
         assert!(connection_is_local(Some(LEGACY_LOCAL_CONNECTION_PROVIDER)));
     }
 

@@ -124,8 +124,8 @@ def main() -> int:
     manifest = load_json(manifest_path, "manifest.json")
     if manifest.get("manifest_version") != 1:
         fail("manifest_version must be 1")
-    if manifest.get("id") != "io.dbx.sshx":
-        fail(f"manifest id is {manifest.get('id')!r}, expected io.dbx.sshx")
+    if manifest.get("id") != "io.dbx.remotex":
+        fail(f"manifest id is {manifest.get('id')!r}, expected io.dbx.remotex")
     version = manifest.get("version")
     if not isinstance(version, str) or not SEMVER.fullmatch(version):
         fail(f"invalid manifest version: {version!r}")

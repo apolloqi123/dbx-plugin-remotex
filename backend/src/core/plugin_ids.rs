@@ -8,19 +8,19 @@
 
 /// Plugin id (`manifest.json` `id`): sidecar metadata, data directory,
 /// keychain service, `ssh/status`, MCP `serverInfo`, tunnel menu ownership.
-pub const PLUGIN_ID: &str = "io.dbx.sshx";
+pub const PLUGIN_ID: &str = "io.dbx.remotex";
 
 /// Workbench contribution opened by the tunnel context menu.
-pub const TUNNELS_WORKBENCH_ID: &str = "io.dbx.sshx.tunnels";
+pub const TUNNELS_WORKBENCH_ID: &str = "io.dbx.remotex.tunnels";
 
 /// The unified RemoteX connection-provider contribution (identity check only).
 #[cfg(test)]
-pub const CONNECTION_PROVIDER: &str = "io.dbx.sshx.connection";
+pub const CONNECTION_PROVIDER: &str = "io.dbx.remotex.connection";
 
 /// Legacy standalone local-shell provider id. Connections saved before the
 /// provider collapse still carry this lifecycle stamp; new local targets are
 /// `protocol=local` inside [`CONNECTION_PROVIDER`].
-pub const LEGACY_LOCAL_CONNECTION_PROVIDER: &str = "io.dbx.sshx.local";
+pub const LEGACY_LOCAL_CONNECTION_PROVIDER: &str = "io.dbx.remotex.local";
 
 #[cfg(test)]
 mod tests {

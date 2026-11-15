@@ -762,7 +762,7 @@ for (const protocol of options("protocol")) {
 assert.equal(manifest.name, "RemoteX", "plugin display name");
 assert.equal(provider.label, "RemoteX", "single connection card label");
 assert.equal(provider.database_type, "ssh", "the unified card keeps the host's stable database type");
-assert.equal(provider.workbench, "io.dbx.sshx.workbench", "the card binds the shared workbench");
+assert.equal(provider.workbench, "io.dbx.remotex.workbench", "the card binds the shared workbench");
 assert.equal(byKey.protocol.type, "select", "protocol must be an in-form select");
 assert.equal(byKey.protocol.default, "ssh", "protocol default");
 assert.equal(byKey.display_name.binding, "name", "name binding");

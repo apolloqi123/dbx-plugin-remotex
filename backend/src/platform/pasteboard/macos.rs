@@ -163,7 +163,7 @@ mod tests {
         std::fs::write(&a, b"a").expect("write a");
         std::fs::write(&b, b"bb").expect("write b");
 
-        let name = format!("io.dbx.sshx.test.{}", std::process::id());
+        let name = format!("io.dbx.remotex.test.{}", std::process::id());
         test_write_named(&name, &[a.clone(), b.clone()]).expect("write named pasteboard");
         let mut read = test_read_named(&name);
         read.sort();

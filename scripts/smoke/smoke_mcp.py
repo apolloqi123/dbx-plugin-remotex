@@ -845,7 +845,7 @@ def stub_app_bridge_section(args: argparse.Namespace) -> None:
             exec_forwards = [call for call in forwarded_calls if call["tool"] == "ssh_exec"]
             assert exec_forwards, "ssh_exec never reached the bridge"
             forward = exec_forwards[-1]
-            assert forward["plugin_id"] == "io.dbx.sshx", forward
+            assert forward["plugin_id"] == "io.dbx.remotex", forward
             assert forward["connection_id"] == "conn-stub-1", forward
             assert forward["arguments"]["command"] == "uptime", forward
 
@@ -937,7 +937,7 @@ def agentic_workflow_section(args: argparse.Namespace) -> None:
                        "clientInfo": {"name": "agent-loop", "version": "0"}},
         })
         init = recv(proc, next_id[0])["result"]
-        assert init["serverInfo"]["name"] == "io.dbx.sshx", init
+        assert init["serverInfo"]["name"] == "io.dbx.remotex", init
 
         # Step 2: tools/list — the agent learns tool names and the selector
         # schema (connectionName is advertised, so the next step's choice of

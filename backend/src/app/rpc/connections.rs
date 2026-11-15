@@ -12,7 +12,7 @@ impl Plugin {
     ) -> Result<Value, String> {
         match method {
             "connection/test" => {
-                // 本地 Shell 连接目标（io.dbx.sshx.local）：无 TCP 语义，可达性
+                // 本地 Shell 连接目标（io.dbx.remotex.local）：无 TCP 语义，可达性
                 // 无从探测；Shell 路径合法性留到任务真正 spawn 时校验（此时
                 // 才做默认 Shell 解析），test 阶段如实放行并回显登记结果。
                 if let Some(target) =
@@ -74,7 +74,7 @@ impl Plugin {
             }
 
             "connection/connect" => {
-                // 本地 Shell 连接目标（io.dbx.sshx.local）：无凭据可存，登记
+                // 本地 Shell 连接目标（io.dbx.remotex.local）：无凭据可存，登记
                 // 进 SshRuntime 的 local_targets 注册表（调度任务执行时按
                 // connection id 判定走本地分支的依据）。
                 if let Some(target) =
@@ -127,7 +127,7 @@ impl Plugin {
             // webview 路由前查询权威协议：宿主推给 webview 的 connection 上下文
             // 不含 external_config.protocol（只在 lifecycle connection/connect
             // 推送里），前端据此把 RDP/telnet/vnc 连接路由到各自的 * /start，
-            // 而不是误拨 SSH。本地 Shell 目标（io.dbx.sshx.local）同理：返回
+            // 而不是误拨 SSH。本地 Shell 目标（io.dbx.remotex.local）同理：返回
             // protocol="local" 与连接表单的 shell（空 = 默认 Shell 解析链），
             // 前端据此路由到 local/terminal/start 而非 SSH 拨号。SSH 连接（登记
             // 于 SSH 连接注册表）返回 protocol="ssh"：宿主 lifecycle 推送先于

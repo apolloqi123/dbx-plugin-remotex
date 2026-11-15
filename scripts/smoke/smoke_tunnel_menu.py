@@ -20,13 +20,13 @@ def main() -> None:
         client = SidecarClient.start(binary=binary, data_dir=data_dir)
         try:
             client.initialize()
-            context = {"connection": {"id": "conn-a", "dbType": "plugin", "name": "Test", "database": ""}, "locale": "zh-CN", "ownerPluginId": "io.dbx.sshx"}
+            context = {"connection": {"id": "conn-a", "dbType": "plugin", "name": "Test", "database": ""}, "locale": "zh-CN", "ownerPluginId": "io.dbx.remotex"}
             menu = client.request("contextMenu/resolve/manage-tunnels", context)
             children = menu["items"][0]["children"]
             assert menu["items"][0]["label"] == "端口映射", menu
             assert [item["label"] for item in children] == ["管理端口映射", "启用已保存端口映射", "启动 SOCKS5 127.0.0.1:1080"], menu
             assert children[1]["action"]["reopenConnectionOnMissing"] is True
-            other = client.request("contextMenu/resolve/manage-tunnels", {"connection": {"id": "conn-b"}, "ownerPluginId": "io.dbx.sshx"})
+            other = client.request("contextMenu/resolve/manage-tunnels", {"connection": {"id": "conn-b"}, "ownerPluginId": "io.dbx.remotex"})
             assert len(other["items"][0]["children"]) == 1, other
             unrelated = client.request("contextMenu/resolve/manage-tunnels", {**context, "ownerPluginId": "io.dbx.nacos"})
             assert unrelated == {"items": []}, unrelated

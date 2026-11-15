@@ -34,7 +34,7 @@ fn strings(value: &Value) -> Vec<String> {
 fn validate_accepts_a_well_formed_execute_task() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "connectionId": "conn-1",
             "configVersion": 1,
@@ -50,7 +50,7 @@ fn validate_accepts_a_well_formed_execute_task() {
 fn validate_collects_every_config_error_at_once() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "config": {
                 "command": "",
@@ -89,7 +89,7 @@ fn validate_collects_every_config_error_at_once() {
 fn validate_rejects_unknown_trigger_and_non_resident_restart_knobs() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "daemonize",
             "connectionId": "conn-1",
             "config": { "command": "top", "max_restarts": 3 },
@@ -115,7 +115,7 @@ fn validate_rejects_unknown_trigger_and_non_resident_restart_knobs() {
 fn validate_warns_when_pty_merges_streams() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "connectionId": "conn-1",
             "config": config_json(json!({ "pty": true })),
@@ -136,7 +136,7 @@ fn validate_accepts_a_script_only_task() {
     for trigger in ["execute", "resident"] {
         let response = TaskProvider::validate_request(&json!({
             "task": {
-                "providerId": "io.dbx.sshx.tasks",
+                "providerId": "io.dbx.remotex.tasks",
                 "triggerId": trigger,
                 "connectionId": "conn-1",
                 "config": { "script_path": "/opt/scripts/deploy.sh" },
@@ -151,7 +151,7 @@ fn validate_accepts_a_script_only_task() {
 fn validate_rejects_command_and_script_path_together() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "connectionId": "conn-1",
             "config": {
@@ -182,7 +182,7 @@ fn validate_rejects_command_and_script_path_together() {
 fn validate_rejects_non_string_script_path() {
     let response = TaskProvider::validate_request(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "connectionId": "conn-1",
             "config": { "script_path": 42 },
@@ -480,7 +480,7 @@ fn resident_state_serializes_to_contract_vocabulary() {
 fn task_request_parse_requires_connection_and_defaults_run_id() {
     let request = TaskRequest::parse(&json!({
         "task": {
-            "providerId": "io.dbx.sshx.tasks",
+            "providerId": "io.dbx.remotex.tasks",
             "triggerId": "execute",
             "connectionId": "conn-1",
             "config": { "command": "uptime" },

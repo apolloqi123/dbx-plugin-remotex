@@ -157,7 +157,7 @@ pub(super) fn telnet_form_auto_login(
     }
 }
 
-/// `connection/protocol` 的响应组装：本地 Shell 目标（`io.dbx.sshx.local`）
+/// `connection/protocol` 的响应组装：本地 Shell 目标（`io.dbx.remotex.local`）
 /// 优先——宿主侧要求每个 connection provider 可打开（声明 workbench 或
 /// filesystem provider），本地目标打开的是 Terminal 工作台，webview 需要据
 /// protocol="local" 路由到 local/terminal/start 而非误拨 SSH；shell 透传连接

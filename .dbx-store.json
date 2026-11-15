@@ -17,10 +17,10 @@
     "host.clipboard:read",
     "host.ai"
   ],
-  "source": "https://github.com/jinpy666/dbx-plugin-sshx",
-  "homepage": "https://github.com/jinpy666/dbx-plugin-sshx",
+  "source": "https://github.com/apolloqi123/dbx-plugin-remotex",
+  "homepage": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "license": "MIT",
-  "releaseNotes": "First official store release: interactive terminal with PTY, SFTP file transfer, remote command execution, sudo with approval guards, host key management, and multi-language UI.",
+  "releaseNotes": "First RemoteX release: one workbench for SSH, Telnet, VNC, RDP, serial and local shell, with PTY terminal, SFTP, port forwarding, containers, metrics, recording, and MCP automation.",
   "localizations": {
     "zh-CN": {
       "name": "RemoteX",

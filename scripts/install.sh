@@ -8,7 +8,7 @@
 #   scripts/install.sh --app-data <dir>   # target a custom DBX data directory
 #   scripts/install.sh --reinstall        # dev only: drop the installed version first
 #   scripts/install.sh --no-restart       # do not relaunch DBX afterwards
-#   scripts/install.sh --keep-old         # keep older io.dbx.sshx versions for rollback
+#   scripts/install.sh --keep-old         # keep older io.dbx.remotex versions for rollback
 #
 # Environment:
 #   DBX_HOST_WORKTREE   host checkout used for the installer binary
@@ -157,11 +157,11 @@ fi
 
 PLUGIN_STORE="$APP_DATA/plugins"
 if [ "$REINSTALL" = 1 ]; then
-  VERSION_DIR="$PLUGIN_STORE/io.dbx.sshx/versions/$VERSION"
+  VERSION_DIR="$PLUGIN_STORE/io.dbx.remotex/versions/$VERSION"
   if [ -d "$VERSION_DIR" ]; then
     echo "==> dev reinstall: removing installed v$VERSION"
     rm -rf "$VERSION_DIR"
-    python3 - "$PLUGIN_STORE/io.dbx.sshx/activations" "$VERSION" <<'PY'
+    python3 - "$PLUGIN_STORE/io.dbx.remotex/activations" "$VERSION" <<'PY'
 import json, pathlib, sys
 store = pathlib.Path(sys.argv[1])
 version = sys.argv[2]
@@ -180,7 +180,7 @@ echo "==> installing $(basename "$DBXP") (v$VERSION) into $PLUGIN_STORE"
 "$INSTALLER" "$PLUGIN_STORE" "$DBXP" "$APP_VERSION"
 
 if [ "$KEEP_OLD" = 0 ]; then
-  echo "==> cleaning old io.dbx.sshx versions (keeping v$VERSION)"
+  echo "==> cleaning old io.dbx.remotex versions (keeping v$VERSION)"
   python3 - "$PLUGIN_STORE" "$VERSION" <<'PY'
 import json
 import pathlib
@@ -189,8 +189,8 @@ import sys
 
 plugin_store = pathlib.Path(sys.argv[1])
 current_version = sys.argv[2]
-versions_dir = plugin_store / "io.dbx.sshx" / "versions"
-activations_dir = plugin_store / "io.dbx.sshx" / "activations"
+versions_dir = plugin_store / "io.dbx.remotex" / "versions"
+activations_dir = plugin_store / "io.dbx.remotex" / "activations"
 
 removed_versions = []
 if versions_dir.is_dir():
@@ -216,7 +216,7 @@ print(f"  removed versions: {', '.join(removed_versions) or 'none'}")
 print(f"  removed activations: {len(removed_activations)}")
 PY
 else
-  echo "==> keeping old io.dbx.sshx versions (--keep-old)"
+  echo "==> keeping old io.dbx.remotex versions (--keep-old)"
 fi
 
 if [ "$RESTART" = 1 ] && [ "$WAS_RUNNING" = 1 ]; then

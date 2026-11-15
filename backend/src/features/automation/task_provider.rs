@@ -1,4 +1,4 @@
-//! Scheduler Task Provider (`io.dbx.sshx.tasks`) — the plugin side of the
+//! Scheduler Task Provider (`io.dbx.remotex.tasks`) — the plugin side of the
 //! frozen Scheduler / Task Center contract
 //! (`integration/docs/adr/scheduler-task-contract.md` §6).
 //!
@@ -30,7 +30,7 @@
 //! cancel paths.
 //!
 //! Bound-connection providers: besides SSH connections the provider accepts
-//! `io.dbx.sshx.local` targets (`src/local_target.rs`) so scheduled commands
+//! `io.dbx.remotex.local` targets (`src/local_target.rs`) so scheduled commands
 //! can run on the machine running DBX itself. The local-vs-SSH decision is
 //! the stored connection's provider marker (the host rehydrates local
 //! targets through `connection/connect`, the plugin registers them in

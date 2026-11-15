@@ -1,30 +1,28 @@
-# SSH MCP Guide
+# MCP Quick Start
 
-The plugin exposes 16 SSH/SFTP MCP tools to MCP clients (ZCode, Claude, or any
-AI agent): remote commands, sudo elevation, file transfer, terminal input, and
-connection management. Two ways to connect. Protocol details and the full safety model
-live in the [SSH MCP reference](MCP.zh-CN.md).
+RemoteX exposes 16 MCP tools for remote execution, background tasks, SFTP, and
+connection discovery. This guide covers setup and common calls. For full tool
+semantics, permission profiles, and error handling, see the
+[MCP reference](MCP.zh-CN.md).
 
-## Two ways to connect
+## Pick a connection mode
 
-| | Option 1: DBX MCP bridge | Option 2: standalone stdio |
-| --- | --- | --- |
-| Prerequisites | Plugin installed, DBX running | Plugin binary only, no DBX |
-| Credentials | Resolved host-side from saved connections; never in tool arguments | Passed inline per call (auto-forwarded through the bridge when a `connectionId` is given) |
-| Safety policies | Approvals, sudo allowlists, and read-only mode are all reused | Four gate layers + process-level switches |
-| Best for | Everyday use (recommended) | Standalone automation, CI, DBX-free environments |
+| Your setup | Use |
+| --- | --- |
+| DBX is installed and you want AI to reuse saved connections | **DBX MCP bridge** (recommended) |
+| Your client can spawn a process and DBX is not installed | **Standalone stdio** |
+| DBX is installed but the client only supports stdio | Standalone stdio + bridge fallback |
 
-## Option 1: DBX MCP bridge (recommended)
+## Option 1: DBX MCP bridge
 
-DBX's MCP server (`dbx mcp` or the desktop built-in MCP) ships two generic
-bridge tools:
+DBX's MCP server provides two generic bridge tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `dbx_list_plugin_tools` | List the MCP tools contributed by every installed plugin (all 16 tools of this plugin with their JSON Schema and annotations) |
-| `dbx_call_plugin_tool` | Call a plugin tool; pass a `connectionId` to reference a saved SSH connection — credentials are resolved host-side |
+| `dbx_list_plugin_tools` | Discover plugin tools and their JSON schemas |
+| `dbx_call_plugin_tool` | Call a plugin tool |
 
-Client configuration example:
+Client configuration:
 
 ```json
 {
@@ -37,176 +35,202 @@ Client configuration example:
 }
 ```
 
-Typical call flow:
+Call flow:
 
-```
-dbx_list_connections                      → find the SSH connection id
-dbx_list_plugin_tools                     → discover io.dbx.sshx tools
+```text
+dbx_list_connections
+  → find the target connection id
+dbx_list_plugin_tools
+  → confirm tool names and arguments
 dbx_call_plugin_tool {
-  pluginId: "io.dbx.sshx",
-  tool: "ssh_exec_sudo",
-  connectionId: "<DBX connection id>",
-  arguments: { "command": "systemctl status nginx" }
+  "pluginId": "<plugin-id>",
+  "tool": "ssh_exec",
+  "connectionId": "<connection id>",
+  "arguments": { "command": "uptime" }
 }
 ```
 
-## Option 2: standalone stdio mode
+- DBX resolves credentials; passwords never appear in tool arguments.
+- Jump hosts, sudo profiles, and TOTP settings are shared with the workbench.
+- Confirm the host key the first time you connect to an unknown host.
 
-Launch command:
+## Option 2: standalone stdio
 
 ```bash
 dbx-plugin-sshx --mcp
 ```
 
-ZCode example — register in the user-level `~/.zcode/cli/config.json`
-(machine-specific paths belong in user config, not shared workspace config):
+Client configuration:
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "sshx": {
-        "type": "stdio",
-        "command": "/absolute/path/backend/target/release/dbx-plugin-sshx",
-        "args": ["--mcp"]
-      }
+  "mcpServers": {
+    "remotex": {
+      "type": "stdio",
+      "command": "/absolute/path/backend/target/release/dbx-plugin-sshx",
+      "args": ["--mcp"]
     }
   }
 }
 ```
 
-Notes:
+Behavior:
 
-- `tools/list` returns all 16 tools; no DBX required.
-- This mode has no DBX connection store, so credentials travel inline per call
-  (`host`/`username`/`password` or `privateKeyPath`, plus jump-chain and
-  Quick Sudo orchestration fields).
-- Calls carrying a `connectionId` / `connectionName` are automatically
-  forwarded to the running DBX app (which is launched on demand); credentials
-  are resolved app-side and never appear in tool arguments.
-- Unknown host keys use TOFU trust-on-first-use (a later change is still
-  rejected); you can also confirm the key once from the workbench.
-- The data directory defaults to `/tmp/dbx-plugin-data/io.dbx.sshx` and can be
-  redirected with `DBX_PLUGIN_DATA_DIR` (known_hosts, `mcp-settings.json`,
-  and global Quick Sudo profiles live there).
+- No DBX connection store; credentials are passed inline.
+- Unknown hosts use TOFU: recorded on first use, rejected if the key changes later.
+- Override the data directory with `DBX_PLUGIN_DATA_DIR`.
+- A `connectionId` that is not registered in this session is forwarded to a
+  running DBX app when available.
 
-For production hosts, expose a read-only entry point (the whole process is
-forced through the read-only gate; tools cannot turn it off):
+Inline credential example:
+
+```json
+{
+  "host": "10.0.0.12",
+  "port": 22,
+  "username": "ops",
+  "password": "..."
+}
+```
+
+Use `privateKeyPath` or `privateKey` for key authentication. Credentials become
+part of the tool arguments and the model context; use this only in trusted local
+sessions.
+
+### Read-only entry point
 
 ```bash
 DBX_SSH_MCP_READ_ONLY=1 dbx-plugin-sshx --mcp
 ```
 
-## Connection addressing (no inline credentials)
+The whole process is forced read-only. This is a good fit for production access.
 
-Connection-bound tools resolve their target in this order, with a growing
-credential exposure footprint:
-
-1. **`connectionId`** (preferred): list saved connections with
-   `ssh_list_connections` (metadata only; secrets appear solely as boolean flags).
-2. **`connectionName` or a unique endpoint**: disambiguate duplicate names with
-   `host` / `port` / `username`; a complete endpoint (`host` + `username`,
-   `port` defaults to 22) also reuses a registered connection. Multiple
-   candidates are refused with the candidate list — never guessed.
-3. **Inline credentials** (last resort): credentials enter tool arguments and
-   the LLM context; use only in trusted local sessions.
-
-## Tool catalog (16 tools)
+## Tool catalog
 
 ### Remote execution
 
 | Tool | Purpose |
 | --- | --- |
-| `ssh_exec` | Non-interactive remote command; read-only connections allow whitelisted inspection commands; use `ssh_run_bg` for anything longer than ~10s |
-| `ssh_exec_sudo` | Privileged execution with automatic password injection and TOTP/2FA answering |
-| `ssh_multi_exec` | Run one command on up to 10 saved connections (parallel or sequential) |
-| `ssh_run_bg` | Start a long command detached (nohup); returns `taskId`/`logPath` immediately |
-| `ssh_task_status` | Poll a background task: state, exit code, output tail |
-| `ssh_terminal_input` | Inject interactive input (prompt answers, Ctrl+C) into the open DBX terminal; output is not collected |
+| `ssh_exec` | Run a non-interactive command; read-only connections accept inspection commands only |
+| `ssh_exec_sudo` | Run with sudo; answers TOTP/2FA automatically |
+| `ssh_multi_exec` | Run one command on 1–10 connections |
+| `ssh_run_bg` | Start a long command in the background; returns taskId/logPath |
+| `ssh_task_status` | Poll a background task and its output tail |
+| `ssh_terminal_input` | Inject input into an already-open terminal |
 
-### File transfer (SFTP)
-
-| Tool | Purpose |
-| --- | --- |
-| `sftp_list_dir` / `sftp_stat` | Browse and inspect remote paths (`sftp_stat` also reports whether a path exists) |
-| `sftp_read_file` / `sftp_write_file` | Read/write remote files (text or base64, offset paging) |
-| `sftp_upload` / `sftp_download` | Single-file local ↔ remote transfer (size caps and local-path constraints apply) |
-
-### Connection and host management
+### File transfer
 
 | Tool | Purpose |
 | --- | --- |
-| `ssh_list_connections` | List saved connections (id / name / host / port / username / authentication / readOnly) |
-| `ssh_list_known_hosts` / `ssh_remove_known_host` | Plugin known_hosts management (system files are never touched) |
+| `sftp_list_dir` | List a remote directory |
+| `sftp_stat` | Inspect a path; also used to test existence |
+| `sftp_read_file` | Read a file with offset pagination |
+| `sftp_write_file` | Write a file; parent directory must exist |
+| `sftp_upload` | Upload one local file |
+| `sftp_download` | Download one remote file |
+
+### Connections and hosts
+
+| Tool | Purpose |
+| --- | --- |
+| `ssh_list_connections` | List saved connection metadata |
+| `ssh_list_known_hosts` | List the plugin's known_hosts entries |
+| `ssh_remove_known_host` | Remove a known_hosts entry |
 | `ssh_close` | Close a cached connection |
 
 ## Typical workflows
 
-**Server inspection**:
+### Inspect a server
 
-```
-ssh_list_connections → ssh_exec {connectionId, command: "uptime; free -m; df -h /data"}
-```
-
-**Long-running jobs** (package managers, builds, backups):
-
-```
-ssh_run_bg {connectionId, command: "apt upgrade -y"} → taskId/logPath
-→ ssh_task_status {connectionId, logPath}   # survives disconnects and new sessions
+```text
+ssh_list_connections
+→ ssh_exec { connectionId, command: "uptime; free -m; df -h /data" }
 ```
 
-**Multi-host inspection**:
+### Long-running task
 
-```
-ssh_list_connections → ssh_multi_exec {targets: ["<id1>", "<id2>"], command: "uptime"}
-```
-
-**File distribution**:
-
-```
-sftp_upload {connectionId, localPath, remotePath} → ssh_exec {connectionId, command: "cp <remotePath> <dest>"}
+```text
+ssh_run_bg { connectionId, command: "apt upgrade -y" }
+→ returns taskId/logPath
+→ ssh_task_status { connectionId, logPath }
 ```
 
-## Safety model
+The command runs under nohup; its log lives in `/tmp/.dbx-ssh-tasks/` on the
+remote host and remains queryable after a disconnect.
 
-Every tool call passes four gate layers before execution (all before any
-network I/O):
+### Multi-host check
 
-1. **Read-only connection write gate**: write tools are refused outright on
-   connections flagged read-only.
-2. **Read-only command allowlist**: on read-only connections `ssh_exec` only
-   allows provably read-only inspection commands (allowlist, not blocklist:
-   unrecognized means refused).
-3. **Sensitive-path denial list**: on read-only connections, paths hitting
-   credential/private-key locations are refused.
-4. **Destructive-command confirmation**: commands matching catastrophic
-   patterns (`rm -rf /`, `mkfs`, `shutdown`, …) require an explicit
-   `confirmDestructive: true`; read-only connections refuse them outright.
+```text
+ssh_multi_exec {
+  targets: ["<id1>", "<id2>"],
+  command: "systemctl is-active nginx",
+  mode: "parallel"
+}
+```
 
-Operator-level switches on top: process-wide read-only
-(`DBX_SSH_MCP_READ_ONLY=1`), per-connection sudo command allowlists, permission
-modes (`execPermissionMode`: human approval for writes; `connectionScope`:
-connection allowlist), and local-path constraints on transfer tools. Every tool
-carries MCP annotations (`readOnlyHint` / `destructiveHint`, …) so clients can
-pre-approve read-only tools and gate destructive ones. See the
-[SSH MCP reference](MCP.zh-CN.md) for the full model.
+Up to 10 targets. `ssh_multi_exec` does not provide sudo.
+
+### Distribute a file
+
+```text
+sftp_upload { connectionId, localPath: "/tmp/app.tar.gz", remotePath: "/tmp/app.tar.gz" }
+→ ssh_exec { connectionId, command: "tar -xzf /tmp/app.tar.gz -C /opt/app" }
+```
+
+The local path must be inside an allowed transfer root; sensitive paths are
+rejected.
+
+## Safety gates
+
+Before any network I/O, a call passes:
+
+1. **Connection scope**: the `connectionScope` allowlist.
+2. **Read-only connection**: writes and sudo are rejected.
+3. **Read-only command allowlist**: only provably read-only inspection commands.
+4. **Sensitive paths**: credential and private-key locations are rejected on read-only connections.
+5. **sudo allowlist**: privileged commands must match the connection's list.
+6. **Destructive-command confirmation**: catastrophic patterns require `confirmDestructive: true`.
+7. **Human approval**: an extra confirmation when `execPermissionMode=confirm`.
+
+## Troubleshooting
+
+### Tools are missing
+
+Call `dbx_list_plugin_tools` first. Confirm the plugin is loaded and its version
+includes all 16 tools.
+
+### A connection id cannot be resolved
+
+Use `ssh_list_connections` to obtain the id. If connection names are duplicated,
+add `host`/`port`/`username`.
+
+### A call is rejected
+
+Read the message to distinguish read-only, allowlist, destructive-command, path,
+or permission-profile rejection. See the
+[MCP reference](MCP.zh-CN.md#常见错误).
+
+### A command takes too long
+
+Use `ssh_run_bg` + `ssh_task_status`. Host wait limits no longer matter once the
+command is detached.
 
 ## Verification
-
-Offline smoke (no real SSH server needed):
 
 ```bash
 cargo build --release --manifest-path backend/Cargo.toml
 python3 scripts/smoke/smoke_mcp.py --binary backend/target/release/dbx-plugin-sshx
 ```
 
-Live loopback (credentials travel via environment variables, never on disk):
+Live loopback:
 
 ```bash
-DBX_SSH_SMOKE_PASSWORD=… python3 scripts/smoke/smoke_mcp.py \
+DBX_SSH_SMOKE_PASSWORD=... python3 scripts/smoke/smoke_mcp.py \
   --host <host> --port <port> --username <user>
 ```
 
-Parameters for live sections must be provided explicitly; the script prints
-`SKIP` per section when the environment is unavailable — offline success does
-not imply live success.
+## Next steps
+
+- Full tool semantics and permission profiles: [MCP reference](MCP.zh-CN.md)
+- Product features: [Feature guide](../features.zh-CN.md)
+- Security model: [Security model](../security.zh-CN.md)

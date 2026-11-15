@@ -248,7 +248,7 @@ pub(super) fn script_command_line(has_bash: bool, temp_path: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Local shell targets (io.dbx.sshx.local)
+// Local shell targets (io.dbx.remotex.local)
 // ---------------------------------------------------------------------------
 
 /// Command-flag spelling for the connection's shell: `cmd.exe` takes `/C`,

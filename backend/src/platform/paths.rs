@@ -15,7 +15,7 @@ use crate::core::plugin_ids::PLUGIN_ID;
 ///
 /// 1. `DBX_PLUGIN_DATA_DIR` — host-injected explicit override (future
 ///    integration point).
-/// 2. `DBX_DATA_DIR` → `<DBX_DATA_DIR>/plugin-data/io.dbx.sshx` (portable/web
+/// 2. `DBX_DATA_DIR` → `<DBX_DATA_DIR>/plugin-data/io.dbx.remotex` (portable/web
 ///    host mode; `plugin-data/` avoids the installer-managed registration
 ///    tree).
 /// 3. Platform standard user data dir: macOS `$HOME/Library/Application
@@ -150,7 +150,7 @@ mod tests {
             dir,
             PathBuf::from("/tmp/dbx-root")
                 .join("plugin-data")
-                .join("io.dbx.sshx")
+                .join("io.dbx.remotex")
         );
     }
 
@@ -164,7 +164,7 @@ mod tests {
             dir,
             PathBuf::from("/tmp/dbx-root")
                 .join("plugin-data")
-                .join("io.dbx.sshx")
+                .join("io.dbx.remotex")
         );
     }
 
@@ -177,7 +177,7 @@ mod tests {
             PathBuf::from("/Users/tester")
                 .join("Library/Application Support")
                 .join("dbx-plugin-data")
-                .join("io.dbx.sshx")
+                .join("io.dbx.remotex")
         );
     }
 
@@ -190,12 +190,12 @@ mod tests {
         ]));
         assert_eq!(
             with_xdg,
-            PathBuf::from("/xdg/data/dbx-plugin-data/io.dbx.sshx")
+            PathBuf::from("/xdg/data/dbx-plugin-data/io.dbx.remotex")
         );
         let without_xdg = resolve_plugin_data_dir(lookup_from(&[("HOME", "/Users/tester")]));
         assert_eq!(
             without_xdg,
-            PathBuf::from("/Users/tester/.local/share/dbx-plugin-data/io.dbx.sshx")
+            PathBuf::from("/Users/tester/.local/share/dbx-plugin-data/io.dbx.remotex")
         );
     }
 
@@ -210,7 +210,7 @@ mod tests {
             dir,
             PathBuf::from(r"C:\Users\tester\AppData\Roaming")
                 .join("dbx-plugin-data")
-                .join("io.dbx.sshx")
+                .join("io.dbx.remotex")
         );
     }
 
@@ -221,7 +221,7 @@ mod tests {
             dir,
             std::env::temp_dir()
                 .join("dbx-plugin-data")
-                .join("io.dbx.sshx")
+                .join("io.dbx.remotex")
         );
     }
 }

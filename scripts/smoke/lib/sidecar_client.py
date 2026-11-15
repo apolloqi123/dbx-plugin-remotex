@@ -37,7 +37,7 @@ def default_binary() -> str:
         return env
     home = os.path.expanduser("~")
     return (
-        f"{home}/Library/Application Support/com.dbx.app/plugins/io.dbx.sshx-sftp/"
+        f"{home}/Library/Application Support/com.dbx.app/plugins/io.dbx.remotex/"
         f"versions/current/bin/darwin-arm64/dbx-plugin-sshx"
     )
 
@@ -464,7 +464,7 @@ class McpStdioClient:
 def lifecycle_params(connection: dict) -> dict:
     """Build connection lifecycle params the way the DBX host does."""
     return {
-        "provider": {"id": "io.dbx.sshx-sftp.connection", "databaseType": "ssh"},
+        "provider": {"id": "io.dbx.remotex.connection", "databaseType": "ssh"},
         "connection": connection,
         "runtime": {"host": connection.get("host"), "port": connection.get("port", 22)},
     }

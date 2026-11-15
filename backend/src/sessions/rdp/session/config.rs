@@ -92,8 +92,12 @@ pub(crate) fn client_build() -> u32 {
         .split('.')
         .take(3)
         .fold(0_u32, |acc, part| {
-            acc.saturating_mul(100)
-                .saturating_add(part.parse::<u32>().unwrap_or(0))
+            let number = part
+                .split(['-', '+'])
+                .next()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(0);
+            acc.saturating_mul(100).saturating_add(number)
         })
 }
 

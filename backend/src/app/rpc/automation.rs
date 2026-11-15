@@ -28,7 +28,7 @@ impl Plugin {
                 }))
             }
 
-            // Scheduler Task Provider（io.dbx.sshx.tasks）：冻结契约只允许这
+            // Scheduler Task Provider（io.dbx.remotex.tasks）：冻结契约只允许这
             // 五个固定方法（ADR §6.2）；禁止 ssh/runScheduledCommand 之类的
             // provider-specific RPC。凭据只经既有 connection/connect 生命周
             // 期进入连接注册表，task config 只携带 connectionId。
