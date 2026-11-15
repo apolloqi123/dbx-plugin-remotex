@@ -60,6 +60,9 @@ impl SshRuntime {
             .await
             .remove(session_id)
             .ok_or("SSH session was not found")?;
+        // Capture ownership before the entry is dropped: cleanup runs after
+        // removal and must still attribute failed transfer rows.
+        let connection_id = session.connection_id.clone();
         // Every removal path (RPC close, workbench close, connection
         // disconnect) funnels through here. The session is gone now; cancel
         // dependent feature runners before releasing the lease, otherwise
@@ -79,7 +82,7 @@ impl SshRuntime {
         session.transport_lease.release().await;
         // 清理失败不得吞掉关闭结果：会话此刻已移出注册表、transport 已释放，
         // 对外就是「已关闭」——上抛只会让调用方重试并吃到 not found。
-        if let Err(error) = self.cleanup_session_transfers(session_id).await {
+        if let Err(error) = self.cleanup_session_transfers(session_id, &connection_id).await {
             eprintln!("close_session: transfer cleanup for {session_id} failed: {error}");
         }
         if let Ok(mut cache) = self.metrics_cache.lock() {
@@ -95,7 +98,6 @@ impl SshRuntime {
         if self.sessions.read().await.is_empty() {
             crate::features::forwarding::x11::disarm_active();
         }
-        let connection_id = session.connection_id.clone();
         let connection_has_sessions = self
             .sessions
             .read()

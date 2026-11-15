@@ -28,6 +28,7 @@ fn save_local_file_writes_records_history_and_yields_name() {
     assert_eq!(history.len(), 1);
     assert_eq!(history[0]["localPath"].as_str().unwrap(), local_path);
     assert_eq!(history[0]["status"].as_str().unwrap(), "completed");
+    assert_eq!(history[0]["connectionId"], "local");
     // 撞名让位：同名再保存得到 " (1)" 后缀而不是覆盖。
     let again = save_local_file(
         data_dir.path(),
@@ -113,6 +114,7 @@ fn save_local_path_copies_records_history_and_honors_conflict() {
     assert!(history
         .iter()
         .any(|row| row["localPath"].as_str() == Some(local_path.as_str())));
+    assert!(history.iter().all(|row| row["connectionId"] == "local"));
 
     // 目录不是可保存的文件。
     assert!(save_local_path(data_dir.path(), "dir", sources.path(), None).is_err());

@@ -238,17 +238,26 @@ impl Plugin {
                     .get("sessionId")
                     .and_then(Value::as_str)
                     .filter(|value| !value.is_empty());
+                let connection_id = params
+                    .get("connectionId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty());
                 let limit = params
                     .get("limit")
                     .and_then(Value::as_u64)
                     .unwrap_or(50)
                     .clamp(1, 200) as usize;
                 self.runtime
-                    .block_on(self.ssh.transfer_history_query(session_id, limit))
+                    .block_on(self.ssh.transfer_history_query(session_id, connection_id, limit))
             }
 
             "sftp/transfer/history/clear" => {
-                self.ssh.clear_transfer_history()?;
+                let connection_id = params
+                    .get("connectionId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty());
+                self.runtime
+                    .block_on(self.ssh.clear_transfer_history(connection_id))?;
                 Ok(json!({ "success": true }))
             }
             _ => Err(format!("Method not found: {method}")),

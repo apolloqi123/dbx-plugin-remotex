@@ -80,6 +80,8 @@ pub(crate) use sftp_support::sftp_client_config;
 use sftp_support::*;
 use terminal_support::*;
 pub(crate) use terminal_support::{connection_id_param, filesystem_path};
+#[cfg(test)]
+pub(crate) use transfer::resolve_transfer_connection_id;
 pub(crate) use transfer_util::apply_preserved_permissions;
 use transfer_util::*;
 use transfer_read::read_filled;

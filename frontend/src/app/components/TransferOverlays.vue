@@ -3,7 +3,7 @@ import type { ComponentPublicInstance } from "vue";
 import { Loader2, Pause, Play, TriangleAlert, X } from "@lucide/vue";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../shared/ui/select/index";
 import type { SerialUploadUiState } from "../../features/serial/lib/serialUpload";
-import type { RecordingSummary, ReplayEvent } from "../../features/recording/lib/replayScheduler";
+import type { ReplayState } from "../../features/recording/composables/useReplayPlayer";
 
 /** 传输/回放浮层（T20）：zmodem、trzsz、串口文件上传进度条与录制回放弹窗。
  *  组件只渲染并上抛动作；传输状态机与回放播放器仍由 App 持有。 */
@@ -28,12 +28,13 @@ const props = defineProps<{
   serialUploadOverlayVisible: boolean;
   serialUploadStatusLabel: string;
   serialUploadPercentValue: number;
-  replayState: { summary: RecordingSummary; events: ReplayEvent[] } | null;
+  replayState: ReplayState | null;
   replayPlaying: boolean;
   replaySpeed: number;
   replayPlayheadMs: number;
   replayDurationMs: number;
   replayExporting: boolean;
+  replayMotionEnabled: boolean;
   formatBytes: (value: number) => string;
   formatDuration: (seconds: number) => string;
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   (e: "update:replaySpeed", value: number): void;
   (e: "replay-seek", event: Event): void;
   (e: "replay-export-gif"): void;
+  (e: "replay-motion-toggle"): void;
   /** 回放宿主元素上抛：回放播放器（App 持有）需要在弹窗挂载后 open xterm。 */
   (e: "bind-replay-host", el: HTMLDivElement | null): void;
 }>();
@@ -57,6 +59,24 @@ const { t } = props;
 
 function bindReplayHost(el: Element | ComponentPublicInstance | null) {
   emit("bind-replay-host", el instanceof HTMLDivElement ? el : null);
+}
+
+/** 叠层只按归一化坐标/光标格定位，不写 xterm、不读终端文本。 */
+function pointerStyle(state: ReplayState) {
+  const pointer = state.pointer!;
+  return { left: `${pointer.x * 100}%`, top: `${pointer.y * 100}%` };
+}
+
+function caretStyle(state: ReplayState) {
+  const cursor = state.cursor!;
+  const cols = Math.max(1, cursor.cols);
+  const rows = Math.max(1, cursor.rows);
+  return {
+    left: `${(cursor.col / cols) * 100}%`,
+    top: `${(cursor.row / rows) * 100}%`,
+    width: `${100 / cols}%`,
+    height: `${100 / rows}%`,
+  };
 }
 </script>
 
@@ -99,6 +119,10 @@ function bindReplayHost(el: Element | ComponentPublicInstance | null) {
       <div class="replay-terminal-wrap">
         <div :ref="bindReplayHost" class="replay-terminal"></div>
         <div v-if="!replayState.events.length" class="replay-empty">{{ t("replayEmpty") }}</div>
+        <template v-if="replayMotionEnabled">
+          <span v-if="replayState.pointer" class="replay-pointer" aria-hidden="true" :style="pointerStyle(replayState)"></span>
+          <span v-if="replayState.cursor" class="replay-caret" aria-hidden="true" :style="caretStyle(replayState)"></span>
+        </template>
       </div>
       <div class="replay-controls">
         <button class="icon-button" :title="t(replayPlaying ? 'replayPause' : 'replayPlay')" :aria-label="t(replayPlaying ? 'replayPause' : 'replayPlay')" @click="emit('replay-toggle-play')"><Pause v-if="replayPlaying" /><Play v-else /></button>
@@ -116,6 +140,7 @@ function bindReplayHost(el: Element | ComponentPublicInstance | null) {
         <input class="replay-seek" type="range" min="0" :max="Math.max(1, replayDurationMs)" :value="replayPlayheadMs" step="100" @input="emit('replay-seek', $event)" />
         <span class="mono replay-time">{{ formatDuration(replayPlayheadMs / 1000) }} / {{ formatDuration(replayDurationMs / 1000) }}</span>
         <button class="link-button" :disabled="replayExporting" @click="emit('replay-export-gif')">{{ replayExporting ? t("replayExporting") : t("replayExportGif") }}</button>
+        <button class="link-button replay-motion-toggle" type="button" :aria-pressed="replayMotionEnabled" :aria-label="t(replayMotionEnabled ? 'replayMotionOff' : 'replayMotionOn')" @click="emit('replay-motion-toggle')">{{ t("replayMotionToggle") }}</button>
       </div>
     </section>
   </div>
@@ -133,8 +158,14 @@ function bindReplayHost(el: Element | ComponentPublicInstance | null) {
 .replay-controls { display: flex; align-items: center; gap: 10px; }
 .replay-seek { flex: 1; min-width: 0; height: 4px; accent-color: var(--primary); cursor: pointer; }
 /* 空录制（00:00/00:00）在终端区中央给提示，不再黑屏干等。 */
-.replay-terminal-wrap { position: relative; }
+.replay-terminal-wrap { position: relative; overflow: hidden; }
 .replay-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
+/* 指针/光标叠层：纯装饰、不接收指针事件；按采样几何百分比定位。 */
+.replay-pointer, .replay-caret { position: absolute; z-index: 2; pointer-events: none; }
+.replay-pointer { width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid var(--primary); border-radius: 50%; background: color-mix(in srgb, var(--primary) 18%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--background) 70%, transparent); }
+.replay-caret { box-sizing: border-box; border: 1px solid var(--tone-violet, var(--primary)); background: color-mix(in srgb, var(--tone-violet, var(--primary)) 12%, transparent); }
+.replay-motion-toggle { min-width: 28px; min-height: 28px; }
+.replay-motion-toggle[aria-pressed="false"] { color: var(--muted-foreground); }
 /* 控制行控件对齐：播放钮 24px / 倍速 26px（SelectTrigger xs）/ 导出按钮走次级按钮规范。 */
 .replay-controls .link-button { display: inline-flex; height: 24px; align-items: center; align-self: center; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 8px; background: var(--background); color: var(--foreground); font-size: 11px; }
 .replay-controls .link-button:hover:not(:disabled) { background: var(--accent); }

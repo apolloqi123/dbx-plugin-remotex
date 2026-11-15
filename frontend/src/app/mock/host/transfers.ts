@@ -13,8 +13,9 @@ import { mockFileSystem } from "../mockFileSystem";
 const fixtureDownloads = new Map<string, { fileName: string; size: number; offset: number }>();
 const fixtureUploadCount = { value: 0 };
 // 可视化 mock 也需要具备真实的“清空后刷新为空”语义，否则历史工具栏
-// 的刷新/清空按钮看起来没有效果。
-let mockTransferHistoryCleared = false;
+// 的刷新/清空按钮看起来没有效果。按稳定的 connectionId 分片：清空一个
+// 连接不能连带清掉另一个连接或 local 行。
+const clearedTransferScopes = new Set<string>();
 // ?demo=transfers：面板改版的视觉夹具——一条运行中的目录下载、一条运行中的
 // 文件上传、一条排队任务；cancel/status 都按真实契约应答，避免对账把它们判死。
 const demoLiveJoinedAt = Date.now();
@@ -49,6 +50,8 @@ const demoLiveTransfers = () =>
 const RECORDING_FIXTURE_EVENTS = [
   { time: 0, type: "o", data: "user@server:~$ ./deploy.sh --env=production\r\n" },
   { time: 1.2, type: "o", data: "[1/4] building image …\r\n" },
+  { time: 2.0, type: "x", data: { kind: "pointer", x: 0.42, y: 0.31, pressed: false, cols: 120, rows: 32 } },
+  { time: 2.1, type: "x", data: { kind: "cursor", col: 18, row: 7, cols: 120, rows: 32 } },
   { time: 4.5, type: "o", data: "[2/4] pushing registry.demo.internal/app:1.4.2\r\n" },
   { time: 9.8, type: "o", data: "[3/4] rolling update 3/3 replicas ✓\r\n" },
   { time: 15.4, type: "o", data: "[4/4] health check passed (200 OK)\r\n" },
@@ -100,10 +103,14 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
       const summary = RECORDING_FIXTURE_SUMMARY;
       const nameMatch = summary.host.toLowerCase().includes(query) || summary.recordingId.toLowerCase().includes(query);
       const stripAnsi = (raw: string) => raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trim();
-      const hits = RECORDING_FIXTURE_EVENTS
-        .filter((event) => stripAnsi(event.data).toLowerCase().includes(query))
-        .slice(0, 5)
-        .map((event) => ({ time: event.time, excerpt: stripAnsi(event.data) }));
+      // 只扫 `o` 输出行：`x` 元数据对象不是终端文本，永不进搜索/转录/GIF。
+      const hits: Array<{ time: number; excerpt: string }> = [];
+      for (const event of RECORDING_FIXTURE_EVENTS) {
+        if (event.type !== "o" || typeof event.data !== "string") continue;
+        const excerpt = stripAnsi(event.data);
+        if (excerpt.toLowerCase().includes(query)) hits.push({ time: event.time, excerpt });
+        if (hits.length >= 5) break;
+      }
       if (nameMatch || hits.length) matches.push({ ...summary, nameMatch, hits });
     }
     return { recordings: matches };
@@ -119,6 +126,11 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
   if (method === "local/recording/stop") {
     return { ...RECORDING_FIXTURE_SUMMARY, host: "local", recordingId: "visual-local-recording-1" };
   }
+  if (method === "ssh/recording/event" || method === "local/recording/event") {
+    // Bounded pointer/caret metadata is fire-and-forget in the workbench;
+    // the visual fixture has no active recorder to mutate.
+    return { success: true };
+  }
   if (method === "sftp/transfer/history") {
     // ?err=transferHistory 模拟历史查询失败，供面板 loadFailed+重试态走查。
     if (fixtureParams.get("err") === "transferHistory") throw new Error("sftp: transfer history unavailable");
@@ -127,21 +139,33 @@ export async function handleTransfersInvoke(method: string, params: unknown): Pr
     const input = (params || {}) as Record<string, unknown>;
     const limitRaw = Number(input.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(200, Math.floor(limitRaw)) : 50;
+    const scope = typeof input.connectionId === "string" ? input.connectionId : "";
+    const currentScope = "connectionId" in context ? String(context.connectionId || "local") : "local";
     const now = Date.now();
-    const entries: Array<Record<string, unknown>> = mockTransferHistoryCleared ? [] : [
-      { taskId: "visual-hist-4", connectionId: context.connectionId, direction: "upload", fileName: "deploy.sh", size: 2481, transferred: 2481, status: "completed", startedAt: now - 400_000, finishedAt: now - 396_000, localPath: "/Users/demo/deploy.sh" },
-      { taskId: "visual-hist-3", connectionId: context.connectionId, direction: "download", fileName: "server.log", size: 741_248, transferred: 741_248, status: "completed", startedAt: now - 800_000, finishedAt: now - 790_000, localPath: "/Users/demo/Downloads/server.log" },
-      { taskId: "visual-hist-2", connectionId: context.connectionId, direction: "download", fileName: "core.dump", size: 268_435_456, transferred: 268_435_456, status: "failed", startedAt: now - 1_600_000, finishedAt: now - 1_590_000, error: "disk quota exceeded", localPath: "/Users/demo/Downloads/core.dump" },
-      { taskId: "visual-hist-1", connectionId: context.connectionId, direction: "upload", fileName: "backup.tar.gz", size: 52_428_800, transferred: 0, status: "cancelled", startedAt: now - 3_200_000, finishedAt: now - 3_190_000, localPath: "/Users/demo/backup.tar.gz" },
-      { taskId: "visual-hist-5", connectionId: context.connectionId, direction: "download", fileName: "ansible-inventory.yml", size: 18_432, transferred: 18_432, status: "completed", startedAt: now - 5_000_000, finishedAt: now - 4_990_000, localPath: "/Users/demo/Downloads/ansible-inventory.yml" },
+    const entries: Array<Record<string, unknown>> = [
+      { taskId: "visual-hist-4", connectionId: currentScope, direction: "upload", fileName: "deploy.sh", size: 2481, transferred: 2481, status: "completed", startedAt: now - 400_000, finishedAt: now - 396_000, localPath: "/Users/demo/deploy.sh" },
+      { taskId: "visual-hist-3", connectionId: currentScope, direction: "download", fileName: "server.log", size: 741_248, transferred: 741_248, status: "completed", startedAt: now - 800_000, finishedAt: now - 790_000, localPath: "/Users/demo/Downloads/server.log" },
+      { taskId: "visual-hist-2", connectionId: currentScope, direction: "download", fileName: "core.dump", size: 268_435_456, transferred: 268_435_456, status: "failed", startedAt: now - 1_600_000, finishedAt: now - 1_590_000, error: "disk quota exceeded", localPath: "/Users/demo/Downloads/core.dump" },
+      { taskId: "visual-hist-1", connectionId: currentScope, direction: "upload", fileName: "backup.tar.gz", size: 52_428_800, transferred: 0, status: "cancelled", startedAt: now - 3_200_000, finishedAt: now - 3_190_000, localPath: "/Users/demo/backup.tar.gz" },
+      { taskId: "visual-hist-5", connectionId: currentScope, direction: "download", fileName: "ansible-inventory.yml", size: 18_432, transferred: 18_432, status: "completed", startedAt: now - 5_000_000, finishedAt: now - 4_990_000, localPath: "/Users/demo/Downloads/ansible-inventory.yml" },
       // 文件夹整包上传的历史：新名可还原文件夹名，旧随机名回退「文件夹上传」标签。
-      { taskId: "visual-hist-6", connectionId: context.connectionId, direction: "upload", fileName: ".sshx-upload-promoteDatastats-10-27-mvqp06x4-twmbkb.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 7_000_000, finishedAt: now - 6_990_000 },
-      { taskId: "visual-hist-7", connectionId: context.connectionId, direction: "upload", fileName: ".sshx-upload-abcdef12-ghijkl.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 8_000_000, finishedAt: now - 7_990_000 },
+      { taskId: "visual-hist-6", connectionId: currentScope, direction: "upload", fileName: ".sshx-upload-promoteDatastats-10-27-mvqp06x4-twmbkb.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 7_000_000, finishedAt: now - 6_990_000 },
+      { taskId: "visual-hist-7", connectionId: currentScope, direction: "upload", fileName: ".sshx-upload-abcdef12-ghijkl.tar", size: 3_670_016, transferred: 3_670_016, status: "completed", startedAt: now - 8_000_000, finishedAt: now - 7_990_000 },
+      // 另一个连接与本机保存行：默认连接的 scoped 查询绝不能看见它们，
+      // 清空默认连接也不能把它们一起清掉。
+      { taskId: "visual-hist-other", connectionId: "visual-other-connection", direction: "download", fileName: "other.log", size: 1_024, transferred: 1_024, status: "completed", startedAt: now - 9_000_000, finishedAt: now - 8_990_000 },
+      { taskId: "visual-hist-local", connectionId: "local", direction: "download", fileName: "export.gif", size: 4_096, transferred: 4_096, status: "completed", startedAt: now - 10_000_000, finishedAt: now - 9_990_000 },
+      // 老版本无归属行：只在无 scope 的 legacy 查询里可见。
+      { taskId: "visual-hist-legacy", direction: "upload", fileName: "legacy.bin", size: 512, transferred: 512, status: "completed", startedAt: now - 11_000_000, finishedAt: now - 10_990_000 },
     ];
-    return { tasks: entries.slice(0, limit) };
+    const scoped = scope ? entries.filter((entry) => entry.connectionId === scope) : entries;
+    const visible = scoped.filter((entry) => !clearedTransferScopes.has(String(entry.connectionId ?? "")));
+    return { tasks: visible.slice(0, limit) };
   }
   if (method === "sftp/transfer/history/clear") {
-    mockTransferHistoryCleared = true;
+    const input = (params || {}) as Record<string, unknown>;
+    const scope = typeof input.connectionId === "string" && input.connectionId ? input.connectionId : "local";
+    clearedTransferScopes.add(scope);
     return { success: true };
   }
   if (method === "sftp/upload/start" || method === "sudo/upload/start") return { taskId: `visual-upload-${++fixtureUploadCount.value}`, chunkSize: 1048576 };

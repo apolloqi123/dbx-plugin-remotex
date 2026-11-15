@@ -1,12 +1,14 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue";
+import type { Terminal } from "@xterm/xterm";
 import { nextCountdownValue, RECORD_COUNTDOWN_START } from "../lib/recordingCountdown";
 import { rpc } from "../../../shared/lib/rpc";
-import { mergeEventPages, type RecordingSummary, type ReplayEvent, type ReplayEventPage } from "../lib/replayScheduler";
+import { mergeEventPages, splitReplayPages, type RecordingSummary, type ReplayEvent, type ReplayEventPage } from "../lib/replayScheduler";
+import { useRecordingCapture } from "./useRecordingCapture";
 import { type TerminalThemeLike } from "../../terminal/lib/appearance/terminalScheme";
 import { type TerminalAppearanceState } from "../../terminal/lib/appearance/terminalAppearance";
 import { type TerminalFontOverride } from "../../terminal/lib/appearance/terminalFont";
 import { exportRecordingGif as runRecordingGifExport, exportRecordingTranscript as runRecordingTranscriptExport, type RecordingExportDeps } from "../lib/recordingExport";
-import { useReplayPlayer } from "./useReplayPlayer";
+import { useReplayPlayer, type ReplayLoadResult } from "./useReplayPlayer";
 import { useRecordingSearch } from "./useRecordingSearch";
 
 /** F3：终端录制 + 回放（asciicast v2）———
@@ -23,6 +25,9 @@ export function useRecording(options: {
   showError: (cause: unknown, target?: "terminal" | "sftp") => void;
   /** 录制目标会话：SSH 会话或本地 PTY（dock 本地终端），缺省=无可录制会话。 */
   recordingTarget: Ref<{ kind: "ssh" | "local"; sessionId: string } | undefined>;
+  /** 终端宿主元素与 xterm 实例 getter：仅在录制期间采集归一化指针/光标格。 */
+  terminalHost?: Ref<HTMLElement | undefined>;
+  terminal?: () => Terminal | undefined;
   appearance: Ref<{ terminal: { fontSize: number } }>;
   terminalTheme: () => TerminalThemeLike;
   openTransferTarget: (path: string) => Promise<void>;
@@ -42,6 +47,14 @@ export function useRecording(options: {
   const { t, showNotice, showError, recordingTarget, appearance, terminalTheme, openTransferTarget, revealTransferTarget, terminalFontOverride, terminalAppearance, hostFontFamily, closeMetrics, loadDownloadDir, loadDownloadUseDefaultDir, askDownloadTarget, applyChosenDirAsDefault, resolveDownloadConflictFor, probeLocalCapabilities, saveHostFile } = options;
 
 const recordingActive = ref(false);
+const recordingCapture = options.terminalHost && options.terminal
+  ? useRecordingCapture({
+      recordingActive,
+      target: recordingTarget,
+      terminalHost: options.terminalHost,
+      terminal: options.terminal,
+    })
+  : undefined;
 const recordingsOpen = ref(false);
 const recordings = ref<RecordingSummary[]>([]);
 const recordingsLoading = ref(false);
@@ -167,6 +180,10 @@ async function loadRecordings() {
   if (recordingsQuery.value.trim()) void runRecordingSearch();
 }
 
+/** Panel-facing alias so the redesigned header can emit a distinct refresh
+ * action without changing the existing loadRecordings contract. */
+const refreshRecordings = loadRecordings;
+
 function toggleRecordings() {
   const next = !recordingsOpen.value;
   if (next) {
@@ -230,7 +247,7 @@ async function confirmRecordingClearAll() {
 // 回放：事件一次性拉全（分页合并，封顶 2 万事件），rAF 按时间轴推进。
 const REPLAY_EVENT_CAP = 20000;
 
-async function loadReplayEvents(recordingId: string): Promise<ReplayEvent[]> {
+async function fetchReplayPages(recordingId: string): Promise<ReplayEventPage[]> {
   const pages: ReplayEventPage[] = [];
   let offset = 0;
   for (;;) {
@@ -239,7 +256,17 @@ async function loadReplayEvents(recordingId: string): Promise<ReplayEvent[]> {
     offset += page.events.length;
     if (!page.hasMore || offset >= page.total || offset >= REPLAY_EVENT_CAP) break;
   }
-  return mergeEventPages(pages);
+  return pages;
+}
+
+/** GIF / transcript 保持纯输出语义：只拿 ReplayEvent[]。 */
+async function loadReplayEvents(recordingId: string): Promise<ReplayEvent[]> {
+  return mergeEventPages(await fetchReplayPages(recordingId));
+}
+
+/** 回放弹窗额外拿指针/光标轨道；x 事件绝不进 xterm 写入链。 */
+async function loadReplayRecording(recordingId: string): Promise<ReplayLoadResult> {
+  return splitReplayPages(await fetchReplayPages(recordingId));
 }
 
 const {
@@ -263,7 +290,7 @@ const {
   terminalAppearance,
   hostFontFamily,
   showError,
-  loadReplayEvents,
+  loadReplayRecording,
 });
 
 // 导出依赖：GIF/transcript 两条保存链（宿主 fileTransfer / sidecar 落盘 /
@@ -348,6 +375,7 @@ function formatRecordedAt(startedAt?: number) {
 
 onBeforeUnmount(() => {
   disposeReplay();
+  recordingCapture?.dispose();
   window.clearInterval(recordCountdownTimer);
   window.clearInterval(recordingElapsedTimer);
   // 搜索防抖：卸载后不再发起 invoke。
@@ -378,6 +406,7 @@ onBeforeUnmount(() => {
     startRecordingNow,
     toggleRecording,
     loadRecordings,
+    refreshRecordings,
     toggleRecordings,
     revealRecording,
     exportRecordingTranscript,
@@ -395,6 +424,7 @@ onBeforeUnmount(() => {
     REPLAY_EVENT_CAP,
     replayDurationMs,
     loadReplayEvents,
+    loadReplayRecording,
     openReplay,
     closeReplay,
     stopReplayLoop,

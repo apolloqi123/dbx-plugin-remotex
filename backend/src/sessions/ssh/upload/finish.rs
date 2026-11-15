@@ -33,7 +33,7 @@ impl SshRuntime {
             // The task dies here without reaching the commit path, so the
             // failure is recorded explicitly (same ledger entry a failed
             // commit writes).
-            self.record_transfer(json!({ "taskId": task_id, "sessionId": upload.session_id, "direction": "upload", "fileName": upload.remote_path.rsplit('/').next().unwrap_or("upload"), "size": upload.expected_size, "transferred": upload.received, "status": "failed", "error": error }));
+            self.record_transfer(json!({ "taskId": task_id, "sessionId": upload.session_id, "direction": "upload", "fileName": upload.remote_path.rsplit('/').next().unwrap_or("upload"), "size": upload.expected_size, "transferred": upload.received, "status": "failed", "error": error.as_str() })).await;
             return Err(error);
         }
         let UploadState {
@@ -402,7 +402,7 @@ impl SshRuntime {
                         "completed",
                         served_compression,
                     );
-                    this.record_transfer(task.clone());
+                    this.record_transfer(task.clone()).await;
                     if let Err(error) = emitter.event("sftp/transfer/progress", task) {
                         eprintln!(
                             "[sftp] upload {task_id} completion event failed: {}",
@@ -428,7 +428,7 @@ impl SshRuntime {
                         served_compression,
                     );
                     task["error"] = json!(error);
-                    this.record_transfer(task.clone());
+                    this.record_transfer(task.clone()).await;
                     let _ = emitter.event("sftp/transfer/progress", task);
                 }
             }

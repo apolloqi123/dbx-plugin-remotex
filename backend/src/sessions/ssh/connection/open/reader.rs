@@ -407,11 +407,14 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
             &emitter,
         )
         .await;
+        // Capture before the registry entry is dropped so cleanup can still
+        // attribute failed transfer rows to the saved connection.
+        let connection_id = entry.connection_id.clone();
         let _ = emitter.event(
             "ssh/session/state",
             json!({
                 "sessionId": task_id,
-                "connectionId": entry.connection_id,
+                "connectionId": &connection_id,
                 "state": "disconnected"
             }),
         );
@@ -427,7 +430,7 @@ pub(super) fn spawn_read_loop(state: ReadLoop) {
         // metrics 缓存等）：它们此前只在 close_session 清——网络自发断开
         // 路径漏掉，表项与暂存文件会一直挂到 sidecar 退出。
         if let Err(error) = runtime_for_cleanup
-            .cleanup_session_transfers(&task_id)
+            .cleanup_session_transfers(&task_id, &connection_id)
             .await
         {
             eprintln!("[ssh-trace] transfer cleanup after disconnect failed: {error}");

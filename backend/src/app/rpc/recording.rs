@@ -20,6 +20,13 @@ impl Plugin {
                 self.runtime.block_on(self.ssh.recording_stop(session_id))
             }
 
+            "ssh/recording/event" => {
+                let session_id = required_string(&params, "sessionId")?;
+                let data = params.get("data").cloned().unwrap_or(json!({}));
+                self.runtime
+                    .block_on(self.ssh.recording_event(session_id, &data))
+            }
+
             "ssh/recording/list" => Ok(json!({
                 "recordings": crate::features::recording::list_recordings(&self.ssh.data_dir())
             })),

@@ -13,8 +13,16 @@ export function useTransferHistory(options: {
   // 本处续传只 await 完成与否，false 同样视为结束。
   uploadSource: (name: string, size: number, readChunk: (offset: number, length: number) => Promise<Uint8Array>, resume?: { taskId: string; remotePath: string }, targetDir?: string) => Promise<boolean>;
   loadDirectory: (path?: string) => Promise<void>;
+  // Stable saved SSH connection id; an empty value means a local/non-SSH
+  // workbench and must use the explicit "local" scope instead of querying
+  // the merged global history.
+  connectionId: () => string;
 }) {
-  const { t, showNotice, showError, uploadSource, loadDirectory } = options;
+  const { t, showNotice, showError, uploadSource, loadDirectory, connectionId } = options;
+
+  function transferScope(): string {
+    return connectionId() || "local";
+  }
 
   const transferHistory = ref<TransferHistoryEntry[]>([]);
   const transferHistoryLoading = ref(false);
@@ -23,7 +31,7 @@ export function useTransferHistory(options: {
   async function refreshTransferHistory() {
     transferHistoryLoading.value = true;
     try {
-      const result = await window.dbxPlugin.invoke<{ tasks: unknown }>("sftp/transfer/history", { limit: TRANSFER_HISTORY_LIMIT });
+      const result = await window.dbxPlugin.invoke<{ tasks: unknown }>("sftp/transfer/history", { limit: TRANSFER_HISTORY_LIMIT, connectionId: transferScope() });
       transferHistory.value = sanitizeTransferHistoryTasks(result?.tasks);
       transferHistoryFailed.value = false;
     } catch {
@@ -39,7 +47,7 @@ export function useTransferHistory(options: {
   const transferHistoryClearOpen = ref(false);
   async function confirmTransferHistoryClear() {
     try {
-      await window.dbxPlugin.invoke("sftp/transfer/history/clear", {});
+      await window.dbxPlugin.invoke("sftp/transfer/history/clear", { connectionId: transferScope() });
       transferHistory.value = [];
       transferHistoryFailed.value = false;
       transferHistoryClearOpen.value = false;

@@ -75,6 +75,7 @@ pub fn save_local_file(
         data_dir,
         &serde_json::json!({
             "taskId": format!("local-save-{}", uuid::Uuid::new_v4()),
+            "connectionId": "local",
             "direction": "download",
             "fileName": final_name,
             "size": data.len(),
@@ -128,6 +129,7 @@ pub fn save_local_path(
         data_dir,
         &serde_json::json!({
             "taskId": format!("local-save-{}", uuid::Uuid::new_v4()),
+            "connectionId": "local",
             "direction": "download",
             "fileName": final_name,
             "size": meta.len(),

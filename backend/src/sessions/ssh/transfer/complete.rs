@@ -95,9 +95,6 @@ impl SshRuntime {
         task_id: &str,
         emitter: &PluginEmitter,
     ) -> Result<Value, String> {
-        let record_failed = |error: &str| {
-            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error }));
-        };
         if download.next_offset < download.size {
             let error = format!(
                 "Download is incomplete: received {} of {} bytes",
@@ -105,7 +102,7 @@ impl SshRuntime {
             );
             // The task dies here without reaching the completed path, so
             // the failure is recorded explicitly.
-            record_failed(&error);
+            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error.as_str() })).await;
             return Err(error);
         }
         let local_path = if let Some(staged) = download.staged_plain.as_ref() {
@@ -121,7 +118,7 @@ impl SshRuntime {
                     ) {
                         Ok(path) => Some(path),
                         Err(error) => {
-                            record_failed(&error);
+                            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error.as_str() })).await;
                             return Err(error);
                         }
                     }
@@ -135,7 +132,7 @@ impl SshRuntime {
                     match Self::finalize_download_sink(self, sink, &download.file_name).await {
                         Ok(path) => Some(path),
                         Err(error) => {
-                            record_failed(&error);
+                            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error.as_str() })).await;
                             return Err(error);
                         }
                     }
@@ -146,7 +143,7 @@ impl SshRuntime {
         if let Some(path) = local_path.as_ref() {
             task["localPath"] = json!(path.to_string_lossy());
         }
-        self.record_transfer(task.clone());
+        self.record_transfer(task.clone()).await;
         emitter
             .event("sftp/transfer/progress", task)
             .map_err(plugin_error)?;
@@ -206,7 +203,7 @@ impl SshRuntime {
             let _ = std::fs::remove_dir_all(&tree.root_local);
             let error =
                 format!("Folder download is incomplete: {remaining} file(s) not transferred");
-            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error }));
+            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error.as_str() })).await;
             return Err(error);
         }
         let (failed_count, failed_files, leftover_sink) = {
@@ -235,7 +232,7 @@ impl SshRuntime {
                         Err(error) => {
                             let error =
                                 format!("Failed to move the downloaded folder into place: {error}");
-                            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error }));
+                            self.record_transfer(json!({ "taskId": task_id, "sessionId": download.session_id, "direction": "download", "fileName": download.file_name, "size": download.size, "transferred": download.next_offset, "status": "failed", "error": error.as_str() })).await;
                             return Err(error);
                         }
                     }
@@ -252,7 +249,7 @@ impl SshRuntime {
             "fileCount": tree.file_count, "failedCount": failed_count, "skippedCount": tree.skipped,
         });
         task["localPath"] = json!(final_root.to_string_lossy());
-        self.record_transfer(task.clone());
+        self.record_transfer(task.clone()).await;
         emitter
             .event("sftp/transfer/progress", task)
             .map_err(plugin_error)?;

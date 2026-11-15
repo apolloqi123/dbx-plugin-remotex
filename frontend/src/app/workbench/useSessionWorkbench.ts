@@ -16,7 +16,7 @@ const SESSIONS_KEYS = [
   "deleteRecording", "dismissRestoredLocalShell", "drainSerialFrames", "exportRecordingFromList",
   "exportRecordingGif", "formatRecordedAt", "handleVncFrame", "isLocalMode", "isRdpConnection",
   "isRdpMode", "isRdpResolutionActive", "isSerialMode", "isTelnetMode", "isVncConnection", "isVncMode",
-  "loadRecordings", "localExitCode", "localLastCwd", "localLastSequence", "localOpenConfirmOpen",
+  "loadRecordings", "refreshRecordings", "localExitCode", "localLastCwd", "localLastSequence", "localOpenConfirmOpen",
   "localPendingFrames", "localRecentCommands", "localReplayInFlight", "localReplayNoProgress", "localSession",
   "localShellCwdPref", "localShellEnvClean", "localShellEnvPref", "localShellIntegrationPref", "localShellPref",
   "localShellRestored", "localShellSurfaceOpen", "localShells", "localShellsLoading", "localState", "onVncSurfaceResize",

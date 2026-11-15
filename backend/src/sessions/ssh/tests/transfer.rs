@@ -541,7 +541,7 @@ fn transfer_history_merges_live_rows_over_persisted_ones() {
     );
     let no_connection = |_: &str| String::new();
     let tasks = runtime
-        .build_transfer_history(Some("s1"), 50, &no_connection)
+        .build_transfer_history(Some("s1"), None, 50, &no_connection)
         .unwrap();
     let tasks = tasks.get("tasks").and_then(Value::as_array).unwrap();
     assert_eq!(tasks.len(), 3);
@@ -565,13 +565,13 @@ fn transfer_history_merges_live_rows_over_persisted_ones() {
     );
     // Limit caps the merged list after sorting.
     let limited = runtime
-        .build_transfer_history(Some("s1"), 1, &no_connection)
+        .build_transfer_history(Some("s1"), None, 1, &no_connection)
         .unwrap();
     assert_eq!(limited["tasks"].as_array().unwrap().len(), 1);
     assert_eq!(limited["tasks"][0]["taskId"], "t-live");
     // Unknown sessions yield an empty list.
     let other = runtime
-        .build_transfer_history(Some("s2"), 50, &no_connection)
+        .build_transfer_history(Some("s2"), None, 50, &no_connection)
         .unwrap();
     assert!(other["tasks"].as_array().unwrap().is_empty());
 }
@@ -653,7 +653,7 @@ fn transfer_history_live_rows_without_start_context_sort_by_task_id() {
     }
     let no_connection = |_: &str| String::new();
     let tasks = runtime
-        .build_transfer_history(Some("s1"), 50, &no_connection)
+        .build_transfer_history(Some("s1"), None, 50, &no_connection)
         .unwrap();
     let ids: Vec<String> = tasks["tasks"]
         .as_array()
@@ -933,4 +933,160 @@ async fn concurrent_same_name_downloads_reserve_distinct_final_paths() {
     ];
     contents.sort();
     assert_eq!(contents, vec!["first".to_string(), "second".to_string()]);
+}
+
+/// Terminal transitions that omit `connectionId` must inherit it from the
+/// live session first, then from the persisted start row; an unknown session
+/// with no start context stays unattributed instead of leaking into another
+/// connection's scoped view. A full `SessionEntry` cannot be built in unit
+/// tests (`russh::client::Handle` has no public constructor), so the live
+/// session branch is pinned through the pure resolver and the persisted /
+/// unknown branches through `record_transfer` itself.
+#[test]
+fn transfer_history_resolves_live_session_connection_id() {
+    let bare = json!({ "taskId": "t1", "sessionId": "s1" });
+    assert_eq!(resolve_transfer_connection_id(&bare, "c1", ""), "c1");
+    assert_eq!(
+        resolve_transfer_connection_id(&bare, "c1", "c-prev"),
+        "c1",
+        "a live session outranks the persisted start row"
+    );
+    let explicit = json!({ "taskId": "t1", "sessionId": "s1", "connectionId": "c-explicit" });
+    assert_eq!(
+        resolve_transfer_connection_id(&explicit, "c1", "c-prev"),
+        "c-explicit"
+    );
+    assert_eq!(
+        resolve_transfer_connection_id(&bare, "", "c-prev"),
+        "c-prev"
+    );
+    assert_eq!(resolve_transfer_connection_id(&bare, "", ""), "");
+}
+
+#[tokio::test]
+async fn transfer_history_persists_connection_id() {
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    let runtime = SshRuntime::new(data_dir.path().to_path_buf());
+    transfer_history::record_transition(
+        data_dir.path(),
+        &json!({
+            "taskId": "t-inherit", "sessionId": "s1", "connectionId": "c1",
+            "direction": "download", "fileName": "a.bin", "size": 4,
+            "transferred": 0, "status": "running",
+            "startedAt": 1_000, "finishedAt": null,
+        }),
+    )
+    .unwrap();
+    runtime
+        .record_transfer(json!({
+            "taskId": "t-inherit", "sessionId": "s1",
+            "direction": "download", "fileName": "a.bin", "size": 4,
+            "transferred": 4, "status": "completed",
+        }))
+        .await;
+    let rows = transfer_history::load_history(data_dir.path());
+    let inherited = rows
+        .iter()
+        .find(|row| row["taskId"] == "t-inherit")
+        .expect("terminal row");
+    assert_eq!(inherited["connectionId"], "c1");
+
+    runtime
+        .record_transfer(json!({
+            "taskId": "t-gone", "sessionId": "s-gone",
+            "direction": "upload", "fileName": "b.bin", "size": 2,
+            "transferred": 2, "status": "failed",
+        }))
+        .await;
+    let rows = transfer_history::load_history(data_dir.path());
+    let unknown = rows
+        .iter()
+        .find(|row| row["taskId"] == "t-gone")
+        .expect("unknown-session row");
+    assert_eq!(unknown["connectionId"], "");
+}
+
+#[test]
+fn transfer_history_query_filters_by_connection_id() {
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    let root = data_dir.path();
+    for (task_id, scope) in [
+        ("t-c1", Some("c1")),
+        ("t-c2", Some("c2")),
+        ("t-legacy", None),
+    ] {
+        let mut row = json!({
+            "taskId": task_id, "sessionId": "s1",
+            "direction": "download", "fileName": "a.bin", "size": 4,
+            "transferred": 4, "status": "completed",
+            "startedAt": 1_000, "finishedAt": 2_000,
+        });
+        if let Some(scope) = scope {
+            row["connectionId"] = json!(scope);
+        }
+        transfer_history::record_transition(root, &row).unwrap();
+    }
+    let runtime = SshRuntime::new(root.to_path_buf());
+    let no_connection = |_: &str| String::new();
+    let scoped = runtime
+        .build_transfer_history(None, Some("c1"), 50, &no_connection)
+        .unwrap();
+    let tasks = scoped["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1, "only c1 rows are visible");
+    assert_eq!(tasks[0]["taskId"], "t-c1");
+    let unscoped = runtime
+        .build_transfer_history(None, None, 50, &no_connection)
+        .unwrap();
+    assert_eq!(
+        unscoped["tasks"].as_array().unwrap().len(),
+        3,
+        "legacy callers still see the merged global history"
+    );
+}
+
+/// Teardown removes the session before cleanup runs, so the connection id
+/// must be captured by the caller and threaded through; otherwise the failed
+/// row is unattributed and invisible in the owning connection's history.
+#[tokio::test]
+async fn cleanup_session_transfers_persists_the_captured_connection_id() {
+    let data_dir = tempfile::tempdir().expect("tempdir");
+    let runtime = SshRuntime::new(data_dir.path().to_path_buf());
+    runtime.downloads.lock().unwrap().insert(
+        "t-close".to_string(),
+        DownloadState {
+            session_id: "s1".to_string(),
+            remote_path: "/close.bin".to_string(),
+            file_name: "close.bin".to_string(),
+            size: 8,
+            next_offset: 3,
+            sink: None,
+            emit_chunks: true,
+            tree: None,
+            sudo_tmp: None,
+            latin1: false,
+            throttle: Throttle::new(0),
+            progress_throttle: crate::features::transfer::progress::ProgressThrottle::default(),
+            compression: CompressionMode::None,
+            ready: false,
+            serving_plain: false,
+            staged_plain: None,
+            gz_staging: None,
+            remote_temp: None,
+            final_dir: None,
+            overwrite: false,
+            read_handle: Arc::new(AsyncMutex::new(None)),
+            raw_client: Arc::new(AsyncMutex::new(None)),
+        },
+    );
+    runtime
+        .cleanup_session_transfers("s1", "c1")
+        .await
+        .expect("cleanup");
+    let rows = transfer_history::load_history(data_dir.path());
+    let failed = rows
+        .iter()
+        .find(|row| row["taskId"] == "t-close")
+        .expect("failed teardown row");
+    assert_eq!(failed["connectionId"], "c1");
+    assert_eq!(failed["status"], "failed");
 }

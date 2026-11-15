@@ -56,4 +56,24 @@ impl SshRuntime {
             .ok_or("This session has no active recording")?;
         recorder.finish()
     }
+
+    /// `ssh/recording/event`: appends one bounded structured `x` event to the
+    /// active recorder. A missing / wrong-kind session reports the same "no
+    /// active recording" error as stop, never creating a file.
+    pub async fn recording_event(&self, session_id: &str, data: &Value) -> Result<Value, String> {
+        let session = self
+            .session(session_id)
+            .await
+            .map_err(|_| "This session has no active recording".to_string())?;
+        let mut slot = session
+            .session_recorder
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some(recorder) = slot.as_mut() else {
+            return Err("This session has no active recording".to_string());
+        };
+        let canonical = session_recording::validate_metadata_event(data)?;
+        recorder.observe_metadata(&canonical)?;
+        Ok(json!({ "success": true }))
+    }
 }

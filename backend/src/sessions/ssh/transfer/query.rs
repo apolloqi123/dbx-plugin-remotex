@@ -179,6 +179,7 @@ impl SshRuntime {
     pub async fn transfer_history_query(
         &self,
         session_id: Option<&str>,
+        connection_id: Option<&str>,
         limit: usize,
     ) -> Result<Value, String> {
         let sessions = self.sessions.read().await;
@@ -188,15 +189,25 @@ impl SshRuntime {
                 .map(|session| session.connection_id.clone())
                 .unwrap_or_default()
         };
-        self.build_transfer_history(session_id, limit, &connection_id_for)
+        self.build_transfer_history(session_id, connection_id, limit, &connection_id_for)
     }
 
-    pub fn clear_transfer_history(&self) -> Result<(), String> {
-        self.transfer_history
+    pub async fn clear_transfer_history(
+        &self,
+        connection_id: Option<&str>,
+    ) -> Result<(), String> {
+        let mut history = self
+            .transfer_history
             .lock()
-            .map_err(|_| "Transfer history is poisoned".to_string())?
-            .clear();
-        transfer_history::clear_history(&self.data_dir)
+            .map_err(|_| "Transfer history is poisoned".to_string())?;
+        match connection_id.filter(|scope| !scope.is_empty()) {
+            Some(scope) => history.retain(|task| {
+                task.get("connectionId").and_then(Value::as_str) != Some(scope)
+            }),
+            None => history.clear(),
+        }
+        drop(history);
+        transfer_history::clear_history(&self.data_dir, connection_id)
     }
 
     /// Synchronous core of `transfer_history_query`; `connection_id_for`
@@ -205,6 +216,7 @@ impl SshRuntime {
     pub(crate) fn build_transfer_history(
         &self,
         session_id: Option<&str>,
+        connection_id: Option<&str>,
         limit: usize,
         connection_id_for: &impl Fn(&str) -> String,
     ) -> Result<Value, String> {
@@ -238,6 +250,11 @@ impl SshRuntime {
         }
         if let Some(filter) = session_id {
             tasks.retain(|task| task.get("sessionId").and_then(Value::as_str) == Some(filter));
+        }
+        // Stable saved-connection ownership is a second, independent AND
+        // filter. Legacy rows without the key never match a scoped view.
+        if let Some(filter) = connection_id.filter(|value| !value.is_empty()) {
+            tasks.retain(|task| task.get("connectionId").and_then(Value::as_str) == Some(filter));
         }
         // Issue #18: the previous sort keyed on `startedAt` alone and left
         // rows without one (live rows whose start record never reached the

@@ -762,7 +762,6 @@
   padding: 4px 6px 4px 12px;
   background: color-mix(in srgb, var(--card-surface) 72%, transparent);
 }
-.recordings-float { width: min(440px, calc(100% - 16px)); }
 .recordings-search-row {
   border-bottom: 1px solid var(--card-border);
   background: color-mix(in srgb, var(--card-surface) 60%, transparent);

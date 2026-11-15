@@ -330,3 +330,124 @@ fn auto_record_flag_round_trips() {
     set_auto_record(false);
     assert!(!auto_record_enabled());
 }
+
+/// Bounded custom `x` events: only normalized pointer / caret-cell shapes
+/// are accepted, canonicalized, and written as non-output events. Invalid
+/// payloads never reach the recorder, so `events` stays unchanged.
+#[test]
+fn metadata_events_are_bounded_and_validated() {
+    let dir = temp_dir();
+    let mut recorder =
+        SessionRecorder::start(&dir, "rec-meta", "c", "h", "s", 100, 26).unwrap();
+    let pointer = json!({
+        "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false,
+        "cols": 100, "rows": 26,
+    });
+    let cursor = json!({
+        "kind": "cursor", "col": 4, "row": 9,
+        "cols": 100, "rows": 26,
+    });
+    recorder
+        .observe_metadata(&validate_metadata_event(&pointer).unwrap())
+        .unwrap();
+    recorder
+        .observe_metadata(&validate_metadata_event(&cursor).unwrap())
+        .unwrap();
+
+    let invalid = [
+        json!({ "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false, "cols": 100, "rows": 26, "note": "x".repeat(600) }),
+        json!({ "kind": "pointer", "x": "NaN", "y": 0.6, "pressed": false, "cols": 100, "rows": 26 }),
+        json!({ "kind": "pointer", "x": 1.2, "y": 0.6, "pressed": false, "cols": 100, "rows": 26 }),
+        json!({ "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false, "rows": 26 }),
+        json!({ "kind": "gyro", "x": 0.4, "y": 0.6, "pressed": false, "cols": 100, "rows": 26 }),
+        json!({ "kind": "cursor", "col": 100, "row": 9, "cols": 100, "rows": 26 }),
+        json!({ "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false, "cols": 0, "rows": 26 }),
+        json!({ "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": "no", "cols": 100, "rows": 26 }),
+        json!({ "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false, "cols": 100, "rows": 26, "extra": 1 }),
+    ];
+    for payload in &invalid {
+        assert!(
+            validate_metadata_event(payload).is_err(),
+            "invalid metadata was accepted: {payload}"
+        );
+    }
+    let summary = recorder.finish().unwrap();
+    assert_eq!(summary["events"], 2, "invalid payloads must not write events");
+    let text = std::fs::read_to_string(recordings_dir(&dir).join("rec-meta.cast")).unwrap();
+    let events: Vec<Value> = text.lines().skip(1).map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(events.len(), 3, "two x events plus stop marker");
+    assert_eq!(events[0]["eventtype"], "x");
+    assert_eq!(events[0]["eventdata"]["kind"], "pointer");
+    assert_eq!(events[0]["eventdata"]["x"], 0.4);
+    assert_eq!(events[1]["eventtype"], "x");
+    assert_eq!(events[1]["eventdata"]["kind"], "cursor");
+    assert_eq!(events[1]["eventdata"]["col"], 4);
+    assert_eq!(events[2]["eventtype"], "m");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `x` events are metadata: search, transcript and GIF must keep consuming
+/// only terminal output, while `read_events` preserves the object payload.
+#[test]
+fn structured_metadata_is_not_searchable_and_stays_typed_on_read() {
+    let dir = temp_dir();
+    let mut recorder =
+        SessionRecorder::start(&dir, "rec-x", "c", "h", "s", 80, 24).unwrap();
+    recorder.observe(b"health check passed\n");
+    let pointer = json!({
+        "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false,
+        "cols": 100, "rows": 26,
+    });
+    recorder
+        .observe_metadata(&validate_metadata_event(&pointer).unwrap())
+        .unwrap();
+    recorder.finish().unwrap();
+
+    assert!(search_recordings(&dir, "pointer").is_empty());
+    let health = search_recordings(&dir, "health");
+    assert_eq!(health.len(), 1);
+    assert_eq!(health[0]["hits"].as_array().unwrap().len(), 1);
+    let page = read_events(&dir, "rec-x", 0, 10).unwrap();
+    let events = page["events"].as_array().unwrap();
+    assert_eq!(events.len(), 3, "o + x + m");
+    assert_eq!(events[0]["type"], "o");
+    assert_eq!(events[1]["type"], "x");
+    assert!(events[1]["data"].is_object(), "x data stays the original object");
+    assert_eq!(events[1]["data"]["kind"], "pointer");
+    assert_eq!(events[2]["type"], "m");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn flatten_event_text_ignores_non_output_events() {
+    let legacy = json!({ "eventdata": "legacy output" });
+    assert_eq!(flatten_event_text(&legacy), "legacy output");
+    let marker = json!({ "eventtype": "m", "eventdata": "marker text" });
+    assert_eq!(flatten_event_text(&marker), "");
+    let motion = json!({ "eventtype": "x", "eventdata": { "kind": "pointer" } });
+    assert_eq!(flatten_event_text(&motion), "");
+}
+
+#[tokio::test]
+async fn recording_event_requires_an_active_recorder() {
+    let dir = temp_dir();
+    let ssh = crate::sessions::ssh::SshRuntime::new(dir.clone());
+    let local = crate::sessions::local::LocalTerminalRuntime::new();
+    let valid = json!({
+        "kind": "pointer", "x": 0.4, "y": 0.6, "pressed": false,
+        "cols": 100, "rows": 26,
+    });
+    let invalid = json!({ "kind": "pointer", "x": "NaN" });
+    for runtime_error in [
+        ssh.recording_event("s-missing", &valid).await,
+        ssh.recording_event("s-missing", &invalid).await,
+        local.recording_event("s-missing", &valid).await,
+    ] {
+        assert_eq!(runtime_error.unwrap_err(), "This session has no active recording");
+    }
+    assert!(
+        !recordings_dir(&dir).exists(),
+        "no active recorder must not create a .cast file"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -5,10 +5,15 @@
  */
 
 import type { ReplayEvent } from "./replayScheduler";
+import type { RecordingMotionData } from "./replayMotion";
 
-/** Input event: `ReplayEvent` plus the optional asciicast `type` carried by
- * page rows (`ssh/recording/get`); rows without `type` are output events. */
-export type TranscriptEvent = ReplayEvent & { type?: string };
+/** Input event: output-only replay rows plus optional asciicast `type`.
+ * Metadata `x` rows carry an object `data`; they are skipped before text is
+ * read. Rows without `type` are legacy output and remain supported. */
+export type TranscriptEvent = Omit<ReplayEvent, "data"> & {
+  type?: string;
+  data: string | RecordingMotionData;
+};
 
 /**
  * Strips ANSI/OSC control sequences from raw terminal output so the
@@ -79,7 +84,10 @@ export function buildTranscript(
   let out = "";
   let atLineStart = true;
   for (const event of events) {
-    if (event.type !== "o") continue;
+    // Explicit non-output rows (`x`/`m`) and object metadata never become
+    // transcript text. Legacy rows without `type` stay output.
+    if (event.type !== undefined && event.type !== "o") continue;
+    if (typeof event.data !== "string") continue;
     const text = stripAnsiSequences(event.data);
     if (!text) continue;
     if (timestamps) {

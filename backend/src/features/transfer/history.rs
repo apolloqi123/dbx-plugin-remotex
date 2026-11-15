@@ -82,15 +82,33 @@ pub fn load_history(data_dir: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// Removes the persisted transfer history. In-flight rows are not touched;
-/// the live registry will repopulate them on the next history refresh.
-pub fn clear_history(data_dir: &Path) -> Result<(), String> {
+/// Removes the persisted transfer history. A `connectionId` scope keeps
+/// every row owned by another connection (including unattributed legacy
+/// rows); `None` keeps the old whole-file removal for callers that omit it.
+/// In-flight rows are not touched; the live registry will repopulate them on
+/// the next history refresh.
+pub fn clear_history(data_dir: &Path, connection_id: Option<&str>) -> Result<(), String> {
+    let Some(scope) = connection_id.filter(|value| !value.is_empty()) else {
+        let path = store_path(data_dir);
+        return match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Failed to clear transfer history: {error}")),
+        };
+    };
+    let remaining = load_rows(data_dir)
+        .into_iter()
+        .filter(|row| row.get("connectionId").and_then(Value::as_str) != Some(scope))
+        .collect::<Vec<_>>();
     let path = store_path(data_dir);
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("Failed to clear transfer history: {error}")),
+    if remaining.is_empty() {
+        return match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Failed to clear transfer history: {error}")),
+        };
     }
+    save_rows(data_dir, &remaining)
 }
 
 /// Persists one status transition (start / complete / cancel / fail). The
@@ -351,6 +369,28 @@ mod tests {
         // Recording still works from the empty base.
         record_transition(&dir, &row("t1", "failed")).unwrap();
         assert_eq!(load_history(&dir).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_history_scoped_retains_other_connections_and_local_rows() {
+        let dir = temp_dir();
+        let mut c1 = row("t-c1", "completed");
+        c1["connectionId"] = json!("c1");
+        let mut c2 = row("t-c2", "completed");
+        c2["connectionId"] = json!("c2");
+        let mut local = row("t-local", "completed");
+        local["connectionId"] = json!("local");
+        let mut legacy = row("t-legacy", "completed");
+        legacy.as_object_mut().unwrap().remove("connectionId");
+        save_rows(&dir, &[c1, c2, local, legacy]).unwrap();
+        clear_history(&dir, Some("c1")).unwrap();
+        let loaded = load_history(&dir);
+        let ids: Vec<&str> = loaded
+            .iter()
+            .map(|task| task["taskId"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["t-c2", "t-local", "t-legacy"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

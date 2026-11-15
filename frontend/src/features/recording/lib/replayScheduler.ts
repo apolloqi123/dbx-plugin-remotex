@@ -1,6 +1,8 @@
 // 会话录制回放（asciicast v2）纯逻辑：事件页合并、回放时间轴、进度定位。
 // 零 UI / 零 sidecar 依赖，单测见 replayScheduler.spec.ts。
 
+import { isRecordingMotionData, type RecordingMotionData, type ReplayMotionEvent } from "./replayMotion";
+
 export interface ReplayEvent {
   /** Seconds since the recording started (asciicast `time`). */
   time: number;
@@ -19,22 +21,39 @@ export interface RecordingSummary {
 }
 
 export interface ReplayEventPage {
-  events: Array<{ time: number; type: string; data: string }>;
+  events: Array<{ time: number; type: string; data: string | RecordingMotionData }>;
   total: number;
   hasMore: boolean;
 }
 
-// 合并 `ssh/recording/get` 分页（全部输出事件，忽略 i/r/m 等非输出事件）。
-// 假设调用方按 offset 升序取页；同刻时间保持到达顺序。
+// 合并 `ssh/recording/get` 分页（全部输出事件，忽略 i/r/m/x 等非输出事件）。
+// 假设调用方按 offset 升序取页；同刻时间保持到达顺序。对象型 data 永不进
+// xterm；回放叠层单独走 splitReplayPages 的 motion 轨道。
 export function mergeEventPages(pages: ReplayEventPage[]): ReplayEvent[] {
+  return splitReplayPages(pages).events;
+}
+
+/** Splits one or more pages into terminal-output events and the separate
+ * bounded pointer/caret track. Unknown or malformed `x` objects are ignored;
+ * `o` rows with non-string data are ignored too. */
+export function splitReplayPages(
+  pages: readonly ReplayEventPage[],
+): { events: ReplayEvent[]; motion: ReplayMotionEvent[] } {
   const events: ReplayEvent[] = [];
+  const motion: ReplayMotionEvent[] = [];
   for (const page of pages) {
     for (const event of page.events) {
-      if (event.type !== "o") continue;
+      if (event.type === "x") {
+        if (isRecordingMotionData(event.data)) {
+          motion.push({ time: Number(event.time) || 0, data: event.data });
+        }
+        continue;
+      }
+      if (event.type !== "o" || typeof event.data !== "string") continue;
       events.push({ time: Number(event.time) || 0, data: event.data });
     }
   }
-  return events;
+  return { events, motion };
 }
 
 // 回放总时长：最后一个事件的时间（空录制为 0）。

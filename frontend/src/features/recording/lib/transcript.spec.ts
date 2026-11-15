@@ -4,6 +4,7 @@ import {
   formatTranscriptStamp,
   stripAnsiSequences,
   transcriptFileName,
+  type TranscriptEvent,
 } from "./transcript";
 
 describe("stripAnsiSequences", () => {
@@ -73,5 +74,24 @@ describe("transcriptFileName", () => {
   it("derives a .txt name from the recording id", () => {
     expect(transcriptFileName("rec-1")).toBe("rec-1.txt");
     expect(transcriptFileName("")).toBe("session.txt");
+  });
+});
+
+describe("buildTranscript metadata safety", () => {
+  const pointer = { kind: "pointer", x: 0.4, y: 0.6, pressed: false, cols: 100, rows: 26 } as const;
+
+  it("keeps only o output rows and skips object metadata", () => {
+    const events: TranscriptEvent[] = [
+      { time: 0, type: "o", data: "hello\n" },
+      { time: 0.5, type: "x", data: pointer },
+      { time: 1, type: "o", data: "world\n" },
+      { time: 1.5, type: "m", data: "" },
+      { time: 2, type: "o", data: { nope: true } as unknown as string },
+    ];
+    expect(buildTranscript(events)).toBe("hello\nworld\n");
+  });
+
+  it("treats legacy rows without an event type as output", () => {
+    expect(buildTranscript([{ time: 0, data: "legacy\n" }])).toBe("legacy\n");
   });
 });

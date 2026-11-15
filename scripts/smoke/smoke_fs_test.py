@@ -131,6 +131,10 @@ def main() -> None:
     # sidecar 启动前注入（sidecar 启动时读取一次环境变量）。
     download_dir = Path(tempfile.mkdtemp(prefix="dbx-ssh-smoke-downloads-"))
     os.environ["DBX_SSH_DOWNLOAD_DIR"] = str(download_dir)
+    # 传输历史 scope 用例需要直接注入一条其它连接的行；把 sidecar 数据目录
+    # 固定到本次冒烟的临时目录，结束后按原字节恢复，避免污染宿主状态。
+    data_dir = Path(tempfile.mkdtemp(prefix="dbx-ssh-smoke-data-"))
+    os.environ["DBX_PLUGIN_DATA_DIR"] = str(data_dir)
     # watcher 组的 watch/start 有 desktop gate（can_save_local 探测）。CI
     # runner 是 headless 环境，探针会误判为非桌面并拒绝注册——显式声明
     # 桌面落盘语义（sidecar 子进程继承本环境，生产语义不受影响）。
@@ -1522,11 +1526,16 @@ def main() -> None:
             if not saved.is_file() or saved.read_bytes() != raw:
                 raise AssertionError(f"local file missing/mismatched: {local_path}")
             print(f"    saved {len(raw)} bytes -> {local_path}")
-            # localPath 進歷史，才允許 reveal；任意路径必须被拒绝。
-            history = req("sftp/transfer/history", {"limit": 50})
+            # localPath 進歷史，才允許 reveal；任意路径必须被拒绝。查询按稳定
+            # connectionId 分片，另一条连接绝不能看到本任务的行。
+            history = req("sftp/transfer/history", {"limit": 50, "connectionId": connection_id})
             row = next((t for t in history.get("tasks", []) if t.get("taskId") == task_id), None)
             if not row or row.get("localPath") != local_path or row.get("status") != "completed":
                 raise AssertionError(f"history row missing localPath: {json.dumps(row)[:160]}")
+            other_scope = "smoke-fs-other-connection"
+            other_history = req("sftp/transfer/history", {"limit": 50, "connectionId": other_scope})
+            if any(t.get("taskId") == task_id for t in other_history.get("tasks", [])):
+                raise AssertionError("scoped history leaked the current task into another connection")
             try:
                 req("local/reveal", {"path": str(download_dir.parent / "not-recorded.txt")})
             except SidecarError as error:
@@ -1535,6 +1544,41 @@ def main() -> None:
             else:
                 raise AssertionError("local/reveal accepted an unrecorded path")
             print("    reveal refused unrecorded path")
+
+            # 注入一条 c2 行，按 connection_id 清空后它必须仍在；最后按原字节
+            # 恢复历史文件，避免影响后续 reveal / history 用例。
+            history_path = data_dir / "transfer-history.json"
+            original = history_path.read_bytes() if history_path.exists() else None
+            try:
+                payload = json.loads(original.decode("utf-8")) if original else {"version": 1, "tasks": []}
+                rows = payload.setdefault("tasks", [])
+                rows.append({
+                    "taskId": "smoke-fs-c2-synthetic",
+                    "sessionId": session_id,
+                    "connectionId": other_scope,
+                    "direction": "download",
+                    "fileName": "synthetic.bin",
+                    "size": 1,
+                    "transferred": 1,
+                    "status": "completed",
+                    "startedAt": 1,
+                    "finishedAt": 2,
+                })
+                history_path.write_text(json.dumps(payload), encoding="utf-8")
+                history_path.chmod(0o600)
+                req("sftp/transfer/history/clear", {"connectionId": connection_id})
+                c2 = req("sftp/transfer/history", {"limit": 50, "connectionId": other_scope})
+                if not any(t.get("taskId") == "smoke-fs-c2-synthetic" for t in c2.get("tasks", [])):
+                    raise AssertionError("scoped clear removed another connection's row")
+                c1 = req("sftp/transfer/history", {"limit": 50, "connectionId": connection_id})
+                if any(t.get("taskId") == task_id for t in c1.get("tasks", [])):
+                    raise AssertionError("scoped clear left the current connection's row behind")
+            finally:
+                if original is None:
+                    history_path.unlink(missing_ok=True)
+                else:
+                    history_path.write_bytes(original)
+            print("    scoped history/clear keeps other connection rows")
 
         def case_local_sink_download_chunk_binary_frames():
             # 与 case_local_sink_download_roundtrip 分开的轻量校验：分块二进制帧
@@ -1611,6 +1655,10 @@ def main() -> None:
             try:
                 client.send_binary(f"ssh/terminal/in/{session_id}", struct.pack(">Q", 910) + f"echo {marker}\r".encode())
                 time.sleep(2.0)
+                pointer_event = {"kind": "pointer", "x": 0.42, "y": 0.31, "pressed": False, "cols": 100, "rows": 24}
+                cursor_event = {"kind": "cursor", "col": 18, "row": 7, "cols": 100, "rows": 24}
+                req("ssh/recording/event", {"sessionId": session_id, "data": pointer_event})
+                req("ssh/recording/event", {"sessionId": session_id, "data": cursor_event})
             finally:
                 summary = req("ssh/recording/stop", {"sessionId": session_id})
             if summary.get("recordingId") != recording_id:
@@ -1622,6 +1670,9 @@ def main() -> None:
             blob = json.dumps(page.get("events", []), ensure_ascii=False)
             if marker not in blob:
                 raise AssertionError(f"marker {marker} not captured in recording ({page.get('total')} events)")
+            event_types = [event.get("type") for event in page.get("events", [])]
+            if event_types.count("x") != 2 or "o" not in event_types:
+                raise AssertionError(f"ssh x events or output marker missing: {event_types}")
             if page.get("hasMore"):
                 raise AssertionError("unexpected hasMore with limit 500 and cap below page size")
             req("ssh/recording/delete", {"recordingId": recording_id})
@@ -1654,6 +1705,10 @@ def main() -> None:
                 client.send_binary(f"local/terminal/in/{local_id}",
                                    struct.pack(">Q", 1) + f"echo {marker}\r".encode())
                 time.sleep(2.0)
+                pointer_event = {"kind": "pointer", "x": 0.42, "y": 0.31, "pressed": False, "cols": 100, "rows": 24}
+                cursor_event = {"kind": "cursor", "col": 18, "row": 7, "cols": 100, "rows": 24}
+                req("local/recording/event", {"sessionId": local_id, "data": pointer_event})
+                req("local/recording/event", {"sessionId": local_id, "data": cursor_event})
             finally:
                 summary = req("local/recording/stop", {"sessionId": local_id})
             if summary.get("recordingId") != recording_id:
@@ -1675,6 +1730,9 @@ def main() -> None:
             blob = json.dumps(page.get("events", []), ensure_ascii=False)
             if marker not in blob:
                 raise AssertionError(f"marker {marker} not captured ({page.get('total')} events)")
+            event_types = [event.get("type") for event in page.get("events", [])]
+            if event_types.count("x") != 2 or "o" not in event_types:
+                raise AssertionError(f"local x events or output marker missing: {event_types}")
             req("ssh/recording/delete", {"recordingId": recording_id})
             print(f"    local shell recorded {summary.get('events')} events, captured {marker}, deleted")
             req("local/session/close", {"sessionId": local_id})
@@ -2722,6 +2780,7 @@ def main() -> None:
                 pass
 
         shutil.rmtree(download_dir, ignore_errors=True)
+        shutil.rmtree(data_dir, ignore_errors=True)
         client.close()
         step(f"summary ({time.monotonic() - started:.1f}s)")
         print(f"PASS {len(report.passed)} / SKIP {len(report.skipped)} / FAIL {len(report.failed)}")
@@ -2739,8 +2798,10 @@ def main() -> None:
             sys.exit(1)
         print("PASS: fs/keys smoke OK")
     except SidecarError as error:
+        shutil.rmtree(data_dir, ignore_errors=True)
         fail(str(error), client)
     except KeyboardInterrupt:
+        shutil.rmtree(data_dir, ignore_errors=True)
         client.close()
 
 

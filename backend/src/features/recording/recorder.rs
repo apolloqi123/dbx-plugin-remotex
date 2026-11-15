@@ -123,6 +123,24 @@ impl SessionRecorder {
         self.bytes += screen.len() as u64;
     }
 
+    /// Appends one bounded custom `x` event (normalized pointer or caret
+    /// sample). The payload has already been validated/canonicalized by
+    /// `validate_metadata_event`; write errors are swallowed like `observe`.
+    pub fn observe_metadata(&mut self, data: &Value) -> Result<(), String> {
+        let event = json!({
+            "time": self.started_at.elapsed().as_secs_f64(),
+            "eventtype": "x",
+            "eventdata": data,
+        });
+        let Ok(text) = serde_json::to_string(&event) else {
+            return Ok(());
+        };
+        let _ = writeln!(self.file, "{text}");
+        self.events += 1;
+        self.bytes += text.len() as u64;
+        Ok(())
+    }
+
     /// Flushes and closes the recording, returning its summary.
     pub fn finish(mut self) -> Result<Value, String> {
         let duration = self.started_at.elapsed().as_secs_f64();

@@ -4,12 +4,51 @@ use super::*;
 use crate::core::time::unix_now_ms;
 
 impl SshRuntime {
-    pub(crate) fn record_transfer(&self, task: Value) {
-        let Some(task_id) = task.get("taskId").and_then(Value::as_str) else {
+    pub(crate) async fn record_transfer(&self, mut task: Value) {
+        let Some(task_id) = task
+            .get("taskId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
             return;
         };
+        let session_id = task
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let explicit = task
+            .get("connectionId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+        // Resolve the stable saved-connection owner before the live registry
+        // entry disappears: terminal transitions are raised from in-memory
+        // state that only carries the ephemeral session id.
+        let session_connection = if explicit.is_empty() {
+            self.session_connection_id(session_id).await
+        } else {
+            String::new()
+        };
+        let persisted_connection = if explicit.is_empty() && session_connection.is_empty() {
+            transfer_history::load_history(&self.data_dir)
+                .iter()
+                .find(|row| row.get("taskId").and_then(Value::as_str) == Some(task_id.as_str()))
+                .and_then(|row| row.get("connectionId").and_then(Value::as_str))
+                .unwrap_or_default()
+                .to_string()
+        } else {
+            String::new()
+        };
+        let resolved = resolve_transfer_connection_id(
+            &task,
+            &session_connection,
+            &persisted_connection,
+        );
+        if !resolved.is_empty() {
+            task["connectionId"] = json!(resolved);
+        }
         if let Ok(mut history) = self.transfer_history.lock() {
-            history.retain(|entry| entry.get("taskId").and_then(Value::as_str) != Some(task_id));
+            history.retain(|entry| entry.get("taskId").and_then(Value::as_str) != Some(task_id.as_str()));
             history.push_back(task.clone());
             while history.len() > 64 {
                 history.pop_front();
@@ -102,7 +141,16 @@ impl SshRuntime {
         Ok(uploads + finishing_uploads + downloads)
     }
 
-    pub(crate) async fn cleanup_session_transfers(&self, session_id: &str) -> Result<(), String> {
+    pub(crate) async fn cleanup_session_transfers(
+        &self,
+        session_id: &str,
+        connection_id: &str,
+    ) -> Result<(), String> {
+        // Both teardown paths remove the session from the registry before
+        // calling this method, so the caller must capture the stable owner
+        // from the removed entry; a registry lookup here would always be
+        // empty and strand the failed rows as unattributed.
+        let connection_id = connection_id.to_string();
         let removed_uploads = {
             let mut uploads = self
                 .uploads
@@ -129,6 +177,7 @@ impl SshRuntime {
             self.persist_transfer_record(&json!({
                 "taskId": task_id,
                 "sessionId": upload.session_id,
+                "connectionId": connection_id.as_str(),
                 "direction": "upload",
                 "fileName": upload.remote_path.rsplit('/').next().unwrap_or("upload"),
                 "size": upload.expected_size,
@@ -162,6 +211,7 @@ impl SshRuntime {
             self.persist_transfer_record(&json!({
                 "taskId": task_id,
                 "sessionId": download.session_id,
+                "connectionId": connection_id.as_str(),
                 "direction": "download",
                 "fileName": download.file_name,
                 "size": download.size,
@@ -180,9 +230,35 @@ impl SshRuntime {
             upload.cancelled.store(true, Ordering::Release);
         }
         if let Ok(mut history) = self.transfer_history.lock() {
-            history
-                .retain(|task| task.get("sessionId").and_then(Value::as_str) != Some(session_id));
+            // Keep rows owned by other connections. Legacy rows without a
+            // `connectionId` still fall back to the closing session id so
+            // disconnect clears the ghosts it used to clear.
+            history.retain(|task| {
+                match task.get("connectionId").and_then(Value::as_str) {
+                    Some(scope) if !scope.is_empty() && !connection_id.is_empty() => {
+                        scope != connection_id
+                    }
+                    _ => task.get("sessionId").and_then(Value::as_str) != Some(session_id),
+                }
+            });
         }
         Ok(())
     }
+}
+
+/// Pure ownership resolution shared by terminal transitions: an explicit
+/// payload scope wins, then the still-registered session's connection, then
+/// the persisted start row. An empty result means legacy/unattributed.
+pub(crate) fn resolve_transfer_connection_id(
+    task: &Value,
+    session_connection_id: &str,
+    persisted_connection_id: &str,
+) -> String {
+    task.get("connectionId")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .or_else(|| Some(session_connection_id).filter(|value| !value.is_empty()))
+        .or_else(|| Some(persisted_connection_id).filter(|value| !value.is_empty()))
+        .unwrap_or_default()
+        .to_string()
 }

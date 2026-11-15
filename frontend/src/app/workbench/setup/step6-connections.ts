@@ -242,7 +242,7 @@ export function installWorkbenchConnections(deps: Deps) {
     refreshResumableUploads,
     beginResumeUpload,
     onResumeFilePicked,
-  } = useTransferHistory({ t, showNotice, showError, uploadSource, loadDirectory: (path?: string) => loadDirectory(path) });
+  } = useTransferHistory({ t, showNotice, showError, uploadSource, loadDirectory: (path?: string) => loadDirectory(path), connectionId: () => connectionId.value });
 
 
   // AI 终端同步执行：审批队列/执行横幅/模式切换收口在 composables/useAgentTerminalMode。

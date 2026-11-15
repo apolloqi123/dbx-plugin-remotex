@@ -154,9 +154,10 @@ describe("mockDbxHost fixture", () => {
 
   // round4：sftp/transfer/history 夹具补齐——此前落 catch-all（success:true 无
   // tasks），面板在 mock.html 恒为空态，loadFailed+重试态与历史渲染无法走查。
-  it("sftp/transfer/history mirrors the sidecar contract (newest-first, failed rows, limit, err knob)", async () => {
+  // 连接归属：查询/清空都按稳定的 connectionId 精确分片，旧行不串到别的连接。
+  it("sftp/transfer/history is scoped to connectionId and clear is scoped too", async () => {
     const plugin = await loadMock("");
-    const ok = (await plugin.invoke("sftp/transfer/history", { limit: 50 })) as { tasks: Array<Record<string, unknown>> };
+    const ok = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "visual-connection" })) as { tasks: Array<Record<string, unknown>> };
     expect(ok.tasks.length).toBeGreaterThan(0);
     // 新→旧排序；status 枚举无 queued；failed 行带 error。
     const startedAts = ok.tasks.map((task) => task.startedAt as number);
@@ -164,15 +165,34 @@ describe("mockDbxHost fixture", () => {
     for (const task of ok.tasks) {
       expect(["running", "completed", "cancelled", "failed"]).toContain(task.status);
       expect(typeof task.taskId).toBe("string");
+      expect(task.connectionId).toBe("visual-connection");
     }
     const failed = ok.tasks.find((task) => task.status === "failed");
     expect(failed?.error).toBeTruthy();
-    // limit 收敛到实际条数。
-    const capped = (await plugin.invoke("sftp/transfer/history", { limit: 2 })) as { tasks: unknown[] };
+    // limit 收敛到实际条数（带 scope，避免误取别连接行）。
+    const capped = (await plugin.invoke("sftp/transfer/history", { limit: 2, connectionId: "visual-connection" })) as { tasks: unknown[] };
     expect(capped.tasks).toHaveLength(2);
 
+    // 没有夹具行的 scope 为空；另一个连接与 local 行彼此可见但不串进默认连接。
+    const emptyScope = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "visual-empty-connection" })) as { tasks: unknown[] };
+    expect(emptyScope.tasks).toHaveLength(0);
+    const other = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "visual-other-connection" })) as { tasks: Array<Record<string, unknown>> };
+    expect(other.tasks.length).toBeGreaterThan(0);
+    expect(other.tasks.every((task) => task.connectionId === "visual-other-connection")).toBe(true);
+    const local = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "local" })) as { tasks: Array<Record<string, unknown>> };
+    expect(local.tasks.length).toBeGreaterThan(0);
+
+    // 清空当前连接只清当前连接：其它连接与 local 行保留。
+    await plugin.invoke("sftp/transfer/history/clear", { connectionId: "visual-connection" });
+    const cleared = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "visual-connection" })) as { tasks: unknown[] };
+    expect(cleared.tasks).toHaveLength(0);
+    const otherAfter = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "visual-other-connection" })) as { tasks: unknown[] };
+    expect(otherAfter.tasks.length).toBeGreaterThan(0);
+    const localAfter = (await plugin.invoke("sftp/transfer/history", { limit: 50, connectionId: "local" })) as { tasks: unknown[] };
+    expect(localAfter.tasks.length).toBeGreaterThan(0);
+
     const failing = await loadMock("?err=transferHistory");
-    await expect(failing.invoke("sftp/transfer/history", {})).rejects.toThrow(/transfer history/);
+    await expect(failing.invoke("sftp/transfer/history", { connectionId: "visual-connection" })).rejects.toThrow(/transfer history/);
   });
 
   // M34 回归：批量删除必须镜像后端 normalize_delete_items 的祖先折叠——父项
@@ -669,5 +689,15 @@ describe("mockDbxHost fixture", () => {
     await expect(plugin.invoke("watch/start", { sessionId: "s" })).rejects.toThrow(/unimplemented method: watch\/start/);
     const listed = await plugin.invoke("docker/list", {}) as { available: boolean };
     expect(listed.available).toBe(true);
+  });
+
+  it("recording fixture exposes x metadata without making it searchable output", async () => {
+    const plugin = await loadMock("");
+    const page = (await plugin.invoke("ssh/recording/get", { recordingId: "visual-recording-1", offset: 0, limit: 500 })) as { events: Array<Record<string, unknown>> };
+    const motion = page.events.filter((event) => event.type === "x");
+    expect(motion).toHaveLength(2);
+    expect(motion.map((event) => (event.data as Record<string, unknown>).kind)).toEqual(["pointer", "cursor"]);
+    const search = (await plugin.invoke("ssh/recording/search", { query: "pointer" })) as { recordings: Array<{ hits?: unknown[] }> };
+    expect(search.recordings).toHaveLength(0);
   });
 });

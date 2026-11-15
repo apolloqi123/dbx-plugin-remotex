@@ -168,7 +168,7 @@ impl SshRuntime {
             "[sftp] transfer {task_id} cancelled (reason={})",
             reason.unwrap_or("unspecified")
         );
-        self.record_transfer(task.clone());
+        self.record_transfer(task.clone()).await;
         emitter
             .event("sftp/transfer/progress", task)
             .map_err(plugin_error)

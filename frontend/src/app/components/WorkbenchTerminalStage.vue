@@ -51,8 +51,8 @@ const {
   startRdpRemoteDownload, saveRdpRemoteArchive, dismissRdpRemoteFiles,
   reconnectNow, reconnectPending, reconnectRdpSession, reconnectVncSession, onRdpSurfaceResize, recordCountdown, recordingActive,
   recordingClearAllOpen, recordingClearAllSubmitting, recordingElapsedSec, recordingExportingId, recordingHits, recordingSearchBusy, recordingTarget,
-  recordings, recordingsLoading, recordingsOpen, recordingsQuery, replayDurationMs,
-  replayExporting, replayPlayheadMs, replayPlaying, replaySpeed, replayState,
+  recordings, recordingsLoading, recordingsOpen, recordingsQuery, refreshRecordings, replayDurationMs,
+  replayExporting, replayPlayheadMs, replayPlaying, replaySpeed, replayState, replayMotionEnabled, toggleReplayMotion,
   restartLocalTerminal, revealRecording, runTerminalSearch, searchMatchState, searchOpen,
   searchResultCount, searchResultIndex, searchSeedOptions, searchSeedQuery, selectHistoryEntry,
   sendRdpClipboard, pasteRdpClipboard, sendRdpInput, sendVncClipboard, pasteVncClipboard, pasteVncWithFileClipboard, probeVncRemoteClipboard, sendVncInput, onVncSurfaceResize, serialError,
@@ -374,6 +374,7 @@ const {
           :replay-playhead-ms="replayPlayheadMs"
           :replay-duration-ms="replayDurationMs"
           :replay-exporting="replayExporting"
+          :replay-motion-enabled="replayMotionEnabled"
           :format-bytes="formatBytes"
           :format-duration="formatDuration"
           :t="t"
@@ -386,6 +387,7 @@ const {
           @update:replay-speed="replaySpeed = $event"
           @replay-seek="onReplaySeek"
           @replay-export-gif="exportReplayGif"
+          @replay-motion-toggle="toggleReplayMotion"
           @bind-replay-host="bindReplayHost"
         />
         </template>
@@ -411,6 +413,10 @@ const {
             :format-duration="formatDuration"
             :format-bytes="formatBytes"
             @close="toggleRecordings"
+            @refresh="refreshRecordings"
+            @refresh-recording="refreshRecordings"
+            @stop-recording="toggleRecording"
+            @cancel-countdown="cancelRecordCountdown"
             @update:query="recordingsQuery = $event"
             @clear-search="clearRecordingsSearch"
             @start-recording="toggleRecording"
