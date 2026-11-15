@@ -707,14 +707,14 @@ fn launch_options_default_first_then_local_terminal_shell_group() {
     let entries = options["entries"].as_array().unwrap();
     // First entry: the default-shell launcher, carried without a `group`
     // so the host pins it top-level as the quickest action.
-    assert_eq!(entries[0]["label"], "本地终端");
+    assert_eq!(entries[0]["label"], "RemoteX");
     assert_eq!(entries[0]["description"], "默认 Shell：/bin/zsh");
     assert_eq!(entries[0]["context"]["plugin"]["mode"], "local-terminal");
     assert!(entries[0]["group"].is_null());
     // Discovered shells share the localized group label — the host renders
-    // them as one collapsible "本地SHELL" section right below the default.
+    // them as one collapsible "RemoteX" section right below the default.
     for entry in entries.iter().skip(1) {
-        assert_eq!(entry["group"], "本地SHELL");
+        assert_eq!(entry["group"], "RemoteX");
         assert_eq!(entry["context"]["plugin"]["mode"], "local-terminal");
         assert!(entry["context"]["plugin"]["shell"].as_str().is_some());
         assert!(!entry["label"].as_str().expect("label string").is_empty());
@@ -726,7 +726,7 @@ fn launch_options_fall_back_to_english_for_unknown_locale() {
     // Older hosts pass no locale at all (empty string) — same fallback.
     let runtime = LocalTerminalRuntime::new();
     let english = runtime.launch_options("ko", "/bin/bash", None);
-    assert_eq!(english["entries"][0]["label"], "Local terminal");
+    assert_eq!(english["entries"][0]["label"], "RemoteX");
     assert!(english["entries"][0]["group"].is_null());
     assert_eq!(
         runtime.launch_options("", "/bin/bash", None)["entries"][0]["description"],
@@ -742,7 +742,7 @@ fn launch_options_configured_shell_collapses_the_discovery_group() {
     let options = runtime.launch_options("zh-CN", "/usr/bin/fish", Some("/usr/bin/fish"));
     let entries = options["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0]["label"], "本地终端");
+    assert_eq!(entries[0]["label"], "RemoteX");
     assert_eq!(entries[0]["description"], "默认 Shell：/usr/bin/fish");
     assert!(entries[0]["group"].is_null());
 }

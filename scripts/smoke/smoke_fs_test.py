@@ -2037,29 +2037,29 @@ def main() -> None:
         report.run("compress prefs restore", "local/preferences/set",
                    case_compress_prefs_restore, needs="compress prefs roundtrip + clamp")
 
-        # -- dock「+」launch-options 本地终端分组 group -------------------------
+        # -- dock「+」launch-options RemoteX 分组 group -------------------------
         # 宿主侧 options_action 下发 locale；launch-options 首项为默认 Shell
         # 启动项（描述带解析后的默认 Shell，localShell 偏好优先，否则自动探
         # 测链；不带 group，宿主顶层首位平铺），其余为扫描到的 shell 子项
-        # （共享「本地终端」group）。不走 SSH 连接，任意环境可跑。
+        # （共享「RemoteX」group）。不走 SSH 连接，任意环境可跑。
         def case_launch_options_local_terminal_group():
             """launch-options returns the default entry + a shell group."""
             options = req("local/terminal/launch-options", {"locale": "zh-CN"})
             entries = options.get("entries") or []
             assert len(entries) >= 1, "expected at least the default entry"
             first = entries[0]
-            assert first.get("label") == "本地终端", first.get("label")
+            assert first.get("label") == "RemoteX", first.get("label")
             description = first.get("description") or ""
             assert description.startswith("默认 Shell："), description
             assert len(description) > len("默认 Shell："), "default shell program missing"
             assert first.get("context", {}).get("plugin", {}).get("mode") == "local-terminal"
-            # 默认项不带 group（宿主顶层首位）；shell 子项共享「本地SHELL」分组。
+            # 默认项不带 group（宿主顶层首位）；shell 子项共享「RemoteX」分组。
             assert not first.get("group"), first.get("group")
             for entry in entries[1:]:
-                assert entry.get("group") == "本地SHELL", entry.get("group")
+                assert entry.get("group") == "RemoteX", entry.get("group")
                 assert (entry.get("context", {}).get("plugin", {}) or {}).get("shell"), entry
             legacy = req("local/terminal/launch-options", {})
-            assert (legacy.get("entries") or [{}])[0].get("label") == "Local terminal"
+            assert (legacy.get("entries") or [{}])[0].get("label") == "RemoteX"
 
         report.run("local/terminal/launch-options local-terminal group", "local/terminal/launch-options",
                    case_launch_options_local_terminal_group)

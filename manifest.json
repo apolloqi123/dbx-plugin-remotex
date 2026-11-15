@@ -5,7 +5,7 @@
   "name": "RemoteX",
   "version": "0.7.9-beta.144",
   "publisher": "apolloqi",
-  "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
+  "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and RemoteX connections.",
   "source": "https://github.com/jinpy666/dbx-plugin-sshx",
   "homepage": "https://github.com/jinpy666/dbx-plugin-sshx",
   "icon": "assets/plugin.svg",
@@ -38,7 +38,7 @@
       "label": "RemoteX",
       "icon": "assets/plugin.svg",
       "database_type": "ssh",
-      "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
+      "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and RemoteX. Pick the protocol inside the form; host, port and credentials follow that choice.",
       "fields": [
         {
           "key": "display_name",
@@ -76,11 +76,11 @@
               "value": "serial"
             },
             {
-              "label": "Local shell",
+              "label": "RemoteX",
               "value": "local"
             }
           ],
-          "description": "Session protocol carried by this connection. Choose SSH, Telnet, VNC, RDP, serial, or local shell; the visible host, port, credential and protocol-specific fields follow this choice."
+          "description": "Session protocol carried by this connection. Choose SSH, Telnet, VNC, RDP, serial, or RemoteX; the visible host, port, credential and protocol-specific fields follow this choice."
         },
         {
           "key": "host",
@@ -106,7 +106,7 @@
           "binding": "port",
           "required": true,
           "default": 22,
-          "description": "TCP port, 1-65535. Defaults per protocol: SSH 22, Telnet 23, VNC 5900, RDP 3389. Serial and local shell need no TCP port.",
+          "description": "TCP port, 1-65535. Defaults per protocol: SSH 22, Telnet 23, VNC 5900, RDP 3389. Serial and RemoteX need no TCP port.",
           "visible_when": {
             "field": "protocol",
             "one_of": [
@@ -1179,7 +1179,7 @@
           "binding": "config",
           "default": "",
           "placeholder": "/bin/bash",
-          "description": "Absolute shell path used to run the task's commands. Leave empty to use the DBX default shell (the same chain the local terminal uses).",
+          "description": "Absolute shell path used to run the task's commands. Leave empty to use the DBX default shell (the same chain RemoteX uses).",
           "visible_when": {
             "field": "protocol",
             "one_of": [
@@ -1336,10 +1336,10 @@
   "localizations": {
     "en": {
       "name": "RemoteX",
-      "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
+      "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and RemoteX connections.",
       "contributions": {
         "io.dbx.sshx.connection": {
-          "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
+          "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and RemoteX. Pick the protocol inside the form; host, port and credentials follow that choice.",
           "label": "RemoteX"
         },
         "io.dbx.sshx.workbench": {},
@@ -1363,11 +1363,11 @@
     },
     "es": {
       "name": "RemoteX",
-      "description": "Un único espacio de trabajo DBX para SSH, Telnet, VNC, RDP, puerto serie y shell local.",
+      "description": "Un único espacio de trabajo DBX para SSH, Telnet, VNC, RDP, puerto serie y RemoteX.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Una sola entrada para SSH, Telnet, VNC, RDP, puerto serie y shell local. Elige el protocolo en el formulario; el host, el puerto y las credenciales se adaptan a esa elección.",
+          "description": "Una sola entrada para SSH, Telnet, VNC, RDP, puerto serie y RemoteX. Elige el protocolo en el formulario; el host, el puerto y las credenciales se adaptan a esa elección.",
           "fields": {
             "display_name": {
               "label": "Nombre de conexión"
@@ -1380,9 +1380,9 @@
                 "vnc": "VNC",
                 "serial": "Serie",
                 "rdp": "RDP",
-                "local": "Shell local"
+                "local": "RemoteX"
               },
-              "description": "Protocolo de sesión de esta conexión. Elige SSH, Telnet, VNC, RDP, puerto serie o shell local; los campos de host, puerto, credenciales y específicos del protocolo cambian según la elección."
+              "description": "Protocolo de sesión de esta conexión. Elige SSH, Telnet, VNC, RDP, puerto serie o RemoteX; los campos de host, puerto, credenciales y específicos del protocolo cambian según la elección."
             },
             "serial_port": {
               "label": "Dispositivo serie",
@@ -1460,7 +1460,7 @@
             },
             "port": {
               "label": "Puerto",
-              "description": "Puerto TCP, 1-65535. Valores por defecto: SSH 22, Telnet 23, VNC 5900, RDP 3389. El puerto serie y el shell local no necesitan puerto TCP."
+              "description": "Puerto TCP, 1-65535. Valores por defecto: SSH 22, Telnet 23, VNC 5900, RDP 3389. El puerto serie y RemoteX no necesitan puerto TCP."
             },
             "username": {
               "label": "Usuario"
@@ -1608,7 +1608,7 @@
             },
             "shell": {
               "label": "Shell",
-              "description": "Ruta absoluta del shell que ejecutará los comandos de la tarea. Déjelo vacío para usar el shell predeterminado de DBX (la misma cadena que el terminal local)."
+              "description": "Ruta absoluta del shell que ejecutará los comandos de la tarea. Déjelo vacío para usar el shell predeterminado de DBX (la misma cadena que RemoteX)."
             },
             "cwd": {
               "label": "Directorio de trabajo",
@@ -1657,11 +1657,11 @@
     },
     "it": {
       "name": "RemoteX",
-      "description": "Un'unica area di lavoro DBX per SSH, Telnet, VNC, RDP, seriale e shell locale.",
+      "description": "Un'unica area di lavoro DBX per SSH, Telnet, VNC, RDP, seriale e RemoteX.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Una sola voce per SSH, Telnet, VNC, RDP, seriale e shell locale. Scegli il protocollo nel modulo; host, porta e credenziali seguono la scelta.",
+          "description": "Una sola voce per SSH, Telnet, VNC, RDP, seriale e RemoteX. Scegli il protocollo nel modulo; host, porta e credenziali seguono la scelta.",
           "fields": {
             "display_name": {
               "label": "Nome connessione"
@@ -1674,9 +1674,9 @@
                 "vnc": "VNC",
                 "serial": "Seriale",
                 "rdp": "RDP",
-                "local": "Shell locale"
+                "local": "RemoteX"
               },
-              "description": "Protocollo di sessione di questa connessione. Scegli SSH, Telnet, VNC, RDP, seriale o shell locale; i campi host, porta, credenziali e specifici del protocollo cambiano di conseguenza."
+              "description": "Protocollo di sessione di questa connessione. Scegli SSH, Telnet, VNC, RDP, seriale o RemoteX; i campi host, porta, credenziali e specifici del protocollo cambiano di conseguenza."
             },
             "serial_port": {
               "label": "Dispositivo seriale",
@@ -1754,7 +1754,7 @@
             },
             "port": {
               "label": "Porta",
-              "description": "Porta TCP, 1-65535. Valori predefiniti: SSH 22, Telnet 23, VNC 5900, RDP 3389. Seriale e shell locale non richiedono una porta TCP."
+              "description": "Porta TCP, 1-65535. Valori predefiniti: SSH 22, Telnet 23, VNC 5900, RDP 3389. Seriale e RemoteX non richiedono una porta TCP."
             },
             "username": {
               "label": "Nome utente"
@@ -1951,11 +1951,11 @@
     },
     "ja": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP、シリアル、ローカルシェルを1つの DBX ワークベンチに統合。",
+      "description": "SSH、Telnet、VNC、RDP、シリアル、RemoteX を1つの DBX ワークベンチに統合。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP、シリアル、ローカルシェルを1つの接続エントリに統合。フォーム内でプロトコルを選ぶと、ホスト・ポート・認証情報がそれに合わせて切り替わります。",
+          "description": "SSH、Telnet、VNC、RDP、シリアル、RemoteX を1つの接続エントリに統合。フォーム内でプロトコルを選ぶと、ホスト・ポート・認証情報がそれに合わせて切り替わります。",
           "fields": {
             "display_name": {
               "label": "接続名"
@@ -1968,9 +1968,9 @@
                 "vnc": "VNC",
                 "serial": "シリアル",
                 "rdp": "RDP",
-                "local": "ローカルシェル"
+                "local": "RemoteX"
               },
-              "description": "この接続で使用するセッションプロトコル。SSH、Telnet、VNC、RDP、シリアル、ローカルシェルから選択でき、表示されるホスト・ポート・認証情報・プロトコル固有の項目が切り替わります。"
+              "description": "この接続で使用するセッションプロトコル。SSH、Telnet、VNC、RDP、シリアル、RemoteX から選択でき、表示されるホスト・ポート・認証情報・プロトコル固有の項目が切り替わります。"
             },
             "serial_port": {
               "label": "シリアルデバイス",
@@ -2048,7 +2048,7 @@
             },
             "port": {
               "label": "ポート",
-              "description": "TCP ポート（1-65535）。既定値: SSH 22、Telnet 23、VNC 5900、RDP 3389。シリアルとローカルシェルには TCP ポートは不要です。"
+              "description": "TCP ポート（1-65535）。既定値: SSH 22、Telnet 23、VNC 5900、RDP 3389。シリアルと RemoteX には TCP ポートは不要です。"
             },
             "username": {
               "label": "ユーザー名"
@@ -2196,7 +2196,7 @@
             },
             "shell": {
               "label": "シェル",
-              "description": "タスクのコマンドを実行するシェルの絶対パス。空欄にすると DBX のデフォルトシェル（ローカルターミナルと同じ解決チェーン）を使用します。"
+              "description": "タスクのコマンドを実行するシェルの絶対パス。空欄にすると DBX のデフォルトシェル（RemoteX と同じ解決チェーン）を使用します。"
             },
             "cwd": {
               "label": "作業ディレクトリ",
@@ -2245,11 +2245,11 @@
     },
     "pt-BR": {
       "name": "RemoteX",
-      "description": "Um único espaço de trabalho DBX para SSH, Telnet, VNC, RDP, serial e shell local.",
+      "description": "Um único espaço de trabalho DBX para SSH, Telnet, VNC, RDP, serial e RemoteX.",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "Uma única entrada para SSH, Telnet, VNC, RDP, serial e shell local. Escolha o protocolo no formulário; host, porta e credenciais acompanham a escolha.",
+          "description": "Uma única entrada para SSH, Telnet, VNC, RDP, serial e RemoteX. Escolha o protocolo no formulário; host, porta e credenciais acompanham a escolha.",
           "fields": {
             "display_name": {
               "label": "Nome da conexão"
@@ -2262,9 +2262,9 @@
                 "vnc": "VNC",
                 "serial": "Serial",
                 "rdp": "RDP",
-                "local": "Shell local"
+                "local": "RemoteX"
               },
-              "description": "Protocolo de sessão desta conexão. Escolha SSH, Telnet, VNC, RDP, serial ou shell local; os campos de host, porta, credenciais e específicos do protocolo mudam conforme a escolha."
+              "description": "Protocolo de sessão desta conexão. Escolha SSH, Telnet, VNC, RDP, serial ou RemoteX; os campos de host, porta, credenciais e específicos do protocolo mudam conforme a escolha."
             },
             "serial_port": {
               "label": "Dispositivo serial",
@@ -2342,7 +2342,7 @@
             },
             "port": {
               "label": "Porta",
-              "description": "Porta TCP, 1-65535. Padrões por protocolo: SSH 22, Telnet 23, VNC 5900, RDP 3389. Serial e shell local não precisam de porta TCP."
+              "description": "Porta TCP, 1-65535. Padrões por protocolo: SSH 22, Telnet 23, VNC 5900, RDP 3389. Serial e RemoteX não precisam de porta TCP."
             },
             "username": {
               "label": "Usuário"
@@ -2490,7 +2490,7 @@
             },
             "shell": {
               "label": "Shell",
-              "description": "Caminho absoluto do shell que executará os comandos da tarefa. Deixe vazio para usar o shell padrão do DBX (a mesma cadeia do terminal local)."
+              "description": "Caminho absoluto do shell que executará os comandos da tarefa. Deixe vazio para usar o shell padrão do DBX (a mesma cadeia do RemoteX)."
             },
             "cwd": {
               "label": "Diretório de trabalho",
@@ -2539,11 +2539,11 @@
     },
     "zh-CN": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP、串口与本地 Shell 的统一 DBX 终端与远程桌面工作台。",
+      "description": "SSH、Telnet、VNC、RDP、串口与 RemoteX 的统一 DBX 终端与远程桌面工作台。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP、串口与本地 Shell 共用一个连接入口。在表单内选择协议，主机、端口与凭据会随协议切换。",
+          "description": "SSH、Telnet、VNC、RDP、串口与 RemoteX 共用一个连接入口。在表单内选择协议，主机、端口与凭据会随协议切换。",
           "fields": {
             "display_name": {
               "label": "连接名称"
@@ -2556,9 +2556,9 @@
                 "vnc": "VNC",
                 "serial": "串口",
                 "rdp": "RDP",
-                "local": "本地 Shell"
+                "local": "RemoteX"
               },
-              "description": "此连接承载的会话协议。选择 SSH、Telnet、VNC、RDP、串口或本地 Shell；可见的主机、端口、凭据与协议专属字段会随选择切换。"
+              "description": "此连接承载的会话协议。选择 SSH、Telnet、VNC、RDP、串口或 RemoteX；可见的主机、端口、凭据与协议专属字段会随选择切换。"
             },
             "serial_port": {
               "label": "串口设备",
@@ -2636,7 +2636,7 @@
             },
             "port": {
               "label": "端口",
-              "description": "TCP 端口，取值 1-65535。各协议默认端口：SSH 22、Telnet 23、VNC 5900、RDP 3389；串口与本地 Shell 不需要 TCP 端口。"
+              "description": "TCP 端口，取值 1-65535。各协议默认端口：SSH 22、Telnet 23、VNC 5900、RDP 3389；串口与 RemoteX 不需要 TCP 端口。"
             },
             "username": {
               "label": "用户名"
@@ -2784,7 +2784,7 @@
             },
             "shell": {
               "label": "Shell",
-              "description": "运行任务命令所用的 Shell 绝对路径。留空则使用 DBX 默认 Shell（与本地终端同一解析链）。"
+              "description": "运行任务命令所用的 Shell 绝对路径。留空则使用 DBX 默认 Shell（与 RemoteX 同一解析链）。"
             },
             "cwd": {
               "label": "工作目录",
@@ -2833,11 +2833,11 @@
     },
     "zh-TW": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP、序列埠與本機 Shell 的統一 DBX 終端與遠端桌面工作台。",
+      "description": "SSH、Telnet、VNC、RDP、序列埠與 RemoteX 的統一 DBX 終端與遠端桌面工作台。",
       "contributions": {
         "io.dbx.sshx.connection": {
           "label": "RemoteX",
-          "description": "SSH、Telnet、VNC、RDP、序列埠與本機 Shell 共用一個連線入口。在表單內選擇協定，主機、連接埠與憑證會隨協定切換。",
+          "description": "SSH、Telnet、VNC、RDP、序列埠與 RemoteX 共用一個連線入口。在表單內選擇協定，主機、連接埠與憑證會隨協定切換。",
           "fields": {
             "display_name": {
               "label": "連線名稱"
@@ -2850,9 +2850,9 @@
                 "vnc": "VNC",
                 "serial": "串列埠",
                 "rdp": "RDP",
-                "local": "本地 Shell"
+                "local": "RemoteX"
               },
-              "description": "此連線承載的工作階段協定。選擇 SSH、Telnet、VNC、RDP、序列埠或本機 Shell；可見的主機、連接埠、憑證與協定專屬欄位會隨選擇切換。"
+              "description": "此連線承載的工作階段協定。選擇 SSH、Telnet、VNC、RDP、序列埠或 RemoteX；可見的主機、連接埠、憑證與協定專屬欄位會隨選擇切換。"
             },
             "serial_port": {
               "label": "串列埠裝置",
@@ -2930,7 +2930,7 @@
             },
             "port": {
               "label": "連接埠",
-              "description": "TCP 連接埠，取值 1-65535。各協定預設連接埠：SSH 22、Telnet 23、VNC 5900、RDP 3389；序列埠與本機 Shell 不需要 TCP 連接埠。"
+              "description": "TCP 連接埠，取值 1-65535。各協定預設連接埠：SSH 22、Telnet 23、VNC 5900、RDP 3389；序列埠與 RemoteX 不需要 TCP 連接埠。"
             },
             "username": {
               "label": "使用者名稱"
@@ -3078,7 +3078,7 @@
             },
             "shell": {
               "label": "Shell",
-              "description": "執行任務命令所用的 Shell 絕對路徑。留空則使用 DBX 預設 Shell（與本地終端機同一解析鏈）。"
+              "description": "執行任務命令所用的 Shell 絕對路徑。留空則使用 DBX 預設 Shell（與 RemoteX 同一解析鏈）。"
             },
             "cwd": {
               "label": "工作目錄",

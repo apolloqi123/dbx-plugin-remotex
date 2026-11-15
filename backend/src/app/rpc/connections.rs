@@ -25,7 +25,7 @@ impl Plugin {
                     };
                     return Ok(json!({
                         "success": true,
-                        "message": format!("Local shell target registered ({})", shell),
+                        "message": format!("RemoteX target registered ({})", shell),
                     }));
                 }
                 let endpoint = RuntimeEndpoint::from_lifecycle_params(&params)?;

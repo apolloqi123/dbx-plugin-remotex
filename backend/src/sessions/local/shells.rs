@@ -265,17 +265,17 @@ pub(super) fn shell_display_name(basename: &str) -> String {
 /// or missing locales fall back to English. Returns (default entry label,
 /// group label, description prefix) — the caller appends the resolved default
 /// shell program. Discovered shells carry the `group` label so the host
-/// renders them as one collapsible "local shell" section; the default
+/// renders them as one collapsible "RemoteX" section; the default
 /// entry stays top-level.
 pub(super) fn launch_option_copy(locale: &str) -> (&'static str, &'static str, &'static str) {
     match locale {
-        "zh-CN" | "zh" => ("本地终端", "本地SHELL", "默认 Shell："),
-        "zh-TW" => ("本地終端", "本地SHELL", "預設 Shell："),
-        "ja" => ("ローカルターミナル", "ローカルシェル", "デフォルトシェル: "),
-        "es" => ("Terminal local", "Shell local", "Shell predeterminado: "),
-        "it" => ("Terminale locale", "Shell locale", "Shell predefinita: "),
-        "pt-BR" | "pt" => ("Terminal local", "Shell local", "Shell padrão: "),
-        _ => ("Local terminal", "Local shell", "Default shell: "),
+        "zh-CN" | "zh" => ("RemoteX", "RemoteX", "默认 Shell："),
+        "zh-TW" => ("RemoteX", "RemoteX", "預設 Shell："),
+        "ja" => ("RemoteX", "RemoteX", "デフォルトシェル: "),
+        "es" => ("RemoteX", "RemoteX", "Shell predeterminado: "),
+        "it" => ("RemoteX", "RemoteX", "Shell predefinita: "),
+        "pt-BR" | "pt" => ("RemoteX", "RemoteX", "Shell padrão: "),
+        _ => ("RemoteX", "RemoteX", "Default shell: "),
     }
 }
 
