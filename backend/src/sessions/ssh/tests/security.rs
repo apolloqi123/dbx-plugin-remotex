@@ -322,7 +322,10 @@ mod koko_login {
         Arc<Mutex<Vec<String>>>,
         tokio::task::JoinHandle<()>,
     ) {
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        // Unique per test run: OTP replay ledgers are scoped by user@host:port
+        // and outlive the test, so a recycled port would make this test skip
+        // its code as already submitted (see test_env).
+        let listener = crate::test_env::bind_unique_loopback()
             .await
             .expect("bind mock koko");
         let port = listener.local_addr().expect("mock koko address").port();
