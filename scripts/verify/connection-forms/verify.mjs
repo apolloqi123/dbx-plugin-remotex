@@ -778,6 +778,10 @@ for (const locale of locales) {
   assert.equal(localized?.label, "RemoteX", `${locale}: provider label must be RemoteX`);
   assert(localized?.description?.trim(), `${locale}: missing provider description`);
 }
+const localTerminalCommand = manifest.contributions.find(
+  (item) => item.type === "command" && item.id === "open-local-terminal",
+);
+assert.equal(localTerminalCommand?.icon, manifest.icon, "本地终端命令必须使用插件品牌图标");
 console.log("PASS RemoteX connection card: one provider, protocol selector covers ssh/rdp/vnc/telnet/serial/local, seven-language labels");
 
 console.log(`PASS SSH connection form: ${scenarios} combinations; field ordering and seven-language labels/options`);

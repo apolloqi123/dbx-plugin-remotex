@@ -1296,7 +1296,7 @@
       "id": "open-local-terminal",
       "label": "RemoteX",
       "description": "Open a terminal on this machine.",
-      "icon": "assets/local-terminal.svg",
+      "icon": "assets/plugin.svg",
       "action": {
         "type": "open-workbench",
         "workbench": "io.dbx.sshx.workbench",
