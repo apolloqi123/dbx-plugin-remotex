@@ -23,6 +23,7 @@ async fn abort_step(
 /// Shared body of [`exec_with_sudo_cancellable`] and [`exec_sudo_stream`]:
 /// `timeout: None` disables the overall deadline (log following must not be
 /// killed by an exec cap), `sink: None` keeps the buffered-only behavior.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn exec_with_sudo_inner(
     handle: &Handle<SshClient>,
     auth: &SudoAuth,

@@ -5,7 +5,6 @@ use crate::platform::paths::plugin_data_dir;
 
 /// Best-effort append to `<data-dir>/sidecar-exit.log`; never fails startup
 /// or shutdown when the data dir is unusable.
-
 pub(super) fn log_sidecar_exit(stage: String) {
     use std::io::Write;
     let timestamp = std::time::SystemTime::now()

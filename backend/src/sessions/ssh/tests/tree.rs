@@ -373,7 +373,7 @@ async fn tree_download_reuses_and_reopens_high_level_handles() {
 
     // Final call: zero-byte file lands, then the empty eof frame drains it.
     let streamed = drain_tree_frames(&runtime, task_id, &emitter, &sink).await;
-    assert_eq!(streamed.len(), (big.len() + small.len()) as usize);
+    assert_eq!(streamed.len(), big.len() + small.len());
     assert_eq!(std::fs::read(root.join("big.bin")).unwrap(), big);
     assert_eq!(std::fs::read(root.join("sub/small.bin")).unwrap(), small);
     assert_eq!(std::fs::read(root.join("empty.bin")).unwrap(), b"");
@@ -397,6 +397,7 @@ async fn finish_tree_download_waits_for_the_in_flight_final_chunk() {
     let part = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(&part_path)
         .await
         .expect("part file");
@@ -671,6 +672,7 @@ async fn cancel_tree_download_does_not_wait_for_an_in_flight_read() {
     let part = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(&staging)
         .await
         .expect("part file");

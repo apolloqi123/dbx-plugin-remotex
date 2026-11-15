@@ -324,7 +324,7 @@ mod tests {
         fs::write(sub.join("b.txt"), b"bb").expect("b");
         let stage = FileClipboardStage::new("s-local".to_string());
         let (descriptors, total) = stage
-            .stage_local_files(&[dir.clone()])
+            .stage_local_files(std::slice::from_ref(&dir))
             .expect("stage local files");
         assert_eq!(total, 3);
         // Directory itself, its file, the nested directory and nested file.
@@ -352,7 +352,9 @@ mod tests {
         fs::write(dir.join("a?b").join("x.txt"), b"x").expect("x");
         fs::write(dir.join("a*b").join("y.txt"), b"y").expect("y");
         let stage = FileClipboardStage::new("s-local".to_string());
-        let (descriptors, _) = stage.stage_local_files(&[dir.clone()]).expect("stage");
+        let (descriptors, _) = stage
+            .stage_local_files(std::slice::from_ref(&dir))
+            .expect("stage");
         let root_name = dir.file_name().unwrap().to_string_lossy().to_string();
         let mut child_dirs: Vec<(String, String)> = descriptors
             .iter()
@@ -404,7 +406,9 @@ mod tests {
             fs::write(&target, b"x").expect("target");
             std::os::unix::fs::symlink(&target, dir.join("link.txt")).expect("symlink");
             let stage = FileClipboardStage::new("s-local".to_string());
-            let (descriptors, _) = stage.stage_local_files(&[dir.clone()]).expect("stage");
+            let (descriptors, _) = stage
+                .stage_local_files(std::slice::from_ref(&dir))
+                .expect("stage");
             assert!(descriptors
                 .iter()
                 .all(|descriptor| descriptor.name != "link.txt"));

@@ -70,7 +70,7 @@ impl RdpSessionRuntime {
         self.require_file_clipboard(&entry)?;
         // Bound the encoded size before decoding so an oversized payload never
         // materializes: 1 MiB decodes from at most ceil(1 MiB / 3) * 4 chars.
-        let max_encoded = (CLIPBOARD_FILE_CHUNK_BYTES + 2) / 3 * 4;
+        let max_encoded = CLIPBOARD_FILE_CHUNK_BYTES.div_ceil(3) * 4;
         if data_base64.len() > max_encoded {
             return Err(format!(
                 "rdp/clipboard-files/chunk: chunk exceeds the {} MiB limit",

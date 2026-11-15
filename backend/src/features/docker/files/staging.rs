@@ -188,8 +188,7 @@ pub fn parse_mktemp_output(output: &str) -> Result<String, String> {
     let dir = output
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .last()
+        .rfind(|line| !line.is_empty())
         .ok_or("Failed to create a staging directory")?
         .to_string();
     validate_staging_path(&dir, StagingLocation::Remote)

@@ -57,7 +57,7 @@ fn parse_host_cpus(output: &str) -> u64 {
     section(output, CPU_HOST_MARKER, Some(CPU_LIMIT_MARKER))
         .lines()
         .filter_map(|line| line.trim().parse::<u64>().ok())
-        .last()
+        .next_back()
         .unwrap_or(0)
 }
 

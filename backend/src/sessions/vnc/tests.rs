@@ -358,7 +358,7 @@ fn copy_rect_composites_overlapping_regions() {
     // The destination pixels, not just the temporary copy result, must land in
     // the retained desktop used by reconnect repaints.
     let frame = framebuffer.full_frame_bytes(0).expect("full frame");
-    let destination = FRAME_HEADER_BYTES + ((1 * 4) + 2) * 4;
+    let destination = FRAME_HEADER_BYTES + (4 + 2) * 4;
     assert_eq!(
         &frame[destination..destination + source.len()],
         source.as_slice()

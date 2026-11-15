@@ -345,8 +345,7 @@ pub fn stats_payload(output: &str) -> Value {
     let error = section
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .last()
+        .rfind(|line| !line.is_empty())
         .unwrap_or_default();
     json!({
         "available": false,

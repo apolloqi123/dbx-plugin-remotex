@@ -331,6 +331,7 @@ impl DockerTerminals {
     /// Starts a container shell on the sidecar's own daemon. The id and the
     /// registry slot are settled before the PTY exists; a spawn failure
     /// releases the reservation so neither a slot nor a PTY can leak.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_local(
         self: &Arc<Self>,
         emitter: PluginEmitter,

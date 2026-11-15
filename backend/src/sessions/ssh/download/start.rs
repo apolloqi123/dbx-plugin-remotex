@@ -141,6 +141,7 @@ impl SshRuntime {
         outcome
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn start_sudo_download_staged(
         &self,
         session_id: &str,
@@ -171,48 +172,50 @@ impl SshRuntime {
         } else {
             None
         };
-        let mut downloads = match self.downloads.lock() {
-            Ok(downloads) => downloads,
-            Err(_) => {
-                if let Some(sink) = sink.as_ref() {
-                    let _ = std::fs::remove_file(&sink.part_path);
+        {
+            let mut downloads = match self.downloads.lock() {
+                Ok(downloads) => downloads,
+                Err(_) => {
+                    if let Some(sink) = sink.as_ref() {
+                        let _ = std::fs::remove_file(&sink.part_path);
+                    }
+                    return Err("Download registry is poisoned".to_string());
                 }
-                return Err("Download registry is poisoned".to_string());
-            }
-        };
-        downloads.insert(
-            task_id.clone(),
-            DownloadState {
-                session_id: session_id.to_string(),
-                remote_path: staged.tmp_path.clone(),
-                file_name: staged.file_name.clone(),
-                size: staged.size,
-                next_offset: 0,
-                sink,
-                emit_chunks,
-                tree: None,
-                sudo_tmp: Some(staged.tmp_path.clone()),
-                // sudo 下载走独立车道（sudo_download.rs），读侧不经
-                // has_wire_lane 判分支；字面 false 只做字段填充。
-                latin1: false,
-                // sudo 车道本期不在限速范围（issue #66 收敛在 SFTP
-                // 下载），字段照常填充但快照取 0（不限速）。
-                throttle: Throttle::new(0),
-                progress_throttle: crate::features::transfer::progress::ProgressThrottle::default(),
-                // sudo 车道不参与压缩通道（M33）：远端临时件机制独立。
-                compression: CompressionMode::None,
-                ready: false,
-                serving_plain: false,
-                staged_plain: None,
-                gz_staging: None,
-                remote_temp: None,
-                final_dir: None,
-                overwrite: false,
-                read_handle: Arc::new(AsyncMutex::new(None)),
-                raw_client: Arc::new(AsyncMutex::new(None)),
-            },
-        );
-        drop(downloads);
+            };
+            downloads.insert(
+                task_id.clone(),
+                DownloadState {
+                    session_id: session_id.to_string(),
+                    remote_path: staged.tmp_path.clone(),
+                    file_name: staged.file_name.clone(),
+                    size: staged.size,
+                    next_offset: 0,
+                    sink,
+                    emit_chunks,
+                    tree: None,
+                    sudo_tmp: Some(staged.tmp_path.clone()),
+                    // sudo 下载走独立车道（sudo_download.rs），读侧不经
+                    // has_wire_lane 判分支；字面 false 只做字段填充。
+                    latin1: false,
+                    // sudo 车道本期不在限速范围（issue #66 收敛在 SFTP
+                    // 下载），字段照常填充但快照取 0（不限速）。
+                    throttle: Throttle::new(0),
+                    progress_throttle:
+                        crate::features::transfer::progress::ProgressThrottle::default(),
+                    // sudo 车道不参与压缩通道（M33）：远端临时件机制独立。
+                    compression: CompressionMode::None,
+                    ready: false,
+                    serving_plain: false,
+                    staged_plain: None,
+                    gz_staging: None,
+                    remote_temp: None,
+                    final_dir: None,
+                    overwrite: false,
+                    read_handle: Arc::new(AsyncMutex::new(None)),
+                    raw_client: Arc::new(AsyncMutex::new(None)),
+                },
+            );
+        }
         if let Err(error) = emitter.event(
             "sftp/transfer/progress",
             json!({ "taskId": task_id, "sessionId": session_id, "direction": "download", "transferred": 0, "size": staged.size, "status": "queued" }),

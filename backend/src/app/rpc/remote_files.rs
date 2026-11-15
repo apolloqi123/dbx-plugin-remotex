@@ -227,7 +227,7 @@ impl Plugin {
                     .and_then(Value::as_u64)
                     .and_then(|value| u16::try_from(value).ok())
                     .unwrap_or(22);
-                credentials::forget(&self.ssh.data_dir, &host, port, &username)?;
+                credentials::forget(&self.ssh.data_dir, host, port, username)?;
                 Ok(json!({ "success": true }))
             }
             "filetransfer/clipboard/files" => Ok(clipboard::files()),
@@ -236,11 +236,11 @@ impl Plugin {
             // through the transfer session's transport (fixed read-only probe).
             "filetransfer/clipboard/remote" => {
                 let session_id = required_string(&params, "sessionId")?;
-                if !self.remote_files.touch_session(&session_id) {
+                if !self.remote_files.touch_session(session_id) {
                     return Ok(json!({ "supported": false, "paths": [] }));
                 }
                 self.runtime
-                    .block_on(remote_clipboard::read(&self.ssh, &session_id))
+                    .block_on(remote_clipboard::read(&self.ssh, session_id))
             }
             "filetransfer/clipboard/fetch" => {
                 let handle = self.runtime.handle().clone();

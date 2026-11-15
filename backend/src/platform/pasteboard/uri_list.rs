@@ -215,7 +215,7 @@ mod tests {
         let names: Vec<String> = units
             .split(|unit| *unit == 0)
             .filter(|chunk| !chunk.is_empty())
-            .map(|chunk| String::from_utf16_lossy(chunk))
+            .map(String::from_utf16_lossy)
             .collect();
         assert_eq!(names, ["/tmp/a.txt", "/tmp/b.txt"]);
         assert_eq!(units.last(), Some(&0));

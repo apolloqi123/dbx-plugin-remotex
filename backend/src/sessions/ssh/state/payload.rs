@@ -86,8 +86,6 @@ pub(crate) fn download_cancel_error(reason: Option<&str>) -> String {
     }
 }
 
-/// Unix milliseconds for audit-ledger timestamps and approval durations.
-
 /// Builds the response served from the snapshot cache: the stored fields plus
 /// a `cachedAt` marker (Unix seconds) so callers can show the age of the data.
 /// The stored snapshot itself is never mutated.

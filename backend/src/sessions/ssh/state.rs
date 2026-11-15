@@ -20,6 +20,9 @@ pub(crate) use runtime::{SharedTransportLease, TaskTransport};
 /// the server hands over a `forwarded-tcpip` channel.
 pub type RemoteForwardTable = Mutex<HashMap<(String, u32), forward::RelayTarget>>;
 
+/// Callback invoked when a session ends, with the session id.
+pub(crate) type SessionEndHook = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// `workbench_id` is kept with the session so attach can only restore the
 /// session that belongs to the same workbench. A different workbench must open
 /// its own SSH session instead of stealing another tab's PTY.
@@ -434,7 +437,7 @@ pub struct SshRuntime {
     /// register here so their runners release the channel instead of keeping
     /// the remote `docker logs -f` / `docker exec` process alive after the
     /// session itself is gone.
-    pub(crate) session_end_hooks: RwLock<Vec<Arc<dyn Fn(&str) + Send + Sync>>>,
+    pub(crate) session_end_hooks: RwLock<Vec<SessionEndHook>>,
     /// Live user-facing port mappings (Xshell-style 端口映射, -L/-R):
     /// forward id -> mapping row. Runtime-scoped on purpose; rows die with
     /// their session so a closed SSH session cannot leave phantom ports.

@@ -729,10 +729,9 @@ async fn cancel_transfer_with_only_prep_does_not_panic_and_reports_cancel() {
     let events = emitted_events(&sink);
     let cancel = events
         .iter()
-        .filter(|event| {
+        .rfind(|event| {
             event["method"] == "sftp/transfer/progress" && event["params"]["status"] == "cancelled"
         })
-        .last()
         .expect("a cancellation event must be emitted");
     assert_eq!(cancel["params"]["taskId"], task_id);
     assert_eq!(cancel["params"]["sessionId"], "s-prep");

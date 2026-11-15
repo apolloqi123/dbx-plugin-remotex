@@ -168,6 +168,7 @@ impl DockerStreams {
     /// Must be called from inside the plugin's Tokio runtime (the RPC layer
     /// wraps it in `Runtime::block_on`): the runner and forwarder are spawned
     /// onto that runtime and outlive this call.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_ssh(
         self: &Arc<Self>,
         runtime: Arc<SshRuntime>,

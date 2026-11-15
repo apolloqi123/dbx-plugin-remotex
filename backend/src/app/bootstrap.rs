@@ -72,9 +72,9 @@ impl Plugin {
             ssh.on_session_end(Arc::new(move |session_id| {
                 let watcher = watcher.clone();
                 let session_id = session_id.to_string();
-                let _ = handle.spawn(async move {
+                drop(handle.spawn(async move {
                     watcher.stop_session(&session_id).await;
-                });
+                }));
             }));
         }
         Ok(Self {

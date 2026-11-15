@@ -494,9 +494,7 @@ pub(crate) async fn handle_vnc_event(
             // the retained desktop must adopt the new geometry before the
             // following image updates arrive, otherwise their bounds check
             // fails against the old framebuffer.
-            let Some(layout) = update.layout else {
-                return None;
-            };
+            let layout = update.layout?;
             let mut framebuffer = entry.framebuffer.lock().await;
             match apply_desktop_layout(&mut framebuffer, layout.width, layout.height) {
                 Ok(_) => None,
