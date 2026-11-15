@@ -1249,7 +1249,7 @@
     {
       "type": "workbench",
       "id": "io.dbx.sshx.workbench",
-      "label": "Terminal",
+      "label": "RemoteX",
       "description": "Terminal, SFTP file manager, and remote operations workspace.",
       "icon": "assets/plugin.svg"
     },
@@ -1294,7 +1294,7 @@
     {
       "type": "command",
       "id": "open-local-terminal",
-      "label": "Terminal",
+      "label": "RemoteX",
       "description": "Open a terminal on this machine.",
       "icon": "assets/local-terminal.svg",
       "action": {
@@ -1345,7 +1345,7 @@
         "io.dbx.sshx.workbench": {},
         "io.dbx.sshx.files": {},
         "open-local-terminal": {
-          "label": "Terminal",
+          "label": "RemoteX",
           "description": "Open a terminal on this machine."
         },
         "local-terminal-entrypoints": {},
@@ -1631,7 +1631,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "Terminal",
+          "label": "RemoteX",
           "description": "Terminal, gestor SFTP y operaciones remotas."
         },
         "io.dbx.sshx.files": {
@@ -1639,7 +1639,7 @@
           "description": "Sistema de archivos remoto mediante SFTP."
         },
         "open-local-terminal": {
-          "label": "Terminal",
+          "label": "RemoteX",
           "description": "Abrir una terminal en esta máquina."
         },
         "local-terminal-entrypoints": {},
@@ -1925,7 +1925,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "Terminale",
+          "label": "RemoteX",
           "description": "Terminale, gestore SFTP e operazioni remote."
         },
         "io.dbx.sshx.files": {
@@ -1933,7 +1933,7 @@
           "description": "File system remoto tramite SFTP."
         },
         "open-local-terminal": {
-          "label": "Terminale",
+          "label": "RemoteX",
           "description": "Apri un terminale su questa macchina."
         },
         "local-terminal-entrypoints": {},
@@ -2219,7 +2219,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "ターミナル",
+          "label": "RemoteX",
           "description": "ターミナル、SFTP ファイル管理、リモート運用。"
         },
         "io.dbx.sshx.files": {
@@ -2227,7 +2227,7 @@
           "description": "SFTP 経由のリモートファイルシステム。"
         },
         "open-local-terminal": {
-          "label": "ターミナル",
+          "label": "RemoteX",
           "description": "このマシンでターミナルを開きます。"
         },
         "local-terminal-entrypoints": {},
@@ -2513,7 +2513,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "Terminal",
+          "label": "RemoteX",
           "description": "Terminal, gestor SFTP e operações remotas."
         },
         "io.dbx.sshx.files": {
@@ -2521,7 +2521,7 @@
           "description": "Sistema de arquivos remoto via SFTP."
         },
         "open-local-terminal": {
-          "label": "Terminal",
+          "label": "RemoteX",
           "description": "Abrir um terminal nesta máquina."
         },
         "local-terminal-entrypoints": {},
@@ -2807,7 +2807,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "终端",
+          "label": "RemoteX",
           "description": "终端、SFTP 文件管理与远程运维。"
         },
         "io.dbx.sshx.files": {
@@ -2815,7 +2815,7 @@
           "description": "通过 SFTP 访问远程文件系统。"
         },
         "open-local-terminal": {
-          "label": "终端",
+          "label": "RemoteX",
           "description": "在本机打开一个终端。"
         },
         "local-terminal-entrypoints": {},
@@ -3101,7 +3101,7 @@
           }
         },
         "io.dbx.sshx.workbench": {
-          "label": "終端",
+          "label": "RemoteX",
           "description": "終端、SFTP 檔案管理與遠端維運。"
         },
         "io.dbx.sshx.files": {
@@ -3109,7 +3109,7 @@
           "description": "透過 SFTP 存取遠端檔案系統。"
         },
         "open-local-terminal": {
-          "label": "終端",
+          "label": "RemoteX",
           "description": "在本機開啟一個終端。"
         },
         "local-terminal-entrypoints": {},
