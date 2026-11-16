@@ -4,6 +4,21 @@
 
 This file records user-facing changes for RemoteX.
 
+## [0.1.0] — 2026-11-16
+
+首个准备上架 DBX 商店的稳定版（`0.0.1-beta` 为预发布，未进入商店）。
+
+- SFTP 上传遇到同名文件时，选择「覆盖」或「重命名」并勾选「应用到全部」后，同批已排队的文件不再逐个询问。
+- 编辑器页签栏新增「关闭全部」按钮；有未保存修改时只确认一次。
+- 修正插件描述中的协议列表（`serial and local shell`）。
+- 发布构建固定从 release tag 构建，保证 `source` 与安装包字节可追溯。
+
+**First stable release prepared for the DBX Store** (`0.0.1-beta` was a
+pre-release and was never listed). Batch "apply to all" now answers the rest of
+the queued conflict prompts; the editor gains a Close all button; the plugin
+description lists local shell correctly; release builds are produced from the
+release tag itself.
+
 ## [0.0.1-beta] — 2026-11-15
 
 - **RemoteX 品牌首个版本**：该插件基于插件市场里的“终端”（[**dbx-plugin-ssh**](https://github.com/jinpy666/dbx-plugin-ssh)）进行开发。插件标识切换为 `io.dbx.remotex`，首个版本`0.0.1-beta`。

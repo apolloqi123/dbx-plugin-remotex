@@ -59,6 +59,13 @@ function askUploadDuplicate(fileName: string, path: string): Promise<"overwrite"
   const asked = uploadDuplicateAskChain.then(
     () =>
       new Promise<"overwrite" | "rename" | undefined>((resolve) => {
+        // 排队期间本批已确立「应用到全部」决策（并发批次里后来的同名文件在
+        // 首个回答前就排上了队）：直接沿用决策，不再弹窗。否则用户勾选后仍
+        // 会被已排队的同批文件逐个追问。
+        if (uploadDuplicateBatchDecision !== undefined) {
+          resolve(uploadDuplicateBatchDecision);
+          return;
+        }
         uploadDuplicatePrompt.value = { fileName, path, resolve };
       }),
   );

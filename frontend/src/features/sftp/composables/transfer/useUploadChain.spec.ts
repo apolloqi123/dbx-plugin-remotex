@@ -333,6 +333,34 @@ describe("useUploadChain force-ask duplicate policy", () => {
     expect(uploadedNames).toContain(`${secondName} (1)`);
   });
 
+  it("apply-to-all answers the same batch's queued prompts instead of asking again", async () => {
+    const invoke = vi.fn(async (method: string, _params?: unknown) => {
+      if (method === "sftp/exists") return { exists: true };
+      return {};
+    });
+    globalWindow.dbxPlugin = { invoke };
+    const uploadSource = vi.fn<UploadSourceFn>(async () => true);
+    const { chain } = mountUploadChain({ session: { sessionId: "s1" }, transferDuplicateState: "rename", uploadSource });
+
+    chain.uploadDuplicateApplyAll.value = true;
+    const pending = chain.uploadLocalFiles(
+      [new File(["x"], "a.txt"), new File(["y"], "b.txt")],
+      "/dir",
+      { forceAskDuplicates: true },
+    );
+    await vi.waitFor(() => expect(chain.uploadDuplicatePrompt.value).not.toBeNull());
+    chain.resolveUploadDuplicate("overwrite");
+    await pending;
+
+    // 并发批次里第二个同名文件早已排队：勾选「应用到全部」后必须沿用决策，
+    // 不能弹第二次窗。
+    expect(chain.uploadDuplicatePrompt.value).toBeNull();
+    expect(uploadSource).toHaveBeenCalledTimes(2);
+    for (const call of uploadSource.mock.calls) {
+      expect(call[5]).toMatchObject({ duplicatePreCheckedAbsent: true });
+    }
+  });
+
   it("without forceAskDuplicates the configured rename policy silently renames (no prompt)", async () => {
     const invoke = vi.fn(async (method: string, _params?: unknown) => {
       if (method === "sftp/exists") return { exists: true };

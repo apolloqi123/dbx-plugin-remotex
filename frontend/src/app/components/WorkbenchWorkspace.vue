@@ -26,7 +26,7 @@ const {
   beginCustomEditorCommand, beginPathBarEdit, beginRename, beginSymlinkEdit, bookmarkLabelDraft,
   broadcastBatchBarState, browseBatchHistoryDown, browseBatchHistoryUp, canOpenShellTab,
   canSplitTerminal, canWrite, cancelBatchBarSave, cancelPathBarEdit, chooseTrzszUpload,
-  chooseZmodem, clearRowSelection, clearSftpSearch, clearTerminal, closeEditorTab,
+  chooseZmodem, clearRowSelection, clearSftpSearch, clearTerminal, closeAllEditorTabs, closeEditorTab,
   closeDockerPane, closePane, closePaneTab, closeRightPanel, closeTerminalSplit, commitTreeRename,
   confirmBatchBarSave, confirmBookmarkSave, connected, connectionId, copySelectedEntries,
   copySelectedPaths, copyTerminalSelection, copyTextToClipboard, createPaneTab, ctxSearchEngines,
@@ -122,6 +122,7 @@ function dockerTerminalStateEvents(
         :appearance="appearance"
         @activate="activateEditorTab"
         @close="closeEditorTab"
+        @close-all="closeAllEditorTabs"
         @reload="reloadEditorTab"
         @save="saveEditorTab"
         @update:text="({ id, text }) => updateEditorText(id, text)"

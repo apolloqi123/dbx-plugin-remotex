@@ -6,7 +6,7 @@
 // TextPreview（异步按需加载，避免 CodeMirror 进入启动分包），图片页签使用
 // 与预览弹窗同款缩放交互；加载/错误状态按页签展示。
 import { computed, ref, watch } from "vue";
-import { FileText, Image as ImageIcon, Loader2, RotateCw, Save, X } from "@lucide/vue";
+import { FileText, Image as ImageIcon, ListX, Loader2, RotateCw, Save, X } from "@lucide/vue";
 import { createPreviewAsyncComponent } from "../../../shared/lib/asyncPreview";
 import type { EditorTab } from "../composables/editor/useEditorTabs";
 
@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   activate: [id: string];
   close: [id: string];
+  "close-all": [];
   reload: [id: string];
   save: [id: string];
   "update:text": [value: { id: string; text: string }];
@@ -94,6 +95,17 @@ function onTextChange(text: string) {
           </button>
         </div>
       </div>
+      <button
+        v-if="tabs.length"
+        type="button"
+        class="editor-close-all"
+        :title="t('editSave.closeAll')"
+        :aria-label="t('editSave.closeAll')"
+        @click="emit('close-all')"
+      >
+        <ListX aria-hidden="true" />
+        <span>{{ t("editSave.closeAll") }}</span>
+      </button>
       <button
         v-if="activeTab"
         type="button"
@@ -268,7 +280,8 @@ function onTextChange(text: string) {
 }
 
 .editor-save,
-.editor-reload {
+.editor-reload,
+.editor-close-all {
   display: inline-flex;
   min-height: 15px;
   flex: 0 0 auto;
@@ -286,7 +299,8 @@ function onTextChange(text: string) {
 }
 
 .editor-save:hover:not(:disabled),
-.editor-reload:hover:not(:disabled) {
+.editor-reload:hover:not(:disabled),
+.editor-close-all:hover {
   background: var(--accent);
 }
 
@@ -297,7 +311,8 @@ function onTextChange(text: string) {
 }
 
 .editor-save svg,
-.editor-reload svg {
+.editor-reload svg,
+.editor-close-all svg {
   width: 10px;
   height: 10px;
   flex: 0 0 10px;

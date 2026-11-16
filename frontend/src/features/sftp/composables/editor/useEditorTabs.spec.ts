@@ -426,6 +426,33 @@ describe("useEditorTabs", () => {
     expect(h.editor.activeId.value).toBe("");
   });
 
+  it("关闭全部：有脏页签只确认一次，确认后清空页签与 active", async () => {
+    const h = setupHarness();
+    h.files.set("/home/a.txt", "a");
+    h.files.set("/home/b.txt", "b");
+    await h.editor.openEntry(entry("a.txt", 1));
+    await h.editor.openEntry(entry("b.txt", 1));
+    h.editor.updateText(h.editor.tabs.value[0].id, "a changed");
+
+    confirmMock.mockResolvedValueOnce(false);
+    await h.editor.closeAll();
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(confirmMock).toHaveBeenCalledWith("editSave.closeConfirm");
+    expect(h.editor.tabs.value).toHaveLength(2);
+
+    confirmMock.mockResolvedValueOnce(true);
+    await h.editor.closeAll();
+    expect(h.editor.tabs.value).toHaveLength(0);
+    expect(h.editor.activeId.value).toBe("");
+
+    // 全部干净时不弹确认。
+    confirmMock.mockClear();
+    await h.editor.openEntry(entry("a.txt", 1));
+    await h.editor.closeAll();
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(h.editor.tabs.value).toHaveLength(0);
+  });
+
   it("同一路径重复打开：只激活既有页签，不重复读取", async () => {
     const h = setupHarness();
     h.files.set("/home/notes.txt", "hello");

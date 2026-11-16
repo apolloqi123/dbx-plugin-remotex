@@ -450,6 +450,14 @@ export function useEditorTabs(options: EditorTabsOptions) {
     if (activeId.value) await closeTab(activeId.value);
   }
 
+  /** 关闭全部页签：有未保存修改时只确认一次（不做逐个确认），确认后整页清空。 */
+  async function closeAll() {
+    if (!tabs.value.length) return;
+    if (tabs.value.some((tab) => tab.dirty) && !(await confirmDialog(t("editSave.closeConfirm")))) return;
+    tabs.value = [];
+    activeId.value = "";
+  }
+
   // 断连后 session 消失：旧页签的路径/正文已无对应连接，静默清空，避免
   // 重新连接后误保存到新会话。仅处理「从有 id 变为无 id」，初始未连接不触发。
   watch(
@@ -477,5 +485,6 @@ export function useEditorTabs(options: EditorTabsOptions) {
     saveActive,
     closeTab,
     closeActive,
+    closeAll,
   };
 }

@@ -138,6 +138,7 @@ export function installWorkbenchSftp(deps: Deps) {
     saveTab: saveEditorTab,
     saveActive,
     closeTab: closeEditorTab,
+    closeAll: closeAllEditorTabs,
     handleRename: handleEditorRename,
     closeTabsUnder: closeEditorTabsUnder,
   } = useEditorTabs({
@@ -496,7 +497,7 @@ export function installWorkbenchSftp(deps: Deps) {
     previewLoading, previewPath, previewSize, previewEditable, previewDraft, previewSaving, previewMode, previewImageUrl,
     previewImageZoomed, previewTruncated, previewDirty, previewEditableAllowed, jsonPreviewState, openEntry, openImagePreview, closePreview,
     beginPreviewEdit, cancelPreviewEdit, savePreview, MAX_INLINE_PREVIEW_BYTES, editorTabs, activeEditorId, hasEditorTabs, openEditorTab,
-    activateEditorTab, updateEditorText, reloadEditorTab, saveEditorTab, saveActive, closeEditorTab, handleEditorRename, closeEditorTabsUnder, editorPaneRef,
+    activateEditorTab, updateEditorText, reloadEditorTab, saveEditorTab, saveActive, closeEditorTab, closeAllEditorTabs, handleEditorRename, closeEditorTabsUnder, editorPaneRef,
     terminalStackRef, editorSplitRatio, startEditorDividerDrag, onEditorDividerKeydown, editorPaneContainsFocus, archiveBusy, isArchiveName, archiveDirectoryName,
     archiveEntry, extractEntry, editorPrefsAdapter, operationDialog, operationDraft, createDirectory, bookmarksOpen,
     toggleBookmarksMenu, sftpBookmarks, bookmarkSaving, bookmarkLabelDraft, refreshBookmarks,

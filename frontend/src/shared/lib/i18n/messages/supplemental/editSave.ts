@@ -8,6 +8,7 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "Reloaded {name}",
     "editSave.saved": "Saved {name}",
     "editSave.unsaved": "Unsaved changes",
+    "editSave.closeAll": "Close all",
     "editSave.closeConfirm": "You have unsaved changes. Discard them and continue?",
   },
   "zh-CN": {
@@ -18,7 +19,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "已重新加载 {name}",
     "editSave.saved": "已保存 {name}",
     "editSave.unsaved": "未保存",
-    "editSave.closeConfirm": "有未保存的修改，确定放弃并继续吗？",
+    "editSave.closeAll": "关闭全部",
+    "editSave.closeConfirm": "有未保存的修改，确定放弃并继续吗？"
   },
   "zh-TW": {
     "editSave.edit": "編輯",
@@ -28,7 +30,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "已重新載入 {name}",
     "editSave.saved": "已儲存 {name}",
     "editSave.unsaved": "未儲存",
-    "editSave.closeConfirm": "有未儲存的修改，確定放棄並繼續嗎？",
+    "editSave.closeAll": "關閉全部",
+    "editSave.closeConfirm": "有未儲存的修改，確定放棄並繼續嗎？"
   },
   es: {
     "editSave.edit": "Editar",
@@ -38,7 +41,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "{name} recargado",
     "editSave.saved": "{name} guardado",
     "editSave.unsaved": "Cambios sin guardar",
-    "editSave.closeConfirm": "Tiene cambios sin guardar. ¿Descartarlos y continuar?",
+    "editSave.closeAll": "Cerrar todo",
+    "editSave.closeConfirm": "Tiene cambios sin guardar. ¿Descartarlos y continuar?"
   },
   it: {
     "editSave.edit": "Modifica",
@@ -48,7 +52,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "{name} ricaricato",
     "editSave.saved": "{name} salvato",
     "editSave.unsaved": "Modifiche non salvate",
-    "editSave.closeConfirm": "Ci sono modifiche non salvate. Scartarle e continuare?",
+    "editSave.closeAll": "Chiudi tutto",
+    "editSave.closeConfirm": "Ci sono modifiche non salvate. Scartarle e continuare?"
   },
   ja: {
     "editSave.edit": "編集",
@@ -58,7 +63,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "{name} を再読み込みしました",
     "editSave.saved": "{name} を保存しました",
     "editSave.unsaved": "未保存の変更があります",
-    "editSave.closeConfirm": "未保存の変更があります。破棄して続行しますか？",
+    "editSave.closeAll": "すべて閉じる",
+    "editSave.closeConfirm": "未保存の変更があります。破棄して続行しますか？"
   },
   "pt-BR": {
     "editSave.edit": "Editar",
@@ -68,7 +74,8 @@ const editSaveMessages: Record<string, Record<string, string>> = {
     "editSave.reloaded": "{name} recarregado",
     "editSave.saved": "{name} salvo",
     "editSave.unsaved": "Alterações não salvas",
-    "editSave.closeConfirm": "Há alterações não salvas. Descartá-las e continuar?",
+    "editSave.closeAll": "Fechar tudo",
+    "editSave.closeConfirm": "Há alterações não salvas. Descartá-las e continuar?"
   },
 };
 

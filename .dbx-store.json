@@ -20,7 +20,7 @@
   "source": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "homepage": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "license": "MIT",
-  "releaseNotes": "First RemoteX release: one workbench for SSH, Telnet, VNC, RDP, serial and local shell, with PTY terminal, SFTP, port forwarding, containers, metrics, recording, and MCP automation.",
+  "releaseNotes": "First stable RemoteX release: one workbench for SSH, Telnet, VNC, RDP, serial and local shell, with PTY terminal, SFTP, port forwarding, containers, metrics, recording, and MCP automation.",
   "localizations": {
     "zh-CN": {
       "name": "RemoteX",
