@@ -7,9 +7,10 @@ This file records user-facing changes for RemoteX.
 ## [0.1.1] — 2026-11-21
 
 - 更新插件描述，增加 SFTP 管理、Docker 面板、主机监控、命令管理等功能介绍。
+- SFTP 编辑器为 Shell、Nginx、Tcl、Makefile 内置语法高亮并修正这些模式的注释识别；其他语言按需加载，加载失败时降级为纯文本。
 - 版本号升级至 0.1.1。
 
-**Updated plugin description with SFTP management, Docker panel, host monitoring, command management and more. Version bumped to 0.1.1.**
+**Updated store description to call out SFTP management, Docker panel, host monitoring, and command management. The SFTP editor now ships its own Shell, Nginx, Tcl and Makefile highlighting with correct comment detection, loads other languages on demand, and falls back to plain text when a grammar fails to load. Version bumped to 0.1.1.**
 
 ## [0.1.0] — 2026-11-16
 
