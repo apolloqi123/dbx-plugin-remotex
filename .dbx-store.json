@@ -20,7 +20,7 @@
   "source": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "homepage": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "license": "MIT",
-  "releaseNotes": "Support SSH, Telnet, VNC, RDP, serial and local shell, plus SFTP management, Docker panel, host monitoring, command management and more — a unified DBX terminal and remote desktop workbench.",
+  "releaseNotes": "Updated plugin description to call out SFTP management, Docker panel, host monitoring, and command management alongside SSH, Telnet, VNC, RDP, serial and local shell connections.",
   "localizations": {
     "zh-CN": {
       "name": "RemoteX",
