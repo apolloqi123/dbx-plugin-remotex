@@ -50,6 +50,21 @@ describe("editorTheme (shared/frontend)", () => {
     expect(EDITOR_TOKEN_COLORS.light.variable).toBeNull();
   });
 
+  it("covers meta, diff and definition tags instead of the dim built-in fallback", () => {
+    const dark = syntaxTokenSpecs("dark");
+    const colorOf = (tag: string) => dark.find((spec) => spec.tag === tag)?.color;
+    expect(colorOf("meta")).toBe(EDITOR_TOKEN_COLORS.dark.meta);
+    expect(colorOf("contentSeparator")).toBe(EDITOR_TOKEN_COLORS.dark.meta);
+    expect(colorOf("inserted")).toBe(EDITOR_TOKEN_COLORS.dark.inserted);
+    expect(colorOf("deleted")).toBe(EDITOR_TOKEN_COLORS.dark.deleted);
+    expect(colorOf("definition(variableName)")).toBe(EDITOR_TOKEN_COLORS.dark.variable);
+    expect(colorOf("standard(variableName)")).toBe(EDITOR_TOKEN_COLORS.dark.function);
+    expect(colorOf("definition(propertyName)")).toBe(EDITOR_TOKEN_COLORS.dark.prop);
+    // 元信息不能与注释同色：否则 markdown 标点 / 预处理行看起来像被注释掉。
+    expect(EDITOR_TOKEN_COLORS.dark.meta).not.toBe(EDITOR_TOKEN_COLORS.dark.comment);
+    expect(EDITOR_TOKEN_COLORS.light.meta).not.toBe(EDITOR_TOKEN_COLORS.light.comment);
+  });
+
   it("expands tag groups into specs and skips null palette entries", () => {
     const dark = syntaxTokenSpecs("dark");
     expect(dark).toContainEqual({ tag: "keyword", color: "#4fc1ff", fontWeight: undefined });

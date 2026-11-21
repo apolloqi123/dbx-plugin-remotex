@@ -37,6 +37,9 @@ export type EditorTokenColorKey =
   | "regexp"
   | "link"
   | "heading"
+  | "meta" // 元信息 / 预处理指令 / 文档标记（markdown 标点、diff 头）
+  | "inserted" // diff 新增行
+  | "deleted" // diff 删除行
   | "invalid";
 
 /** 值为 CSS 颜色；`null` 表示不覆盖（跟随编辑器默认前景，如浅色下的变量名）。 */
@@ -60,6 +63,9 @@ export const EDITOR_TOKEN_COLORS: { light: EditorTokenPalette; dark: EditorToken
     regexp: "#a31515",
     link: "#0451a5",
     heading: "#0451a5",
+    meta: "#6e7781",
+    inserted: "#22863a",
+    deleted: "#cb2431",
     invalid: "#e51400",
   },
   dark: {
@@ -77,6 +83,9 @@ export const EDITOR_TOKEN_COLORS: { light: EditorTokenPalette; dark: EditorToken
     regexp: "#d2a8ff",
     link: "#56d4dd",
     heading: "#56d4dd",
+    meta: "#6e7681",
+    inserted: "#3fb950",
+    deleted: "#ff7b72",
     invalid: "#ff7b72",
   },
 };
@@ -97,19 +106,28 @@ export interface SyntaxTokenSpec {
 const TAG_COLOR_GROUPS: Array<{ key: EditorTokenColorKey; tags: string[]; weight?: string }> = [
   { key: "key", tags: ["keyword", "controlKeyword", "moduleKeyword", "definitionKeyword", "operatorKeyword", "self", "atom", "unit", "modifier", "bool", "attributeName"] },
   { key: "string", tags: ["string", "character", "attributeValue", "escape", "docString"] },
-  { key: "number", tags: ["number", "integer", "float"] },
+  { key: "number", tags: ["number", "integer", "float", "color"] },
   { key: "regexp", tags: ["regexp"] },
   // null 是 keyword 子 tag，const 常量名经 constant 修饰器组合，两者均需显式覆盖。
   { key: "null", tags: ["null", "constant(variableName)"] },
-  { key: "prop", tags: ["propertyName"] },
-  { key: "function", tags: ["function(variableName)"] },
+  { key: "prop", tags: ["propertyName", "definition(propertyName)"] },
+  // 内建/宏（Python 的 print、Rust 的 println!、shell 内建命令）走函数色。
+  { key: "function", tags: ["function(variableName)", "macroName", "standard(variableName)"] },
   { key: "type", tags: ["typeName", "className", "namespace"] },
   { key: "comment", tags: ["comment"] },
   { key: "operator", tags: ["operator"] },
   { key: "punct", tags: ["punctuation", "separator", "bracket", "angleBracket", "squareBracket", "paren", "brace"] },
-  { key: "variable", tags: ["variableName"] },
-  { key: "link", tags: ["link", "url"] },
+  // definition/local 覆盖赋值名与配置项（shell 变量、properties 键）：不显式
+  // 给色会落回内置浅色主题的 #00f，暗色下几乎不可读。
+  { key: "variable", tags: ["variableName", "definition(variableName)", "local(variableName)"] },
+  { key: "link", tags: ["link", "url", "labelName"] },
   { key: "heading", tags: ["heading"], weight: "700" },
+  // meta 是文档标点/指令的父 tag（markdown `#`/`-`、`<?xml?>`、C 预处理行、
+  // diff 头）。必须显式给色：内置 defaultHighlightStyle 的 meta 是 #404740，
+  // 暗色下几乎看不见，看起来像「被注释掉」。
+  { key: "meta", tags: ["meta", "contentSeparator"] },
+  { key: "inserted", tags: ["inserted"] },
+  { key: "deleted", tags: ["deleted"] },
   { key: "invalid", tags: ["invalid"] },
 ];
 

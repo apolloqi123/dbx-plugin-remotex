@@ -3,9 +3,9 @@
   "manifest_version": 1,
   "id": "io.dbx.remotex",
   "name": "RemoteX",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "apolloqi",
-  "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
+  "description": "Support SSH, Telnet, VNC, RDP, serial and local shell, plus SFTP management, Docker panel, host monitoring, command management and more — a unified DBX terminal and remote desktop workbench.",
   "source": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "homepage": "https://github.com/apolloqi123/dbx-plugin-remotex",
   "icon": "assets/plugin.svg",
@@ -1336,7 +1336,7 @@
   "localizations": {
     "en": {
       "name": "RemoteX",
-      "description": "One DBX workbench for SSH, Telnet, VNC, RDP, serial and local shell connections.",
+      "description": "Support SSH, Telnet, VNC, RDP, serial and local shell, plus SFTP management, Docker panel, host monitoring, command management and more — a unified DBX terminal and remote desktop workbench.",
       "contributions": {
         "io.dbx.remotex.connection": {
           "description": "One connection entry for SSH, Telnet, VNC, RDP, serial and local shell. Pick the protocol inside the form; host, port and credentials follow that choice.",
@@ -2539,7 +2539,7 @@
     },
     "zh-CN": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP、串口与 RemoteX 的统一 DBX 终端与远程桌面工作台。",
+      "description": "支持SSH、Telnet、VNC、RDP、串口与本地 Shell ，sftp管理、docker面板、主机监控、命令管理等多项便捷功能，统一的 DBX 终端与远程桌面工作台。",
       "contributions": {
         "io.dbx.remotex.connection": {
           "label": "RemoteX",
@@ -2833,7 +2833,7 @@
     },
     "zh-TW": {
       "name": "RemoteX",
-      "description": "SSH、Telnet、VNC、RDP、序列埠與 RemoteX 的統一 DBX 終端與遠端桌面工作台。",
+      "description": "支援 SSH、Telnet、VNC、RDP、序列埠與本機 Shell，SFTP 管理、Docker 面板、主機監控、指令管理等多項便捷功能，統一的 DBX 終端與遠端桌面工作台。",
       "contributions": {
         "io.dbx.remotex.connection": {
           "label": "RemoteX",

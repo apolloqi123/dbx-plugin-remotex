@@ -4,6 +4,7 @@ import {
   detectEditorLanguage,
   extensionOf,
   isLogFileName,
+  isMakefileName,
   shebangLanguage,
   sniffContent,
 } from "./languageDetect";
@@ -72,6 +73,7 @@ describe("detectEditorLanguage", () => {
     expect(nameOf("icon.plist")).toBe("XML");
     expect(nameOf("window.xaml")).toBe("XML");
     expect(nameOf("run.ps1")).toBe("PowerShell");
+    expect(nameOf("index.vm")).toBe("Velocity");
     expect(nameOf("server.conf", "server {\n  listen 80;\n}\n")).toBe("Nginx");
     expect(nameOf("app.cfg", "a=1\nb=2\n")).toBe("Properties files");
   });
@@ -117,6 +119,40 @@ describe("detectEditorLanguage", () => {
       log: false,
     });
     expect(detectEditorLanguage("", "", languages)).toEqual({ log: false });
+  });
+});
+
+describe("bundled language overrides", () => {
+  it("routes Shell to the plugin mode while keeping the catalog name", () => {
+    expect(detectEditorLanguage("run.sh", "", languages)).toMatchObject({ override: "shell" });
+    expect(nameOf("run.sh")).toBe("Shell");
+    expect(detectEditorLanguage(".env", "", languages).override).toBe("shell");
+    expect(detectEditorLanguage("deploy", "#!/usr/bin/env bash\nset -e", languages).override).toBe("shell");
+    // 自带实现不依赖语言目录是否收录 Shell。
+    expect(detectEditorLanguage("run.sh", "", [])).toEqual({ log: false, override: "shell" });
+  });
+
+  it("routes Nginx and Tcl to the plugin modes", () => {
+    expect(detectEditorLanguage("nginx.conf", "", languages)).toMatchObject({ override: "nginx" });
+    expect(detectEditorLanguage("site.conf", "server { listen 80; }", languages)).toMatchObject({ override: "nginx" });
+    expect(detectEditorLanguage("a.tcl", "", languages)).toMatchObject({ override: "tcl" });
+    // 自带实现不依赖语言目录：目录为空时仍按文件名命中。
+    expect(detectEditorLanguage("a.tcl", "", [])).toEqual({ log: false, override: "tcl" });
+    // 任意文件名的 *.conf：块结构或 nginx 独有指令都按 nginx 着色。
+    expect(detectEditorLanguage("customer.22233.cn.conf", "upstream a { server 1.1.1.1; }", languages).override).toBe("nginx");
+    expect(detectEditorLanguage("ssl.conf", "ssl_protocols TLSv1.2;\nssl_ciphers HIGH;\n", languages).override).toBe("nginx");
+    expect(detectEditorLanguage("proxy_params.conf", "proxy_set_header Host $host;\n", languages).override).toBe("nginx");
+    // 普通 key/value 配置不被误判。
+    expect(detectEditorLanguage("app.conf", "listen_addr = 1\nname = x\n", languages).override).toBeUndefined();
+  });
+
+  it("detects Makefiles that language-data does not cover", () => {
+    for (const name of ["Makefile", "GNUmakefile", "makefile", "common.mk", "rules.mak", "Makefile.am"]) {
+      expect(detectEditorLanguage(name, "", languages).override).toBe("makefile");
+    }
+    expect(isMakefileName("makefile.py")).toBe(false);
+    expect(nameOf("makefile.py")).toBe("Python");
+    expect(isMakefileName("notes.txt")).toBe(false);
   });
 });
 

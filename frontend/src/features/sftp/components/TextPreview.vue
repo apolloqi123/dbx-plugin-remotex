@@ -9,6 +9,7 @@ import { tags } from "@lezer/highlight";
 // 语法高亮调色板来自 shared 公共层（唯一实现点），暗色为提亮后的 GitHub Dark 系。
 import { dbxSyntaxHighlight } from "../../../../../shared/frontend/editorTheme";
 import { detectEditorLanguage } from "../lib/editor/languageDetect";
+import { loadLanguageSupport } from "../lib/editor/languageSupport";
 import { logHighlightExtension } from "../lib/editor/logHighlight";
 import { previewThemeSpec } from "../lib/editor/previewTheme";
 import EditorFindBar from "./EditorFindBar.vue";
@@ -329,7 +330,7 @@ function previewTheme() {
 async function extensions() {
   // 语言识别：扩展名/约定文件名/shebang/内容嗅探；日志文件改走语义着色。
   const detected = detectEditorLanguage(props.fileName, props.text, languages);
-  const support = detected.language ? await detected.language.load().catch(() => undefined) : undefined;
+  const support = await loadLanguageSupport(detected);
   return [
     basicSetup,
     findMatchField,

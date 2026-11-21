@@ -151,6 +151,8 @@ vi.mock("@codemirror/language", () => ({
     define: (specs: readonly { tag: unknown; color?: string }[]) => ({ kind: "highlightStyle", specs }),
   },
   syntaxHighlighting: (style: unknown) => ({ kind: "syntaxHighlighting", style }),
+  // 插件自带的 Shell/Makefile 模式经 StreamLanguage 装配；这里只断言「注入成功」。
+  StreamLanguage: { define: () => ({ kind: "languageSupport" }) },
 }));
 
 // 语言目录只保留本 spec 用到的条目：detectEditorLanguage 会读 name/alias/

@@ -12,6 +12,12 @@
 //   6. 内容嗅探（JSON / XML / HTML / diff / YAML / INI / SQL / 日志）
 //
 // 纯函数（语言列表由调用方注入），文件名大小写不敏感。
+//
+// 结果里的 `override` 表示「用插件自带实现」：Shell（legacy 模式把 `${x#y}`、
+// `$#`、URL 里的 `#` 都当注释）、Nginx（legacy 把 `modules/*.conf` 的 `/*` 当
+// C 注释并吞掉后续全文）、Tcl（legacy 把引号/运算符当注释）分别由 shellMode /
+// nginxMode / tclMode 接管；Makefile 在 language-data 里没有语言包，由
+// makefileMode 提供。装配见 languageSupport.ts。
 
 import type { LanguageDescription } from "@codemirror/language";
 import { looksLikeLog } from "../../../../shared/lib/logTokens";
@@ -21,7 +27,21 @@ export interface DetectedEditorLanguage {
   language?: LanguageDescription;
   /** 日志串：由调用方追加日志着色扩展。 */
   log: boolean;
+  /** 插件自带语言实现（语言目录缺失或 legacy 模式有缺陷时接管）。 */
+  override?: EditorLanguageOverride;
 }
+
+/** 插件自带实现的语言：修 legacy 模式的注释误判 / 补语言目录缺失。 */
+export type EditorLanguageOverride = "shell" | "makefile" | "nginx" | "tcl";
+
+/** 语言目录里能命中、但要用插件自带实现的条目。 */
+const OVERRIDDEN_LANGUAGES: Record<string, EditorLanguageOverride> = {
+  Shell: "shell",
+  // legacy nginx 把 `modules/*.conf` 的 `/*` 当 C 注释，整篇后续都变注释灰。
+  Nginx: "nginx",
+  // legacy tcl 把双引号与运算符返回成 comment。
+  Tcl: "tcl",
+};
 
 /** `*.log` / `*.log.1` / syslog、access_log 这类约定日志名。 */
 const LOG_FILE_RE = /^(?:syslog|messages|(?:access|error|daemon|auth|kern|boot|yum|dpkg|mysql|slow|secure)\.?log|(?:access|error)_log|nohup\.out|catalina\.out|journalctl)$|\.log(?:\.\d+)?$|\.(?:trace|access)$/i;
@@ -53,6 +73,10 @@ const EXTENSION_LANGUAGES: Record<string, string> = {
   repo: "Properties files",
   desktop: "Properties files",
   env: "Shell",
+  sh: "Shell",
+  bash: "Shell",
+  zsh: "Shell",
+  ksh: "Shell",
   fish: "Shell",
   xaml: "XML",
   plist: "XML",
@@ -70,6 +94,10 @@ const EXTENSION_LANGUAGES: Record<string, string> = {
   psd1: "PowerShell",
   dockerfile: "Dockerfile",
   http: "HTTP",
+  vm: "Velocity",
+  vtl: "Velocity",
+  tcl: "Tcl",
+  tk: "Tcl",
 };
 
 const SHEBANG_LANGUAGES: Record<string, string> = {
@@ -100,6 +128,13 @@ const SHEBANG_LANGUAGES: Record<string, string> = {
 };
 
 const NGINX_BLOCK_RE = /^\s*(?:http|server|location|upstream|events|map|stream)\b[^{}\n]*\{/m;
+/** nginx 独有指令（`以分号结尾`）：只有指令、没有块的片段文件（如被 include 的
+ *  `ssl.conf`、`proxy_params.conf`）也按 nginx 着色。 */
+const NGINX_DIRECTIVE_RE = /^\s*(?:listen|server_name|proxy_pass|proxy_set_header|proxy_redirect|fastcgi_pass|fastcgi_param|ssl_certificate(?:_key)?|ssl_protocols|ssl_ciphers|worker_processes|worker_connections|client_max_body_size|add_header|try_files|rewrite|access_log|error_log|log_format|limit_req_zone|upstream)\b[^\n;]*;/m;
+
+function looksLikeNginx(text: string): boolean {
+  return NGINX_BLOCK_RE.test(text) || NGINX_DIRECTIVE_RE.test(text);
+}
 
 /** 文件名（basename）→ 语言名，供内容嗅探与特殊名共用。 */
 function findLanguage(languages: readonly LanguageDescription[], name: string): LanguageDescription | undefined {
@@ -109,6 +144,23 @@ function findLanguage(languages: readonly LanguageDescription[], name: string): 
       language.name.toLowerCase() === target ||
       (language.alias ?? []).some((alias) => alias.toLowerCase() === target),
   );
+}
+
+/** 命中语言 → 检测结果（附上需要插件自带实现的 override）。 */
+function detectedLanguage(language: LanguageDescription): DetectedEditorLanguage {
+  const override = OVERRIDDEN_LANGUAGES[language.name];
+  return override ? { language, log: false, override } : { language, log: false };
+}
+
+/** 语言名 → 检测结果。Shell 的自带实现不依赖语言目录是否收录该条目。 */
+function detectedByName(
+  languages: readonly LanguageDescription[],
+  name: string,
+): DetectedEditorLanguage | undefined {
+  const language = findLanguage(languages, name);
+  if (language) return detectedLanguage(language);
+  const override = OVERRIDDEN_LANGUAGES[name];
+  return override ? { log: false, override } : undefined;
 }
 
 export function extensionOf(fileName: string): string {
@@ -121,6 +173,15 @@ export function extensionOf(fileName: string): string {
 
 function basenameOf(fileName: string): string {
   return fileName.split(/[\\/]/).pop() ?? fileName;
+}
+
+/** Makefile 约定名与扩展名（language-data 没有对应语言，走插件自带模式）。 */
+const MAKEFILE_NAME_RE = /^(?:gnu)?makefile(?:\.(?:am|in|inc|mk|mak|win|dist))?$/i;
+const MAKEFILE_EXTENSIONS = new Set(["mk", "mak"]);
+
+export function isMakefileName(fileName: string): boolean {
+  const base = basenameOf(fileName);
+  return MAKEFILE_NAME_RE.test(base) || MAKEFILE_EXTENSIONS.has(extensionOf(base));
 }
 
 export function isLogFileName(fileName: string): boolean {
@@ -194,20 +255,21 @@ export function detectEditorLanguage(
   const base = basenameOf(fileName);
   if (!base) return { log: false };
   if (isLogFileName(base)) return { log: true };
+  if (isMakefileName(base)) return { log: false, override: "makefile" };
 
-  const override = EXTENSION_OVERRIDES[extensionOf(base)];
-  if (override) {
-    const language = findLanguage(languages, override);
-    if (language) return { language, log: false };
+  const overrideName = EXTENSION_OVERRIDES[extensionOf(base)];
+  if (overrideName) {
+    const detected = detectedByName(languages, overrideName);
+    if (detected) return detected;
   }
 
   const byData = catalogLanguage(languages, base);
-  if (byData) return { language: byData, log: false };
+  if (byData) return detectedLanguage(byData);
 
   for (const [pattern, name] of SPECIAL_FILES) {
     if (!pattern.test(base)) continue;
-    const language = findLanguage(languages, name);
-    if (language) return { language, log: false };
+    const detected = detectedByName(languages, name);
+    if (detected) return detected;
   }
 
   const extension = extensionOf(base);
@@ -216,25 +278,25 @@ export function detectEditorLanguage(
   if (extensionName) {
     if (extension === "conf" || extension === "cfg" || extension === "cnf") {
       // 通用 *.conf：先看 nginx 结构块，否则按 key/value 配置处理。
-      if (NGINX_BLOCK_RE.test(text)) {
-        const nginx = findLanguage(languages, "Nginx");
-        if (nginx) return { language: nginx, log: false };
+      if (looksLikeNginx(text)) {
+        const nginx = detectedByName(languages, "Nginx");
+        if (nginx) return nginx;
       }
     }
-    const language = findLanguage(languages, extensionName);
-    if (language) return { language, log: false };
+    const detected = detectedByName(languages, extensionName);
+    if (detected) return detected;
   }
 
   const shebang = shebangLanguage(text);
   if (shebang) {
-    const language = findLanguage(languages, shebang);
-    if (language) return { language, log: false };
+    const detected = detectedByName(languages, shebang);
+    if (detected) return detected;
   }
 
   const sniffed = sniffContent(text);
   if (sniffed.language) {
-    const language = findLanguage(languages, sniffed.language);
-    if (language) return { language, log: false };
+    const detected = detectedByName(languages, sniffed.language);
+    if (detected) return detected;
   }
   return { log: sniffed.log === true };
 }

@@ -4,6 +4,13 @@
 
 This file records user-facing changes for RemoteX.
 
+## [0.1.1] — 2026-11-21
+
+- 更新插件描述，增加 SFTP 管理、Docker 面板、主机监控、命令管理等功能介绍。
+- 版本号升级至 0.1.1。
+
+**Updated plugin description with SFTP management, Docker panel, host monitoring, command management and more. Version bumped to 0.1.1.**
+
 ## [0.1.0] — 2026-11-16
 
 首个准备上架 DBX 商店的稳定版（`0.0.1-beta` 为预发布，未进入商店）。
