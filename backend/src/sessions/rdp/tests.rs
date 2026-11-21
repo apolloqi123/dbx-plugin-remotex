@@ -1190,7 +1190,7 @@ fn vendored_sspi_marks_ntlmv1_and_lm_as_unsupported() {
 
 #[test]
 fn client_build_encodes_the_package_version() {
-    assert_eq!(client_build(), 100); // 0.1.0 → 0*10000 + 1*100 + 0
+    assert_eq!(client_build(), 101); // 0.1.1 → 0*10000 + 1*100 + 1
 }
 
 #[test]
